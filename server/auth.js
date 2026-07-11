@@ -1,13 +1,14 @@
 import jwt from 'jsonwebtoken'
 import { createHash } from 'crypto'
 import { get, publicUser } from './db.js'
+import { DATABASE_URL as CONFIG_DATABASE_URL } from './config.js'
 
 // Prefer an explicit JWT_SECRET. Without one, derive a stable secret from the
 // database credential (Postgres URL or Turso token) — it's secret, identical
 // on every instance, and survives deploys, so sessions never break and there
 // is nothing to configure. The dev default only applies with no database URL.
 const dbSecret = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
-  process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN
+  process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || CONFIG_DATABASE_URL
 export const JWT_SECRET = process.env.JWT_SECRET ||
   (dbSecret ? createHash('sha256').update(`satashkent:${dbSecret}`).digest('hex') : 'satashkent-dev-secret-change-me')
 

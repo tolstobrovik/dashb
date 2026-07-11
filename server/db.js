@@ -12,9 +12,11 @@ import bcrypt from 'bcryptjs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { mkdirSync } from 'fs'
+import { DATABASE_URL as CONFIG_DATABASE_URL } from './config.js'
 
 const PG_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
-  process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING || ''
+  process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING ||
+  CONFIG_DATABASE_URL || ''
 const TURSO_URL = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || ''
 const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || undefined
 export const IS_PG = !!PG_URL

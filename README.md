@@ -140,21 +140,22 @@ every `/api/*` request to one serverless function (`api/index.js`).
 
 1. [vercel.com/new](https://vercel.com/new) → **Import** this repository. No
    settings to change — the defaults come from `vercel.json`. Deploy.
-2. **Make the data permanent** (one time, ~3 clicks, nothing to type): open the
-   project → **Storage** tab → **Create Database** → pick **Postgres (Neon)** →
-   **Connect**. Vercel injects the connection into the project by itself.
-3. **Redeploy** (Deployments → ⋯ on the latest → Redeploy). Done — sign in as
-   `admin` / `admin123` and change the password.
+2. **Make the data permanent** (one time): create a free Postgres database at
+   [neon.tech](https://neon.tech) (sign in with Google, no card needed), copy
+   its **connection string**, paste it into `server/config.js` between the
+   quotes, and push. That's the whole setup — no environment variables, no
+   dashboard settings; the deploy triggered by that push is already durable.
+3. Sign in as `admin` / `admin123` and change the password.
 
-From then on the database is durable: pushes, deploys, restarts and cold
+From then on the database is permanent: pushes, deploys, restarts and cold
 starts never touch the data, and every table is created automatically on
-first request. `JWT_SECRET` is optional — a stable secret is derived from the
-database credential, so logins survive deploys with zero configuration.
+first request. The login secret is derived from the database credential, so
+sessions survive deploys with zero configuration too.
 
-Without step 2 the app still runs, but in **demo mode**: serverless has no
-disk, so the database lives in `/tmp` and resets on every deploy or cold
-start. (Turso is also still supported via `TURSO_DATABASE_URL` +
-`TURSO_AUTH_TOKEN` if you ever prefer it.)
+While `server/config.js` is empty the app runs in **demo mode**: serverless
+has no disk, so data lives in `/tmp` and resets on every deploy or cold
+start. (The `DATABASE_URL`/`POSTGRES_URL` env vars and Turso also still work
+as alternatives, e.g. for Render's auto-injected database.)
 
 **Timekeeping.** Every day boundary — calendars, the to-do list, overdue
 checks, daily growth snapshots, reports — is pinned to **Asia/Tashkent**. A
