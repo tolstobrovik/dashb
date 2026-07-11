@@ -9,8 +9,16 @@ services:
     # --include=dev so Vite (a devDependency) is available to build the UI
     buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
       - key: JWT_SECRET
         generateValue: true      # Render generates a strong secret for you
       - key: NODE_VERSION
         value: "22"
+      # The free plan has no persistent disk, so the SQLite file resets on
+      # every deploy/restart. For durable data at $0, create a free Turso
+      # database (see README "Deploy" section) and uncomment:
+      # - key: TURSO_DATABASE_URL
+      #   sync: false
+      # - key: TURSO_AUTH_TOKEN
+      #   sync: false

@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import { db, snapshotTracker, CONTENT_TYPES } from '../db.js'
-import { authRequired, canAccessDept, can, requirePerm } from '../auth.js'
+import { all, get, run, batch, snapshotTracker, CONTENT_TYPES } from '../db.js'
+import { authRequired, canAccessDept, can, requirePerm, wrap } from '../auth.js'
 
 const cleanType = (v) => (CONTENT_TYPES.includes(v) && v !== 'other' ? v : null)
 
@@ -8,58 +8,57 @@ const router = Router()
 router.use(authRequired)
 
 const toInt = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0 }
-const channelExists = (key) => !!db.prepare('SELECT 1 FROM channels WHERE key = ?').get(key)
+const channelExists = async (key) => !!(await get('SELECT 1 AS x FROM channels WHERE key = ?', key))
 
-router.get('/', (req, res) => {
+router.get('/', wrap(async (req, res) => {
   const { department } = req.query
-  let rows = db.prepare('SELECT * FROM trackers ORDER BY department, sort, id').all()
+  let rows = await all('SELECT * FROM trackers ORDER BY department, sort, id')
   if (req.user.role !== 'admin') {
     const set = new Set(req.user.departments)
     rows = rows.filter((t) => set.has(t.department))
   }
   if (department) rows = rows.filter((t) => t.department === department)
   res.json(rows)
-})
+}))
 
 // Snapshots for the growth comparison: all history rows for one channel.
-router.get('/history', (req, res) => {
+router.get('/history', wrap(async (req, res) => {
   const { department } = req.query
   if (!department || !canAccessDept(req.user, department)) return res.status(403).json({ error: 'Not your channel' })
-  const rows = db.prepare(`
+  const rows = await all(`
     SELECT h.tracker_id, h.date, h.value FROM metric_history h
     JOIN trackers t ON t.id = h.tracker_id
     WHERE t.department = ? ORDER BY h.date
-  `).all(department)
+  `, department)
   res.json(rows)
-})
+}))
 
-router.post('/', requirePerm('manage_metrics'), (req, res) => {
+router.post('/', requirePerm('manage_metrics'), wrap(async (req, res) => {
   const { department, label, current = 0, target = 1, unit = '', period = 'monthly', content_type = null } = req.body || {}
-  if (!channelExists(department) || !label) return res.status(400).json({ error: 'channel and label are required' })
+  if (!(await channelExists(department)) || !label) return res.status(400).json({ error: 'channel and label are required' })
   if (!canAccessDept(req.user, department)) return res.status(403).json({ error: 'Not your channel' })
   const ct = cleanType(content_type)
-  if (ct && db.prepare('SELECT 1 FROM trackers WHERE department = ? AND content_type = ?').get(department, ct))
+  if (ct && await get('SELECT 1 AS x FROM trackers WHERE department = ? AND content_type = ?', department, ct))
     return res.status(400).json({ error: `This channel already has a ${ct} plan` })
-  const maxSort = db.prepare('SELECT COALESCE(MAX(sort), -1) AS m FROM trackers WHERE department = ?').get(department).m
-  const info = db.prepare(`
+  const maxSort = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM trackers WHERE department = ?', department)).m
+  const info = await run(`
     INSERT INTO trackers (department, label, current, target, unit, period, content_type, sort, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(department, label.trim(), toInt(current), Math.max(1, toInt(target)), unit, period, ct, maxSort + 1, new Date().toISOString())
-  snapshotTracker(info.lastInsertRowid)
-  res.status(201).json(db.prepare('SELECT * FROM trackers WHERE id = ?').get(info.lastInsertRowid))
-})
+  `, department, label.trim(), toInt(current), Math.max(1, toInt(target)), unit, period, ct, maxSort + 1, new Date().toISOString())
+  await snapshotTracker(info.lastInsertRowid)
+  res.status(201).json(await get('SELECT * FROM trackers WHERE id = ?', info.lastInsertRowid))
+}))
 
-router.post('/reorder', requirePerm('manage_layout'), (req, res) => {
+router.post('/reorder', requirePerm('manage_layout'), wrap(async (req, res) => {
   const { department, ids } = req.body || {}
   if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' })
   if (!canAccessDept(req.user, department)) return res.status(403).json({ error: 'Not your channel' })
-  const upd = db.prepare('UPDATE trackers SET sort = ? WHERE id = ? AND department = ?')
-  db.transaction(() => ids.forEach((id, i) => upd.run(i, id, department)))()
+  await batch(ids.map((id, i) => ['UPDATE trackers SET sort = ? WHERE id = ? AND department = ?', i, id, department]))
   res.json({ ok: true })
-})
+}))
 
-router.patch('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM trackers WHERE id = ?').get(req.params.id)
+router.patch('/:id', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM trackers WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Metric not found' })
   if (!canAccessDept(req.user, row.department)) return res.status(403).json({ error: 'Not your channel' })
 
@@ -81,7 +80,7 @@ router.patch('/:id', (req, res) => {
     if (body.period !== undefined) patch.period = String(body.period)
     if (body.content_type !== undefined) {
       const ct = cleanType(body.content_type)
-      if (ct && db.prepare('SELECT 1 FROM trackers WHERE department = ? AND content_type = ? AND id != ?').get(row.department, ct, row.id))
+      if (ct && await get('SELECT 1 AS x FROM trackers WHERE department = ? AND content_type = ? AND id != ?', row.department, ct, row.id))
         return res.status(400).json({ error: `This channel already has a ${ct} plan` })
       patch.content_type = ct
     }
@@ -94,17 +93,22 @@ router.patch('/:id', (req, res) => {
   if (Object.keys(patch).length === 0) return res.json(row)
   patch.updated_at = new Date().toISOString()
   const keys = Object.keys(patch)
-  db.prepare(`UPDATE trackers SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`).run(...keys.map((k) => patch[k]), row.id)
-  if (patch.current !== undefined) snapshotTracker(row.id)
-  res.json(db.prepare('SELECT * FROM trackers WHERE id = ?').get(row.id))
-})
+  await run(`UPDATE trackers SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`, ...keys.map((k) => patch[k]), row.id)
+  if (patch.current !== undefined) await snapshotTracker(row.id)
+  res.json(await get('SELECT * FROM trackers WHERE id = ?', row.id))
+}))
 
-router.delete('/:id', requirePerm('manage_metrics'), (req, res) => {
-  const row = db.prepare('SELECT * FROM trackers WHERE id = ?').get(req.params.id)
+router.delete('/:id', requirePerm('manage_metrics'), wrap(async (req, res) => {
+  const row = await get('SELECT * FROM trackers WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Metric not found' })
   if (!canAccessDept(req.user, row.department)) return res.status(403).json({ error: 'Not your channel' })
-  db.prepare('DELETE FROM trackers WHERE id = ?').run(row.id)
+  // Take the history rows with it — remote databases may not honor the
+  // schema's ON DELETE CASCADE.
+  await batch([
+    ['DELETE FROM metric_history WHERE tracker_id = ?', row.id],
+    ['DELETE FROM trackers WHERE id = ?', row.id],
+  ])
   res.json({ ok: true })
-})
+}))
 
 export default router

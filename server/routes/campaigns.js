@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import { db } from '../db.js'
-import { authRequired, adminOnly } from '../auth.js'
+import { all, get, run, batch } from '../db.js'
+import { authRequired, adminOnly, wrap } from '../auth.js'
 
 // Campaign plan — admin only (it lives in the admin panel).
 const router = Router()
@@ -14,27 +14,27 @@ const parse = (row) => row && {
 const cleanMonths = (v) =>
   JSON.stringify((Array.isArray(v) ? v : []).filter((s) => /^\d{4}-\d{2}$/.test(s)).sort())
 
-router.get('/', (req, res) => {
-  res.json(db.prepare('SELECT * FROM campaigns ORDER BY sort, id').all().map(parse))
-})
+router.get('/', wrap(async (req, res) => {
+  res.json((await all('SELECT * FROM campaigns ORDER BY sort, id')).map(parse))
+}))
 
-router.post('/', (req, res) => {
+router.post('/', wrap(async (req, res) => {
   const b = req.body || {}
   if (!b.name || !String(b.name).trim()) return res.status(400).json({ error: 'Give the campaign a name' })
-  const maxSort = db.prepare('SELECT COALESCE(MAX(sort), -1) AS m FROM campaigns').get().m
-  const info = db.prepare(`
+  const maxSort = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM campaigns')).m
+  const info = await run(`
     INSERT INTO campaigns (name, timing, channel, audience, goal, notes, duration, owner, status, ongoing, months, sort)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
     String(b.name).trim(), b.timing || '', b.channel || '', b.audience || '', b.goal || '', b.notes || '',
     b.duration === 'long' ? 'long' : 'short', b.owner || '', b.status || '',
     b.ongoing ? 1 : 0, cleanMonths(b.months), maxSort + 1,
   )
-  res.status(201).json(parse(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(info.lastInsertRowid)))
-})
+  res.status(201).json(parse(await get('SELECT * FROM campaigns WHERE id = ?', info.lastInsertRowid)))
+}))
 
-router.patch('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(req.params.id)
+router.patch('/:id', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM campaigns WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
   const b = req.body || {}
   const patch = {}
@@ -49,25 +49,24 @@ router.patch('/:id', (req, res) => {
   if (b.months !== undefined) patch.months = cleanMonths(b.months)
   if (Object.keys(patch).length > 0) {
     const keys = Object.keys(patch)
-    db.prepare(`UPDATE campaigns SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`)
-      .run(...keys.map((k) => patch[k]), row.id)
+    await run(`UPDATE campaigns SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`,
+      ...keys.map((k) => patch[k]), row.id)
   }
-  res.json(parse(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(row.id)))
-})
+  res.json(parse(await get('SELECT * FROM campaigns WHERE id = ?', row.id)))
+}))
 
-router.post('/reorder', (req, res) => {
+router.post('/reorder', wrap(async (req, res) => {
   const { ids } = req.body || {}
   if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' })
-  const upd = db.prepare('UPDATE campaigns SET sort = ? WHERE id = ?')
-  db.transaction(() => ids.forEach((id, i) => upd.run(i, id)))()
+  await batch(ids.map((id, i) => ['UPDATE campaigns SET sort = ? WHERE id = ?', i, id]))
   res.json({ ok: true })
-})
+}))
 
-router.delete('/:id', (req, res) => {
-  const row = db.prepare('SELECT id FROM campaigns WHERE id = ?').get(req.params.id)
+router.delete('/:id', wrap(async (req, res) => {
+  const row = await get('SELECT id FROM campaigns WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
-  db.prepare('DELETE FROM campaigns WHERE id = ?').run(row.id)
+  await run('DELETE FROM campaigns WHERE id = ?', row.id)
   res.json({ ok: true })
-})
+}))
 
 export default router

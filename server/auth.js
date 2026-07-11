@@ -1,20 +1,30 @@
 import jwt from 'jsonwebtoken'
-import { db, publicUser } from './db.js'
+import { createHash } from 'crypto'
+import { get, publicUser } from './db.js'
 
-export const JWT_SECRET = process.env.JWT_SECRET || 'satashkent-dev-secret-change-me'
+// Prefer an explicit JWT_SECRET. Without one, derive a stable secret from the
+// Turso token when present (so serverless instances all agree and sessions
+// survive cold starts), and only then fall back to the dev default.
+const tursoToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN
+export const JWT_SECRET = process.env.JWT_SECRET ||
+  (tursoToken ? createHash('sha256').update(`satashkent:${tursoToken}`).digest('hex') : 'satashkent-dev-secret-change-me')
 
 export function signToken(user) {
   return jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' })
 }
 
+// Express 4 doesn't catch async errors — route handlers wrap themselves in
+// this so a rejected promise lands in the error middleware, not nowhere.
+export const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
+
 // Verify the bearer token and attach the current user to the request.
-export function authRequired(req, res, next) {
+export async function authRequired(req, res, next) {
   const header = req.headers.authorization || ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : null
   if (!token) return res.status(401).json({ error: 'Not authenticated' })
   try {
     const payload = jwt.verify(token, JWT_SECRET)
-    const row = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id)
+    const row = await get('SELECT * FROM users WHERE id = ?', payload.id)
     if (!row) return res.status(401).json({ error: 'User not found' })
     req.user = publicUser(row)
     next()

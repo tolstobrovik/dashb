@@ -45,8 +45,7 @@ Branded in the Satashkent crimson & cream colours.
 
 ## 🚀 Getting started
 
-**Requirements:** Node.js 18.11+ (developed on Node 22). Installing compiles
-`better-sqlite3`, so a C/C++ toolchain is used if a prebuilt binary isn't available.
+**Requirements:** Node.js 18.11+ (developed on Node 22).
 
 ```bash
 # 1. install dependencies
@@ -58,11 +57,9 @@ npm run dev
 ```
 
 > **If `npm install` prints an "allow-scripts" warning** (some npm setups block
-> package install scripts), let the two native packages finish, then run again:
+> package install scripts), approve and rebuild the bundler once:
 > ```bash
-> npm approve-scripts better-sqlite3
-> npm approve-scripts esbuild
-> npm rebuild better-sqlite3 esbuild
+> npm approve-scripts esbuild && npm rebuild esbuild
 > ```
 
 The database is created and **seeded automatically** on first run (sample users,
@@ -106,7 +103,7 @@ npm run seed      # wipes and re-seeds the database with fresh sample data
 | Frontend  | React 18 + Vite + React Router, hand-built CSS design system      |
 | Icons     | lucide-react                                                      |
 | Backend   | Node.js + Express                                                 |
-| Database  | SQLite via better-sqlite3 (a single file, no server to run)       |
+| Database  | SQLite via `@libsql/client` — a local file in dev, or a free [Turso](https://turso.tech) database in serverless production |
 | Auth      | JSON Web Tokens + bcryptjs password hashing                       |
 
 <br>
@@ -114,12 +111,14 @@ npm run seed      # wipes and re-seeds the database with fresh sample data
 ## 📁 Project structure
 
 ```
+├── api/                    Vercel serverless entry (wraps the Express app)
 ├── server/                 Express API
-│   ├── index.js            app entry + static hosting of the built UI
-│   ├── db.js               SQLite schema + seed data
+│   ├── app.js              the Express app itself (shared by all run modes)
+│   ├── index.js            long-running entry: local prod, Render, any VPS
+│   ├── db.js               schema + seed data (libsql: local file or Turso)
 │   ├── auth.js             JWT signing + access-control middleware
 │   ├── seed.js             `npm run seed`
-│   └── routes/             auth · users · tasks · trackers · schedule
+│   └── routes/             auth · users · channels · statuses · trackers · content · reports · campaigns
 ├── client/                 React app (Vite)
 │   ├── src/
 │   │   ├── pages/          Login · Overview · Department · MyTasks · Admin
@@ -127,8 +126,47 @@ npm run seed      # wipes and re-seeds the database with fresh sample data
 │   │   └── lib/            api client · auth context · constants
 │   └── index.html
 ├── data/                   SQLite database (git-ignored, auto-created)
+├── vercel.json             Vercel config: build, function, SPA + API routing
+├── render.yaml             Render blueprint (long-running alternative)
 └── vite.config.js
 ```
+
+<br>
+
+## ☁️ Deploy to Vercel
+
+The repo is Vercel-ready — `vercel.json` builds the client to `dist/` and routes
+every `/api/*` request to one serverless function (`api/index.js`).
+
+1. [vercel.com/new](https://vercel.com/new) → **Import** this repository. No
+   settings to change — the defaults come from `vercel.json`.
+2. Add environment variables (Project → Settings → Environment Variables):
+   - `JWT_SECRET` — any long random string.
+   - `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` — for a **persistent** database
+     (recommended, see below).
+3. Deploy. Done — the seeded demo accounts work immediately.
+
+Or from the CLI: `npx vercel --prod` (project names must be lowercase, e.g.
+`satashkent`; pick the single detected service, not "all").
+
+**Persistence.** Serverless has no disk, so without a remote database the app
+falls back to `/tmp` — fine for a demo, but **data resets on every cold start
+and deploy**. For real use create a free [Turso](https://turso.tech) database:
+
+```bash
+brew install tursodatabase/tap/turso   # or: curl -sSfL https://get.tur.so/install.sh | bash
+turso auth signup
+turso db create satashkent
+turso db show satashkent --url        # → TURSO_DATABASE_URL
+turso db tokens create satashkent     # → TURSO_AUTH_TOKEN
+```
+
+Set both variables in Vercel and redeploy: the schema and seed data are created
+automatically on first request, and from then on the data is durable.
+
+Prefer a classic always-on server? `render.yaml` deploys the same app to
+Render as one web service (New + → Blueprint → pick this repo → Apply); the
+same Turso variables make its data durable on the free plan too.
 
 <br>
 
@@ -160,10 +198,13 @@ API by an automated worker — so no rewrite is needed to plug these in.
 
 Environment variables (all optional):
 
-| Variable      | Default                             | Purpose                        |
-| ------------- | ----------------------------------- | ------------------------------ |
-| `PORT`        | `4000`                              | API / production server port   |
-| `JWT_SECRET`  | `satashkent-dev-secret-change-me`   | **Set this in production**     |
+| Variable             | Default                           | Purpose                                        |
+| -------------------- | --------------------------------- | ---------------------------------------------- |
+| `PORT`               | `4000`                            | API / production server port                   |
+| `JWT_SECRET`         | `satashkent-dev-secret-change-me` | **Set this in production**                     |
+| `TURSO_DATABASE_URL` | *(unset)*                         | Remote libsql/Turso database URL (serverless)  |
+| `TURSO_AUTH_TOKEN`   | *(unset)*                         | Auth token for the remote database             |
+| `DATA_DIR`           | `./data` (`/tmp` on serverless)   | Where the SQLite file lives in file mode       |
 
 ```bash
 JWT_SECRET="a-long-random-string" PORT=8080 npm start

@@ -1,22 +1,22 @@
 import { Router } from 'express'
-import { db, publicUser } from '../db.js'
-import { authRequired, adminOnly } from '../auth.js'
+import { all, publicUser } from '../db.js'
+import { authRequired, adminOnly, wrap } from '../auth.js'
 
 const router = Router()
 router.use(authRequired, adminOnly)
 
 // Who did what in a period: completed content per member, broken down by
 // channel and by content type.
-router.get('/', (req, res) => {
+router.get('/', wrap(async (req, res) => {
   const { from, to } = req.query
-  let rows = db.prepare(`
+  let rows = (await all(`
     SELECT id, title, channels, type, assignee_id, done_at
     FROM content WHERE done_at IS NOT NULL
-  `).all().map((r) => ({ ...r, channels: JSON.parse(r.channels || '[]') }))
+  `)).map((r) => ({ ...r, channels: JSON.parse(r.channels || '[]') }))
   if (from) rows = rows.filter((r) => r.done_at.slice(0, 10) >= from)
   if (to) rows = rows.filter((r) => r.done_at.slice(0, 10) <= to)
 
-  const users = db.prepare('SELECT * FROM users').all().map(publicUser)
+  const users = (await all('SELECT * FROM users')).map(publicUser)
   const byUser = {}
   for (const r of rows) {
     const uid = r.assignee_id ?? 0
@@ -37,6 +37,6 @@ router.get('/', (req, res) => {
     }))
     .sort((a, b) => b.total - a.total)
   res.json({ report, totalDone: rows.length })
-})
+}))
 
 export default router
