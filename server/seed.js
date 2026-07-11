@@ -31,4 +31,4 @@ if (remote) {
 }
 await initDb()
 closeDb()
-console.log('✔ Database reset and seeded with sample users, metrics, tasks and the campaign plan.')
+console.log('✔ Database reset to a clean start: channels, pipeline stages, the campaign plan and the admin account.')

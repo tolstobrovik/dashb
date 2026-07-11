@@ -3,14 +3,6 @@ import { AlertCircle, LogIn } from 'lucide-react'
 import Logo from '../components/Logo.jsx'
 import { useAuth } from '../lib/auth.jsx'
 
-const DEMO = [
-  { role: 'Admin', username: 'admin', pw: 'admin123' },
-  { role: 'Instagram', username: 'dilnoza', pw: 'media123' },
-  { role: 'Telegram', username: 'malika', pw: 'tg123' },
-  { role: 'Target', username: 'bekzod', pw: 'perf123' },
-  { role: 'YouTube', username: 'sardor', pw: 'yt123' },
-]
-
 export default function Login() {
   const { login } = useAuth()
   const [username, setUsername] = useState('')
@@ -29,12 +21,6 @@ export default function Login() {
     } finally {
       setBusy(false)
     }
-  }
-
-  const fill = (d) => {
-    setUsername(d.username)
-    setPassword(d.pw)
-    setError('')
   }
 
   return (
@@ -83,15 +69,6 @@ export default function Login() {
             <LogIn size={17} /> {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-
-        <div className="demo-simple">
-          <span className="ds-label">Demo accounts — tap to fill</span>
-          <div className="demo-chips">
-            {DEMO.map((d) => (
-              <button key={d.username} className="demo-chip" onClick={() => fill(d)}>{d.role}</button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )

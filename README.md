@@ -62,8 +62,8 @@ npm run dev
 > npm approve-scripts esbuild && npm rebuild esbuild
 > ```
 
-The database is created and **seeded automatically** on first run (sample users,
-trackers, schedule and tasks) at `data/dashboard.db`.
+The database is created and **seeded automatically** on first run (the team's
+channels, the pipeline stages and one admin account) at `data/dashboard.db`.
 
 ### Production build
 
@@ -75,24 +75,23 @@ npm start         # serves the app + API together on http://localhost:4000
 ### Reset the data
 
 ```bash
-npm run seed      # wipes and re-seeds the database with fresh sample data
+npm run seed      # wipes the database back to a clean start (channels + admin)
 ```
 
 <br>
 
-## 🔑 Demo accounts
+## 🔑 Signing in
 
-| Role      | Username    | Password    | Sees                           |
-| --------- | ----------- | ----------- | ------------------------------ |
-| **Admin** | `admin`     | `admin123`  | Everything                     |
-| Instagram | `dilnoza`   | `media123`  | Instagram Uzb + Instagram Main |
-| Telegram  | `malika`    | `tg123`     | Telegram Uzb + Telegram Main   |
-| Target    | `bekzod`    | `perf123`   | Target only (no sidebar)       |
-| YouTube   | `sardor`    | `yt123`     | YouTube only (no sidebar)      |
+A fresh database has exactly one account:
 
-> On the login screen you can **click any demo account to auto-fill** it.
-> **Change these passwords before real use.** Email is optional per user (kept for
-> future notifications); login is by username only.
+| Role      | Username | Password   |
+| --------- | -------- | ---------- |
+| **Admin** | `admin`  | `admin123` |
+
+> **Change this password right after the first login** (Admin → Team → edit).
+> The admin then creates each team member with their own username and password —
+> there are no demo accounts, and login only works with credentials the admin
+> has issued. Email is optional per user; login is by username only.
 
 <br>
 
@@ -144,7 +143,7 @@ every `/api/*` request to one serverless function (`api/index.js`).
    - `JWT_SECRET` — any long random string.
    - `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` — for a **persistent** database
      (recommended, see below).
-3. Deploy. Done — the seeded demo accounts work immediately.
+3. Deploy. Done — sign in as `admin` / `admin123` and change the password.
 
 Or from the CLI: `npx vercel --prod` (project names must be lowercase, e.g.
 `satashkent`; pick the single detected service, not "all").

@@ -289,9 +289,9 @@ function dayISO(offset = 0) {
 export async function seedIfEmpty() {
   if ((await get('SELECT COUNT(*) AS n FROM users')).n > 0) return
 
-  // Seeding runs on a fresh database — over a remote connection every
-  // round-trip counts, so inserts go in two transactional batches:
-  // first everything whose ids later rows need (via RETURNING), then the bulk.
+  // A fresh database starts clean: the team's channels, the pipeline stages,
+  // and a single admin account. No demo members, metrics or tasks — the admin
+  // creates real ones in the app (change the admin password right away).
   const channels = [
     ['instagram_uzb', 'Instagram Uzb', 'instagram'],
     ['instagram_main', 'Instagram Main', 'instagram'],
@@ -311,125 +311,16 @@ export async function seedIfEmpty() {
     ['Published', '#0ca30c', 1],
   ]
 
-  // ---- users ----
-  const hash = (pw) => bcrypt.hashSync(pw, 10)
-  const userList = [
-    { name: 'Aziza (Admin)', username: 'admin',   pw: 'admin123', role: 'admin',  departments: [],                                   color: '#a32234' },
-    { name: 'Dilnoza',       username: 'dilnoza', pw: 'media123', role: 'member', departments: ['instagram_uzb', 'instagram_main'], color: '#c0392b' },
-    { name: 'Malika',        username: 'malika',  pw: 'tg123',    role: 'member', departments: ['telegram_uzb', 'telegram_main'],   color: '#b5324a' },
-    { name: 'Bekzod',        username: 'bekzod',  pw: 'perf123',  role: 'member', departments: ['target'],                          color: '#8c1d2c' },
-    { name: 'Sardor',        username: 'sardor',  pw: 'yt123',    role: 'member', departments: ['youtube'],                         color: '#711523' },
-  ]
-
-  // ---- metrics ----
-  // ct = plan metric bound to a task type; without ct it's a manual number.
-  const trackers = [
-    { department: 'instagram_uzb', label: 'Followers', current: 3420,  target: 4000,  unit: '',        period: 'monthly' },
-    { department: 'instagram_uzb', label: 'Reels',     current: 8,     target: 18,    unit: 'reels',   period: 'monthly', ct: 'reel' },
-    { department: 'instagram_uzb', label: 'Posts',     current: 4,     target: 12,    unit: 'posts',   period: 'monthly', ct: 'post' },
-    { department: 'instagram_uzb', label: 'Stories',   current: 3,     target: 3,     unit: 'stories', period: 'daily',   ct: 'story' },
-    { department: 'instagram_uzb', label: 'Reach',     current: 12000, target: 25000, unit: '',        period: 'monthly' },
-    { department: 'instagram_main', label: 'Followers', current: 9800,  target: 12000, unit: '',      period: 'monthly' },
-    { department: 'instagram_main', label: 'Reels',     current: 6,     target: 16,    unit: 'reels', period: 'monthly', ct: 'reel' },
-    { department: 'instagram_main', label: 'Posts',     current: 5,     target: 12,    unit: 'posts', period: 'monthly', ct: 'post' },
-    { department: 'instagram_main', label: 'Reach',     current: 41000, target: 60000, unit: '',      period: 'monthly' },
-    { department: 'telegram_uzb', label: 'Subscribers', current: 2100, target: 3000,  unit: '',      period: 'monthly' },
-    { department: 'telegram_uzb', label: 'Posts',       current: 12,   target: 28,    unit: 'posts', period: 'monthly', ct: 'post' },
-    { department: 'telegram_uzb', label: 'Views',       current: 8500, target: 15000, unit: '',      period: 'monthly' },
-    { department: 'telegram_main', label: 'Subscribers', current: 5400,  target: 6000,  unit: '',      period: 'monthly' },
-    { department: 'telegram_main', label: 'Posts',       current: 15,    target: 28,    unit: 'posts', period: 'monthly', ct: 'post' },
-    { department: 'telegram_main', label: 'Views',       current: 22000, target: 30000, unit: '',      period: 'monthly' },
-    { department: 'target', label: 'Leads',           current: 240,  target: 500,  unit: 'leads',     period: 'monthly' },
-    { department: 'target', label: 'Campaigns live',  current: 3,    target: 5,    unit: 'campaigns', period: 'weekly' },
-    { department: 'target', label: 'Creatives ready', current: 6,    target: 10,   unit: 'creatives', period: 'weekly' },
-    { department: 'target', label: 'Budget used',     current: 1200, target: 2000, unit: '$',         period: 'monthly' },
-    { department: 'youtube', label: 'Subscribers', current: 1450,  target: 2000,  unit: '',       period: 'monthly' },
-    { department: 'youtube', label: 'Videos',      current: 2,     target: 4,     unit: 'videos', period: 'monthly', ct: 'video' },
-    { department: 'youtube', label: 'Shorts',      current: 5,     target: 12,    unit: 'shorts', period: 'monthly', ct: 'reel' },
-    { department: 'youtube', label: 'Views',       current: 18000, target: 40000, unit: '',       period: 'monthly' },
-  ]
-  // Pinned metrics sit at the top of the channel page (any number per channel).
-  const PINNED = {
-    instagram_uzb: ['Followers', 'Reels'],
-    instagram_main: ['Followers', 'Reels'],
-    telegram_uzb: ['Subscribers', 'Posts'],
-    telegram_main: ['Subscribers', 'Posts'],
-    target: ['Leads', 'Campaigns live'],
-    youtube: ['Subscribers', 'Videos'],
-  }
-
-  const firstBatch = [
+  await batch([
     ...channels.map(([key, label, icon], i) =>
       ['INSERT INTO channels (key, label, icon, sort) VALUES (?, ?, ?, ?)', key, label, icon, i]),
     ...statusList.map(([label, color, final], i) =>
-      ['INSERT INTO statuses (label, color, sort, is_final) VALUES (?, ?, ?, ?) RETURNING id, label', label, color, i, final]),
-    ...userList.map((u) => [`
+      ['INSERT INTO statuses (label, color, sort, is_final) VALUES (?, ?, ?, ?)', label, color, i, final]),
+    [`
       INSERT INTO users (name, username, email, password_hash, role, departments, permissions, color, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, username
-    `, u.name, u.username, null, hash(u.pw), u.role, JSON.stringify(u.departments), '{}', u.color, now()]),
-    ...trackers.map((t, i) => [`
-      INSERT INTO trackers (department, label, current, target, unit, period, content_type, is_primary, sort, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, department, label
-    `, t.department, t.label, t.current, t.target, t.unit, t.period, t.ct || null,
-      PINNED[t.department]?.includes(t.label) ? 1 : 0, i, now()]),
-  ]
-  const returned = (await batch(firstBatch)).flat()
-  const statusIds = {}, ids = {}, trackerIds = {}
-  for (const r of returned) {
-    if (r.username) ids[r.username] = r.id
-    else if (r.department) trackerIds[`${r.department}:${r.label}`] = r.id
-    else if (r.label) statusIds[r.label] = r.id
-  }
-
-  const secondBatch = []
-
-  // ---- metric history (~9 weeks of plausible growth, for comparisons) ----
-  for (const t of trackers) {
-    const id = trackerIds[`${t.department}:${t.label}`]
-    for (let w = 9; w >= 1; w--) {
-      const value = Math.max(0, Math.round(t.current * (1 - 0.045 * w)))
-      secondBatch.push(['INSERT OR IGNORE INTO metric_history (tracker_id, date, value) VALUES (?, ?, ?)', id, dayISO(-7 * w), value])
-    }
-    secondBatch.push(['INSERT OR IGNORE INTO metric_history (tracker_id, date, value) VALUES (?, ?, ?)', id, dayISO(-1), Math.max(0, Math.round(t.current * 0.985))])
-    secondBatch.push(['INSERT OR IGNORE INTO metric_history (tracker_id, date, value) VALUES (?, ?, ?)', id, dayISO(0), t.current])
-  }
-
-  // ---- content tasks (board + calendars + to-do all read these) ----
-  const admin = ids['admin']
-  const items = [
-    { title: 'Educational video: SAT tips', channels: ['instagram_uzb'], type: 'reel', assignee: 'dilnoza', status: 'To shoot',
-      rec: [1, '10:00'], rel: [4, '18:00'],
-      checklist: [{ text: 'Write script', done: true }, { text: 'Book location', done: false }, { text: 'Prepare equipment', done: false }] },
-    { title: 'Results reel: Solohiddin', channels: ['instagram_main'], type: 'reel', assignee: 'dilnoza', status: 'Editing',
-      rec: [-2, '11:00'], rel: [2, '17:00'],
-      checklist: [{ text: 'Rough cut', done: true }, { text: 'Subtitles', done: false }] },
-    { title: 'Toy Story post — Ulugbek', channels: ['instagram_uzb'], type: 'post', assignee: 'dilnoza', status: 'Idea',
-      rel: [6, '15:00'], checklist: [] },
-    // One task, two platforms — it counts toward both channels' plans.
-    { title: 'AP Results post', channels: ['instagram_main', 'instagram_uzb'], type: 'post', assignee: 'dilnoza', status: 'Ready',
-      rel: [1, '12:00'], checklist: [{ text: 'Design carousel', done: true }] },
-    { title: 'Morning quiz', channels: ['telegram_uzb'], type: 'post', assignee: 'malika', status: 'Published',
-      rel: [-1, '09:00'], done: true, checklist: [] },
-    { title: 'Open day announcement', channels: ['telegram_main'], type: 'post', assignee: 'malika', status: 'Ready',
-      rel: [2, '11:00'], checklist: [] },
-    { title: 'Interview: Jasmina (Shahriston opening)', channels: ['youtube'], type: 'video', assignee: 'sardor', status: 'Shot',
-      rec: [0, '13:00'], rel: [7, '18:00'],
-      checklist: [{ text: 'Record interview', done: true }, { text: 'B-roll', done: false }, { text: 'Thumbnail', done: false }] },
-    { title: 'New creatives batch', channels: ['target'], type: 'other', assignee: 'bekzod', status: 'Editing',
-      rel: [3, '10:00'], checklist: [] },
-  ]
-  items.forEach((it, i) => {
-    secondBatch.push([`
-      INSERT INTO content (title, channels, type, assignee_id, created_by, status_id,
-        recording_date, recording_time, release_date, release_time, description, checklist, todo_sort, done_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, it.title, JSON.stringify(it.channels), it.type, ids[it.assignee], admin, statusIds[it.status],
-      it.rec ? dayISO(it.rec[0]) : null, it.rec ? it.rec[1] : null,
-      it.rel ? dayISO(it.rel[0]) : null, it.rel ? it.rel[1] : null,
-      '', JSON.stringify(it.checklist || []), i, it.done ? now() : null, now()])
-  })
-
-  await batch(secondBatch)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, 'Admin', 'admin', null, bcrypt.hashSync('admin123', 10), 'admin', '[]', '{}', '#a32234', now()],
+  ])
 }
 
 // The team's July–December campaign plan. Seeds once (also into existing
