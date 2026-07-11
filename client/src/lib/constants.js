@@ -54,14 +54,19 @@ export const CONTENT_TYPES = [
 ]
 export const typeInfo = (key) => CONTENT_TYPES.find((t) => t.key === key) || CONTENT_TYPES[CONTENT_TYPES.length - 1]
 
-// ---- Date helpers (all local, yyyy-mm-dd) ----
+// ---- Date helpers (yyyy-mm-dd) ----
+// "Today" is pinned to the team's clock (Asia/Tashkent, UTC+5): the calendars,
+// to-do list and overdue checks roll to a new day at Tashkent midnight, no
+// matter where or on which device the dashboard is opened.
+export const TIMEZONE = 'Asia/Tashkent'
+const tashkentFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }) // YYYY-MM-DD
 export function localISO(d) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
-export const todayISO = () => localISO(new Date())
+export const todayISO = () => tashkentFmt.format(new Date())
 export function addDaysISO(iso, n) {
   const d = new Date(`${iso}T00:00:00`)
   d.setDate(d.getDate() + n)

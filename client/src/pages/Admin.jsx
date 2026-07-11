@@ -162,13 +162,14 @@ const BLANK_CAMPAIGN = {
 const ymLabel = (ym) =>
   new Date(`${ym}-01T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
-// 'YYYY-MM' for the current month + the next n-1.
+// 'YYYY-MM' for the current month (Tashkent time) + the next n-1.
 function upcomingMonths(n = 6) {
   const out = []
-  const d = new Date(); d.setDate(1)
+  let [y, m] = todayISO().split('-').map(Number)
   for (let i = 0; i < n; i++) {
-    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-    d.setMonth(d.getMonth() + 1)
+    out.push(`${y}-${String(m).padStart(2, '0')}`)
+    m += 1
+    if (m > 12) { m = 1; y += 1 }
   }
   return out
 }
@@ -750,9 +751,8 @@ function ReportsTab() {
   const prevMonthEnd = addDaysISO(monthStart, -1)
   const prevMonthStart = prevMonthEnd.slice(0, 8) + '01'
   const weekStart = (() => {
-    const d = new Date()
-    d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-    return localISO(d)
+    const d = new Date(`${t}T00:00:00`) // weekday of today's Tashkent date
+    return addDaysISO(t, -((d.getDay() + 6) % 7))
   })()
 
   const PRESETS = [

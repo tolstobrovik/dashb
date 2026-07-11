@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, publicUser } from '../db.js'
+import { all, publicUser, tashkentDay } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 
 const router = Router()
@@ -13,8 +13,9 @@ router.get('/', wrap(async (req, res) => {
     SELECT id, title, channels, type, assignee_id, done_at
     FROM content WHERE done_at IS NOT NULL
   `)).map((r) => ({ ...r, channels: JSON.parse(r.channels || '[]') }))
-  if (from) rows = rows.filter((r) => r.done_at.slice(0, 10) >= from)
-  if (to) rows = rows.filter((r) => r.done_at.slice(0, 10) <= to)
+  // Completion timestamps are UTC; the report's day boundaries are Tashkent's.
+  if (from) rows = rows.filter((r) => tashkentDay(r.done_at) >= from)
+  if (to) rows = rows.filter((r) => tashkentDay(r.done_at) <= to)
 
   const users = (await all('SELECT * FROM users')).map(publicUser)
   const byUser = {}

@@ -3,11 +3,13 @@ import { createHash } from 'crypto'
 import { get, publicUser } from './db.js'
 
 // Prefer an explicit JWT_SECRET. Without one, derive a stable secret from the
-// Turso token when present (so serverless instances all agree and sessions
-// survive cold starts), and only then fall back to the dev default.
-const tursoToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN
+// database credential (Postgres URL or Turso token) — it's secret, identical
+// on every instance, and survives deploys, so sessions never break and there
+// is nothing to configure. The dev default only applies with no database URL.
+const dbSecret = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
+  process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN
 export const JWT_SECRET = process.env.JWT_SECRET ||
-  (tursoToken ? createHash('sha256').update(`satashkent:${tursoToken}`).digest('hex') : 'satashkent-dev-secret-change-me')
+  (dbSecret ? createHash('sha256').update(`satashkent:${dbSecret}`).digest('hex') : 'satashkent-dev-secret-change-me')
 
 export function signToken(user) {
   return jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' })

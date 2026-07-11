@@ -18,8 +18,8 @@ function monthMatrix(year, month) {
 // mode 'recording' reads recording_date. Hold & drag a pill onto another day
 // to move that date; click a day to open its planner.
 export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick }) {
-  const now = new Date()
-  const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() })
+  const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
+  const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
   const [dragId, setDragId] = useState(null)
   const [overCell, setOverCell] = useState(null)
   const today = todayISO()

@@ -102,7 +102,8 @@ A fresh database has exactly one account:
 | Frontend  | React 18 + Vite + React Router, hand-built CSS design system      |
 | Icons     | lucide-react                                                      |
 | Backend   | Node.js + Express                                                 |
-| Database  | SQLite via `@libsql/client` — a local file in dev, or a free [Turso](https://turso.tech) database in serverless production |
+| Database  | **PostgreSQL** in production (Vercel Storage / Render — connection auto-injected), SQLite locally; Turso also supported |
+| Timezone  | All day boundaries pinned to **Asia/Tashkent** (server & client)   |
 | Auth      | JSON Web Tokens + bcryptjs password hashing                       |
 
 <br>
@@ -138,34 +139,33 @@ The repo is Vercel-ready — `vercel.json` builds the client to `dist/` and rout
 every `/api/*` request to one serverless function (`api/index.js`).
 
 1. [vercel.com/new](https://vercel.com/new) → **Import** this repository. No
-   settings to change — the defaults come from `vercel.json`.
-2. Add environment variables (Project → Settings → Environment Variables):
-   - `JWT_SECRET` — any long random string.
-   - `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` — for a **persistent** database
-     (recommended, see below).
-3. Deploy. Done — sign in as `admin` / `admin123` and change the password.
+   settings to change — the defaults come from `vercel.json`. Deploy.
+2. **Make the data permanent** (one time, ~3 clicks, nothing to type): open the
+   project → **Storage** tab → **Create Database** → pick **Postgres (Neon)** →
+   **Connect**. Vercel injects the connection into the project by itself.
+3. **Redeploy** (Deployments → ⋯ on the latest → Redeploy). Done — sign in as
+   `admin` / `admin123` and change the password.
 
-Or from the CLI: `npx vercel --prod` (project names must be lowercase, e.g.
-`satashkent`; pick the single detected service, not "all").
+From then on the database is durable: pushes, deploys, restarts and cold
+starts never touch the data, and every table is created automatically on
+first request. `JWT_SECRET` is optional — a stable secret is derived from the
+database credential, so logins survive deploys with zero configuration.
 
-**Persistence.** Serverless has no disk, so without a remote database the app
-falls back to `/tmp` — fine for a demo, but **data resets on every cold start
-and deploy**. For real use create a free [Turso](https://turso.tech) database:
+Without step 2 the app still runs, but in **demo mode**: serverless has no
+disk, so the database lives in `/tmp` and resets on every deploy or cold
+start. (Turso is also still supported via `TURSO_DATABASE_URL` +
+`TURSO_AUTH_TOKEN` if you ever prefer it.)
 
-```bash
-brew install tursodatabase/tap/turso   # or: curl -sSfL https://get.tur.so/install.sh | bash
-turso auth signup
-turso db create satashkent
-turso db show satashkent --url        # → TURSO_DATABASE_URL
-turso db tokens create satashkent     # → TURSO_AUTH_TOKEN
-```
-
-Set both variables in Vercel and redeploy: the schema and seed data are created
-automatically on first request, and from then on the data is durable.
+**Timekeeping.** Every day boundary — calendars, the to-do list, overdue
+checks, daily growth snapshots, reports — is pinned to **Asia/Tashkent**. A
+scheduled job (`vercel.json` → crons) also stores a snapshot of every metric
+at 00:05 Tashkent time each night, so the growth comparison has a point for
+every single day even when nobody edits anything.
 
 Prefer a classic always-on server? `render.yaml` deploys the same app to
-Render as one web service (New + → Blueprint → pick this repo → Apply); the
-same Turso variables make its data durable on the free plan too.
+Render as one web service **plus a managed Postgres database** — the
+connection is injected automatically there too (New + → Blueprint → pick this
+repo → Apply).
 
 <br>
 
@@ -199,9 +199,10 @@ Environment variables (all optional):
 
 | Variable             | Default                           | Purpose                                        |
 | -------------------- | --------------------------------- | ---------------------------------------------- |
+| `DATABASE_URL`       | *(injected by the host)*          | PostgreSQL connection — Vercel Storage / Render set it automatically (`POSTGRES_URL` works too) |
 | `PORT`               | `4000`                            | API / production server port                   |
-| `JWT_SECRET`         | `satashkent-dev-secret-change-me` | **Set this in production**                     |
-| `TURSO_DATABASE_URL` | *(unset)*                         | Remote libsql/Turso database URL (serverless)  |
+| `JWT_SECRET`         | *(derived from the DB credential)*| Optional — set to override the derived secret  |
+| `TURSO_DATABASE_URL` | *(unset)*                         | Remote libsql/Turso database URL (alternative) |
 | `TURSO_AUTH_TOKEN`   | *(unset)*                         | Auth token for the remote database             |
 | `DATA_DIR`           | `./data` (`/tmp` on serverless)   | Where the SQLite file lives in file mode       |
 

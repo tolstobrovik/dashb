@@ -6,7 +6,8 @@ import cors from 'cors'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { existsSync } from 'fs'
-import { initDb } from './db.js'
+import { initDb, all, snapshotTracker, dayISO } from './db.js'
+import { wrap } from './auth.js'
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
 import channelRoutes from './routes/channels.js'
@@ -25,6 +26,16 @@ app.use(cors())
 app.use(express.json({ limit: '8mb' })) // room for photo attachments (data URLs)
 
 app.get('/api/health', (req, res) => res.json({ ok: true }))
+
+// Nightly tick (vercel.json cron, 00:05 Tashkent): writes today's snapshot for
+// every metric so the growth comparison always has a point per day, even on
+// days nobody edits anything. Idempotent — safe to call any number of times.
+app.get('/api/cron/daily', wrap(async (req, res) => {
+  await ready
+  const trackers = await all('SELECT id FROM trackers')
+  for (const t of trackers) await snapshotTracker(t.id)
+  res.json({ ok: true, day: dayISO(), snapped: trackers.length })
+}))
 app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/channels', channelRoutes)

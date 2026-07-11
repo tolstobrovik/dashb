@@ -1,11 +1,12 @@
 // Reset the database to a fresh seeded state: `npm run seed`.
-// Works on both storage modes: deletes the local file, or drops every table
-// on a remote (Turso) database before reseeding.
+// Works on every storage mode: deletes the local file, or drops every table
+// on a remote (Postgres / Turso) database before reseeding.
 import { rmSync, existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
-const remote = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL
+const remote = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
+  process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL
 
 if (!remote) {
   const __dirname = dirname(fileURLToPath(import.meta.url))

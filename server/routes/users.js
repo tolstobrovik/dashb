@@ -50,7 +50,7 @@ router.post('/', adminOnly, wrap(async (req, res) => {
     )
     res.status(201).json(publicUser(await get('SELECT * FROM users WHERE id = ?', info.lastInsertRowid)))
   } catch (e) {
-    if (String(e).includes('UNIQUE')) return res.status(409).json({ error: 'That username or email is already taken' })
+    if (/unique/i.test(String(e))) return res.status(409).json({ error: 'That username or email is already taken' })
     throw e
   }
 }))
@@ -76,7 +76,7 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
     await run('UPDATE users SET name=?, username=?, email=?, role=?, color=?, departments=?, permissions=?, password_hash=? WHERE id=?',
       name ?? row.name, nextUsername, nextEmail, nextRole, color ?? row.color, depts, nextPerms, pwHash, row.id)
   } catch (e) {
-    if (String(e).includes('UNIQUE')) return res.status(409).json({ error: 'That username or email is already taken' })
+    if (/unique/i.test(String(e))) return res.status(409).json({ error: 'That username or email is already taken' })
     throw e
   }
   res.json(publicUser(await get('SELECT * FROM users WHERE id = ?', row.id)))

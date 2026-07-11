@@ -1,68 +1,146 @@
-// Database layer on @libsql/client so the same code runs everywhere:
-//  - remote:  set TURSO_DATABASE_URL (+ TURSO_AUTH_TOKEN) — pure-fetch client,
-//             no native binaries, safe in any serverless runtime (Vercel).
-//  - file:    local dev / Render / any VPS — a SQLite file under ./data
-//             (override with DATA_DIR). On serverless hosts without a remote
-//             URL it falls back to /tmp, which resets on cold starts.
+// Database layer with three interchangeable backends behind one tiny API:
+//  - Postgres: DATABASE_URL / POSTGRES_URL present — the production choice.
+//              Durable, fast, and hosts inject the connection automatically
+//              (Vercel Storage → Neon, Render blueprint database, Supabase...),
+//              so there is nothing to configure by hand.
+//  - Turso:    TURSO_DATABASE_URL (+ TURSO_AUTH_TOKEN) — remote SQLite over
+//              HTTPS, no native binaries. Kept as an alternative.
+//  - file:     local dev / any VPS — a SQLite file under ./data (override with
+//              DATA_DIR). On serverless hosts without any database URL it
+//              falls back to /tmp, which resets on cold starts — demo mode.
 import bcrypt from 'bcryptjs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { mkdirSync } from 'fs'
 
-const REMOTE_URL = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || ''
-const AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || undefined
+const PG_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING || ''
+const TURSO_URL = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || ''
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || undefined
+export const IS_PG = !!PG_URL
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ON_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY)
 const DATA_DIR = process.env.DATA_DIR || (ON_SERVERLESS ? '/tmp/satashkent-data' : join(__dirname, '..', 'data'))
 
-async function createDbClient() {
-  if (REMOTE_URL) {
-    const { createClient } = await import('@libsql/client/web')
-    return createClient({ url: REMOTE_URL, authToken: AUTH_TOKEN, intMode: 'number' })
+// Rewrite `?` placeholders to Postgres's $1..$n (skipping string literals).
+function toPgSql(sql) {
+  let out = ''
+  let n = 0
+  let inStr = false
+  for (const ch of sql) {
+    if (ch === "'") inStr = !inStr
+    if (ch === '?' && !inStr) out += `$${++n}`
+    else out += ch
   }
-  const { createClient } = await import('@libsql/client')
-  mkdirSync(DATA_DIR, { recursive: true })
-  return createClient({ url: `file:${join(DATA_DIR, 'dashboard.db')}`, intMode: 'number' })
+  return out
 }
-const clientPromise = createDbClient()
 
-const cleanArgs = (args) => args.map((v) => (v === undefined ? null : v))
+async function createPgBackend() {
+  const { default: pg } = await import('pg')
+  pg.types.setTypeParser(20, (v) => parseInt(v, 10)) // int8 (e.g. COUNT(*)) → number
+  const local = /@(localhost|127\.0\.0\.1)[:/]/.test(PG_URL)
+  const pool = new pg.Pool({
+    connectionString: PG_URL,
+    max: ON_SERVERLESS ? 3 : 10, // hosted Postgres URLs are pooled; stay modest per instance
+    idleTimeoutMillis: 30000,
+    ssl: local ? undefined : { rejectUnauthorized: false },
+  })
+  const query = (sql, args) => pool.query(toPgSql(sql), args)
+  return {
+    all: async (sql, args) => (await query(sql, args)).rows,
+    run: async (sql, args) => {
+      // Emulate SQLite's lastInsertRowid — every table run() inserts into has
+      // an `id` primary key.
+      const wantsId = /^\s*insert\s/i.test(sql) && !/returning/i.test(sql)
+      const res = await query(wantsId ? `${sql} RETURNING id` : sql, args)
+      return { changes: res.rowCount, lastInsertRowid: res.rows?.[0]?.id }
+    },
+    batch: async (stmts) => {
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+        const out = []
+        for (const [sql, ...args] of stmts) out.push((await client.query(toPgSql(sql), args)).rows)
+        await client.query('COMMIT')
+        return out
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {})
+        throw e
+      } finally {
+        client.release()
+      }
+    },
+    exec: (sql) => pool.query(sql),
+    close: () => pool.end().catch(() => {}),
+  }
+}
+
 const rowsOf = (rs) => rs.rows.map((r) => {
   const o = {}
   rs.columns.forEach((c, i) => { o[c] = r[i] })
   return o
 })
 
+async function createLibsqlBackend() {
+  let client
+  if (TURSO_URL) {
+    const { createClient } = await import('@libsql/client/web')
+    client = createClient({ url: TURSO_URL, authToken: TURSO_TOKEN, intMode: 'number' })
+  } else {
+    const { createClient } = await import('@libsql/client')
+    mkdirSync(DATA_DIR, { recursive: true })
+    client = createClient({ url: `file:${join(DATA_DIR, 'dashboard.db')}`, intMode: 'number' })
+  }
+  return {
+    all: async (sql, args) => rowsOf(await client.execute({ sql, args })),
+    run: async (sql, args) => {
+      const rs = await client.execute({ sql, args })
+      return {
+        changes: rs.rowsAffected,
+        lastInsertRowid: rs.lastInsertRowid === undefined ? undefined : Number(rs.lastInsertRowid),
+      }
+    },
+    batch: async (stmts) =>
+      (await client.batch(stmts.map(([sql, ...args]) => ({ sql, args })), 'write')).map(rowsOf),
+    exec: (sql) => client.executeMultiple(sql),
+    close: () => client.close(),
+  }
+}
+
+const backendPromise = IS_PG ? createPgBackend() : createLibsqlBackend()
+
+const cleanArgs = (args) => args.map((v) => (v === undefined ? null : v))
+
 export async function all(sql, ...args) {
-  const c = await clientPromise
-  return rowsOf(await c.execute({ sql, args: cleanArgs(args) }))
+  return (await backendPromise).all(sql, cleanArgs(args))
 }
 export async function get(sql, ...args) {
   return (await all(sql, ...args))[0]
 }
 export async function run(sql, ...args) {
-  const c = await clientPromise
-  const rs = await c.execute({ sql, args: cleanArgs(args) })
-  return {
-    changes: rs.rowsAffected,
-    lastInsertRowid: rs.lastInsertRowid === undefined ? undefined : Number(rs.lastInsertRowid),
-  }
+  return (await backendPromise).run(sql, cleanArgs(args))
 }
-// One transactional round-trip: statements as [sql, ...args]. Returns the
-// rows of each statement (useful with INSERT ... RETURNING).
+// One transaction: statements as [sql, ...args]; returns each statement's rows.
 export async function batch(stmts) {
-  const c = await clientPromise
-  const results = await c.batch(stmts.map(([sql, ...args]) => ({ sql, args: cleanArgs(args) })), 'write')
-  return results.map(rowsOf)
+  return (await backendPromise).batch(stmts.map(([sql, ...args]) => [sql, ...cleanArgs(args)]))
 }
 export async function exec(sql) {
-  const c = await clientPromise
-  await c.executeMultiple(sql)
+  await (await backendPromise).exec(sql)
 }
 export function closeDb() {
-  clientPromise.then((c) => c.close()).catch(() => {})
+  backendPromise.then((b) => b.close()).catch(() => {})
 }
+
+// The whole app lives on the team's clock: a "day" starts at midnight in
+// Tashkent (UTC+5) no matter where the server or the browser happens to run.
+export const TIMEZONE = 'Asia/Tashkent'
+const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }) // YYYY-MM-DD
+export function dayISO(offset = 0) {
+  return dayFmt.format(new Date(Date.now() + offset * 86400000))
+}
+// The Tashkent calendar day of a full ISO timestamp.
+export const tashkentDay = (iso) => dayFmt.format(new Date(iso))
 
 // What a member may do unless the admin changes it (Telegram-style rights).
 export const DEFAULT_PERMS = {
@@ -75,9 +153,11 @@ export const DEFAULT_PERMS = {
 export const PERM_KEYS = Object.keys(DEFAULT_PERMS)
 
 export async function initSchema() {
+  // The only dialect difference is the auto-increment primary key.
+  const ID = IS_PG ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT'
   await exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      id            ${ID},
       name          TEXT    NOT NULL,
       username      TEXT    NOT NULL,
       email         TEXT,
@@ -91,7 +171,7 @@ export async function initSchema() {
 
     -- Sidebar channels are data, not code: the admin adds/renames/reorders them.
     CREATE TABLE IF NOT EXISTS channels (
-      id    INTEGER PRIMARY KEY AUTOINCREMENT,
+      id    ${ID},
       key   TEXT UNIQUE NOT NULL,
       label TEXT NOT NULL,
       icon  TEXT NOT NULL DEFAULT 'star',
@@ -102,7 +182,7 @@ export async function initSchema() {
     -- creating a task of that type raises the plan (target +1), completing it
     -- fills it (current +1). NULL = a manual number (followers, reach, ...).
     CREATE TABLE IF NOT EXISTS trackers (
-      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      id           ${ID},
       department   TEXT    NOT NULL,
       label        TEXT    NOT NULL,
       current      INTEGER NOT NULL DEFAULT 0,
@@ -117,7 +197,7 @@ export async function initSchema() {
 
     -- One snapshot per metric per day → powers the growth comparison.
     CREATE TABLE IF NOT EXISTS metric_history (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      id         ${ID},
       tracker_id INTEGER NOT NULL REFERENCES trackers(id) ON DELETE CASCADE,
       date       TEXT    NOT NULL,
       value      INTEGER NOT NULL,
@@ -126,7 +206,7 @@ export async function initSchema() {
 
     -- The content pipeline stages (editable by the admin).
     CREATE TABLE IF NOT EXISTS statuses (
-      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      id       ${ID},
       label    TEXT NOT NULL,
       color    TEXT NOT NULL DEFAULT '#8b8388',
       sort     INTEGER NOT NULL DEFAULT 0,
@@ -137,7 +217,7 @@ export async function initSchema() {
     -- one row in the to-do list. A task can live on several channels at once
     -- (channels = JSON array); its type binds it to each channel's plan metric.
     CREATE TABLE IF NOT EXISTS content (
-      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      id             ${ID},
       title          TEXT    NOT NULL,
       channels       TEXT    NOT NULL DEFAULT '[]',
       type           TEXT    NOT NULL DEFAULT 'post',
@@ -158,7 +238,7 @@ export async function initSchema() {
 
     -- Campaign plan (admin): overview table, month calendar, project list.
     CREATE TABLE IF NOT EXISTS campaigns (
-      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      id       ${ID},
       name     TEXT NOT NULL,
       timing   TEXT NOT NULL DEFAULT '',
       channel  TEXT NOT NULL DEFAULT '',
@@ -189,8 +269,8 @@ async function hasColumn(table, col) {
 }
 
 async function migrate() {
-  // Legacy-shape upgrades for databases created by older versions. Fresh
-  // databases (and remote ones that don't allow PRAGMA) skip through.
+  if (IS_PG) return // Postgres databases are created current-shape; the
+  //                   legacy upgrades below only ever applied to SQLite files.
   try {
     if (!(await hasColumn('users', 'permissions'))) await exec("ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}'")
     if (!(await hasColumn('trackers', 'content_type'))) await exec('ALTER TABLE trackers ADD COLUMN content_type TEXT')
@@ -276,15 +356,6 @@ export async function bumpPlan(channel, type, { target = 0, current = 0 }, creat
 }
 
 const now = () => new Date().toISOString()
-
-function dayISO(offset = 0) {
-  const d = new Date()
-  d.setDate(d.getDate() + offset)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
 
 export async function seedIfEmpty() {
   if ((await get('SELECT COUNT(*) AS n FROM users')).n > 0) return
@@ -374,7 +445,7 @@ export async function seedCampaignsIfEmpty() {
       c.duration || 'short', c.owner || '', c.status || '', c.ongoing ? 1 : 0,
       JSON.stringify(c.months || []), i]))
   }
-  stmts.push(["INSERT OR REPLACE INTO meta (key, value) VALUES ('campaigns_seeded', '1')"])
+  stmts.push(["INSERT INTO meta (key, value) VALUES ('campaigns_seeded', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value"])
   await batch(stmts)
 }
 
