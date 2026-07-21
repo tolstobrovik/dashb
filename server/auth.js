@@ -1,19 +1,23 @@
 import jwt from 'jsonwebtoken'
 import { createHash } from 'crypto'
-import { get, publicUser } from './db.js'
-import { DATABASE_URL as CONFIG_DATABASE_URL } from './config.js'
+import { get, publicUser, resyncStorage } from './db.js'
+import { DATABASE_URL as CONFIG_DATABASE_URL, GITHUB_DATA } from './config.js'
 
-// Prefer an explicit JWT_SECRET. Without one, derive a stable secret from the
-// database credential (Postgres URL or Turso token) — it's secret, identical
-// on every instance, and survives deploys, so sessions never break and there
-// is nothing to configure. The dev default only applies with no database URL.
+// Prefer an explicit JWT_SECRET. Without one, derive a stable secret from
+// whatever credential the storage uses (Postgres URL, Turso token, or the
+// GitHub storage token) — it's secret, identical on every instance, and
+// survives deploys, so sessions never break and there is nothing to
+// configure. The dev default only applies with no credential at all.
 const dbSecret = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
-  process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || CONFIG_DATABASE_URL
+  process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN ||
+  CONFIG_DATABASE_URL || GITHUB_DATA?.token
 export const JWT_SECRET = process.env.JWT_SECRET ||
   (dbSecret ? createHash('sha256').update(`satashkent:${dbSecret}`).digest('hex') : 'satashkent-dev-secret-change-me')
 
-export function signToken(user) {
-  return jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' })
+// "Remember me" keeps the session for a week; without it the token is short
+// and the client keeps it only until the browser closes.
+export function signToken(user, remember = true) {
+  return jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: remember ? '7d' : '12h' })
 }
 
 // Express 4 doesn't catch async errors — route handlers wrap themselves in
@@ -27,7 +31,13 @@ export async function authRequired(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Not authenticated' })
   try {
     const payload = jwt.verify(token, JWT_SECRET)
-    const row = await get('SELECT * FROM users WHERE id = ?', payload.id)
+    let row = await get('SELECT * FROM users WHERE id = ?', payload.id)
+    if (!row) {
+      // The account may have been created seconds ago on another server —
+      // pull the freshest data once before declaring the user gone.
+      await resyncStorage().catch(() => {})
+      row = await get('SELECT * FROM users WHERE id = ?', payload.id)
+    }
     if (!row) return res.status(401).json({ error: 'User not found' })
     req.user = publicUser(row)
     next()

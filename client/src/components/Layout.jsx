@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Menu, ListChecks, LogOut } from 'lucide-react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import Logo from './Logo.jsx'
+import Avatar from './Avatar.jsx'
+import ThemeToggle from './ThemeToggle.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
+import { useAutoUpdate } from '../lib/useAutoUpdate.js'
 import { iconFor } from '../lib/constants.js'
 
 export default function Layout() {
@@ -12,12 +15,29 @@ export default function Layout() {
   const { visible, byKey } = useChannels()
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  // Full-screen mode: tuck the sidebar away and give the page every pixel.
+  const [sideOff, setSideOff] = useState(() => localStorage.getItem('satashkent_side_off') === '1')
+  const toggleSide = () => {
+    setSideOff((v) => {
+      try { localStorage.setItem('satashkent_side_off', v ? '' : '1') } catch { /* ok */ }
+      return !v
+    })
+  }
+  useAutoUpdate() // long-lived tabs pick up new deploys on their own
 
   useEffect(() => setOpen(false), [location.pathname])
 
   let title = ''
   if (location.pathname.startsWith('/admin')) title = 'Admin Panel'
+  else if (location.pathname.startsWith('/overview')) title = 'Overview'
+  else if (location.pathname.startsWith('/brief')) title = 'My Day'
   else if (location.pathname.startsWith('/todo')) title = 'To-Do'
+  else if (location.pathname.startsWith('/missed')) title = 'Statistics'
+  else if (location.pathname.startsWith('/crew')) title = 'Post Production'
+  else if (location.pathname.startsWith('/team')) title = 'Team & hiring'
+  else if (location.pathname.startsWith('/docs')) title = 'Docs & KPIs'
+  else if (location.pathname.startsWith('/profile')) title = 'My Profile'
+  else if (location.pathname.startsWith('/projects') || location.pathname.startsWith('/campaigns')) title = 'Projects & Campaigns'
   else if (location.pathname.startsWith('/dept/')) title = byKey[location.pathname.split('/')[2]]?.label || 'Channel'
 
   // A member with a single channel doesn't need a sidebar at all —
@@ -30,9 +50,14 @@ export default function Layout() {
     return (
       <div className="main solo">
         <header className="topbar solo-bar">
-          <Logo size={30} tone="var(--brand-500)" />
+          <Link to="/" className="logo-link" data-tip="Home" aria-label="Home">
+            <Logo size={30} tone="var(--brand-500)" />
+          </Link>
           <h1>{title}</h1>
           <div className="topbar-spacer" />
+          <NavLink to="/brief" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+            <Sun size={16} /> My Day
+          </NavLink>
           {soloChannel && (
             <NavLink to={`/dept/${soloChannel.key}`} className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
               <SoloIcon size={16} /> {soloChannel.label}
@@ -41,7 +66,17 @@ export default function Layout() {
           <NavLink to="/todo" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <ListChecks size={16} /> To-Do
           </NavLink>
-          <button className="icon-btn" onClick={logout} title="Sign out"><LogOut size={17} /></button>
+          <NavLink to="/missed" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+            <BarChart3 size={16} /> Statistics
+          </NavLink>
+          <NavLink to="/docs" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+            <ScrollText size={16} /> Docs & KPIs
+          </NavLink>
+          <ThemeToggle />
+          <NavLink to="/profile" className="solo-avatar" data-tip="My profile — photo, appearance, password" data-tip-left="" aria-label="My profile">
+            <Avatar name={user.name} color={user.color} src={user.avatar} size="sm" />
+          </NavLink>
+          <button className="icon-btn" onClick={logout} data-tip="Sign out" data-tip-left="" aria-label="Sign out"><LogOut size={17} /></button>
         </header>
         <main className="content">
           <Outlet />
@@ -51,7 +86,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="layout">
+    <div className={'layout' + (sideOff ? ' side-off' : '')}>
       <aside className={`sidebar${open ? ' open' : ''}`}>
         <Sidebar user={user} onNavigate={() => setOpen(false)} onLogout={logout} />
       </aside>
@@ -59,8 +94,13 @@ export default function Layout() {
 
       <div className="main">
         <header className="topbar">
-          <button className="hamburger" onClick={() => setOpen(true)} aria-label="Open menu">
+          <button className="hamburger" onClick={() => setOpen(true)} data-tip="Menu" aria-label="Open menu">
             <Menu size={22} />
+          </button>
+          <button className="side-toggle" onClick={toggleSide}
+            data-tip={sideOff ? 'Show the sidebar' : 'Hide the sidebar — full screen for this page'}
+            aria-label={sideOff ? 'Show sidebar' : 'Hide sidebar'}>
+            {sideOff ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
           </button>
           <div>
             <h1>{title}</h1>

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { api } from './api.js'
+import { api, cache } from './api.js'
 import { useAuth } from './auth.jsx'
 
 // Sidebar channels come from the server so the admin can add/rename/reorder them.
@@ -7,11 +7,15 @@ const Ctx = createContext({ channels: [], visible: [], byKey: {}, reload: () => 
 
 export function ChannelsProvider({ children }) {
   const { user } = useAuth()
-  const [channels, setChannels] = useState([])
+  // Boot from the cached list (instant sidebar + home redirect), then refresh.
+  const [channels, setChannels] = useState(() => cache.get('channels') || [])
 
   const reload = useCallback(() => {
     if (!user) return
-    api.get('/channels').then(setChannels).catch(() => {})
+    api.get('/channels').then((list) => {
+      setChannels(list)
+      cache.set('channels', list)
+    }).catch(() => {})
   }, [user])
 
   useEffect(() => { reload() }, [reload])

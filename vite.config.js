@@ -15,5 +15,15 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Long-lived libraries in their own chunks: app updates don't bust
+        // the framework cache, and lazy pages share one icons bundle.
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          icons: ['lucide-react'],
+        },
+      },
+    },
   },
 })

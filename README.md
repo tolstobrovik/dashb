@@ -102,7 +102,7 @@ A fresh database has exactly one account:
 | Frontend  | React 18 + Vite + React Router, hand-built CSS design system      |
 | Icons     | lucide-react                                                      |
 | Backend   | Node.js + Express                                                 |
-| Database  | **PostgreSQL** in production (Vercel Storage / Render — connection auto-injected), SQLite locally; Turso also supported |
+| Database  | SQLite stored **inside this GitHub repo** (`appdata` branch, zero setup); optional PostgreSQL / Turso upgrades |
 | Timezone  | All day boundaries pinned to **Asia/Tashkent** (server & client)   |
 | Auth      | JSON Web Tokens + bcryptjs password hashing                       |
 
@@ -115,7 +115,9 @@ A fresh database has exactly one account:
 ├── server/                 Express API
 │   ├── app.js              the Express app itself (shared by all run modes)
 │   ├── index.js            long-running entry: local prod, Render, any VPS
-│   ├── db.js               schema + seed data (libsql: local file or Turso)
+│   ├── db.js               schema + seeds; backends: GitHub-repo / Postgres / Turso / file
+│   ├── ghstore.js          GitHub-as-storage driver (the repo holds the data)
+│   ├── config.js           in-code configuration (storage token, optional DB URL)
 │   ├── auth.js             JWT signing + access-control middleware
 │   ├── seed.js             `npm run seed`
 │   └── routes/             auth · users · channels · statuses · trackers · content · reports · campaigns
@@ -140,22 +142,30 @@ every `/api/*` request to one serverless function (`api/index.js`).
 
 1. [vercel.com/new](https://vercel.com/new) → **Import** this repository. No
    settings to change — the defaults come from `vercel.json`. Deploy.
-2. **Make the data permanent** (one time): create a free Postgres database at
-   [neon.tech](https://neon.tech) (sign in with Google, no card needed), copy
-   its **connection string**, paste it into `server/config.js` between the
-   quotes, and push. That's the whole setup — no environment variables, no
-   dashboard settings; the deploy triggered by that push is already durable.
-3. Sign in as `admin` / `admin123` and change the password.
+2. Sign in as `admin` / `admin123` and change the password. That's all —
+   **the data is already permanent**, with nothing to configure.
 
-From then on the database is permanent: pushes, deploys, restarts and cold
-starts never touch the data, and every table is created automatically on
-first request. The login secret is derived from the database credential, so
-sessions survive deploys with zero configuration too.
+**Where the data lives: inside this repository.** By default the app keeps
+its database on the `appdata` branch of this repo, synced through the GitHub
+API with a token stored in `server/config.js` — no external database
+service, no environment variables, no dashboard settings. Data survives
+pushes, deploys, restarts and cold starts; writes use compare-and-swap with
+statement replay so concurrent instances can't lose each other's changes;
+and the nightly job compacts the data branch so the repo never grows. Two
+things to know:
 
-While `server/config.js` is empty the app runs in **demo mode**: serverless
-has no disk, so data lives in `/tmp` and resets on every deploy or cold
-start. (The `DATABASE_URL`/`POSTGRES_URL` env vars and Turso also still work
-as alternatives, e.g. for Render's auto-injected database.)
+- **Keep the repository private** — the token and the data live in it.
+- **The token can expire** (fine-grained tokens have an expiry date). When it
+  does, writes start failing (`/api/health` shows `flushError`): generate a
+  new token (Contents read & write on this repo — or a classic token with
+  `repo` scope and *No expiration*, which never needs replacing) and update
+  `server/config.js`.
+
+**Optional upgrade for heavier use:** paste a Postgres connection string into
+`DATABASE_URL` in `server/config.js` (e.g. a free [neon.tech](https://neon.tech)
+database) and push — it takes precedence over GitHub storage automatically.
+`DATABASE_URL`/`POSTGRES_URL` env vars and Turso are also supported, e.g. for
+Render's auto-injected database.
 
 **Timekeeping.** Every day boundary — calendars, the to-do list, overdue
 checks, daily growth snapshots, reports — is pinned to **Asia/Tashkent**. A

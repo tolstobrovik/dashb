@@ -1,0 +1,136 @@
+// This round: Post Production with an Editors&shooters / Designers split and
+// designer statistics; a designer deadline separate from edit and release on
+// every task; channel tags on the timetable blocks; the Designer role with
+// multi-select roles and role-restricted pickers; multi-person assignees.
+import { chromium } from 'playwright'
+const BASE = 'http://localhost:4090'
+let fails = 0
+const ok = (n, c, x = '') => { if (!c) fails++; console.log(`${c ? '✔' : '✘ FAIL'} ${n}${x ? ` — ${x}` : ''}`) }
+const login = async (u, p) => (await (await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) })).json()).token
+const T = await login('admin', 'admin123')
+const req = async (p, m = 'GET', b, t = T) => {
+  const r = await fetch(BASE + '/api' + p, { method: m, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }, body: b ? JSON.stringify(b) : undefined })
+  return { status: r.status, data: await r.json().catch(() => ({})) }
+}
+const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' })
+const today = fmt.format(new Date())
+const yesterday = fmt.format(new Date(Date.now() - 864e5))
+const add = (n) => { const d = new Date(today + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+
+for (const c of (await req('/content')).data.filter((c) => /r14:/.test(c.title)))
+  await req(`/content/${c.id}`, 'DELETE')
+for (const u of (await req('/users')).data.filter((u) => ['r14mix', 'r14op'].includes(u.username)))
+  await req(`/users/${u.id}`, 'DELETE')
+
+const mix = (await req('/users', 'POST', { name: 'Malika Mixed', username: 'r14mix', password: 'm1234', role: 'crew', crew_roles: ['editor', 'designer'] })).data
+ok('editor+designer in one account', (mix.crew_roles || []).join(',') === 'editor,designer', JSON.stringify(mix.crew_roles))
+const op14 = (await req('/users', 'POST', { name: 'Otkir Operator', username: 'r14op', password: 'o1234', role: 'operator' })).data
+const chg = (await req(`/users/${mix.id}`, 'PATCH', { crew_roles: ['designer'] })).data
+ok('capabilities re-selectable — down to designer only', chg.role === 'designer' && (chg.crew_roles || []).join(',') === 'designer')
+await req(`/users/${mix.id}`, 'PATCH', { crew_roles: ['editor', 'designer'] })
+ok('crew accounts must keep at least one capability', (await req(`/users/${mix.id}`, 'PATCH', { role: 'crew', crew_roles: [] })).status === 400)
+
+const vid = await req('/content', 'POST', {
+  title: 'r14: launch video', channels: ['youtube'], type: 'video',
+  operator_id: op14.id, editor_id: mix.id, designer_id: mix.id,
+  edit_ready_date: yesterday, design_ready_date: yesterday, release_date: today,
+  assignee_ids: [],
+})
+ok('a video carries an editor deadline AND a designer deadline', vid.status === 201
+  && vid.data.edit_ready_date === yesterday && vid.data.design_ready_date === yesterday)
+const wk = await req('/content', 'POST', {
+  title: 'r14: campus shoot', channels: ['instagram_main'], type: 'video',
+  operator_id: op14.id, recording_date: add(1), recording_time: '10:00', recording_end: '11:00',
+})
+ok('in-week shoot fixture created', wk.status === 201)
+
+const users = (await req('/users')).data
+const mir = users.find((u) => u.username === 'mir')
+const jas = users.find((u) => u.username === 'jas')
+const duo = await req('/content', 'POST', { title: 'r14: two-person task', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id, jas.id] })
+ok('a task stores several assignees', duo.status === 201 && (duo.data.assignees || []).length === 2, JSON.stringify(duo.data.assignees))
+ok('the legacy assignee mirrors the first', duo.data.assignee_id === mir.id)
+const tokJas = await login('jas', 'j1234')
+ok('the second assignee sees and works the task too', (await req(`/content/${duo.data.id}`, 'PATCH', { done: true }, tokJas)).status === 200)
+await req(`/content/${duo.data.id}`, 'PATCH', { done: false })
+ok('non-admin cannot multi-assign others', (await req('/content', 'POST', { title: 'r14: sneak', channels: ['instagram_main'], assignee_ids: [mir.id, jas.id] }, tokJas)).status === 403)
+
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
+const page = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
+page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
+page.on('dialog', (d) => d.accept())
+await page.goto(BASE + '/login')
+await page.fill('input[name="username"]', 'admin')
+await page.fill('input[name="password"]', 'admin123')
+await page.click('button[type="submit"]')
+await page.waitForURL(/overview/, { timeout: 15000 })
+
+ok('the sidebar says Post Production', (await page.locator('.sidebar').textContent()).includes('Post Production'))
+await page.goto(BASE + '/crew')
+await page.waitForSelector('.pp-tabs', { timeout: 10000 })
+await page.waitForTimeout(400)
+ok('two sub-pages offered', (await page.locator('.pp-tabs').textContent()).includes('Editors & shooters')
+  && (await page.locator('.pp-tabs').textContent()).includes('Designers'))
+await page.locator('.pp-tabs .pill', { hasText: 'Designers' }).click()
+await page.waitForTimeout(400)
+const dPage = await page.locator('main').first().textContent()
+ok('designer stats card renders', dPage.includes('Malika Mixed') && dPage.includes('in work') && dPage.includes('due this week'))
+ok('the late design is counted against the design date', dPage.includes('past the design date'))
+ok('queue rows carry the channel without opening the task', dPage.includes('r14: launch video') && dPage.includes('YouTube'))
+await page.screenshot({ path: 'r14-designers.png' })
+
+await page.locator('.pp-tabs .pill', { hasText: 'Editors & shooters' }).click()
+await page.waitForTimeout(300)
+await page.locator('.pill', { hasText: 'Timetable' }).click()
+await page.waitForSelector('.crew-tt', { timeout: 8000 })
+const igLabel = (await req('/channels')).data.find((c) => c.key === 'instagram_main')?.label || 'Instagram Main'
+ok('timetable blocks say the channel', (await page.locator('.crew-tt .tt-ch').count()) >= 1
+  && (await page.locator('.crew-tt').textContent()).includes(igLabel))
+await page.screenshot({ path: 'r14-timetable.png' })
+
+await page.goto(BASE + '/todo')
+await page.waitForSelector('.todo-row', { timeout: 10000 })
+await page.locator('.todo-row', { hasText: 'r14: launch video' }).locator('.todo-main').click()
+await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
+const labels = await page.locator('.modal .crew-field .crew-label').allTextContents()
+ok('a video offers Operator, Editor and Designer hats', labels.length === 3
+  && /Operator/.test(labels[0]) && /Editor/.test(labels[1]) && /Designer/.test(labels[2]), labels.join(' | '))
+const edOpts = await page.locator('.modal .crew-field select').nth(1).locator('option').allTextContents()
+const dzOpts = await page.locator('.modal .crew-field select').nth(2).locator('option').allTextContents()
+ok('the editor list holds editor-role people', edOpts.some((o) => o.includes('Malika')) && !edOpts.some((o) => o.includes('Otkir')))
+ok('the designer list holds designer-role people', dzOpts.some((o) => o.includes('Malika')) && !dzOpts.some((o) => o.includes('Otkir')), dzOpts.join(' | '))
+ok('both deadline rows present', /Edit ready/.test(await page.locator('.modal .dates-block').textContent())
+  && /Design ready/.test(await page.locator('.modal .dates-block').textContent()))
+
+const addSel = page.locator('.modal .assignee-add')
+await addSel.selectOption({ label: 'Mirabbos Tashkentov' })
+await page.waitForTimeout(200)
+await addSel.selectOption({ label: 'Jasmina Karimova' })
+await page.waitForTimeout(200)
+ok('two assignee chips picked', (await page.locator('.modal .assignee-chip').count()) === 2,
+  String(await page.locator('.modal .assignee-chip').count()))
+await page.screenshot({ path: 'r14-modal.png' })
+await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
+await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
+await page.waitForTimeout(400)
+const savedVid = (await req('/content')).data.find((c) => c.id === vid.data.id)
+ok('both assignees persisted', (savedVid.assignees || []).length === 2, JSON.stringify(savedVid.assignees))
+const rowTxt = await page.locator('.todo-row', { hasText: 'r14: launch video' }).textContent()
+ok('the to-do row shows the crowd (+1)', /\+1/.test(rowTxt), rowTxt.slice(0, 140))
+
+await page.goto(BASE + '/missed')
+await page.waitForSelector('.ov-row', { timeout: 10000 })
+const missRows = page.locator('.ov-row', { hasText: 'r14: launch video' })
+const missAll = (await missRows.allTextContents()).join(' || ')
+ok('the video missed BOTH maker deadlines separately', /edit deadline/.test(missAll) && /design deadline/.test(missAll), missAll.slice(0, 200))
+ok('…design miss attributed to the designer', /Malika/.test(missAll))
+await page.screenshot({ path: 'r14-missed.png' })
+await browser.close()
+
+for (const c of (await req('/content')).data.filter((c) => /r14:/.test(c.title)))
+  await req(`/content/${c.id}`, 'DELETE')
+for (const u of (await req('/users')).data.filter((u) => ['r14mix', 'r14op'].includes(u.username)))
+  await req(`/users/${u.id}`, 'DELETE')
+
+console.log(fails === 0 ? '\nRound-14 suite clean.' : `\n${fails} PROBLEMS`)
+process.exit(fails === 0 ? 0 : 1)

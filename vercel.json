@@ -15,5 +15,8 @@
   ],
   "crons": [
     { "path": "/api/cron/daily", "schedule": "5 19 * * *" }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": { "appdata": false }
+  }
 }

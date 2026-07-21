@@ -1,21 +1,28 @@
 import { useState } from 'react'
-import { AlertCircle, LogIn } from 'lucide-react'
+import { AlertCircle, LogIn, Eye, EyeOff } from 'lucide-react'
 import Logo from '../components/Logo.jsx'
 import { useAuth } from '../lib/auth.jsx'
+import { getCookie, setCookie } from '../lib/api.js'
 
 export default function Login() {
   const { login } = useAuth()
-  const [username, setUsername] = useState('')
+  // Comfort cookies: the last username comes prefilled, and the remember-me
+  // choice is kept the way you left it.
+  const [username, setUsername] = useState(() => getCookie('satashkent_login') || '')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(() => getCookie('satashkent_remember') !== '0')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showPw, setShowPw] = useState(false)
 
   const submit = async (e) => {
     e.preventDefault()
     setError('')
     setBusy(true)
     try {
-      await login(username, password)
+      await login(username, password, remember)
+      setCookie('satashkent_login', username.trim().toLowerCase(), 30)
+      setCookie('satashkent_remember', remember ? '1' : '0', 30)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -46,8 +53,11 @@ export default function Login() {
             <input
               className="input"
               type="text"
+              name="username"
+              autoComplete="username"
               autoCapitalize="none"
               autoCorrect="off"
+              spellCheck={false}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoFocus
@@ -56,15 +66,32 @@ export default function Login() {
           </div>
           <div className="field">
             <label>Password</label>
-            <input
-              className="input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
+            <div className="pw-wrap">
+              {/* autoCapitalize matters here: with the eye toggle on, this is a
+                  plain text input and phones would upper-case the first letter. */}
+              <input
+                className="input"
+                type={showPw ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+              <button type="button" className="pw-eye" onClick={() => setShowPw(!showPw)} aria-label={showPw ? 'Hide password' : 'Show password'}>
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
+          <label className="remember-row">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            <span>Remember me for a week</span>
+            <span className="stat-sub">— off: signed out when the browser closes</span>
+          </label>
           <button className="btn btn-primary" type="submit" disabled={busy} style={{ justifyContent: 'center', padding: 11, marginTop: 2 }}>
             <LogIn size={17} /> {busy ? 'Signing in…' : 'Sign in'}
           </button>

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   Lock, Plus, Pencil, Trash2, Gauge, CalendarRange, AlertCircle, Pin, PinOff, GripVertical, Minus,
-  KanbanSquare, Send, Clapperboard, LineChart,
+  KanbanSquare, Send, Clapperboard, LineChart, Maximize2, Minimize2,
+  SlidersHorizontal, Settings, Megaphone, CalendarClock, CheckCircle2, ArrowUp, ArrowDown, Rocket,
 } from 'lucide-react'
-import { api } from '../lib/api.js'
+import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { CADENCES, can } from '../lib/constants.js'
+import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo } from '../lib/constants.js'
+import { useFullscreen } from '../lib/useFullscreen.js'
 import Meter from '../components/Meter.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentBoard from '../components/ContentBoard.jsx'
@@ -15,6 +17,24 @@ import ContentCalendar from '../components/ContentCalendar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
 import CompareCard from '../components/CompareCard.jsx'
+import Avatar from '../components/Avatar.jsx'
+import { CampaignRow } from '../components/ProjectBits.jsx'
+import ProgramsGantt, { PLATFORMS } from '../components/ProgramsGantt.jsx'
+
+// The Target team's lens: what platform's work to look at. Tasks and
+// campaigns classify themselves by their co-channels (a task also tagged
+// instagram_* counts as Instagram work); anything without a signal shows
+// in every lens so nothing quietly disappears.
+const lensOf = (channels = []) => ({
+  ig: channels.some((c) => c.includes('instagram')),
+  tg: channels.some((c) => c.includes('telegram')),
+})
+const inLens = (lens, channels) => {
+  if (lens === 'all') return true
+  const { ig, tg } = lensOf(channels)
+  if (!ig && !tg) return true // unclassified — always visible
+  return lens === 'instagram' ? ig : tg
+}
 
 const BLANK_METRIC = { label: '', current: 0, target: 100, unit: '', period: 'monthly', content_type: '' }
 const FILL_MODES = [
@@ -25,10 +45,101 @@ const FILL_MODES = [
   { key: 'video', label: 'From Video tasks' },
 ]
 
+// ---- Customizable dashboard: the sections a channel page can show. ----
+// Keys mirror server/routes/channels.js DASH_WIDGETS.
+const DASH_WIDGETS = [
+  { key: 'programs', label: 'Programs (Gantt)', hint: 'Launches on a timeline — running, halted, finished' },
+  { key: 'metrics', label: 'Metrics & plans', hint: 'Headline numbers and plan meters' },
+  { key: 'growth', label: 'Growth', hint: 'Then-vs-now comparison table' },
+  { key: 'campaigns', label: 'Campaigns', hint: 'Campaigns running on this channel' },
+  { key: 'timetable', label: 'Timetable', hint: 'The next 7 days, day by day' },
+  { key: 'upcoming', label: 'Upcoming board', hint: 'Everything dated, closest first' },
+  { key: 'done', label: 'Done board', hint: 'Recently completed work' },
+  { key: 'content', label: 'Content workspace', hint: 'Kanban board and calendars' },
+]
+const DEFAULT_DASH = ['metrics', 'growth', 'content']
+
+function parseDash(raw) {
+  try {
+    const l = JSON.parse(raw || 'null')
+    if (Array.isArray(l)) {
+      const known = l.filter((k) => DASH_WIDGETS.some((w) => w.key === k))
+      if (known.length > 0) return known
+    }
+  } catch { /* fall through to default */ }
+  return DEFAULT_DASH
+}
+
+/* ---- The optional boards (module-level so poll ticks don't remount them) ---- */
+
+function DeptCampaigns({ camps, byKey, navigate }) {
+  if (camps.length === 0) return <div className="card card-pad empty">No campaigns touch this channel yet.</div>
+  return (
+    <div className="pc-camp-list">
+      {camps.map((c) => <CampaignRow key={c.id} c={c} byKey={byKey} onOpen={(x) => navigate(`/campaigns/${x.id}`)} />)}
+    </div>
+  )
+}
+
+// Seven days ahead, day by day — one table per kind of work, so a glance
+// says WHAT happens that day, not just that something does.
+function DeptTimetable({ content, onOpen, mode }) {
+  const today = todayISO()
+  const days = [...Array(7)].map((_, i) => addDaysISO(today, i))
+  const Icon = mode === 'release' ? Send : Clapperboard
+  return (
+    <div className="card card-pad">
+      {days.map((d) => {
+        const items = content.filter((t) => !t.done_at && (mode === 'release' ? t.release_date === d : t.recording_date === d))
+        return (
+          <div key={d} className="tt-row">
+            <span className={'tt-day' + (d === today ? ' today' : '')}>{d === today ? 'Today' : dateLabel(d)}</span>
+            <span className="tt-items">
+              {items.length === 0 ? <span className="tt-none">—</span> : items.map((t) => (
+                <button key={t.id} className={`chip ct-${t.type} tt-chip`} onClick={() => onOpen(t)}
+                  data-tip={mode === 'release' ? 'Release day — open the task' : `Shoot day${t.recording_time ? ` · ${t.recording_time}${t.recording_end ? `–${t.recording_end}` : ''}` : ''} — open the task`}>
+                  <Icon size={10} /> {t.title}
+                </button>
+              ))}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Shared list look for the Upcoming / Done boards.
+function DeptTaskList({ rows, empty, onOpen, done = false }) {
+  const today = todayISO()
+  if (rows.length === 0) return <div className="card card-pad empty">{empty}</div>
+  return (
+    <div className="card card-pad" style={{ paddingTop: 8, paddingBottom: 8 }}>
+      {rows.map((t) => {
+        const d = done ? t.done_at.slice(0, 10) : (t.release_date || t.recording_date)
+        const late = !done && d < today
+        return (
+          <button key={t.id} className="ov-row" onClick={() => onOpen(t)}>
+            <span className={'ov-date' + (late ? ' late' : '')}>
+              {late && <AlertCircle size={11} style={{ marginRight: 3 }} />}
+              {d === today ? 'Today' : dateLabel(d)}
+            </span>
+            <span className={'ov-title' + (done ? ' done-txt' : '')}>{t.title}</span>
+            <span className="ov-chips">
+              <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Department() {
   const { key } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
-  const { byKey, channels } = useChannels()
+  const { byKey, channels, reload } = useChannels()
   const dept = byKey[key]
   const hasAccess = user.role === 'admin' || user.departments.includes(key)
 
@@ -47,14 +158,28 @@ export default function Department() {
   const [metric, setMetric] = useState(null)
   const [err, setErr] = useState('')
   const [dragIdx, setDragIdx] = useState(null)
-  const [view, setView] = useState('board') // board | release | recording
+  // board | release | recording — the last view is remembered per browser.
+  const [view, setViewState] = useState(() => localStorage.getItem('satashkent_dept_view') || 'board')
+  const setView = (v) => { setViewState(v); localStorage.setItem('satashkent_dept_view', v) }
   const [selectedDate, setSelectedDate] = useState(null)
   const [openItem, setOpenItem] = useState(null) // content item or 'new'
   const [newDefaults, setNewDefaults] = useState({})
+  const [fs, setFs] = useFullscreen() // the content workspace over the whole screen
+  const [fsProg, setFsProg] = useFullscreen() // the programs timeline, same treatment
 
+  const deptReady = !!dept
   useEffect(() => {
-    if (!dept || !hasAccess) { setLoading(false); return }
-    setLoading(true)
+    if (!deptReady || !hasAccess) { setLoading(false); return }
+    // Instant boot: paint the last known snapshot of this channel right away
+    // and let the fresh data replace it when the network answers.
+    const cached = cache.get(`dept:${key}`)
+    if (cached) {
+      setTrackers(cached.trackers); setHistory(cached.history)
+      setContent(cached.content); setStatuses(cached.statuses)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     setSelectedDate(null)
     Promise.all([
       api.get(`/trackers?department=${key}`),
@@ -64,11 +189,52 @@ export default function Department() {
     ])
       .then(([tr, hist, ct, st]) => {
         setTrackers(tr); setHistory(hist); setContent(ct); setStatuses(st)
+        // Thumbnails stay out of the cache to keep localStorage light.
+        cache.set(`dept:${key}`, {
+          trackers: tr, history: hist, statuses: st,
+          content: ct.map(({ photo_thumb: _t, ...rest }) => rest),
+        })
       })
       .finally(() => setLoading(false))
-  }, [key, dept, hasAccess])
+  }, [key, deptReady, hasAccess])
+
+  // Live sync: tasks added by the admin or teammates appear within seconds
+  // (paused while the tab is hidden or a task modal is open).
+  useEffect(() => {
+    if (!dept || !hasAccess) return
+    const refresh = () => {
+      if (document.hidden || openItem || dragIdx !== null) return
+      api.poll(`/content?department=${key}`).then((f) => { if (f) setContent(f) }).catch(() => {})
+      api.poll(`/trackers?department=${key}`).then((f) => { if (f) setTrackers(f) }).catch(() => {})
+    }
+    const id = setInterval(refresh, 10000)
+    window.addEventListener('focus', refresh)
+    return () => { clearInterval(id); window.removeEventListener('focus', refresh) }
+  }, [key, dept, hasAccess, openItem, dragIdx])
 
   const statusesById = useMemo(() => Object.fromEntries(statuses.map((s) => [s.id, s])), [statuses])
+  // ---- the Target platform lens (All / Instagram / Telegram) ----
+  const hasLens = key === 'target'
+  const [lens, setLensState] = useState('all')
+  useEffect(() => { setLensState(localStorage.getItem(`satashkent_lens_${key}`) || 'all') }, [key])
+  const setLens = (v) => { setLensState(v); localStorage.setItem(`satashkent_lens_${key}`, v) }
+  const lensContent = useMemo(
+    () => (hasLens && lens !== 'all' ? content.filter((t) => inLens(lens, t.channels)) : content),
+    [content, lens, hasLens])
+
+  // Campaigns + team: chips on kanban cards, the Campaigns board, head picker.
+  const [campaigns, setCampaigns] = useState([])
+  const [team, setTeam] = useState([])
+  useEffect(() => {
+    api.get('/campaigns').then(setCampaigns).catch(() => {})
+    api.get('/users').then(setTeam).catch(() => {})
+  }, [])
+  const campaignsById = useMemo(() => Object.fromEntries(campaigns.map((x) => [x.id, { id: x.id, name: x.name }])), [campaigns])
+  const teamById = useMemo(() => Object.fromEntries(team.map((u) => [u.id, { id: u.id, name: u.name }])), [team])
+  const deptCampaigns = useMemo(
+    () => campaigns.filter((c) => (c.channels || []).includes(key) && c.status !== 'done'
+      && (!hasLens || inLens(lens, c.channels || []))),
+    [campaigns, key, hasLens, lens])
   const pinned = trackers.filter((t) => t.is_primary)
   const gridMetrics = trackers.filter((t) => !t.is_primary)
 
@@ -149,6 +315,57 @@ export default function Department() {
   const moveStatus = (item, statusId) => updateContent(item, { status_id: statusId }).catch((e) => alert(e.message))
   const moveDate = (item, field, iso) => updateContent(item, { [field]: iso }).catch((e) => alert(e.message))
 
+  // ---- customizable dashboard + channel settings ----
+  const isAdmin = user.role === 'admin'
+  const canCustomize = isAdmin || (manageLayout && user.departments.includes(key))
+  const widgetOrder = useMemo(() => parseDash(dept?.dashboard), [dept])
+  const [dash, setDash] = useState(null) // null | ordered [{key,on}] in the modal
+  const [dashErr, setDashErr] = useState('')
+  const openDash = () => {
+    setDashErr('')
+    setDash([
+      ...widgetOrder.map((k) => ({ key: k, on: true })),
+      ...DASH_WIDGETS.filter((w) => !widgetOrder.includes(w.key)).map((w) => ({ key: w.key, on: false })),
+    ])
+  }
+  const moveDashRow = (i, dir) => {
+    setDash((prev) => {
+      const next = [...prev]
+      const j = i + dir
+      if (j < 0 || j >= next.length) return prev
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next
+    })
+  }
+  const saveDash = async () => {
+    const keys = dash.filter((w) => w.on).map((w) => w.key)
+    if (keys.length === 0) { setDashErr('Keep at least one section on the dashboard'); return }
+    try {
+      await api.patch(`/channels/${dept.id}/dashboard`, { dashboard: keys })
+      reload()
+      setDash(null)
+    } catch (e) { setDashErr(e.message) }
+  }
+
+  const [chanEdit, setChanEdit] = useState(null) // null | {label, head_id}
+  const [chanErr, setChanErr] = useState('')
+  const saveChannel = async () => {
+    if (!chanEdit.label.trim()) { setChanErr('The channel needs a name'); return }
+    try {
+      await api.patch(`/channels/${dept.id}`, { label: chanEdit.label.trim(), head_id: chanEdit.head_id || null })
+      reload()
+      setChanEdit(null)
+    } catch (e) { setChanErr(e.message) }
+  }
+  const deleteChannel = async () => {
+    if (!confirm(`Delete the channel “${dept.label}”?\n\nIts metrics and history are removed; tasks that only live here are deleted too. This cannot be undone.`)) return
+    try {
+      await api.del(`/channels/${dept.id}`)
+      reload()
+      navigate('/')
+    } catch (e) { setChanErr(e.message) }
+  }
+
   if (channels.length === 0 || loading) return <div className="app-loading"><span className="spinner" /></div>
   if (!dept) return <div className="empty">Unknown channel.</div>
   if (!hasAccess)
@@ -165,7 +382,94 @@ export default function Department() {
     { key: 'recording', label: 'Recording', icon: Clapperboard },
   ]
 
-  return (
+  const dateOf = (t) => t.release_date || t.recording_date || null
+  const upcomingRows = lensContent
+    .filter((t) => !t.done_at && dateOf(t))
+    .sort((a, b) => dateOf(a).localeCompare(dateOf(b)))
+    .slice(0, 20)
+  const doneRows = lensContent
+    .filter((t) => t.done_at)
+    .sort((a, b) => b.done_at.localeCompare(a.done_at))
+    .slice(0, 20)
+
+  // One section of the dashboard, by key — rendered in the channel's order.
+  const renderWidget = (k) => {
+    if (k === 'programs') return (
+      <div className={'fs-wrap' + (fsProg ? ' on' : '')}>
+        <div className="section-head">
+          <Rocket size={17} style={{ color: 'var(--brand-500)' }} />
+          <h2>Programs</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>every launch on the timeline</span>
+          <span className="spacer" />
+          <button className="icon-btn" onClick={() => setFsProg(!fsProg)}
+            data-tip={fsProg ? 'Exit full screen (Esc)' : 'Full screen — the timeline fills the display'} data-tip-left="" aria-label="Full screen">
+            {fsProg ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+        </div>
+        <ProgramsGantt channel={key} canManage={isAdmin || manageContent} isAdmin={isAdmin} lens={hasLens ? lens : 'all'} big={fsProg} />
+      </div>
+    )
+    if (k === 'metrics') return renderMetrics()
+    if (k === 'growth') return (
+      <>
+        <div className="section-head">
+          <LineChart size={17} style={{ color: 'var(--brand-500)' }} />
+          <h2>Growth</h2>
+        </div>
+        <CompareCard trackers={trackers} history={history} />
+      </>
+    )
+    if (k === 'campaigns') return (
+      <>
+        <div className="section-head">
+          <Megaphone size={17} style={{ color: 'var(--brand-500)' }} />
+          <h2>Campaigns</h2>
+          <span className="count">· {deptCampaigns.length}</span>
+        </div>
+        <DeptCampaigns camps={deptCampaigns} byKey={byKey} navigate={navigate} />
+      </>
+    )
+    if (k === 'timetable') return (
+      <>
+        <div className="section-head">
+          <Send size={17} style={{ color: 'var(--brand-500)' }} />
+          <h2>Releasing</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>the next 7 days</span>
+        </div>
+        <DeptTimetable content={lensContent} onOpen={setOpenItem} mode="release" />
+        <div className="section-head" style={{ marginTop: 14 }}>
+          <Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />
+          <h2>Shooting</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>the next 7 days</span>
+        </div>
+        <DeptTimetable content={lensContent} onOpen={setOpenItem} mode="recording" />
+      </>
+    )
+    if (k === 'upcoming') return (
+      <>
+        <div className="section-head">
+          <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
+          <h2>Upcoming</h2>
+          <span className="count">· {upcomingRows.length}</span>
+        </div>
+        <DeptTaskList rows={upcomingRows} empty="Nothing dated yet." onOpen={setOpenItem} />
+      </>
+    )
+    if (k === 'done') return (
+      <>
+        <div className="section-head">
+          <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
+          <h2>Done</h2>
+          <span className="count">· {doneRows.length}</span>
+        </div>
+        <DeptTaskList rows={doneRows} empty="Nothing completed yet." onOpen={setOpenItem} done />
+      </>
+    )
+    if (k === 'content') return renderContent()
+    return null
+  }
+
+  const renderMetrics = () => (
     <>
       {/* Pinned metrics — the channel's headline numbers */}
       {pinned.length > 0 && (
@@ -176,8 +480,14 @@ export default function Department() {
               <div className="card hero-metric card-pad" key={t.id}>
                 <div className="hm-top">
                   <span className="hm-label"><Pin size={13} /> {t.label}</span>
+                  <span className="spacer" />
+                  {(editValues || manageMetrics) && (
+                    <button className="icon-btn hm-unpin" data-tip={manageMetrics ? 'Edit this metric' : 'Update the value'} onClick={() => openMetric(t)} aria-label="Edit">
+                      <Pencil size={15} />
+                    </button>
+                  )}
                   {manageLayout && (
-                    <button className="icon-btn hm-unpin" title="Unpin" onClick={() => setPin(t, false)} aria-label="Unpin">
+                    <button className="icon-btn hm-unpin" data-tip="Unpin from the headline row" data-tip-left="" onClick={() => setPin(t, false)} aria-label="Unpin">
                       <PinOff size={15} />
                     </button>
                   )}
@@ -192,17 +502,23 @@ export default function Department() {
                 <div className="hm-foot">
                   <span className={`hm-pct${pct >= 100 ? ' done' : ''}`}>{pct}% of {t.content_type ? 'plan' : 'target'}</span>
                   {t.content_type ? (
-                    <span className="hm-auto" title="Fills when tasks reach the final stage">from tasks</span>
+                    <span className="hm-auto" data-tip="Counts itself: creating a task raises the plan, completing one fills it">auto · from tasks</span>
                   ) : editValues && (
                     <div className="meter-adjust">
-                      <button className="step-btn" onClick={() => step(t, -1)} disabled={t.current <= 0} aria-label="Decrease"><Minus size={15} /></button>
-                      <button className="step-btn" onClick={() => step(t, 1)} aria-label="Increase"><Plus size={15} /></button>
+                      <button className="step-btn" onClick={() => step(t, -1)} disabled={t.current <= 0} data-tip="Decrease by 1" aria-label="Decrease"><Minus size={15} /></button>
+                      <button className="step-btn" onClick={() => step(t, 1)} data-tip="Increase by 1" aria-label="Increase"><Plus size={15} /></button>
                     </div>
                   )}
                 </div>
               </div>
             )
           })}
+          {/* Right under the headline number — the way to add the next one */}
+          {manageMetrics && (
+            <button className="add-metric-tile" onClick={() => openMetric(null)} data-tip="Create another metric for this channel">
+              <Plus size={16} /> Add another metric
+            </button>
+          )}
         </div>
       )}
 
@@ -210,6 +526,7 @@ export default function Department() {
       <div className="section-head">
         <Gauge size={17} style={{ color: 'var(--brand-500)' }} />
         <h2>Metrics</h2>
+        <span className="stat-sub" style={{ fontWeight: 500 }}>plans count completed tasks · other numbers use +/−</span>
         <span className="spacer" />
         {manageMetrics && <button className="btn btn-primary btn-sm" onClick={() => openMetric(null)}><Plus size={15} /> Add metric</button>}
       </div>
@@ -228,13 +545,13 @@ export default function Department() {
             >
               {(manageLayout || manageMetrics || editValues) && (
                 <div className="metric-top">
-                  {manageLayout && <span className="drag-handle" title="Drag to reorder"><GripVertical size={15} /></span>}
+                  {manageLayout && <span className="drag-handle" data-tip="Drag to reorder"><GripVertical size={15} /></span>}
                   <span className="spacer" />
                   {manageLayout && (
-                    <button className="icon-btn" title="Pin to the top" onClick={() => setPin(t, true)} aria-label="Pin"><Pin size={14} /></button>
+                    <button className="icon-btn" data-tip="Pin as a headline metric" onClick={() => setPin(t, true)} aria-label="Pin"><Pin size={14} /></button>
                   )}
                   {(editValues || manageMetrics) && (
-                    <button className="icon-btn" title={manageMetrics ? 'Edit metric' : 'Update value'} onClick={() => openMetric(t)} aria-label="Edit"><Pencil size={14} /></button>
+                    <button className="icon-btn" data-tip={manageMetrics ? 'Edit this metric' : 'Update the value'} data-tip-left="" onClick={() => openMetric(t)} aria-label="Edit"><Pencil size={14} /></button>
                   )}
                 </div>
               )}
@@ -245,14 +562,11 @@ export default function Department() {
         </div>
       )}
 
-      {/* Growth comparison */}
-      <div className="section-head">
-        <LineChart size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Growth</h2>
-      </div>
-      <CompareCard trackers={trackers} history={history} />
+    </>
+  )
 
-      {/* Content workspace */}
+  const renderContent = () => (
+    <div className={'fs-wrap' + (fs ? ' on' : '')}>
       <div className="section-head">
         <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
         <h2>Content</h2>
@@ -268,6 +582,10 @@ export default function Department() {
             )
           })}
         </div>
+        <button className="icon-btn" onClick={() => setFs(!fs)}
+          data-tip={fs ? 'Exit full screen (Esc)' : 'Full screen — board & calendars fill the display'} aria-label="Full screen">
+          {fs ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </button>
         {manageContent && (
           <button className="btn btn-primary btn-sm" onClick={() => { setNewDefaults({ channels: [key] }); setOpenItem('new') }}>
             <Plus size={15} /> New task
@@ -278,7 +596,7 @@ export default function Department() {
       {selectedDate ? (
         <DayAgenda
           date={selectedDate}
-          items={content}
+          items={lensContent}
           statusesById={statusesById}
           canEdit={manageContent}
           onOpen={setOpenItem}
@@ -289,9 +607,134 @@ export default function Department() {
           onBack={() => setSelectedDate(null)}
         />
       ) : view === 'board' ? (
-        <ContentBoard items={content} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} />
+        <ContentBoard items={lensContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} campaignsById={campaignsById} teamById={teamById} />
       ) : (
-        <ContentCalendar items={content} mode={view} canMove={moveTasks} onMoveDate={moveDate} onDayClick={setSelectedDate} />
+        <ContentCalendar
+          items={lensContent}
+          mode={view}
+          canMove={moveTasks}
+          onMoveDate={moveDate}
+          onDayClick={setSelectedDate}
+          statusesById={statusesById}
+          onOpenItem={setOpenItem}
+          onAddAt={manageContent ? (iso) => {
+            setNewDefaults({ channels: [key], [view === 'recording' ? 'recording_date' : 'release_date']: iso })
+            setOpenItem('new')
+          } : undefined}
+        />
+      )}
+
+    </div>
+  )
+
+  return (
+    <>
+      {/* Head of the channel + the page's own controls */}
+      <div className="dept-head-row">
+        {dept.head_id && dept.head_name ? (
+          <>
+            <Avatar name={dept.head_name} color={dept.head_color} src={dept.head_avatar} size="sm" />
+            <span className="dept-head-name">{dept.head_name}</span>
+            <span className="dept-head-label">Head of {dept.label}</span>
+          </>
+        ) : isAdmin ? (
+          <button className="no-owner-badge no-owner-btn" data-tip="Nobody owns this channel — click to assign a head"
+            onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }}>
+            no owner — assign one
+          </button>
+        ) : (
+          <span className="no-owner-badge">no owner yet</span>
+        )}
+        <span className="spacer" />
+        {hasLens && (
+          <div className="pill-group" style={{ marginRight: 4 }}>
+            <button className={'pill' + (lens === 'all' ? ' active' : '')} onClick={() => setLens('all')}
+              data-tip="Everything on this channel">All</button>
+            {PLATFORMS.filter((pl) => pl.key !== 'both').map((pl) => (
+              <button key={pl.key} className={'pill' + (lens === pl.key ? ' active' : '')} onClick={() => setLens(pl.key)}
+                data-tip={`Only ${pl.label} work — programs, tasks and campaigns`}>
+                <span className="rp-dot" style={{ background: pl.color }} />{pl.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {canCustomize && (
+          <button className="btn btn-sm" onClick={openDash} data-tip="Choose which sections this page shows, and their order">
+            <SlidersHorizontal size={14} /> Customize
+          </button>
+        )}
+        {isAdmin && (
+          <button className="icon-btn" data-tip="Channel settings — rename, head, delete" data-tip-left=""
+            onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }} aria-label="Channel settings">
+            <Settings size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* The dashboard, exactly the sections this channel chose */}
+      {widgetOrder.map((k) => <div key={k}>{renderWidget(k)}</div>)}
+
+      {/* Customize modal — toggle sections, reorder with arrows */}
+      {dash && (
+        <Modal
+          title="Customize this dashboard"
+          onClose={() => setDash(null)}
+          footer={<>
+            <button className="btn" onClick={() => setDash(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveDash}>Save layout</button>
+          </>}
+        >
+          {dashErr && <div className="form-error"><AlertCircle size={16} /> {dashErr}</div>}
+          <div className="stat-sub" style={{ marginBottom: 10 }}>
+            Sections show top to bottom. Changes apply to everyone who opens {dept.label}.
+          </div>
+          {dash.map((w, i) => {
+            const def = DASH_WIDGETS.find((x) => x.key === w.key)
+            return (
+              <div key={w.key} className={'dash-row' + (w.on ? '' : ' off')}>
+                <label className="dash-toggle">
+                  <input type="checkbox" checked={w.on}
+                    onChange={() => setDash((prev) => prev.map((x, j) => (j === i ? { ...x, on: !x.on } : x)))} />
+                  <span>
+                    <b>{def.label}</b>
+                    <span className="dash-hint">{def.hint}</span>
+                  </span>
+                </label>
+                <span className="spacer" />
+                <button className="icon-btn" disabled={i === 0} onClick={() => moveDashRow(i, -1)} data-tip="Move up" aria-label="Move up"><ArrowUp size={14} /></button>
+                <button className="icon-btn" disabled={i === dash.length - 1} onClick={() => moveDashRow(i, 1)} data-tip="Move down" data-tip-left="" aria-label="Move down"><ArrowDown size={14} /></button>
+              </div>
+            )
+          })}
+        </Modal>
+      )}
+
+      {/* Channel settings — rename, reassign the head, or delete the channel */}
+      {chanEdit && (
+        <Modal
+          title="Channel settings"
+          onClose={() => setChanEdit(null)}
+          footer={<>
+            <button className="btn btn-danger" onClick={deleteChannel}><Trash2 size={15} /> Delete channel</button>
+            <div style={{ flex: 1 }} />
+            <button className="btn" onClick={() => setChanEdit(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveChannel}>Save</button>
+          </>}
+        >
+          {chanErr && <div className="form-error"><AlertCircle size={16} /> {chanErr}</div>}
+          <div className="field"><label>Name</label>
+            <input className="input" autoFocus value={chanEdit.label}
+              onChange={(e) => setChanEdit({ ...chanEdit, label: e.target.value })} />
+          </div>
+          <div className="field"><label>Head of the channel</label>
+            <select className="select" value={chanEdit.head_id}
+              onChange={(e) => setChanEdit({ ...chanEdit, head_id: e.target.value === '' ? '' : Number(e.target.value) })}>
+              <option value="">— nobody —</option>
+              {team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+          <div className="stat-sub">Deleting removes the channel’s metrics and history; tasks that only live here are deleted. Members lose access to it.</div>
+        </Modal>
       )}
 
       {/* Metric modal */}

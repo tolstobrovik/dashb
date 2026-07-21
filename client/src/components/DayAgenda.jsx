@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ArrowLeft, Plus, Clapperboard, Send } from 'lucide-react'
-import { MONTHS, typeInfo } from '../lib/constants.js'
+import { MONTHS, typeInfo, onColor } from '../lib/constants.js'
 
 // A clean, simple day view: everything happening that day in time order —
 // recordings and releases side by side, no hour grid to decipher.
@@ -41,7 +41,7 @@ export default function DayAgenda({ date, items, statusesById, canEdit, onOpen, 
                 </span>
                 <span className="agenda-title">{item.title}</span>
                 <span className={`chip ct-${item.type}`}>{typeInfo(item.type).label}</span>
-                {status && <span className="chip" style={{ background: `${status.color}22`, color: status.color }}>{status.label}</span>}
+                {status && <span className="chip" style={{ background: status.color, color: onColor(status.color) }}>{status.label}</span>}
               </button>
             )
           })}
