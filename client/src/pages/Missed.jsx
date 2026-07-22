@@ -420,9 +420,6 @@ export default function Missed() {
           <div className="miss-stat stat-missed"><b style={stats.missedN ? { color: '#A32D2D' } : undefined}>{stats.missedN}</b><span>missed</span></div>
           <div className="miss-stat"><b>{stats.openNow}</b><span>open now</span></div>
         </div>
-        <div className="stat-sub" style={{ marginTop: 8 }}>
-          Done and missed count the window’s past side; upcoming counts its future side — weeks start Monday.
-        </div>
       </div>
 
       {/* ---- published, by channel ---- */}

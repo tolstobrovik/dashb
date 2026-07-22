@@ -154,6 +154,18 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const alreadyReady = readySort != null && curSort >= readySort
   // The one milestone this crew member is about to tick on save (null = none).
   const [milestone, setMilestone] = useState(null)
+  // One tap does it: a crew milestone applies the moment it's ticked — no
+  // separate Save click for the single most-used crew action. The modal stays
+  // open (links can still be dropped in) and the footer Save keeps working.
+  const tickMilestone = async (kind) => {
+    if (busy || milestone === kind) return
+    setBusy(true); setErr('')
+    try {
+      await onUpdate(item, { milestone: kind })
+      setMilestone(kind)
+      toast(kind === 'shot' ? 'Marked as shot — synced' : kind === 'edited' ? 'Marked as edited — synced' : 'Marked as designed — synced')
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
 
   // ---- Reference block helpers (example links live as an array) ----
   const setRefLink = (i, v) => setForm((f) => ({ ...f, reference_links: f.reference_links.map((x, j) => (j === i ? v : x)) }))
@@ -291,7 +303,6 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       if (crewViewer) {
         // The crew move their work with a milestone tick and drop their own
         // stage's file link — never a raw stage change, never another's link.
-        if (milestone) payload.milestone = milestone
         if (myHats.operator && (form.shot_link || '') !== (item.shot_link || '')) payload.shot_link = form.shot_link.trim()
         if (myHats.editor && (form.ready_link || '') !== (item.ready_link || '')) payload.ready_link = form.ready_link.trim()
         if (myHats.designer && (form.design_link || '') !== (item.design_link || '')) payload.design_link = form.design_link.trim()
@@ -548,7 +559,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 {myHats.operator && (
                   <button type="button" className={'do-tick' + ((alreadyShot || milestone === 'shot') ? ' on' : '')}
                     disabled={alreadyShot} data-tip="Filming is done"
-                    onClick={() => setMilestone((m) => (m === 'shot' ? null : 'shot'))}>
+                    onClick={() => tickMilestone('shot')}>
                     <span className="do-box">{(alreadyShot || milestone === 'shot') && <Check size={12} strokeWidth={3.5} />}</span>
                     <Clapperboard size={13} /> {alreadyShot ? 'Shot' : 'Mark as shot'}
                   </button>
@@ -556,7 +567,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 {myHats.editor && (
                   <button type="button" className={'do-tick' + ((alreadyReady || milestone === 'edited') ? ' on' : '')}
                     disabled={alreadyReady} data-tip="The cut is ready"
-                    onClick={() => setMilestone((m) => (m === 'edited' ? null : 'edited'))}>
+                    onClick={() => tickMilestone('edited')}>
                     <span className="do-box">{(alreadyReady || milestone === 'edited') && <Check size={12} strokeWidth={3.5} />}</span>
                     <Scissors size={13} /> {alreadyReady ? 'Edited' : 'Mark as edited'}
                   </button>
@@ -564,7 +575,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 {myHats.designer && (
                   <button type="button" className={'do-tick' + ((alreadyReady || milestone === 'designed') ? ' on' : '')}
                     disabled={alreadyReady} data-tip="The artwork is ready"
-                    onClick={() => setMilestone((m) => (m === 'designed' ? null : 'designed'))}>
+                    onClick={() => tickMilestone('designed')}>
                     <span className="do-box">{(alreadyReady || milestone === 'designed') && <Check size={12} strokeWidth={3.5} />}</span>
                     <Palette size={13} /> {alreadyReady ? 'Designed' : 'Mark as designed'}
                   </button>

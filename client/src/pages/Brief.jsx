@@ -602,7 +602,6 @@ export default function Brief() {
               ].filter(Boolean).join(' · ')
             )}
           </h2>
-          <div className="stat-sub" style={{ marginTop: 4 }}>Your own tasks only — today, then the days ahead.</div>
         </div>
 
         {missingBlock}

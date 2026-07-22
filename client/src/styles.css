@@ -2183,3 +2183,26 @@ button.cb-toggle:hover { color: var(--ink); }
 /* The graveyard column stays visible but never competes with live work. */
 .board-col.dead-col { opacity: 0.55; transition: opacity 0.15s; }
 .board-col.dead-col:hover, .board-col.dead-col.over { opacity: 1; }
+
+/* ============ Round 19: personal sidebar ============ */
+.side-edit-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 9px;
+  color: var(--cream); font-size: 13.5px; font-weight: 600; cursor: grab; user-select: none;
+}
+.side-edit-row:active { cursor: grabbing; }
+.side-edit-row.off { opacity: 0.45; }
+.side-edit-row:hover { background: rgba(255, 255, 255, 0.08); }
+.side-edit-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-grip { display: inline-flex; opacity: 0.6; }
+.side-eye {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border: 0; border-radius: 7px; background: none; color: inherit; cursor: pointer; opacity: 0.85;
+}
+.side-eye:hover { background: rgba(255, 255, 255, 0.14); opacity: 1; }
+.side-edit-foot { display: flex; gap: 6px; padding: 2px 4px 0; }
+.side-edit-btn {
+  display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; cursor: pointer;
+  color: inherit; opacity: 0.62; font-size: 11.5px; font-weight: 700; padding: 6px 8px; border-radius: 7px;
+  font-family: inherit; letter-spacing: 0.2px;
+}
+.side-edit-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.1); }
