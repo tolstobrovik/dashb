@@ -2206,3 +2206,8 @@ button.cb-toggle:hover { color: var(--ink); }
   font-family: inherit; letter-spacing: 0.2px;
 }
 .side-edit-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.1); }
+
+/* Round 20: the whole sidebar personalizes. Locked rows (My Day) show a
+   calm, non-interactive eye; arrows complement drag on touch screens. */
+.side-eye.locked { opacity: 0.4; cursor: default; }
+.side-edit-foot { margin-top: 6px; }

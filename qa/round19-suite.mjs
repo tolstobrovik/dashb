@@ -27,12 +27,12 @@ await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout
 await p.waitForTimeout(600)
 ok('Personalize toggle sits under the channels', (await p.locator('.side-edit-btn', { hasText: 'Personalize' }).count()) === 1)
 await p.locator('.side-edit-btn', { hasText: 'Personalize' }).click()
-ok('edit mode lists every channel with an eye', (await p.locator('.side-edit-row').count()) === 6)
+ok('edit mode lists every channel with an eye', (await p.locator('.side-edit-row.grp-channels').count()) === chans.length)
 // hide Telegram Uzb + Target
-await p.locator('.side-edit-row', { hasText: hideA.label }).locator('.side-eye').click()
-await p.locator('.side-edit-row', { hasText: hideB.label }).locator('.side-eye').click()
+await p.locator('.side-edit-row.grp-channels', { hasText: hideA.label }).locator('.side-eye').last().click()
+await p.locator('.side-edit-row.grp-channels', { hasText: hideB.label }).locator('.side-eye').last().click()
 // drag YouTube to the top
-await p.locator('.side-edit-row', { hasText: dragMe.label }).dragTo(p.locator('.side-edit-row').first())
+await p.locator('.side-edit-row.grp-channels', { hasText: dragMe.label }).dragTo(p.locator('.side-edit-row.grp-channels').first())
 await p.locator('.side-edit-btn', { hasText: 'Done' }).click()
 const side1 = await p.locator('.sidebar nav').textContent()
 ok('hidden channels left the sidebar', !side1.includes(hideA.label) && !side1.includes(hideB.label))

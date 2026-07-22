@@ -88,7 +88,7 @@ export default function Layout() {
   return (
     <div className={'layout' + (sideOff ? ' side-off' : '')}>
       <aside className={`sidebar${open ? ' open' : ''}`}>
-        <Sidebar user={user} onNavigate={() => setOpen(false)} onLogout={logout} />
+        <Sidebar key={user.id} user={user} onNavigate={() => setOpen(false)} onLogout={logout} />
       </aside>
       <div className={`scrim${open ? ' show' : ''}`} onClick={() => setOpen(false)} />
 
