@@ -37,7 +37,7 @@ export default function ProjectDetail() {
   useEffect(() => {
     const refresh = () => {
       if (document.hidden || campModal || projModal || actualEdit !== null) return
-      api.get(`/projects/${id}`).then(setP).catch(() => {})
+      api.pollView(`/projects/${id}`).then((f) => { if (f) setP(f) }).catch(() => {})
     }
     const t = setInterval(refresh, 10000)
     return () => clearInterval(t)

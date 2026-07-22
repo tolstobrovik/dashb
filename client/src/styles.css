@@ -2178,3 +2178,8 @@ button.cb-toggle:hover { color: var(--ink); }
   /* Published-by-channel bars: give the numbers room on a phone. */
   .pub-name { flex-basis: 38%; font-size: 12.5px; }
 }
+
+/* ============ Round 18: quieter chrome ============ */
+/* The graveyard column stays visible but never competes with live work. */
+.board-col.dead-col { opacity: 0.55; transition: opacity 0.15s; }
+.board-col.dead-col:hover, .board-col.dead-col.over { opacity: 1; }

@@ -157,7 +157,10 @@ await p3.waitForTimeout(500)
 const jasBrief = await p3.locator('.content').textContent()
 ok('member brief is the simple one — no crew sections', jasBrief.includes('To do today') && !jasBrief.includes('Editing desk') && !jasBrief.includes('Record today'))
 ok('today list holds their task', jasBrief.includes('r5: jas post today'))
-ok('horizons: tomorrow / 3 / 7 / custom', jasBrief.includes('Tomorrow') && jasBrief.includes('Next 7 days') && jasBrief.includes('Custom'))
+// Horizons only render when they hold work (round 18 minimalism); the custom
+// range is always offered, and beyond-horizon work stays out until it's used.
+ok('beyond-horizon work hidden until custom dates; custom always offered',
+  !jasBrief.includes('r5: jas next week') && jasBrief.includes('Custom'))
 // the custom stretch finds the task 9 days out
 await p3.locator('.brief-horizon .miss-custom input').first().fill(add(8))
 await p3.locator('.brief-horizon .miss-custom input').last().fill(add(12))

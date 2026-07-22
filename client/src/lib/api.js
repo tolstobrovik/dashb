@@ -120,7 +120,7 @@ function mergeRecent(path, fresh) {
 // asks the server "only if it changed". Unchanged data comes back as a tiny
 // 304 with no body — poll() then returns null so callers skip re-rendering.
 const etags = new Map()
-async function poll(path) {
+async function conditionalGet(path) {
   const etag = etags.get(path)
   const res = await fetch(`/api${path}`, {
     cache: 'no-store',
@@ -133,8 +133,16 @@ async function poll(path) {
   if (!res.ok) throw new Error(`Request failed (${res.status})`)
   const next = res.headers.get('ETag')
   if (next) etags.set(path, next)
-  return mergeRecent(path, await res.json())
+  return res.json()
 }
+async function poll(path) {
+  const fresh = await conditionalGet(path)
+  return fresh === null ? null : mergeRecent(path, fresh)
+}
+// ETag'd poll for derived views and single objects (a revision feed, one
+// campaign): the recent-write merge is for plain row lists and would splice
+// foreign rows into these shapes — so it is skipped on purpose.
+const pollView = conditionalGet
 
 export const api = {
   get: (p) => request(p),
@@ -143,4 +151,5 @@ export const api = {
   patch: async (p, body) => { dropMemo(p); const r = await request(p, { method: 'PATCH', body }); noteWrite(p, r); return r },
   del: async (p) => { dropMemo(p); const r = await request(p, { method: 'DELETE' }); noteDelete(p); return r },
   poll,
+  pollView,
 }

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { CalendarClock, Check, AlertCircle, Megaphone, Rows3 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PC, daysUntil } from '../components/ProjectBits.jsx'
@@ -88,9 +88,13 @@ export default function Overview() {
   const statusesById = useMemo(() => Object.fromEntries(statuses.map((s) => [s.id, s])), [statuses])
 
   // ---- per-department cards ----
-  const depts = useMemo(() => channels.map((c, i) => {
+  const depts = useMemo(() => {
+    // Killed pieces (Deleted stage) are records, not open work — they must
+    // not inflate a channel's open/overdue counts or its stage chips.
+    const dead = new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id))
+    return channels.map((c, i) => {
     const tasks = content.filter((t) => t.channels.includes(c.key))
-    const open = tasks.filter((t) => !t.done_at)
+    const open = tasks.filter((t) => !t.done_at && !dead.has(t.status_id))
     const dateOf = (t) => t.release_date || t.recording_date || null
     const overdue = open.filter((t) => dateOf(t) && dateOf(t) < today)
     const weekAgo = addDaysISO(today, -7)
@@ -99,7 +103,8 @@ export default function Overview() {
     const plans = trackers.filter((t) => t.department === c.key && t.content_type)
     const others = trackers.filter((t) => t.department === c.key && !t.content_type)
     return { c, color: deptColor(i), open, overdue, doneWeek, byStage, meters: [...plans, ...others].slice(0, 3) }
-  }), [channels, content, statuses, trackers, today])
+    })
+  }, [channels, content, statuses, trackers, today])
 
   // ---- campaigns strip: what's running, what's next ----
   const liveCamps = useMemo(() => camps.filter((c) => c.status === 'live' || c.status === 'blocked'), [camps])

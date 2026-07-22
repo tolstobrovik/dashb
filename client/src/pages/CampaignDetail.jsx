@@ -43,7 +43,7 @@ export default function CampaignDetail() {
   useEffect(() => {
     const refresh = () => {
       if (document.hidden || editing || openItem || actualEdit !== null) return
-      api.get(`/campaigns/${id}`).then(setC).catch(() => {})
+      api.pollView(`/campaigns/${id}`).then((f) => { if (f) setC(f) }).catch(() => {})
       api.poll('/content').then((f) => { if (f) setContent(f) }).catch(() => {})
     }
     const t = setInterval(refresh, 10000)

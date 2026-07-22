@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors } from 'lucide-react'
-import { dateLabel, typeInfo } from '../lib/constants.js'
+import { dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
 
 // Simple kanban: one column per pipeline stage, drag a card to move it.
@@ -28,7 +28,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
         return (
           <div
             key={s.id}
-            className={`board-col${overCol === s.id ? ' over' : ''}`}
+            className={`board-col${overCol === s.id ? ' over' : ''}${isDeletedLabel(s.label) ? ' dead-col' : ''}`}
             style={{ borderTop: `3px solid ${s.color}` }}
             onDragOver={(e) => { if (canMove) { e.preventDefault(); setOverCol(s.id) } }}
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol((c) => (c === s.id ? null : c)) }}

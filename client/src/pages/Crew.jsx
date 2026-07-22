@@ -5,7 +5,7 @@ import {
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, scheduleLabel, WORK_DAYS } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, scheduleLabel, WORK_DAYS, isDeletedLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
@@ -158,6 +158,12 @@ export default function Crew() {
   const [loading, setLoading] = useState(!boot)
   const [openItem, setOpenItem] = useState(null)
   const [schedFor, setSchedFor] = useState(null)
+  // Killed pieces (Deleted stage) are nobody's workload — drop them before
+  // any shoots/edits/design math runs.
+  const live = useMemo(() => {
+    const dead = new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id))
+    return content.filter((t) => !dead.has(t.status_id))
+  }, [content, statuses])
   const [view, setViewState] = useState(() => localStorage.getItem('satashkent_crew_view') || 'deck')
   const setView = (v) => { setViewState(v); localStorage.setItem('satashkent_crew_view', v) }
   const [tab, setTabState] = useState(() => localStorage.getItem('satashkent_pp_tab') || 'video')
@@ -197,9 +203,9 @@ export default function Crew() {
 
   const loads = useMemo(() => {
     const m = new Map()
-    for (const u of crewAll) m.set(u.id, workloadOf(u, content, today))
+    for (const u of crewAll) m.set(u.id, workloadOf(u, live, today))
     return m
-  }, [crewAll, content, today])
+  }, [crewAll, live, today])
 
   const week = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysISO(today, i)), [today])
 
@@ -225,7 +231,7 @@ export default function Crew() {
   const free = crew.filter((u) => loads.get(u.id).level === 'free')
 
   const dTotals = designersAll.reduce((acc, u) => {
-    const w = designWorkOf(u, content, today)
+    const w = designWorkOf(u, live, today)
     acc.open += w.open.length
     acc.overdue += w.overdue.length
     return acc
@@ -292,7 +298,7 @@ export default function Crew() {
 
       {/* ---- Designers: one card per designer, judged by the design date ---- */}
       {tab === 'design' && designers.map((u) => {
-        const w = designWorkOf(u, content, today)
+        const w = designWorkOf(u, live, today)
         return (
           <div key={u.id} className="card crew-card">
             <div className="crew-head">

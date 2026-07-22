@@ -351,9 +351,11 @@ export default function Brief() {
   useEffect(() => {
     const refresh = () => {
       if (document.hidden || openItem) return
+      // All three ride ETags: unchanged data is a 304 and the page doesn't
+      // re-render at all — the every-10s tick costs nothing when it's quiet.
       api.poll('/content').then((f) => { if (f) setContent(f) }).catch(() => {})
-      api.get('/personal').then(setPersonal).catch(() => {})
-      api.get('/content/revisions/mine').then(setPravki).catch(() => {})
+      api.poll('/personal').then((f) => { if (f) setPersonal(f) }).catch(() => {})
+      api.pollView('/content/revisions/mine').then((f) => { if (f) setPravki(f) }).catch(() => {})
     }
     const id = setInterval(refresh, 10000)
     window.addEventListener('focus', refresh)
@@ -632,14 +634,17 @@ export default function Brief() {
           <span className="stat-sub" style={{ fontWeight: 500 }}>tomorrow · 3 days · 7 days · your dates</span>
         </div>
         <div className="card card-pad brief-list">
-          {horizons.map((b) => (
+          {/* Only horizons that hold work render — a quiet week is one calm
+              line, not four headed blocks of dashes. */}
+          {horizons.every((b) => b.items.length === 0) && (
+            <div className="tt-none" style={{ padding: '2px 0 6px' }}>Nothing scheduled in the next 7 days.</div>
+          )}
+          {horizons.filter((b) => b.items.length > 0).map((b) => (
             <div key={b.key} className="brief-horizon">
               <div className="brief-h-head">
                 {b.label} <span className="count">· {b.items.length}</span>
               </div>
-              {b.items.length === 0 ? (
-                <div className="tt-none" style={{ padding: '2px 0 6px' }}>—</div>
-              ) : b.items.map((t) => (
+              {b.items.map((t) => (
                 <BriefRow key={`${t.id}-${t._next}`} item={t}
                   when={dateLabel(t._next)} work={workOnDate(t, t._next)}
                   time={t._rec ? (t.recording_time || '').slice(0, 5) || null : (t.release_time || '').slice(0, 5) || null}
