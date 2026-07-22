@@ -8,7 +8,7 @@ import {
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo } from '../lib/constants.js'
+import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import { useFullscreen } from '../lib/useFullscreen.js'
 import Meter from '../components/Meter.jsx'
 import Modal from '../components/Modal.jsx'
@@ -221,6 +221,12 @@ export default function Department() {
   const lensContent = useMemo(
     () => (hasLens && lens !== 'all' ? content.filter((t) => inLens(lens, t.channels)) : content),
     [content, lens, hasLens])
+  // Killed pieces stay visible on the board (the Deleted column is their
+  // record) but leave the calendars, timetables and upcoming lists — a dead
+  // task has no shoot, release or to-do anymore.
+  const liveContent = useMemo(
+    () => lensContent.filter((t) => !isDeletedLabel(statusesById[t.status_id]?.label)),
+    [lensContent, statusesById])
 
   // Campaigns + team: chips on kanban cards, the Campaigns board, head picker.
   const [campaigns, setCampaigns] = useState([])
@@ -383,7 +389,7 @@ export default function Department() {
   ]
 
   const dateOf = (t) => t.release_date || t.recording_date || null
-  const upcomingRows = lensContent
+  const upcomingRows = liveContent
     .filter((t) => !t.done_at && dateOf(t))
     .sort((a, b) => dateOf(a).localeCompare(dateOf(b)))
     .slice(0, 20)
@@ -436,13 +442,13 @@ export default function Department() {
           <h2>Releasing</h2>
           <span className="stat-sub" style={{ fontWeight: 500 }}>the next 7 days</span>
         </div>
-        <DeptTimetable content={lensContent} onOpen={setOpenItem} mode="release" />
+        <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="release" />
         <div className="section-head" style={{ marginTop: 14 }}>
           <Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />
           <h2>Shooting</h2>
           <span className="stat-sub" style={{ fontWeight: 500 }}>the next 7 days</span>
         </div>
-        <DeptTimetable content={lensContent} onOpen={setOpenItem} mode="recording" />
+        <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="recording" />
       </>
     )
     if (k === 'upcoming') return (
@@ -596,7 +602,7 @@ export default function Department() {
       {selectedDate ? (
         <DayAgenda
           date={selectedDate}
-          items={lensContent}
+          items={liveContent}
           statusesById={statusesById}
           canEdit={manageContent}
           onOpen={setOpenItem}
@@ -610,7 +616,7 @@ export default function Department() {
         <ContentBoard items={lensContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} campaignsById={campaignsById} teamById={teamById} />
       ) : (
         <ContentCalendar
-          items={lensContent}
+          items={liveContent}
           mode={view}
           canMove={moveTasks}
           onMoveDate={moveDate}

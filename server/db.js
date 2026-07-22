@@ -877,6 +877,9 @@ export async function seedIfEmpty() {
   ]
 
   // ---- pipeline statuses (mirrors the team's ClickUp board) ----
+  // Deleted is the graveyard: a planned/shot piece that was killed. It stays
+  // on the record (the planner's and operator's work happened) but stops
+  // counting for the editor and leaves the channel plan.
   const statusList = [
     ['Idea', '#8b8388', 0],
     ['To shoot', '#fab219', 0],
@@ -884,6 +887,7 @@ export async function seedIfEmpty() {
     ['Editing', '#b5324a', 0],
     ['Ready', '#2a78d6', 0],
     ['Published', '#0ca30c', 1],
+    ['Deleted', '#6d6a70', 0],
   ]
 
   await batch([
@@ -1139,6 +1143,16 @@ export function initDb() {
         WHERE type = 'post' AND edit_ready_date IS NOT NULL AND design_ready_date IS NULL
       `)
       await run("INSERT INTO meta (key, value) VALUES ('design_date_2026_07', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    }
+    // The Deleted stage (July 2026): killed content keeps its record instead
+    // of vanishing. Added once to existing databases; the admin owns it after.
+    if (!(await get("SELECT 1 AS x FROM meta WHERE key = 'deleted_status_2026_07'"))) {
+      const have = await get("SELECT 1 AS x FROM statuses WHERE LOWER(label) = 'deleted'")
+      if (!have) {
+        const maxSort = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM statuses')).m
+        await run("INSERT INTO statuses (label, color, sort, is_final) VALUES ('Deleted', '#6d6a70', ?, 0)", maxSort + 1)
+      }
+      await run("INSERT INTO meta (key, value) VALUES ('deleted_status_2026_07', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     }
     // Fix units minted by the old auto-pluralizer ("story" + s).
     await run("UPDATE trackers SET unit = 'stories' WHERE unit = 'storys'")

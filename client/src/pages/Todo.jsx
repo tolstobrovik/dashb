@@ -10,7 +10,7 @@ import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { playDing } from '../lib/sound.js'
-import { todayISO, dateLabel, addDaysISO, can, CONTENT_TYPES, typeInfo } from '../lib/constants.js'
+import { todayISO, dateLabel, addDaysISO, can, CONTENT_TYPES, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
 import PersonalModal from '../components/PersonalModal.jsx'
 
@@ -324,7 +324,10 @@ export default function Todo() {
   const groups = useMemo(() => {
     const t = todayISO()
     const week = addDaysISO(t, 7)
-    const open = filtered.filter((i) => !i.done_at)
+    // Killed content (Deleted stage) has no to-do left for anyone — it lives
+    // on the board's graveyard column only, never in these lists.
+    const deadIds = new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id))
+    const open = filtered.filter((i) => !i.done_at && !deadIds.has(i.status_id))
     const rest = open.filter((i) => !i.pinned) // pinned tasks live in their own section on top
     return {
       pinned: open.filter((i) => i.pinned),
@@ -334,7 +337,7 @@ export default function Todo() {
       later: rest.filter((i) => !dateOf(i) || dateOf(i) > week),
       done: filtered.filter((i) => i.done_at).sort((a, b) => b.done_at.localeCompare(a.done_at)).slice(0, 8),
     }
-  }, [filtered])
+  }, [filtered, statuses])
 
   // Route an update to the list the row lives in.
   const apiBase = (it) => (it.personal ? '/personal' : '/content')

@@ -7,7 +7,7 @@ import {
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, typeInfo, onColor } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast } from '../lib/toast.js'
@@ -164,8 +164,13 @@ function crewLanes(content, userId, statusesById, today) {
   const makeDone = (t) => !!t.done_at || !!t.ready_at || /ready|publish|post|approv|got/i.test(stOf(t))
   const lane = { shoot: [], edit: [] }
   for (const t of content) {
+    // A killed piece (Deleted stage) counts for its maker — the shoot is over,
+    // it lands in the operator's Done — but never for the editor or designer:
+    // there is nothing left to cut or draw.
+    const dead = isDeletedLabel(stOf(t))
     if (t.operator_id === userId)
-      lane.shoot.push({ t, kind: 'shoot', due: t.recording_date || null, done: shootDone(t), stamp: t.ready_at || t.done_at || t.recording_date || '' })
+      lane.shoot.push({ t, kind: 'shoot', due: t.recording_date || null, done: shootDone(t) || dead, stamp: t.ready_at || t.done_at || t.recording_date || '' })
+    if (dead) continue
     if (t.editor_id === userId)
       lane.edit.push({ t, kind: 'edit', due: t.edit_ready_date || t.release_date || null, done: makeDone(t), stamp: t.ready_at || t.done_at || '' })
     if (t.designer_id === userId)
@@ -365,7 +370,11 @@ export default function Brief() {
       t.operator_id === user.id || t.editor_id === user.id || t.designer_id === user.id),
     [content, user.id])
 
-  const open = useMemo(() => mine.filter((t) => !t.done_at), [mine])
+  // Open = not done and not killed: a Deleted task has no upcoming work for
+  // anyone, so it leaves the day lists and the crew calendar entirely.
+  const open = useMemo(
+    () => mine.filter((t) => !t.done_at && !isDeletedLabel(statusesById[t.status_id]?.label)),
+    [mine, statusesById])
 
   const recordToday = useMemo(
     () => open.filter((t) => t.recording_date === today)

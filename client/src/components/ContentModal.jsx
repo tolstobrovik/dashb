@@ -593,6 +593,27 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      {/* Crew read, they don't configure: instead of four pickers they can't
+          touch (type, platforms, crew, campaign), one compact line says what
+          the piece is, where it goes and who else is on it — the modal stays
+          small, especially on a phone. */}
+      {crewViewer && !creating ? (
+        <div className="cm-row">
+          <span className="cm-key">About</span>
+          <div className="crew-about">
+            <span className={`chip ct-${form.type}`}>{typeInfo(form.type).label}</span>
+            {form.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
+            {[['operator_id', 'Shoots'], ['editor_id', 'Edits'], ['designer_id', 'Designs']].map(([f, verb]) => {
+              const u = team.find((x) => x.id === form[f])
+              return u ? (
+                <span key={f} className="chip chip-muted">
+                  {verb}: {u.id === user.id ? 'you' : u.name.split(' ')[0]}
+                </span>
+              ) : null
+            })}
+          </div>
+        </div>
+      ) : (<>
       {/* What is it? The type binds the task to each platform's plan. */}
       <div className="cm-row">
         <span className="cm-key">Type</span>
@@ -731,6 +752,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           {campaigns.map((cp) => <option key={cp.id} value={cp.id}>{cp.name}</option>)}
         </select>
       </div>
+      </>)}
 
       {/* Dates — the shoot in hours (from–to), the editor's cut deadline, the
           designer's artwork deadline, and the public release. Each maker is

@@ -43,6 +43,11 @@ async function userExists(id) {
   return !!(await get('SELECT 1 AS x FROM users WHERE id = ?', id))
 }
 const isFinal = async (statusId) => !!(await get('SELECT 1 AS x FROM statuses WHERE id = ? AND is_final = 1', statusId))
+// The Deleted stage: killed content that stays on the record. It counts for
+// the planner/operator (their work happened) but never for the editor, and it
+// leaves the channel plan.
+const isDead = async (statusId) =>
+  !!(statusId && (await get("SELECT 1 AS x FROM statuses WHERE id = ? AND LOWER(label) = 'deleted'", statusId)))
 
 // The crew move their work with one tick — "shot" for the operator, "edited"
 // or "designed" for the maker — which lands the task on the matching pipeline
@@ -188,6 +193,8 @@ router.get('/', wrap(async (req, res) => {
 // The Pravki (revision requests) waiting on ME — the open ones on tasks where
 // I hold the stage they were sent back to. Powers the crew's "Pravki" lane.
 router.get('/revisions/mine', wrap(async (req, res) => {
+  // Pravki on a task that was later killed (Deleted stage) die with it — the
+  // fix is nobody's job anymore.
   const rows = await all(`
     SELECT r.id, r.content_id, r.round, r.requested_by, r.requested_name, r.target, r.note, r.created_at,
       c.title, c.channels, c.type, c.reference_text, c.reference_links,
@@ -197,6 +204,7 @@ router.get('/revisions/mine', wrap(async (req, res) => {
       CASE WHEN c.photo IS NULL THEN 0 ELSE 1 END AS has_photo
     FROM revisions r JOIN content c ON c.id = r.content_id
     WHERE r.resolved_at IS NULL
+      AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
     ORDER BY r.created_at DESC`)
   const mine = rows.filter((r) =>
     (r.target === 'operator' && r.operator_id === req.user.id) ||
@@ -560,7 +568,10 @@ router.patch('/:id', wrap(async (req, res) => {
     } else {
       patch.done_at = null
       if (fin && (patch.status_id ?? row.status_id) === fin.id) {
-        const lastNonFinal = await get('SELECT id FROM statuses WHERE is_final = 0 ORDER BY sort DESC, id DESC')
+        // Un-completing steps back to the last working stage — never to the
+        // Deleted graveyard, even though it sorts after Published.
+        const nonFinal = await all('SELECT id, label FROM statuses WHERE is_final = 0 ORDER BY sort, id')
+        const lastNonFinal = nonFinal.filter((s) => !/^deleted$/i.test(s.label)).at(-1)
         if (lastNonFinal) patch.status_id = lastNonFinal.id
       }
     }
@@ -615,6 +626,17 @@ router.patch('/:id', wrap(async (req, res) => {
   const nowDone = patch.done_at !== undefined ? !!patch.done_at : wasDone
   const newChannels = patch.channels !== undefined ? JSON.parse(patch.channels) : oldChannels
   const newType = patch.type !== undefined ? patch.type : row.type
+
+  // Killing a piece (→ Deleted) takes it out of the channel plan — the slot
+  // will never be filled; restoring it re-enters the plan. Skipped when the
+  // platforms/type changed in the same save (the rebuild below handles those).
+  if (patch.channels === undefined && patch.type === undefined && patch.status_id !== undefined) {
+    const wasDead = await isDead(row.status_id)
+    const nowDead = await isDead(nextStatus)
+    if (wasDead !== nowDead) {
+      for (const ch of newChannels) await bumpPlan(ch, newType, { target: nowDead ? -1 : +1 }, !nowDead)
+    }
+  }
 
   if (patch.channels !== undefined || patch.type !== undefined) {
     // Moved to other platforms / another type: walk the old plans back, then

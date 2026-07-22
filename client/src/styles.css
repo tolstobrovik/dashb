@@ -985,8 +985,12 @@ table.tbl tr:hover td { background: var(--surface-2); }
 }
 .extra-btn:hover { border-color: var(--brand-300); color: var(--brand-600); background: var(--brand-50); }
 @media (max-width: 620px) {
-  .drow { grid-template-columns: 70px 1fr 90px; }
-  .drow-quick { grid-column: 2 / -1; }
+  /* Date rows become a wrapping line on phones: the label takes its own row,
+     the date/time inputs share the next one, nothing ever clips off-screen. */
+  .drow { display: flex; flex-wrap: wrap; }
+  .drow-label { flex: 1 0 100%; }
+  .drow .input { flex: 1 1 110px; min-width: 0; width: auto; }
+  .drow-quick { flex: 1 0 100%; }
   .cm-row { grid-template-columns: 74px 1fr; }
 }
 
@@ -1215,12 +1219,14 @@ table.tbl tr:hover td { background: var(--surface-2); }
   position: absolute; top: calc(100% + 7px); left: 50%; transform: translateX(-50%);
   background: #2b2530; color: #fff; font-size: 11px; font-weight: 600; line-height: 1.25;
   padding: 5px 9px; border-radius: 7px; white-space: nowrap;
-  opacity: 0; visibility: hidden; pointer-events: none; z-index: 80;
-  transition: opacity 0.12s ease 0s, visibility 0.12s ease 0s;
+  display: none; pointer-events: none; z-index: 80;
 }
+/* display:none until hover — a hidden bubble must never widen the page's
+   scroll area (it used to add phantom horizontal scroll near the right edge). */
 [data-tip]:hover::after, [data-tip]:focus-visible::after {
-  opacity: 1; visibility: visible; transition-delay: 0.15s;
+  display: block; animation: tip-in 0.12s ease 0.15s backwards;
 }
+@keyframes tip-in { from { opacity: 0 } }
 [data-tip-left]::after { left: auto; right: 0; transform: none; }
 /* Touch screens have no hover, and the hidden bubble still widens the page's
    scroll area on narrow layouts — drop tooltips there entirely. */
@@ -2147,3 +2153,28 @@ button.cb-toggle:hover { color: var(--ink); }
 .pub-bar { flex: 1; height: 10px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .pub-bar span { display: block; height: 100%; border-radius: 999px; background: var(--brand-500); }
 .pub-n { flex-shrink: 0; font-weight: 800; font-size: 14px; color: var(--ink); min-width: 22px; text-align: right; }
+
+/* ============ Round 17: mobile & flow polish ============ */
+/* Crew modal: the compact "About" line replacing pickers the crew can't use. */
+.crew-about { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* The crew top bar on phones: the title duplicates the active link — drop it
+   and let the links wrap to a second row instead of running off the screen. */
+@media (max-width: 720px) {
+  .solo-bar { flex-wrap: wrap; row-gap: 4px; }
+  .solo-bar h1 { display: none; }
+  .solo-link { padding: 8px 10px; font-size: 13px; }
+}
+
+/* Custom date-range pickers wrap on narrow screens instead of overflowing. */
+@media (max-width: 620px) {
+  .miss-custom { flex-wrap: wrap; }
+  .miss-custom .input { width: auto; flex: 1 1 120px; min-width: 0; }
+  .brief-h-head { flex-wrap: wrap; }
+  /* Comfortable thumb targets where it matters most. */
+  .pill { padding: 8px 12px; }
+  .stage-chip, .tchip { padding: 7px 11px; }
+  .pravki-fix .btn { min-height: 38px; }
+  /* Published-by-channel bars: give the numbers room on a phone. */
+  .pub-name { flex-basis: 38%; font-size: 12.5px; }
+}

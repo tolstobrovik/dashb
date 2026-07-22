@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, CalendarRange, Scissors, Send, PenLine, Tr
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, typeInfo, tashkentDay } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, typeInfo, tashkentDay, isDeletedLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
@@ -140,6 +140,10 @@ export default function Missed() {
 
   const today = todayISO()
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users])
+  // Killed content (Deleted stage) is out of every judgement here: no misses
+  // haunt anyone for a piece that will never ship, and it can't be upcoming.
+  const deadIds = useMemo(() => new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id)), [statuses])
+  const alive = useMemo(() => content.filter((t) => !deadIds.has(t.status_id)), [content, deadIds])
   const campById = useMemo(() => Object.fromEntries(campaigns.map((c) => [c.id, c])), [campaigns])
   const projectOf = (t) => (t.campaign_id ? campById[t.campaign_id]?.project_id ?? null : null)
 
@@ -152,10 +156,10 @@ export default function Missed() {
   // ---- the numbers: done, missed, upcoming, in one window ----------------
   // Scope: admins see everything (narrowable by person), everyone else only
   // the tasks where they hold a hat. The project filter narrows both.
-  const scoped = useMemo(() => content.filter((t) =>
+  const scoped = useMemo(() => alive.filter((t) =>
     (isAdmin ? (!person || holdsHat(t, person)) : holdsHat(t, user.id)) &&
     (!project || projectOf(t) === project)),
-  [content, isAdmin, person, project, campById]) // eslint-disable-line react-hooks/exhaustive-deps
+  [alive, isAdmin, person, project, campById]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // A task's next own deadline: release, un-met edit/design dates, or the
   // shoot when nothing else is set.
@@ -262,8 +266,8 @@ export default function Missed() {
 
   // Every miss I answer for — as head, operator or editor of the entry.
   const missedAll = useMemo(
-    () => content.flatMap((t) => entriesOf(t, today)).filter((e) => isAdmin || e.who.includes(user.id)),
-    [content, today, isAdmin, user.id])
+    () => alive.flatMap((t) => entriesOf(t, today)).filter((e) => isAdmin || e.who.includes(user.id)),
+    [alive, today, isAdmin, user.id])
 
   // Period first (it scopes everything, counts included) …
   const inRange = useMemo(() => {

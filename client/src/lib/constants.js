@@ -35,6 +35,10 @@ export const PERMISSIONS = [
 export const can = (user, perm) =>
   user?.role === 'admin' || !!(user?.permissions && user.permissions[perm])
 
+// The Deleted stage: killed content that stays on the record. It counts for
+// the planner/operator, never for the editor, and leaves every to-do view.
+export const isDeletedLabel = (label) => /^deleted$/i.test(label || '')
+
 export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 // Working-schedule days, Mon-first for display but numbered like JS getDay()
