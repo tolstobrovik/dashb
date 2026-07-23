@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage } from '../db.js'
+import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { authRequired, canAccessDept, can, wrap } from '../auth.js'
 
@@ -603,6 +603,26 @@ router.patch('/:id', wrap(async (req, res) => {
   // so they never trip this.
   if ((await isFinal(nextStatus)) && !(await isFinal(row.status_id)) && !canPublish(req.user, row))
     return res.status(403).json({ error: 'Only the channel’s reviewer can publish — ask your SMM or an admin' })
+
+  // Stage rules: the admin regulates which kind of actor moves work OUT of
+  // which stage (Admin → Pipeline). Applies to moves among working stages —
+  // publishing keeps its own key above, un-publishing stays as it was, and
+  // admins pass everything. Rules only ever narrow the existing tickets
+  // (crew milestones, a member's move_tasks); they never grant new ones.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin' &&
+      !(await isFinal(row.status_id)) && !(await isFinal(nextStatus))) {
+    const kinds = [
+      row.operator_id === req.user.id && 'operator',
+      row.editor_id === req.user.id && 'editor',
+      row.designer_id === req.user.id && 'designer',
+      req.user.role === 'member' && 'member',
+    ].filter(Boolean)
+    let allowed = false
+    for (const k of kinds) {
+      if (await mayLeaveStage(k, row.status_id)) { allowed = true; break }
+    }
+    if (!allowed) return res.status(403).json({ error: 'Moving work out of this stage isn’t your step — see the stage rules in Admin' })
+  }
 
   // The videographer's clock: the first time the cut reaches a ready-or-later
   // stage (or the task completes), stamp ready_at — the proof the edit was

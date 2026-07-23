@@ -28,7 +28,7 @@ const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US'
 //  - Week: seven tall columns with rich cards (type, stage, time) — the
 //    day-to-day working view. Cards drag between days in both scales;
 //    click a card to open it, a day to plan it, + to add straight there.
-export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt }) {
+export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [] }) {
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
   const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()))
@@ -83,7 +83,9 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
     setOverCell(null)
   }
   const drop = (iso) => {
-    const item = items.find((i) => i.id === dragRef.current)
+    // The drag may have started on a calendar pill or in the unscheduled
+    // tray — either way, landing on a day sets this calendar's date.
+    const item = items.find((i) => i.id === dragRef.current) || trayItems.find((i) => i.id === dragRef.current)
     if (item && item[dateField] !== iso) onMoveDate(item, dateField, iso)
     endDrag()
   }
@@ -107,6 +109,36 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
           {canMove ? 'Drag a task to another day · click a day to plan it' : 'Click a day to plan it'}
         </span>
       </div>
+
+      {/* The waiting room: work with no date on this calendar yet. Drag a
+          chip onto a day to schedule it; click it to open the task. Hidden
+          entirely when everything is scheduled. */}
+      {trayItems.length > 0 && (
+        <div className="cal-tray">
+          <span className="cal-tray-label">Unscheduled <b>· {trayItems.length}</b></span>
+          <div className="cal-tray-items">
+            {trayItems.map((it) => {
+              const st = statusesById[it.status_id]
+              return (
+                <div
+                  key={it.id}
+                  className={`cal-tray-chip${dragId === it.id ? ' dim' : ''}`}
+                  style={st ? { borderLeftColor: st.color } : undefined}
+                  draggable={canMove}
+                  onDragStart={(e) => startDrag(e, it)}
+                  onDragEnd={endDrag}
+                  onClick={() => onOpenItem && onOpenItem(it)}
+                  title={canMove ? `${it.title} — drag onto a day to schedule, click to open` : it.title}
+                >
+                  <Icon size={10} style={{ flexShrink: 0 }} />
+                  <span className="ev-txt">{it.title}</span>
+                  <span className={`chip ct-${it.type} tray-type`}>{typeInfo(it.type).label}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {scale === 'week' ? (
         <div className="cal-grid wk-grid">

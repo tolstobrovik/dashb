@@ -16,7 +16,7 @@ DATA_DIR=$SP/uxdata PORT=4090 node /home/user/dashb/server/index.js > $SP/api409
 for i in $(seq 1 30); do curl -s http://localhost:4090/api/health >/dev/null 2>&1 && break; sleep 0.5; done
 node seed.mjs > $SP/seed-run.log 2>&1 && echo "seed OK" >> $RES || echo "seed FAIL" >> $RES
 
-for s in dash-suite brief-suite role-suite polish-suite programs-suite lens-dark-suite polish2-suite round-suite round3-suite round4-suite round5-suite round6-suite round7-suite round8-suite round9-suite round10-suite round11-suite round12-suite round13-suite round14-suite round15-suite round16-suite round17-suite round19-suite round20-suite; do
+for s in dash-suite brief-suite role-suite polish-suite programs-suite lens-dark-suite polish2-suite round-suite round3-suite round4-suite round5-suite round6-suite round7-suite round8-suite round9-suite round10-suite round11-suite round12-suite round13-suite round14-suite round15-suite round16-suite round17-suite round19-suite round20-suite round21-suite; do
   if node $s.mjs > $SP/out-$s.log 2>&1; then echo "$s PASS" >> $RES; else echo "$s FAIL" >> $RES; fi
 done
 fuser -k 4090/tcp 2>/dev/null; sleep 0.5

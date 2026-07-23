@@ -5,6 +5,7 @@ import {
   X, CheckSquare, Scissors, Video,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
+import { toast } from '../lib/toast.js'
 import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
 import { CHANNEL_ICONS, iconFor, PERMISSIONS, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor } from '../lib/constants.js'
@@ -543,13 +544,33 @@ function ChannelsTab({ onOpenReport }) {
 }
 
 /* ==================== PIPELINE (statuses) ==================== */
+// Who moves work OUT of which stage — the natural chain by default (operator
+// works until Shot, editor until Ready, the SMM everywhere), tunable per cell.
+const STAGE_ACTORS = [
+  { key: 'operator', label: 'Operator' },
+  { key: 'editor', label: 'Editor' },
+  { key: 'designer', label: 'Designer' },
+  { key: 'member', label: 'Member (SMM)' },
+]
+
 function PipelineTab() {
   const [statuses, setStatuses] = useState([])
   const [modal, setModal] = useState(null)
   const [err, setErr] = useState('')
+  const [rules, setRules] = useState(null)
 
-  const load = () => api.get('/statuses').then(setStatuses)
+  const load = () => Promise.all([
+    api.get('/statuses').then(setStatuses),
+    api.get('/statuses/rules').then(setRules).catch(() => {}),
+  ])
   useEffect(() => { load() }, [])
+
+  const toggleRule = async (actor, sid) => {
+    const next = { ...rules, [actor]: { ...rules[actor], [sid]: !rules[actor]?.[sid] } }
+    setRules(next)
+    try { await api.post('/statuses/rules', next); toast('Stage rules saved — synced') }
+    catch (e) { alert(e.message); load() }
+  }
 
   const save = async () => {
     if (!modal.label.trim()) return
@@ -600,6 +621,54 @@ function PipelineTab() {
           </div>
         ))}
       </div>
+
+      {/* ---- stage rules: who moves work out of each stage ---- */}
+      {rules && statuses.length > 0 && (
+        <>
+          <div className="section-head" style={{ marginTop: 18 }}>
+            <h2>Stage rules</h2>
+            <span className="count">· who may move a task out of each stage</span>
+          </div>
+          <div className="card table-wrap">
+            <table className="tbl rules-tbl">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  {STAGE_ACTORS.map((a) => <th key={a.key}>{a.label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {statuses.filter((s) => !s.is_final).map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <span className="status-dot" style={{ background: s.color, marginRight: 7 }} />
+                      <b>{s.label}</b> <span className="stat-sub">→ onward</span>
+                    </td>
+                    {STAGE_ACTORS.map((a) => {
+                      const on = !!rules[a.key]?.[s.id]
+                      return (
+                        <td key={a.key}>
+                          <button type="button" className={'perm-toggle rules-cell' + (on ? ' on' : '')}
+                            onClick={() => toggleRule(a.key, s.id)}
+                            data-tip={on ? `${a.label} may move work out of ${s.label}` : `${a.label} may NOT move work out of ${s.label}`}
+                            aria-label={`${a.label} out of ${s.label}`}>
+                            {on && <Check size={12} strokeWidth={3.5} />}
+                          </button>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
+              Admins always move everything. Publishing (into the final stage) is governed by each member’s
+              “Review &amp; publish” permission, not by this table. Rules narrow what a role could already do —
+              the crew still work through their ticks.
+            </div>
+          </div>
+        </>
+      )}
 
       {modal && (
         <Modal

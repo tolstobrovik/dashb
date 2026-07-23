@@ -227,6 +227,11 @@ export default function Department() {
   const liveContent = useMemo(
     () => lensContent.filter((t) => !isDeletedLabel(statusesById[t.status_id]?.label)),
     [lensContent, statusesById])
+  // The calendar's waiting room: open work that has no date on the current
+  // calendar yet. Posts aren't filmed, so they never wait for a shoot day.
+  const unscheduled = useMemo(() => liveContent.filter((t) => !t.done_at &&
+    (view === 'recording' ? (t.type !== 'post' && !t.recording_date) : !t.release_date)),
+  [liveContent, view])
 
   // Campaigns + team: chips on kanban cards, the Campaigns board, head picker.
   const [campaigns, setCampaigns] = useState([])
@@ -617,6 +622,7 @@ export default function Department() {
       ) : (
         <ContentCalendar
           items={liveContent}
+          trayItems={unscheduled}
           mode={view}
           canMove={moveTasks}
           onMoveDate={moveDate}

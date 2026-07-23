@@ -2211,3 +2211,26 @@ button.cb-toggle:hover { color: var(--ink); }
    calm, non-interactive eye; arrows complement drag on touch screens. */
 .side-eye.locked { opacity: 0.4; cursor: default; }
 .side-edit-foot { margin-top: 6px; }
+
+/* ============ Round 21: unscheduled tray + stage rules ============ */
+.cal-tray {
+  display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
+  margin: 0 14px 10px; padding: 9px 12px; border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.cal-tray-label { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); padding-top: 3px; flex-shrink: 0; }
+.cal-tray-items { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.cal-tray-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 260px;
+  padding: 4px 9px; border: 1px solid var(--hairline); border-left: 3px solid var(--hairline-strong);
+  border-radius: 8px; background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--ink);
+  cursor: grab; user-select: none;
+}
+.cal-tray-chip:active { cursor: grabbing; }
+.cal-tray-chip:hover { border-color: var(--brand-300); }
+.cal-tray-chip.dim { opacity: 0.45; }
+.cal-tray-chip .ev-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-tray-chip .tray-type { font-size: 10px; padding: 1px 7px; flex-shrink: 0; }
+.rules-tbl td, .rules-tbl th { text-align: center; }
+.rules-tbl td:first-child, .rules-tbl th:first-child { text-align: left; }
+.rules-cell { margin: 0 auto; }

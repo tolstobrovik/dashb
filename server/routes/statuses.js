@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, batch } from '../db.js'
+import { all, get, run, batch, STAGE_ACTORS, defaultMayLeave, getStageRules } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 
 const router = Router()
@@ -7,6 +7,42 @@ router.use(authRequired)
 
 router.get('/', wrap(async (req, res) => {
   res.json(await all('SELECT * FROM statuses ORDER BY sort, id'))
+}))
+
+// ---- stage rules: who may move a task OUT of each stage ----
+// GET answers the EFFECTIVE matrix (admin overrides merged over the role
+// defaults) so the client never re-implements the defaults; POST stores the
+// full matrix the admin saved.
+router.get('/rules', wrap(async (req, res) => {
+  const statuses = await all('SELECT id, label FROM statuses ORDER BY sort, id')
+  const stored = await getStageRules()
+  const out = {}
+  for (const actor of STAGE_ACTORS) {
+    out[actor] = {}
+    for (const s of statuses) {
+      const v = stored?.[actor]?.[String(s.id)]
+      out[actor][s.id] = v === undefined ? defaultMayLeave(actor, s.label) : !!v
+    }
+  }
+  res.json(out)
+}))
+
+router.post('/rules', adminOnly, wrap(async (req, res) => {
+  const body = req.body || {}
+  const statuses = await all('SELECT id FROM statuses')
+  const known = new Set(statuses.map((s) => String(s.id)))
+  const clean = {}
+  for (const actor of STAGE_ACTORS) {
+    if (body[actor] && typeof body[actor] === 'object') {
+      clean[actor] = {}
+      for (const [sid, v] of Object.entries(body[actor])) {
+        if (known.has(String(sid))) clean[actor][String(sid)] = !!v
+      }
+    }
+  }
+  await run("INSERT INTO meta (key, value) VALUES ('stage_rules', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    JSON.stringify(clean))
+  res.json({ ok: true })
 }))
 
 router.post('/', adminOnly, wrap(async (req, res) => {

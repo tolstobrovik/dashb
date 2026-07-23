@@ -819,6 +819,40 @@ export async function getChannelKeys() {
   return (await all('SELECT key FROM channels ORDER BY sort')).map((r) => r.key)
 }
 
+// ---- stage rules: who may move a task OUT of each stage ------------------
+// The admin regulates which kind of actor advances work from which stage
+// (Admin → Pipeline). Defaults mirror the natural chain — the operator works
+// until Shot, the editor until Ready, the SMM everywhere — extended to
+// earlier stages so behind-schedule work can still be pushed forward.
+// Rules only ever narrow: they never grant crew powers they don't have, and
+// the Published gate keeps its own key (review_publish).
+export const STAGE_ACTORS = ['operator', 'editor', 'designer', 'member']
+export function defaultMayLeave(actor, label) {
+  const l = String(label || '').toLowerCase()
+  if (/^deleted$/.test(l)) return actor === 'member'
+  if (actor === 'member') return true
+  if (actor === 'operator') return /idea|to shoot/.test(l)
+  if (actor === 'editor' || actor === 'designer') return /idea|to shoot|shot|editing/.test(l)
+  return false
+}
+export async function getStageRules() {
+  try {
+    const row = await get("SELECT value FROM meta WHERE key = 'stage_rules'")
+    const o = JSON.parse(row?.value || '{}')
+    return o && typeof o === 'object' ? o : {}
+  } catch { return {} }
+}
+// Effective answer for one actor kind leaving one stage: the stored override
+// when the admin set one, the role default otherwise.
+export async function mayLeaveStage(actor, statusId) {
+  if (!statusId) return true
+  const st = await get('SELECT label FROM statuses WHERE id = ?', statusId)
+  if (!st) return true
+  const rules = await getStageRules()
+  const v = rules?.[actor]?.[String(statusId)]
+  return v === undefined ? defaultMayLeave(actor, st.label) : !!v
+}
+
 // Record today's value for a metric (upsert), so comparisons have data.
 export async function snapshotTracker(trackerId) {
   const row = await get('SELECT current FROM trackers WHERE id = ?', trackerId)
