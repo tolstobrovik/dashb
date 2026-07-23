@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
+import QuickFind from './QuickFind.jsx'
 import Logo from './Logo.jsx'
 import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
@@ -15,6 +16,15 @@ export default function Layout() {
   const { visible, byKey } = useChannels()
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  // Ctrl/Cmd-K quick find — reach any task or page from anywhere.
+  const [finding, setFinding] = useState(false)
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setFinding((v) => !v) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   // Full-screen mode: tuck the sidebar away and give the page every pixel.
   const [sideOff, setSideOff] = useState(() => localStorage.getItem('satashkent_side_off') === '1')
   const toggleSide = () => {
@@ -72,6 +82,7 @@ export default function Layout() {
           <NavLink to="/docs" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <ScrollText size={16} /> Docs & KPIs
           </NavLink>
+          <button className="icon-btn" onClick={() => setFinding(true)} data-tip="Find anything — Ctrl K" aria-label="Quick find"><Search size={17} /></button>
           <ThemeToggle />
           <NavLink to="/profile" className="solo-avatar" data-tip="My profile — photo, appearance, password" data-tip-left="" aria-label="My profile">
             <Avatar name={user.name} color={user.color} src={user.avatar} size="sm" />
@@ -81,6 +92,7 @@ export default function Layout() {
         <main className="content">
           <Outlet />
         </main>
+        {finding && <QuickFind onClose={() => setFinding(false)} />}
       </div>
     )
   }
@@ -105,10 +117,16 @@ export default function Layout() {
           <div>
             <h1>{title}</h1>
           </div>
+          <span className="topbar-spacer" />
+          <button className="icon-btn topbar-find" onClick={() => setFinding(true)}
+            data-tip="Find anything — Ctrl K" data-tip-left="" aria-label="Quick find">
+            <Search size={18} />
+          </button>
         </header>
         <main className="content">
           <Outlet />
         </main>
+        {finding && <QuickFind onClose={() => setFinding(false)} />}
       </div>
     </div>
   )

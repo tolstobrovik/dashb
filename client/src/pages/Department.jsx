@@ -8,7 +8,7 @@ import {
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
+import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
 import { useFullscreen } from '../lib/useFullscreen.js'
 import Meter from '../components/Meter.jsx'
 import Modal from '../components/Modal.jsx'
@@ -116,7 +116,7 @@ function DeptTaskList({ rows, empty, onOpen, done = false }) {
   return (
     <div className="card card-pad" style={{ paddingTop: 8, paddingBottom: 8 }}>
       {rows.map((t) => {
-        const d = done ? t.done_at.slice(0, 10) : (t.release_date || t.recording_date)
+        const d = done ? tashkentDay(t.done_at) : (t.release_date || t.recording_date)
         const late = !done && d < today
         return (
           <button key={t.id} className="ov-row" onClick={() => onOpen(t)}>

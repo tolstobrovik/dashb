@@ -8,7 +8,7 @@ import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
 import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
-import { CHANNEL_ICONS, iconFor, PERMISSIONS, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor } from '../lib/constants.js'
+import { CHANNEL_ICONS, iconFor, PERMISSIONS, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
@@ -839,7 +839,7 @@ function ReportsTab({ channel, setChannel }) {
                         {r.items.map((it) => (
                           <div key={it.id} className="report-item">
                             <span>{it.title}</span>
-                            <span className="stat-sub">{byKey[it.channel]?.label || it.channel} · {it.done_at.slice(0, 10)}</span>
+                            <span className="stat-sub">{byKey[it.channel]?.label || it.channel} · {tashkentDay(it.done_at)}</span>
                           </div>
                         ))}
                       </div>

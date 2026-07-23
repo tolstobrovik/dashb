@@ -7,7 +7,7 @@ import {
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel, can, tashkentDay } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast } from '../lib/toast.js'
@@ -424,6 +424,19 @@ export default function Brief() {
     () => (isCrew ? crewLanes(content, user.id, statusesById, today) : null),
     [content, user.id, statusesById, today, isCrew])
 
+  // The reviewer's queue: Ready work on your channels waits for your call —
+  // publish it with one tap, or open it to send Pravki. The other half of
+  // the crew's Pravki lane.
+  const reviewQueue = useMemo(() => {
+    if (isCrew || !(user.role === 'admin' || can(user, 'review_publish'))) return []
+    const ready = new Set(statuses.filter((s) => /^ready$/i.test(s.label)).map((s) => s.id))
+    return content
+      .filter((t) => !t.done_at && ready.has(t.status_id) &&
+        (user.role === 'admin' || t.channels.some((c) => (user.departments || []).includes(c))))
+      .sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999'))
+  }, [content, statuses, user, isCrew])
+
+
   // The nearest upcoming date of a task — shoot, edit-ready or release.
   const nextOf = (t) => {
     const ds = [t.recording_date, t.edit_ready_date, t.design_ready_date, t.release_date].filter((d) => d && d > today)
@@ -529,6 +542,50 @@ export default function Brief() {
     </>
   )
 
+  const publishNow = async (t) => {
+    const fin = statuses.find((s) => s.is_final)
+    if (!fin) return
+    try {
+      playDone()
+      await updateContent(t, { status_id: fin.id })
+      toast('Published — synced')
+    } catch (e) { alert(e.message) }
+  }
+
+  const reviewBlock = reviewQueue.length > 0 && (
+    <>
+      <div className="section-head">
+        <Send size={17} style={{ color: '#2a78d6' }} />
+        <h2 style={{ color: '#2a78d6' }}>Waiting for your review</h2>
+        <span className="count">· {reviewQueue.length}</span>
+      </div>
+      <div className="card card-pad brief-list">
+        {reviewQueue.slice(0, 12).map((t) => (
+          <div key={t.id} className="ov-row rq-row" role="button" tabIndex={0}
+            onClick={() => setOpenItem(t)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setOpenItem(t) }}>
+            <span className="brief-when">
+              {t.release_date
+                ? <span className="brief-when-sub">{dateLabel(t.release_date)}</span>
+                : <span className="brief-anytime">no date</span>}
+            </span>
+            <span className="brief-main"><span className="ov-title">{t.title}</span></span>
+            <span className="ov-chips">
+              <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
+              {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
+              <button className="btn btn-sm btn-primary rq-pub"
+                onClick={(e) => { e.stopPropagation(); publishNow(t) }}
+                data-tip="Release it — Ready → Published">
+                <Send size={13} /> Publish
+              </button>
+            </span>
+          </div>
+        ))}
+        {reviewQueue.length > 12 && <div className="tt-none" style={{ padding: '4px 0 0' }}>+{reviewQueue.length - 12} more on the boards</div>}
+      </div>
+    </>
+  )
+
   const pravkiBlock = pravki.length > 0 && (
     <>
       <div className="section-head">
@@ -578,7 +635,7 @@ export default function Brief() {
         <div className="card card-pad brief-list">
           {doneRows.map((t) => (
             <BriefRow key={t.id} item={t} done
-              when={dateLabel(t.done_at.slice(0, 10))} time={null}
+              when={dateLabel(tashkentDay(t.done_at))} time={null}
               byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
           ))}
         </div>
@@ -607,6 +664,8 @@ export default function Brief() {
         {missingBlock}
 
         {pravkiBlock}
+
+        {reviewBlock}
 
         <div className="section-head">
           <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />

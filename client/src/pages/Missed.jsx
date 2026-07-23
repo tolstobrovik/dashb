@@ -28,18 +28,18 @@ const whoOf = (t) => [
 // editor, the design deadline by the designer.
 const entriesOf = (t, today) => {
   const out = []
-  if (t.release_date && t.release_date < today && (!t.done_at || t.done_at.slice(0, 10) > t.release_date))
+  if (t.release_date && t.release_date < today && (!t.done_at || tashkentDay(t.done_at) > t.release_date))
     out.push({ t, kind: 'release', date: t.release_date, mark: t.done_at || null, who: whoOf(t) })
   const readyMark = t.ready_at || t.done_at || null
-  if (t.edit_ready_date && t.edit_ready_date < today && (!readyMark || readyMark.slice(0, 10) > t.edit_ready_date))
+  if (t.edit_ready_date && t.edit_ready_date < today && (!readyMark || tashkentDay(readyMark) > t.edit_ready_date))
     out.push({ t, kind: 'edit', date: t.edit_ready_date, mark: readyMark, who: [t.editor_id || t.operator_id].filter(Boolean) })
-  if (t.design_ready_date && t.design_ready_date < today && (!readyMark || readyMark.slice(0, 10) > t.design_ready_date))
+  if (t.design_ready_date && t.design_ready_date < today && (!readyMark || tashkentDay(readyMark) > t.design_ready_date))
     out.push({ t, kind: 'design', date: t.design_ready_date, mark: readyMark, who: [t.designer_id].filter(Boolean) })
   return out
 }
 
 const daysLate = (e, today) => {
-  const end = e.mark ? e.mark.slice(0, 10) : today
+  const end = e.mark ? tashkentDay(e.mark) : today
   return Math.max(1, Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${e.date}T00:00:00Z`)) / 864e5))
 }
 
@@ -208,7 +208,7 @@ export default function Missed() {
     const pastHi = hi && hi > today ? today : hi
     const futLo = lo && lo < today ? today : lo
     const inWin = (d, a, b) => d && (!a || d >= a) && (!b || d <= b)
-    const done = scoped.filter((t) => t.done_at && inWin(t.done_at.slice(0, 10), lo, pastHi)).length
+    const done = scoped.filter((t) => t.done_at && inWin(tashkentDay(t.done_at), lo, pastHi)).length
     const missedN = scoped.flatMap((t) => entriesOf(t, today))
       .filter((e) => (isAdmin ? (!person || e.who.includes(person)) : e.who.includes(user.id)))
       .filter((e) => inWin(e.date, lo, pastHi)).length

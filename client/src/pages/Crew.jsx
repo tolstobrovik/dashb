@@ -5,7 +5,7 @@ import {
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, scheduleLabel, WORK_DAYS, isDeletedLabel } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, scheduleLabel, WORK_DAYS, isDeletedLabel, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
@@ -40,7 +40,7 @@ function designWorkOf(u, content, today) {
     .sort((a, b) => (a.design_ready_date || a.release_date || '9999').localeCompare(b.design_ready_date || b.release_date || '9999'))
   const overdue = open.filter((t) => t.design_ready_date && t.design_ready_date < today && !t.ready_at)
   const week = open.filter((t) => t.design_ready_date && t.design_ready_date >= today && t.design_ready_date < addDaysISO(today, 7))
-  const done30 = mine.filter((t) => t.done_at && t.done_at.slice(0, 10) >= addDaysISO(today, -30))
+  const done30 = mine.filter((t) => t.done_at && tashkentDay(t.done_at) >= addDaysISO(today, -30))
   return { open, overdue, week, done30 }
 }
 

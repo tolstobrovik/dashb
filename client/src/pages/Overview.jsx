@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { CalendarClock, Check, AlertCircle, Megaphone, Rows3 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PC, daysUntil } from '../components/ProjectBits.jsx'
@@ -98,7 +98,7 @@ export default function Overview() {
     const dateOf = (t) => t.release_date || t.recording_date || null
     const overdue = open.filter((t) => dateOf(t) && dateOf(t) < today)
     const weekAgo = addDaysISO(today, -7)
-    const doneWeek = tasks.filter((t) => t.done_at && t.done_at.slice(0, 10) >= weekAgo)
+    const doneWeek = tasks.filter((t) => t.done_at && tashkentDay(t.done_at) >= weekAgo)
     const byStage = statuses.map((s) => ({ s, n: open.filter((t) => t.status_id === s.id).length })).filter((x) => x.n > 0)
     const plans = trackers.filter((t) => t.department === c.key && t.content_type)
     const others = trackers.filter((t) => t.department === c.key && !t.content_type)
@@ -289,7 +289,7 @@ export default function Overview() {
       ) : (
       <div className="card" style={{ padding: '4px 14px' }}>
         {rows.map((t) => {
-          const d = tab === 'done' ? t.done_at.slice(0, 10) : dateOf(t)
+          const d = tab === 'done' ? tashkentDay(t.done_at) : dateOf(t)
           const late = tab === 'upcoming' && d < today
           const st = statusesById[t.status_id]
           return (

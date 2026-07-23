@@ -113,9 +113,18 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
       {/* The waiting room: work with no date on this calendar yet. Drag a
           chip onto a day to schedule it; click it to open the task. Hidden
           entirely when everything is scheduled. */}
-      {trayItems.length > 0 && (
-        <div className="cal-tray">
-          <span className="cal-tray-label">Unscheduled <b>· {trayItems.length}</b></span>
+      {(trayItems.length > 0 || (dragId && items.some((i) => i.id === dragId))) && (
+        <div
+          className={'cal-tray' + (dragId && items.some((i) => i.id === dragId) ? ' tray-target' : '')}
+          onDragOver={(e) => { if (canMove) e.preventDefault() }}
+          onDrop={() => {
+            // A scheduled pill dropped back on the tray loses its date.
+            const item = items.find((i) => i.id === dragRef.current)
+            if (canMove && item && item[dateField]) onMoveDate(item, dateField, null)
+            endDrag()
+          }}
+        >
+          <span className="cal-tray-label">Unscheduled{trayItems.length > 0 ? <b> · {trayItems.length}</b> : null}</span>
           <div className="cal-tray-items">
             {trayItems.map((it) => {
               const st = statusesById[it.status_id]
@@ -133,9 +142,18 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   <Icon size={10} style={{ flexShrink: 0 }} />
                   <span className="ev-txt">{it.title}</span>
                   <span className={`chip ct-${it.type} tray-type`}>{typeInfo(it.type).label}</span>
+                  {canMove && (
+                    <span className="tray-quick">
+                      <button type="button" className="qbtn" data-tip="Schedule for today"
+                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, todayISO()) }}>Today</button>
+                      <button type="button" className="qbtn" data-tip="Schedule for tomorrow"
+                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, addDaysISO(todayISO(), 1)) }}>Tmrw</button>
+                    </span>
+                  )}
                 </div>
               )
             })}
+            {trayItems.length === 0 && <span className="tt-none">drop here to unschedule</span>}
           </div>
         </div>
       )}
