@@ -109,10 +109,8 @@ export default function Missed() {
   const [statRange, setStatRange] = useState('tweek')
   const [statFrom, setStatFrom] = useState('')
   const [statTo, setStatTo] = useState('')
-  // Published-by-channel has its own window + type filter.
-  const [pubRange, setPubRange] = useState('tweek')
-  const [pubFrom, setPubFrom] = useState('')
-  const [pubTo, setPubTo] = useState('')
+  // Published-by-channel rides the same window as the numbers above it —
+  // one selector for the whole card; only the type filter is its own.
   const [pubType, setPubType] = useState('all')
   const [campaigns, setCampaigns] = useState([])
   const [projects, setProjects] = useState([])
@@ -221,11 +219,6 @@ export default function Missed() {
   // ---- published, by channel: how many items went out in a window --------
   // "Published" = reached the final stage (done_at stamped). Counted on the
   // team's Tashkent clock, grouped per channel, filterable by type.
-  const PUB_RANGES = [
-    { key: 'tweek', label: 'This week' },
-    { key: 'tmonth', label: 'This month' },
-    { key: 'custom', label: 'Custom…' },
-  ]
   const PUB_TYPES = [
     { key: 'all', label: 'All' }, { key: 'post', label: 'Post' }, { key: 'reel', label: 'Reel' },
     { key: 'story', label: 'Story' }, { key: 'video', label: 'Video' },
@@ -238,9 +231,23 @@ export default function Missed() {
       d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0)
       return d.toISOString().slice(0, 10)
     }
-    const [lo, hi] = pubRange === 'tweek' ? [mondayOf(today), addDaysISO(mondayOf(today), 6)]
-      : pubRange === 'tmonth' ? [`${today.slice(0, 8)}01`, monthEndOf(today)]
-        : [pubFrom || null, pubTo || null]
+    const monday = mondayOf(today)
+    const prevMonth = (() => {
+      const d = new Date(`${today.slice(0, 7)}-01T12:00:00Z`)
+      d.setUTCDate(0)
+      return d.toISOString().slice(0, 10)
+    })()
+    const WINDOWS = {
+      today: [today, today],
+      tweek: [monday, addDaysISO(monday, 6)],
+      lweek: [addDaysISO(monday, -7), addDaysISO(monday, -1)],
+      tmonth: [`${today.slice(0, 8)}01`, monthEndOf(today)],
+      lmonth: [`${prevMonth.slice(0, 8)}01`, prevMonth],
+      '6mo': [addDaysISO(today, -180), today],
+      tyear: [`${today.slice(0, 4)}-01-01`, `${today.slice(0, 4)}-12-31`],
+      custom: [statFrom || null, statTo || null],
+    }
+    const [lo, hi] = WINDOWS[statRange] || WINDOWS.tweek
     const inWin = (d) => d && (!lo || d >= lo) && (!hi || d <= hi)
     const rows = {}
     let total = 0
@@ -254,7 +261,7 @@ export default function Missed() {
     }
     const list = Object.entries(rows).map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n)
     return { list, total, max: list[0]?.n || 1, lo, hi }
-  }, [content, statuses, pubRange, pubFrom, pubTo, pubType, today])
+  }, [content, statuses, statRange, statFrom, statTo, pubType, today])
 
   // Projects offered in the filter: all of them for admins, only the ones
   // holding your visible tasks for everyone else.
@@ -420,32 +427,12 @@ export default function Missed() {
           <div className="miss-stat stat-missed"><b style={stats.missedN ? { color: '#A32D2D' } : undefined}>{stats.missedN}</b><span>missed</span></div>
           <div className="miss-stat"><b>{stats.openNow}</b><span>open now</span></div>
         </div>
-      </div>
 
-      {/* ---- published, by channel ---- */}
-      <div className="card card-pad stats-card">
-        <div className="docs-sec-head">
-          <h2><Send size={16} /> Published by channel</h2>
-          <div className="docs-up">
-            <div className="pill-group">
-              {PUB_RANGES.map((r) => (
-                <button key={r.key} className={'pill' + (pubRange === r.key ? ' active' : '')} onClick={() => setPubRange(r.key)}>
-                  {r.label}
-                </button>
-              ))}
-            </div>
-            {pubRange === 'custom' && (
-              <span className="miss-custom">
-                <input className="input" type="date" value={pubFrom} onChange={(e) => setPubFrom(e.target.value)} />
-                <span className="drow-dash">–</span>
-                <input className="input" type="date" value={pubTo} onChange={(e) => setPubTo(e.target.value)} />
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="pub-types" style={{ marginTop: 4 }}>
-          <span className="miss-f-label">Type</span>
-          <div className="pill-group">
+        {/* Published, by channel — same window as the tiles above; only the
+            content type is its own little filter. */}
+        <div className="pub-head">
+          <h3><Send size={14} /> Published by channel</h3>
+          <div className="pub-types">
             {PUB_TYPES.map((t) => (
               <button key={t.key} className={'pill' + (pubType === t.key ? ' active' : '')} onClick={() => setPubType(t.key)}>
                 {t.label}
@@ -454,7 +441,7 @@ export default function Missed() {
           </div>
         </div>
         {published.total === 0 ? (
-          <div className="empty" style={{ padding: '14px 0 4px' }}>Nothing published in this window.</div>
+          <div className="tt-none" style={{ padding: '4px 0 0' }}>Nothing published in this window.</div>
         ) : (
           <div className="pub-list">
             {published.list.map((r) => (
@@ -532,18 +519,12 @@ export default function Missed() {
       )}
 
       {/* The numbers for the chosen period */}
+      {/* One tile says how the period looks; the lists below carry the rest
+          (their headers already count "still not done" and "finished late"). */}
       <div className="miss-stats">
         <div className="miss-stat">
           <b>{missed.length}</b>
           <span>missed in this period</span>
-        </div>
-        <div className="miss-stat miss-stat-bad">
-          <b>{open.length}</b>
-          <span>still not done</span>
-        </div>
-        <div className="miss-stat miss-stat-ok">
-          <b>{late.length}</b>
-          <span>finished, but late</span>
         </div>
         {worst && worst.n > 0 && (
           <div className="miss-stat">

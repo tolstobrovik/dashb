@@ -537,7 +537,7 @@ export default function Department() {
       <div className="section-head">
         <Gauge size={17} style={{ color: 'var(--brand-500)' }} />
         <h2>Metrics</h2>
-        <span className="stat-sub" style={{ fontWeight: 500 }}>plans count completed tasks · other numbers use +/−</span>
+        <span className="icon-btn" data-tip="Plans count completed tasks · other numbers use +/−" aria-label="How metrics fill" style={{ cursor: 'help' }}><AlertCircle size={13} /></span>
         <span className="spacer" />
         {manageMetrics && <button className="btn btn-primary btn-sm" onClick={() => openMetric(null)}><Plus size={15} /> Add metric</button>}
       </div>

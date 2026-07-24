@@ -116,6 +116,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     description: !!item?.description,
     photo: !!item?.photo || !!item?.has_photo,
     checklist: (item?.checklist?.length || 0) > 0,
+    reference: false, // empty reference/delivery chrome hides until asked for
+    delivery: false,
   }))
 
   const canEdit = can(user, 'manage_content')
@@ -178,11 +180,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // the "Edit ready" link), the designer's artwork (design_link, shown only
   // when a designer is on the task). Each crew member edits their own; the
   // rest stay read-only so an editor can grab the shot footage, etc.
+  // Crew always see their stage's field; everyone else sees only links that
+  // exist — three empty Drive inputs on every open were pure chrome. The
+  // extras row reveals the empty ones when an editor wants to paste by hand.
   const deliveryFields = [
     !isDesign && { col: 'shot_link', label: 'Shot footage', icon: Clapperboard, mine: myHats.operator, present: !!item?.operator_id },
     !isDesign && { col: 'ready_link', label: 'Edit ready', icon: Scissors, mine: myHats.editor, present: !!item?.editor_id },
     { col: 'design_link', label: 'Design ready', icon: Palette, mine: myHats.designer, present: !!item?.designer_id },
-  ].filter(Boolean).filter((f) => f.mine || canEdit || form[f.col] || (crewViewer && f.present))
+  ].filter(Boolean).filter((f) => (crewViewer
+    ? (f.mine || form[f.col] || f.present)
+    : (form[f.col] || (canEdit && show.delivery))))
+  const hasRef = !!(form.reference_text || form.reference_links.length > 0 || form.photo || form.photo_thumb)
 
   // ---- Review / Pravki (SMM & admin, when a task is waiting at Ready) ----
   const readyStatus = statuses.find((s) => /^ready$/i.test(s.label))
@@ -434,7 +442,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* Reference — the brief the crew reads before working: style/mood/format
           notes, example links, and a reference photo. All optional; none of it
           blocks moving a task forward. Crew see it; only editors set it. */}
-      {(canEdit || form.reference_text || form.reference_links.length > 0 || form.photo || form.photo_thumb) && (
+      {(hasRef || (canEdit && show.reference)) && (
         <div className="cm-row cm-ref">
           <span className="cm-key"><BookOpen size={13} style={{ verticalAlign: -2 }} /> Reference</span>
           <div className="ref-block">
@@ -786,10 +794,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       )}
 
       {/* Extras appear only when wanted (the photo lives in Reference now). */}
-      {!detailsLocked && (!show.description || !show.checklist) && (
+      {!detailsLocked && (!show.description || !show.checklist || (!hasRef && !show.reference) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
         <div className="extra-btns">
+          {!hasRef && !show.reference && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, reference: true })}><BookOpen size={14} /> Reference</button>}
           {!show.description && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, description: true })}><AlignLeft size={14} /> Description</button>}
           {!show.checklist && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, checklist: true })}><CheckSquare size={14} /> Checklist</button>}
+          {!creating && !crewViewer && canEdit && !show.delivery && (
+            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, delivery: true })}><Link2 size={14} /> Delivery links</button>
+          )}
         </div>
       )}
 

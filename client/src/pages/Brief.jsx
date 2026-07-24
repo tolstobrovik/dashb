@@ -333,9 +333,10 @@ export default function Brief() {
   const [pravki, setPravki] = useState(boot?.pravki || [])
   const [loading, setLoading] = useState(!boot)
   const [openItem, setOpenItem] = useState(null)
-  // the simple view's custom horizon
+  // the simple view's custom horizon — folded until asked for
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [customOpen, setCustomOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([api.get('/content'), api.cached('/statuses'), api.get('/personal'), api.get('/content/revisions/mine')])
@@ -624,12 +625,13 @@ export default function Brief() {
     </>
   )
 
-  const doneBlock = (
+  // Nothing finished yet → no headline about it; the section earns its place.
+  const doneBlock = doneRows.length > 0 && (
     <>
       <div className="section-head">
         <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
         <h2>What you’ve done</h2>
-        <span className="count">· {doneRows.length ? `last ${doneRows.length}` : 'nothing yet'}</span>
+        <span className="count">· last {doneRows.length}</span>
       </div>
       {doneRows.length > 0 && (
         <div className="card card-pad brief-list">
@@ -667,21 +669,21 @@ export default function Brief() {
 
         {reviewBlock}
 
-        <div className="section-head">
-          <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>To do today</h2>
-          <span className="count">· {dueToday.length}</span>
-        </div>
-        {dueToday.length === 0 ? (
-          <div className="card card-pad empty">Nothing due today.</div>
-        ) : (
-          <div className="card card-pad brief-list">
-            {dueToday.map((t) => (
-              <BriefRow key={t.id} item={t} work={workOnDate(t, today)}
-                time={hhmm(t.recording_date === today ? t.recording_time : t.release_time)}
-                byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
-            ))}
-          </div>
+        {dueToday.length > 0 && (
+          <>
+            <div className="section-head">
+              <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />
+              <h2>To do today</h2>
+              <span className="count">· {dueToday.length}</span>
+            </div>
+            <div className="card card-pad brief-list">
+              {dueToday.map((t) => (
+                <BriefRow key={t.id} item={t} work={workOnDate(t, today)}
+                  time={hhmm(t.recording_date === today ? t.recording_time : t.release_time)}
+                  byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
+              ))}
+            </div>
+          </>
         )}
 
         {personalBlock}
@@ -711,23 +713,31 @@ export default function Brief() {
             </div>
           ))}
           <div className="brief-horizon">
-            <div className="brief-h-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              Custom
-              <span className="miss-custom" style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-                <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                <span className="drow-dash">–</span>
-                <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-              </span>
-              {customItems && <span className="count">· {customItems.length}</span>}
-            </div>
-            {customItems === null ? (
-              <div className="tt-none" style={{ padding: '2px 0 6px' }}>pick dates to see that stretch</div>
-            ) : customItems.length === 0 ? (
-              <div className="tt-none" style={{ padding: '2px 0 6px' }}>nothing in those dates</div>
-            ) : customItems.map((t) => (
-              <BriefRow key={`${t.id}-c`} item={t} when={dateLabel(t._next)} time={null} work={workOnDate(t, t._next)}
-                byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
-            ))}
+            {!customOpen ? (
+              <button className="extra-btn" onClick={() => setCustomOpen(true)}>
+                <CalendarRange size={13} /> Pick your own dates
+              </button>
+            ) : (
+              <>
+                <div className="brief-h-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Custom
+                  <span className="miss-custom" style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                    <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+                    <span className="drow-dash">–</span>
+                    <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+                  </span>
+                  {customItems && <span className="count">· {customItems.length}</span>}
+                </div>
+                {customItems === null ? (
+                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>pick dates to see that stretch</div>
+                ) : customItems.length === 0 ? (
+                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>nothing in those dates</div>
+                ) : customItems.map((t) => (
+                  <BriefRow key={`${t.id}-c`} item={t} when={dateLabel(t._next)} time={null} work={workOnDate(t, t._next)}
+                    byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
+                ))}
+              </>
+            )}
           </div>
         </div>
 

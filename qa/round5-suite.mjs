@@ -160,8 +160,9 @@ ok('today list holds their task', jasBrief.includes('r5: jas post today'))
 // Horizons only render when they hold work (round 18 minimalism); the custom
 // range is always offered, and beyond-horizon work stays out until it's used.
 ok('beyond-horizon work hidden until custom dates; custom always offered',
-  !jasBrief.includes('r5: jas next week') && jasBrief.includes('Custom'))
+  !jasBrief.includes('r5: jas next week') && jasBrief.includes('Pick your own dates'))
 // the custom stretch finds the task 9 days out
+await p3.locator('.brief-horizon .extra-btn', { hasText: 'Pick your own dates' }).click()
 await p3.locator('.brief-horizon .miss-custom input').first().fill(add(8))
 await p3.locator('.brief-horizon .miss-custom input').last().fill(add(12))
 await p3.waitForTimeout(400)

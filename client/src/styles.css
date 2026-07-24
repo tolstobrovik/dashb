@@ -2264,3 +2264,8 @@ button.cb-toggle:hover { color: var(--ink); }
 
 .cal-tray.tray-target { border-color: var(--brand-300); background: var(--brand-50); }
 .tray-quick { display: inline-flex; gap: 4px; margin-left: 2px; flex-shrink: 0; }
+
+/* ============ Round 23: one-window statistics ============ */
+.pub-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.pub-head h3 { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 0; }
+.pub-head .pill-group { margin-left: auto; }

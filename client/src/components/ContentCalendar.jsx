@@ -105,9 +105,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
           <button className={'pill' + (scale === 'month' ? ' active' : '')} onClick={() => setScale('month')} data-tip="Whole month at a glance">Month</button>
           <button className={'pill' + (scale === 'week' ? ' active' : '')} onClick={() => setScale('week')} data-tip="One week with full task cards">Week</button>
         </div>
-        <span className="cal-hint" style={{ marginLeft: 'auto' }}>
-          {canMove ? 'Drag a task to another day · click a day to plan it' : 'Click a day to plan it'}
-        </span>
+
       </div>
 
       {/* The waiting room: work with no date on this calendar yet. Drag a
