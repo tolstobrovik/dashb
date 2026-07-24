@@ -34,6 +34,7 @@ export default function QuickFind({ onClose }) {
     { label: 'My Day', to: '/brief' },
     { label: 'To-Do', to: '/todo' },
     { label: 'Statistics', to: '/missed' },
+    isAdmin && { label: 'Unassigned', to: '/unassigned' },
     { label: 'Docs & KPIs', to: '/docs' },
     isAdmin && { label: 'Projects', to: '/projects' },
     ...visible.map((c) => ({ label: c.label, to: `/dept/${c.key}` })),

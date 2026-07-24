@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import {
-  Shield, LogOut, ListChecks, Briefcase, LayoutDashboard, Sun, BarChart3, Clapperboard, UsersRound, ScrollText,
+  Shield, LogOut, ListChecks, Briefcase, LayoutDashboard, Sun, BarChart3, UserX, Clapperboard, UsersRound, ScrollText,
   SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { LogoLockup } from './Logo.jsx'
@@ -59,6 +59,7 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       { key: 'brief', to: '/brief', label: 'My Day', icon: Sun, locked: true },
       { key: 'todo', to: '/todo', label: 'To-Do', icon: ListChecks },
       { key: 'missed', to: '/missed', label: 'Statistics', icon: BarChart3 },
+      isAdmin && { key: 'unassigned', to: '/unassigned', label: 'Unassigned', icon: UserX },
       { key: 'docs', to: '/docs', label: 'Docs & KPIs', icon: ScrollText },
       isAdmin && { key: 'projects', to: '/projects', label: 'Projects', icon: Briefcase },
     ].filter(Boolean),

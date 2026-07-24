@@ -2269,3 +2269,9 @@ button.cb-toggle:hover { color: var(--ink); }
 .pub-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline); }
 .pub-head h3 { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 0; }
 .pub-head .pill-group { margin-left: auto; }
+
+/* ============ Round 24: unassigned page + per-person receipts ============ */
+.miss-person-chev { margin-left: 4px; color: var(--muted); transition: transform .15s; flex-shrink: 0; }
+.miss-person-chev.open { transform: rotate(180deg); }
+.miss-person-tasks { margin: 0 0 8px 40px; padding-left: 10px; border-left: 2px solid var(--hairline); }
+@media (max-width: 720px) { .miss-person-tasks { margin-left: 12px; } }

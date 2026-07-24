@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, CalendarRange, Scissors, Send, PenLine, Trash2, Palette, BarChart3 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CalendarRange, ChevronDown, Scissors, Send, PenLine, Trash2, Palette, BarChart3 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -104,6 +104,7 @@ export default function Missed() {
   const [to, setTo] = useState('')
   const [chan, setChan] = useState('all')
   const [person, setPerson] = useState(0) // 0 = everyone (admin only)
+  const [openPerson, setOpenPerson] = useState(0) // report row expanded to its tasks
   const [project, setProject] = useState(0) // 0 = all projects
   // The numbers dashboard has its own window: this week by default.
   const [statRange, setStatRange] = useState('tweek')
@@ -551,20 +552,40 @@ export default function Missed() {
             const s = personStats[id]
             if (!u || !s) return null
             const max = personCounts[activePeople[0]] || 1
+            const opened = openPerson === id
             return (
-              <button key={id} className={'miss-person-row' + (person === id ? ' on' : '')}
-                onClick={() => setPerson(person === id ? 0 : id)}>
-                <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
-                <span className="miss-person-name">{u.name}</span>
-                <span className="miss-person-bar">
-                  <span style={{ width: `${Math.round((s.n / max) * 100)}%` }} />
-                </span>
-                <b className="miss-person-n">{s.n}</b>
-                <span className="miss-person-split">
-                  <span className="mp-open">{s.open} open</span>
-                  <span className="mp-late">{s.late} late</span>
-                </span>
-              </button>
+              <div key={id}>
+                <button className={'miss-person-row' + (opened ? ' on' : '')}
+                  onClick={() => setOpenPerson(opened ? 0 : id)}>
+                  <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
+                  <span className="miss-person-name">{u.name}</span>
+                  <span className="miss-person-bar">
+                    <span style={{ width: `${Math.round((s.n / max) * 100)}%` }} />
+                  </span>
+                  <b className="miss-person-n">{s.n}</b>
+                  <span className="miss-person-split">
+                    <span className="mp-open">{s.open} open</span>
+                    <span className="mp-late">{s.late} late</span>
+                  </span>
+                  <ChevronDown size={14} className={'miss-person-chev' + (opened ? ' open' : '')} />
+                </button>
+                {/* The receipts: exactly which deadlines this person missed,
+                    right under their name — no scrolling off to find them. */}
+                {opened && (
+                  <div className="miss-person-tasks">
+                    {inRange
+                      .filter((e) => e.who.includes(id) &&
+                        (chan === 'all' || e.t.channels.includes(chan)) &&
+                        (!project || projectOf(e.t) === project))
+                      .sort((a, b) => b.date.localeCompare(a.date))
+                      .slice(0, 30)
+                      .map((e) => (
+                        <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey}
+                          usersById={usersById} isAdmin={false} onOpen={setOpenItem} onMenu={rowMenu} />
+                      ))}
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>
