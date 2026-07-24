@@ -15,20 +15,22 @@ import ContentModal from '../components/ContentModal.jsx'
 // What a task is missing. Filmed types need a shoot/edit chain and a
 // recording day; posts need a designer; everything needs an owner and a
 // release day. Work already past the edit (ready_at) stopped needing its
-// shoot-side people and date long ago.
-const holesOf = (t) => {
+// shoot-side people and date long ago. Icon-free so Overview can count
+// gaps without dragging this page's chrome along.
+export const gapsOf = (t) => {
   const filmed = t.type === 'reel' || t.type === 'video'
   const preEdit = !t.ready_at
   const people = []
   const dates = []
-  if (!(t.assignees?.length ? t.assignees.length : t.assignee_id)) people.push({ key: 'owner', label: 'needs an owner', icon: User })
-  if (filmed && preEdit && !t.operator_id) people.push({ key: 'operator', label: 'needs an operator', icon: Clapperboard })
-  if (filmed && preEdit && !t.editor_id) people.push({ key: 'editor', label: 'needs an editor', icon: Scissors })
-  if (t.type === 'post' && !t.designer_id) people.push({ key: 'designer', label: 'needs a designer', icon: Palette })
-  if (filmed && preEdit && !t.recording_date) dates.push({ key: 'shoot', label: 'no shoot day', icon: CalendarX2 })
-  if (!t.release_date) dates.push({ key: 'release', label: 'no release day', icon: CalendarX2 })
+  if (!(t.assignees?.length ? t.assignees.length : t.assignee_id)) people.push({ key: 'owner', label: 'needs an owner' })
+  if (filmed && preEdit && !t.operator_id) people.push({ key: 'operator', label: 'needs an operator' })
+  if (filmed && preEdit && !t.editor_id) people.push({ key: 'editor', label: 'needs an editor' })
+  if (t.type === 'post' && !t.designer_id) people.push({ key: 'designer', label: 'needs a designer' })
+  if (filmed && preEdit && !t.recording_date) dates.push({ key: 'shoot', label: 'no shoot day' })
+  if (!t.release_date) dates.push({ key: 'release', label: 'no release day' })
   return { people, dates }
 }
+const GAP_ICONS = { owner: User, operator: Clapperboard, editor: Scissors, designer: Palette, shoot: CalendarX2, release: CalendarX2 }
 
 function GapRow({ t, holes, byKey, onOpen }) {
   return (
@@ -41,7 +43,7 @@ function GapRow({ t, holes, byKey, onOpen }) {
       </span>
       <span className="ov-chips">
         {[...holes.people, ...holes.dates].map((h) => {
-          const Icon = h.icon
+          const Icon = GAP_ICONS[h.key]
           return <span key={h.key} className={'chip ' + (holes.people.includes(h) ? 'chip-danger' : 'chip-muted')}><Icon size={11} /> {h.label}</span>
         })}
         <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
@@ -85,7 +87,7 @@ export default function Unassigned() {
   const { unowned, undated } = useMemo(() => {
     const rows = content
       .filter((t) => !t.done_at && !deadIds.has(t.status_id))
-      .map((t) => ({ t, holes: holesOf(t) }))
+      .map((t) => ({ t, holes: gapsOf(t) }))
       .filter((r) => r.holes.people.length > 0 || r.holes.dates.length > 0)
       .sort((a, b) => (a.t.release_date || '9999').localeCompare(b.t.release_date || '9999') || b.t.id - a.t.id)
     return {

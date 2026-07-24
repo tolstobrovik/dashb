@@ -2275,3 +2275,18 @@ button.cb-toggle:hover { color: var(--ink); }
 .miss-person-chev.open { transform: rotate(180deg); }
 .miss-person-tasks { margin: 0 0 8px 40px; padding-left: 10px; border-left: 2px solid var(--hairline); }
 @media (max-width: 720px) { .miss-person-tasks { margin-left: 12px; } }
+
+/* ============ Round 25: the perfection pass ============ */
+/* On a phone the person row is already the tap target — the chevron was
+   pushing past the edge. */
+@media (max-width: 720px) { .miss-person-chev { display: none } }
+.miss-stat-btn { cursor: pointer; font: inherit; text-align: left; transition: border-color .12s, transform .12s; }
+.miss-stat-btn:hover { border-color: var(--brand-400, #c06a75); transform: translateY(-1px); }
+.ov-gaps {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; margin-bottom: 14px;
+  font: inherit; font-size: 13.5px; color: var(--ink); cursor: pointer; text-align: left;
+}
+.ov-gaps svg:first-child { color: #A32D2D; flex-shrink: 0; }
+.ov-gaps b { font-weight: 800; }
+.ov-gaps-go { margin-left: auto; color: var(--muted); transition: transform .12s; }
+.ov-gaps:hover .ov-gaps-go { transform: translateX(3px); color: var(--brand-600); }

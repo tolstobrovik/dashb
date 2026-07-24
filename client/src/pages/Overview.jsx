@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarClock, Check, AlertCircle, Megaphone, Rows3 } from 'lucide-react'
+import { CalendarClock, Check, AlertCircle, Megaphone, Rows3, UserX, ArrowRight } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PC, daysUntil } from '../components/ProjectBits.jsx'
+import { gapsOf } from './Unassigned.jsx'
 
 // The admin's landing view: every department's process on one screen —
 // plan meters, the pipeline as a colored strip, overdue counts — plus a
@@ -123,6 +124,17 @@ export default function Overview() {
     ])),
   })), [channels, content, laneDays])
 
+  // Planning gaps — live tasks missing people or dates; the strip below the
+  // campaigns points at the Unassigned page only while there's work to do.
+  const gapCount = useMemo(() => {
+    const dead = new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id))
+    return content.filter((t) => {
+      if (t.done_at || dead.has(t.status_id)) return false
+      const g = gapsOf(t)
+      return g.people.length > 0 || g.dates.length > 0
+    }).length
+  }, [content, statuses])
+
   // ---- timeline ----
   const dateOf = (t) => t.release_date || t.recording_date || null
   const upcoming = useMemo(() =>
@@ -176,6 +188,16 @@ export default function Overview() {
               : upcomingCamps.map((c) => <CampRow key={c.id} c={c} navigate={navigate} byKey={byKey} colorOf={colorOf} />)}
           </div>
         </div>
+      )}
+
+      {/* Planning gaps — one quiet strip, only while something is unowned
+          or undated; it opens the Unassigned page where the fixing happens. */}
+      {gapCount > 0 && (
+        <button className="card ov-gaps" onClick={() => navigate('/unassigned')}>
+          <UserX size={15} />
+          <span><b>{gapCount}</b> task{gapCount === 1 ? '' : 's'} waiting for a person or dates</span>
+          <ArrowRight size={14} className="ov-gaps-go" />
+        </button>
       )}
 
       {/* ---- every department, one card each ---- */}

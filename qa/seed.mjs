@@ -43,9 +43,9 @@ await req(`/campaigns/${live.id}/notes`, 'POST', { text: 'Week 1 retro: CTR is f
 await req(`/content/${vid.id}`, 'PATCH', { campaign_id: live.id })
 
 // --- personal tasks ---
-await req('/personal', 'POST', { text: 'Prepare board slides for Friday' })
-await req('/personal', 'POST', { text: 'Review Q3 ad budget' })
-await req('/personal', 'POST', { text: 'Call the print shop about banners', user_id: jas.id })
+await req('/personal', 'POST', { title: 'Prepare board slides for Friday' })
+await req('/personal', 'POST', { title: 'Review Q3 ad budget' })
+await req('/personal', 'POST', { title: 'Call the print shop about banners', user_id: jas.id })
 
 // --- metrics: update a few tracker values ---
 const trackers = await req('/trackers')

@@ -528,10 +528,11 @@ export default function Missed() {
           <span>missed in this period</span>
         </div>
         {worst && worst.n > 0 && (
-          <div className="miss-stat">
+          <button className="miss-stat miss-stat-btn" data-tip="See exactly which ones, below"
+            onClick={() => setOpenPerson(openPerson === worst.id ? 0 : worst.id)}>
             <b>{worst.name}</b>
             <span>most misses · {worst.n}</span>
-          </div>
+          </button>
         )}
       </div>
 
