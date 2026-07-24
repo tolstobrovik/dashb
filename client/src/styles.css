@@ -2290,3 +2290,11 @@ button.cb-toggle:hover { color: var(--ink); }
 .ov-gaps b { font-weight: 800; }
 .ov-gaps-go { margin-left: auto; color: var(--muted); transition: transform .12s; }
 .ov-gaps:hover .ov-gaps-go { transform: translateX(3px); color: var(--brand-600); }
+
+/* ============ Round 26: unassigned filters ============ */
+/* A kind-pill cycles include -> exclude -> off; excluded wears the strike. */
+.pill-not { background: var(--danger-bg); color: var(--critical); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.pill-not .pill-n { text-decoration: none; }
+.pill-clear { color: var(--muted); border-style: dashed; }
+.pill-clear:hover { color: var(--critical); }
+.gap-person { flex: 0 0 auto; width: auto; min-width: 180px; }

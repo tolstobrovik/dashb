@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { UserX, CalendarX2, Clapperboard, Scissors, Palette, User } from 'lucide-react'
+import { UserX, CalendarX2, CalendarRange, Clapperboard, Scissors, Palette, User } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
 
 // The planning gaps, on one page: every live task that nobody owns yet —
@@ -11,6 +11,9 @@ import ContentModal from '../components/ContentModal.jsx'
 // post — or that has no dates (shoot day on filmed work, release day on
 // everything). A task shows up the moment it has a hole and leaves the
 // moment the hole is filled; clicking a row opens the task to fix it.
+// Filters narrow the hunt: a date window, a channel, a person, and the
+// gap kinds themselves — each kind-pill cycles include → exclude → off,
+// and an excluded kind stops counting toward a task's gaps entirely.
 
 // What a task is missing. Filmed types need a shoot/edit chain and a
 // recording day; posts need a designer; everything needs an owner and a
@@ -31,6 +34,15 @@ export const gapsOf = (t) => {
   return { people, dates }
 }
 const GAP_ICONS = { owner: User, operator: Clapperboard, editor: Scissors, designer: Palette, shoot: CalendarX2, release: CalendarX2 }
+const GAP_KINDS = [
+  { key: 'owner', label: 'Owner' }, { key: 'operator', label: 'Operator' },
+  { key: 'editor', label: 'Editor' }, { key: 'designer', label: 'Designer' },
+  { key: 'shoot', label: 'Shoot day' }, { key: 'release', label: 'Release day' },
+]
+const RANGES = [
+  { key: 'any', label: 'Any date' }, { key: 'today', label: 'Today' },
+  { key: '7d', label: 'Next 7 days' }, { key: 'custom', label: 'Custom…' },
+]
 
 function GapRow({ t, holes, byKey, onOpen }) {
   return (
@@ -55,18 +67,28 @@ function GapRow({ t, holes, byKey, onOpen }) {
 
 export default function Unassigned() {
   const { user } = useAuth()
-  const { byKey } = useChannels()
+  const { channels, byKey } = useChannels()
   const [boot] = useState(() => cache.get(`unassigned:${user.id}`))
   const [content, setContent] = useState(boot?.content || [])
+  const [users, setUsers] = useState(boot?.users || [])
   const [statuses, setStatuses] = useState(boot?.statuses || [])
   const [loading, setLoading] = useState(!boot)
   const [openItem, setOpenItem] = useState(null)
 
+  // The filters. `needs` maps a gap kind to 'only' (show tasks needing it)
+  // or 'not' (that kind stops counting); absent = indifferent.
+  const [range, setRange] = useState('any')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [chan, setChan] = useState('all')
+  const [person, setPerson] = useState(0)
+  const [needs, setNeeds] = useState({})
+
   useEffect(() => {
-    Promise.all([api.get('/content'), api.cached('/statuses')])
-      .then(([ct, st]) => {
-        setContent(ct); setStatuses(st)
-        cache.set(`unassigned:${user.id}`, { content: ct.map(({ photo_thumb: _t, ...r }) => r), statuses: st })
+    Promise.all([api.get('/content'), api.cached('/users'), api.cached('/statuses')])
+      .then(([ct, us, st]) => {
+        setContent(ct); setUsers(us); setStatuses(st)
+        cache.set(`unassigned:${user.id}`, { content: ct.map(({ photo_thumb: _t, ...r }) => r), users: us, statuses: st })
       })
       .finally(() => setLoading(false))
   }, [user.id])
@@ -79,22 +101,72 @@ export default function Unassigned() {
     return () => clearInterval(id)
   }, [openItem])
 
+  const today = todayISO()
   const deadIds = useMemo(() => new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id)), [statuses])
 
-  // Published and killed work needs nobody; everything else is judged.
-  // Owner-less tasks first (a date can wait, an orphan can't), soonest
-  // release at the top of each list, undated work at the bottom.
-  const { unowned, undated } = useMemo(() => {
-    const rows = content
-      .filter((t) => !t.done_at && !deadIds.has(t.status_id))
-      .map((t) => ({ t, holes: gapsOf(t) }))
-      .filter((r) => r.holes.people.length > 0 || r.holes.dates.length > 0)
-      .sort((a, b) => (a.t.release_date || '9999').localeCompare(b.t.release_date || '9999') || b.t.id - a.t.id)
-    return {
-      unowned: rows.filter((r) => r.holes.people.length > 0),
-      undated: rows.filter((r) => r.holes.people.length === 0),
+  // Every live task with raw gaps — the filters carve this list, the hero
+  // keeps quoting it whole so the headline never argues with reality.
+  const rows = useMemo(() => content
+    .filter((t) => !t.done_at && !deadIds.has(t.status_id))
+    .map((t) => ({ t, gaps: gapsOf(t) }))
+    .filter((r) => r.gaps.people.length > 0 || r.gaps.dates.length > 0)
+    .sort((a, b) => (a.t.release_date || '9999').localeCompare(b.t.release_date || '9999') || b.t.id - a.t.id),
+  [content, deadIds])
+
+  const holdsHat = (t, id) =>
+    (t.assignees?.length ? t.assignees.includes(id) : t.assignee_id === id) ||
+    t.operator_id === id || t.editor_id === id || t.designer_id === id
+
+  // One predicate, with a dimension to ignore — so each pill row can count
+  // "what would I show if you picked me" honestly.
+  const includes = useMemo(() => Object.keys(needs).filter((k) => needs[k] === 'only'), [needs])
+  const counted = (r) => ({
+    people: r.gaps.people.filter((h) => needs[h.key] !== 'not'),
+    dates: r.gaps.dates.filter((h) => needs[h.key] !== 'not'),
+  })
+  const matches = (r, ignore) => {
+    if (ignore !== 'date') {
+      const d = r.t.release_date
+      if (range === 'today' && d !== today) return false
+      if (range === '7d' && !(d && d >= today && d <= addDaysISO(today, 7))) return false
+      if (range === 'custom' && !(d && (!from || d >= from) && (!to || d <= to))) return false
     }
-  }, [content, deadIds])
+    if (ignore !== 'chan' && chan !== 'all' && !r.t.channels.includes(chan)) return false
+    if (ignore !== 'person' && person && !holdsHat(r.t, person)) return false
+    if (ignore !== 'needs') {
+      const c = counted(r)
+      const all = [...c.people, ...c.dates]
+      if (all.length === 0) return false
+      if (includes.length > 0 && !all.some((h) => includes.includes(h.key))) return false
+    }
+    return true
+  }
+
+  const shown = useMemo(() => rows.filter((r) => matches(r)).map((r) => ({ ...r, holes: counted(r) })),
+    [rows, range, from, to, chan, person, needs]) // eslint-disable-line react-hooks/exhaustive-deps
+  const unowned = shown.filter((r) => r.holes.people.length > 0)
+  const undated = shown.filter((r) => r.holes.people.length === 0)
+
+  const chanCounts = useMemo(() => {
+    const m = {}
+    for (const r of rows) if (matches(r, 'chan')) for (const c of r.t.channels) m[c] = (m[c] || 0) + 1
+    return m
+  }, [rows, range, from, to, person, needs]) // eslint-disable-line react-hooks/exhaustive-deps
+  const kindCounts = useMemo(() => {
+    const m = {}
+    for (const r of rows) if (matches(r, 'needs')) for (const h of [...r.gaps.people, ...r.gaps.dates]) m[h.key] = (m[h.key] || 0) + 1
+    return m
+  }, [rows, range, from, to, chan, person]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cycleNeed = (k) => setNeeds((prev) => {
+    const next = { ...prev }
+    if (!next[k]) next[k] = 'only'
+    else if (next[k] === 'only') next[k] = 'not'
+    else delete next[k]
+    return next
+  })
+  const filtered = range !== 'any' || chan !== 'all' || person !== 0 || Object.keys(needs).length > 0
+  const clearFilters = () => { setRange('any'); setFrom(''); setTo(''); setChan('all'); setPerson(0); setNeeds({}) }
 
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
@@ -107,7 +179,9 @@ export default function Unassigned() {
 
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 
-  const total = unowned.length + undated.length
+  // The hero speaks for the whole list; the sections below obey the filters.
+  const allUnowned = rows.filter((r) => r.gaps.people.length > 0).length
+  const total = rows.length
   return (
     <>
       <div className="card card-pad brief-hero">
@@ -116,11 +190,84 @@ export default function Unassigned() {
           {total === 0
             ? 'Every task has its people and its dates.'
             : [
-              unowned.length > 0 && `${unowned.length} waiting for a person`,
-              undated.length > 0 && `${undated.length} waiting for dates`,
+              allUnowned > 0 && `${allUnowned} waiting for a person`,
+              total - allUnowned > 0 && `${total - allUnowned} waiting for dates`,
             ].filter(Boolean).join(' · ') + '.'}
         </h2>
       </div>
+
+      {total > 0 && (
+        <>
+          <div className="miss-filters">
+            <span className="miss-f-label"><CalendarRange size={14} /> Date</span>
+            <div className="pill-group">
+              {RANGES.map((r) => (
+                <button key={r.key} className={'pill' + (range === r.key ? ' active' : '')} onClick={() => setRange(r.key)}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {range === 'custom' && (
+              <span className="miss-custom">
+                <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+                <span className="drow-dash">–</span>
+                <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              </span>
+            )}
+          </div>
+          {users.length > 0 && (
+            <div className="miss-filters">
+              <span className="miss-f-label"><User size={14} /> Person</span>
+              <select className="select gap-person" value={person} data-tip="Only tasks this person is on"
+                onChange={(e) => setPerson(Number(e.target.value))}>
+                <option value={0}>Everyone</option>
+                {[...users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="miss-filters">
+            <span className="miss-f-label">Channel</span>
+            <div className="pill-group">
+              <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')}>All</button>
+              {channels.map((c) => (
+                <button key={c.key}
+                  className={'pill' + (chan === c.key ? ' active' : '') + (chanCounts[c.key] ? '' : ' pill-zero')}
+                  onClick={() => setChan(chan === c.key ? 'all' : c.key)}>
+                  {c.label} <b className="pill-n">{chanCounts[c.key] || 0}</b>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="miss-filters">
+            <span className="miss-f-label">Needs</span>
+            <div className="pill-group">
+              {GAP_KINDS.map((k) => {
+                const st = needs[k.key]
+                return (
+                  <button key={k.key}
+                    className={'pill' + (st === 'only' ? ' active' : '') + (st === 'not' ? ' pill-not' : '') + (kindCounts[k.key] ? '' : ' pill-zero')}
+                    data-tip={st === 'only' ? 'Now: only these · tap to hide these' : st === 'not' ? 'Now: hidden · tap to reset' : 'Tap: only these'}
+                    onClick={() => cycleNeed(k.key)}>
+                    {st === 'not' ? 'no ' : ''}{k.label} <b className="pill-n">{kindCounts[k.key] || 0}</b>
+                  </button>
+                )
+              })}
+              {filtered && (
+                <button className="pill pill-clear" onClick={clearFilters}>Clear ×</button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {total > 0 && shown.length === 0 && (
+        <div className="card card-pad empty">
+          Nothing matches these filters.{' '}
+          <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={clearFilters}>Clear filters</button>
+        </div>
+      )}
 
       {unowned.length > 0 && (
         <>
