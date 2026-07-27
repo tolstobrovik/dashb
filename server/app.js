@@ -15,6 +15,7 @@ import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
 import channelRoutes from './routes/channels.js'
 import statusRoutes from './routes/statuses.js'
+import fieldRoutes from './routes/fields.js'
 import trackerRoutes from './routes/trackers.js'
 import contentRoutes from './routes/content.js'
 import reportRoutes from './routes/reports.js'
@@ -53,6 +54,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/channels', channelRoutes)
 app.use('/api/statuses', statusRoutes)
+app.use('/api/fields', fieldRoutes)
 app.use('/api/trackers', trackerRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/reports', reportRoutes)

@@ -2298,3 +2298,21 @@ button.cb-toggle:hover { color: var(--ink); }
 .pill-clear { color: var(--muted); border-style: dashed; }
 .pill-clear:hover { color: var(--critical); }
 .gap-person { flex: 0 0 auto; width: auto; min-width: 180px; }
+
+/* ============ Round 27: the task form, tuned by the admin ============ */
+.req-star { color: var(--critical); font-weight: 800; }
+.cm-script { font-family: inherit; line-height: 1.5; resize: vertical; }
+.crew-script { white-space: pre-wrap; font-size: 13.5px; line-height: 1.55; color: var(--ink-2); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; max-height: 300px; overflow-y: auto; }
+.fields-tbl td { vertical-align: top; padding-top: 10px; }
+.fields-tbl .pill-group { flex-wrap: wrap; }
+.pill-req.active { background: var(--danger-bg); color: var(--critical); border-color: var(--critical); }
+.opt-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 340px; }
+.opt-chip { display: inline-flex; align-items: center; gap: 3px; }
+.opt-chip-x { display: inline-flex; border: none; background: none; cursor: pointer; color: var(--muted); padding: 0 0 0 2px; }
+.opt-chip-x:hover { color: var(--critical); }
+.opt-add { display: inline-flex; gap: 5px; align-items: center; }
+.opt-add .input { width: 110px; }
+/* Brief fields mirror the crew-field look but keep their own identity. */
+.brief-fields { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; }
+.brief-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 160px; }
+.brief-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }

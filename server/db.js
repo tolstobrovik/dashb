@@ -474,6 +474,9 @@ export async function initSchema() {
       design_link    TEXT,   -- designer's finished artwork link
       reference_text TEXT,   -- style / mood / length / format notes for the crew
       reference_links TEXT   NOT NULL DEFAULT '[]', -- example URLs (reference videos/posts)
+      format         TEXT,   -- the shape of the piece: talking head, split screen…
+      rubrika        TEXT,   -- the recurring column (rubric) it belongs to
+      script         TEXT,   -- the written script / shot plan
       release_date   TEXT,
       release_time   TEXT,
       description    TEXT    NOT NULL DEFAULT '',
@@ -708,6 +711,9 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_link TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS reference_text TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS reference_links TEXT NOT NULL DEFAULT '[]'")
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS format TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS rubrika TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script TEXT')
   }
 
   await migrate()
@@ -809,6 +815,7 @@ async function migrate() {
     if (!(await hasColumn('content', 'edit_ready_date'))) await exec('ALTER TABLE content ADD COLUMN edit_ready_date TEXT; ALTER TABLE content ADD COLUMN ready_at TEXT;')
     if (!(await hasColumn('programs', 'branches'))) await exec("ALTER TABLE programs ADD COLUMN branches TEXT NOT NULL DEFAULT '[]'")
     if (!(await hasColumn('content', 'shot_link'))) await exec('ALTER TABLE content ADD COLUMN shot_link TEXT; ALTER TABLE content ADD COLUMN design_link TEXT;')
+    if (!(await hasColumn('content', 'format'))) await exec('ALTER TABLE content ADD COLUMN format TEXT; ALTER TABLE content ADD COLUMN rubrika TEXT; ALTER TABLE content ADD COLUMN script TEXT;')
     if (!(await hasColumn('content', 'reference_text'))) await exec("ALTER TABLE content ADD COLUMN reference_text TEXT; ALTER TABLE content ADD COLUMN reference_links TEXT NOT NULL DEFAULT '[]';")
   } catch (e) {
     console.warn('Skipping legacy migrations:', e.message)
@@ -851,6 +858,43 @@ export async function mayLeaveStage(actor, statusId) {
   const rules = await getStageRules()
   const v = rules?.[actor]?.[String(statusId)]
   return v === undefined ? defaultMayLeave(actor, st.label) : !!v
+}
+
+// ---- the task form, tuned by the admin (ClickUp-style custom fields) ----
+// Each briefing field can be off, optional or required, scoped to content
+// types; Format and Rubrika also carry admin-managed option lists. Stored
+// in meta 'task_fields'; getTaskFields always answers the EFFECTIVE config
+// (stored overrides merged over these defaults).
+export const TASK_FIELD_KEYS = ['format', 'rubrika', 'script', 'reference', 'description']
+const ALL_TYPES = ['post', 'reel', 'story', 'video', 'other']
+export const DEFAULT_TASK_FIELDS = {
+  format:      { state: 'optional', types: ['reel', 'video'], options: ['Talking head', 'Split screen', 'Voiceover', 'Interview', 'Vlog', 'Skit'] },
+  rubrika:     { state: 'optional', types: [...ALL_TYPES], options: [] },
+  script:      { state: 'optional', types: ['reel', 'video'] },
+  reference:   { state: 'optional', types: [...ALL_TYPES] },
+  description: { state: 'optional', types: [...ALL_TYPES] },
+}
+export async function getTaskFields() {
+  let stored = {}
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'task_fields'"))?.value || '{}')
+    if (!stored || typeof stored !== 'object') stored = {}
+  } catch { stored = {} }
+  const out = {}
+  for (const k of TASK_FIELD_KEYS) {
+    const d = DEFAULT_TASK_FIELDS[k]
+    const s = stored[k] || {}
+    out[k] = {
+      state: ['off', 'optional', 'required'].includes(s.state) ? s.state : d.state,
+      types: Array.isArray(s.types) ? s.types.map(String).filter((t) => ALL_TYPES.includes(t)) : [...d.types],
+    }
+    if (d.options) {
+      out[k].options = Array.isArray(s.options)
+        ? [...new Set(s.options.map((o) => String(o).trim()).filter(Boolean))].slice(0, 40)
+        : [...d.options]
+    }
+  }
+  return out
 }
 
 // Record today's value for a metric (upsert), so comparisons have data.

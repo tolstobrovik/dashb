@@ -8,7 +8,7 @@ import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
 import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
-import { CHANNEL_ICONS, iconFor, PERMISSIONS, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor, tashkentDay } from '../lib/constants.js'
+import { CHANNEL_ICONS, iconFor, PERMISSIONS, CONTENT_TYPES, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
@@ -553,17 +553,48 @@ const STAGE_ACTORS = [
   { key: 'member', label: 'Member (SMM)' },
 ]
 
+// The brief fields the admin can tune (ClickUp-style): each can be off,
+// optional or required, per content type; Format and Rubrika carry option
+// lists the dropdowns offer.
+const TASK_FIELD_DEFS = [
+  { key: 'format', label: 'Format', hint: 'talking head, split screen…' },
+  { key: 'rubrika', label: 'Rubrika', hint: 'the recurring column it belongs to' },
+  { key: 'script', label: 'Script', hint: 'the words and shots the crew films by' },
+  { key: 'reference', label: 'Reference', hint: 'examples, mood, style — the brief' },
+  { key: 'description', label: 'Description', hint: 'free notes on the task' },
+]
+
 function PipelineTab() {
   const [statuses, setStatuses] = useState([])
   const [modal, setModal] = useState(null)
   const [err, setErr] = useState('')
   const [rules, setRules] = useState(null)
+  const [fields, setFields] = useState(null)
+  const [optDraft, setOptDraft] = useState({})
 
   const load = () => Promise.all([
     api.get('/statuses').then(setStatuses),
     api.get('/statuses/rules').then(setRules).catch(() => {}),
+    api.get('/fields').then(setFields).catch(() => {}),
   ])
   useEffect(() => { load() }, [])
+
+  // One change = one save; the server answers the effective config back.
+  const patchField = (k, part) => {
+    const next = { ...fields, [k]: { ...fields[k], ...part } }
+    setFields(next)
+    api.post('/fields', next).then((eff) => { setFields(eff); toast('Task form saved — synced') })
+      .catch((e) => { alert(e.message); load() })
+  }
+  const toggleFieldType = (k, t) => patchField(k, {
+    types: fields[k].types.includes(t) ? fields[k].types.filter((x) => x !== t) : [...fields[k].types, t],
+  })
+  const addOption = (k) => {
+    const v = (optDraft[k] || '').trim()
+    if (!v) return
+    setOptDraft({ ...optDraft, [k]: '' })
+    patchField(k, { options: [...new Set([...(fields[k].options || []), v])] })
+  }
 
   const toggleRule = async (actor, sid) => {
     const next = { ...rules, [actor]: { ...rules[actor], [sid]: !rules[actor]?.[sid] } }
@@ -665,6 +696,85 @@ function PipelineTab() {
               Admins always move everything. Publishing (into the final stage) is governed by each member’s
               “Review &amp; publish” permission, not by this table. Rules narrow what a role could already do —
               the crew still work through their ticks.
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ---- the task form: which brief fields exist, and which are demanded ---- */}
+      {fields && (
+        <>
+          <div className="section-head" style={{ marginTop: 18 }}>
+            <h2>The task form</h2>
+            <span className="count">· which brief fields a task carries — and which are demanded</span>
+          </div>
+          <div className="card table-wrap">
+            <table className="tbl fields-tbl">
+              <thead>
+                <tr><th>Field</th><th>Rule</th><th>Applies to</th><th>Options</th></tr>
+              </thead>
+              <tbody>
+                {TASK_FIELD_DEFS.map((f) => {
+                  const cfg = fields[f.key]
+                  if (!cfg) return null
+                  return (
+                    <tr key={f.key}>
+                      <td>
+                        <b>{f.label}</b>
+                        <div className="stat-sub">{f.hint}</div>
+                      </td>
+                      <td>
+                        <div className="pill-group">
+                          {['off', 'optional', 'required'].map((st) => (
+                            <button key={st} type="button"
+                              className={'pill' + (cfg.state === st ? ' active' : '') + (st === 'required' && cfg.state === st ? ' pill-req' : '')}
+                              onClick={() => patchField(f.key, { state: st })}>
+                              {st}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="pill-group">
+                          {CONTENT_TYPES.map((t) => (
+                            <button key={t.key} type="button"
+                              className={'pill' + (cfg.types.includes(t.key) ? ' active' : '')}
+                              data-tip={cfg.types.includes(t.key) ? `${t.label}s carry ${f.label}` : `${t.label}s don’t carry ${f.label}`}
+                              onClick={() => toggleFieldType(f.key, t.key)}>
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        {cfg.options !== undefined ? (
+                          <div className="opt-chips">
+                            {cfg.options.map((o) => (
+                              <span key={o} className="chip chip-muted opt-chip">
+                                {o}
+                                <button type="button" className="opt-chip-x" aria-label={`Remove ${o}`}
+                                  onClick={() => patchField(f.key, { options: cfg.options.filter((x) => x !== o) })}>
+                                  <X size={11} />
+                                </button>
+                              </span>
+                            ))}
+                            <span className="opt-add">
+                              <input className="input pc-mini" placeholder="Add…" value={optDraft[f.key] || ''}
+                                onChange={(e) => setOptDraft({ ...optDraft, [f.key]: e.target.value })}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption(f.key) } }} />
+                              <button type="button" className="btn btn-sm" onClick={() => addOption(f.key)}>Add</button>
+                            </span>
+                          </div>
+                        ) : <span className="stat-sub">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
+              A required field blocks saving a task of those types without it — and blocks clearing it later.
+              Off hides the field from the task card entirely; the crew always see what’s filled in.
             </div>
           </div>
         </>

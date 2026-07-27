@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage } from '../db.js'
+import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { authRequired, canAccessDept, can, wrap } from '../auth.js'
 
@@ -106,7 +106,7 @@ const cleanChannels = async (v) => {
 const LIST_COLUMNS = `id, title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id,
   operator_id, editor_id, designer_id,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
-  shot_link, design_link, reference_text, reference_links, release_date, release_time, description,
+  shot_link, design_link, reference_text, reference_links, format, rubrika, script, release_date, release_time, description,
   checklist, todo_sort, pinned, photo_thumb,
   CASE WHEN photo IS NULL THEN 0 ELSE 1 END AS has_photo, done_at, created_at`
 
@@ -226,6 +226,20 @@ router.get('/:id', wrap(async (req, res) => {
 // Times come from <input type="time"> as HH:MM — anything else becomes null.
 const cleanTime = (v) => (v && /^\d{2}:\d{2}/.test(String(v)) ? String(v).slice(0, 5) : null)
 
+// The briefing fields the admin can demand (Admin → Pipeline → The task
+// form). A required field blocks creating a task of a scoped type without
+// it — and blocks clearing it later.
+const FIELD_LABELS = { format: 'Format', rubrika: 'Rubrika', script: 'Script', reference: 'Reference', description: 'Description' }
+const requiredMissing = (rules, type, values) => {
+  for (const k of Object.keys(FIELD_LABELS)) {
+    const r = rules[k]
+    if (r?.state === 'required' && r.types.includes(type) && !values[k]) return FIELD_LABELS[k]
+  }
+  return null
+}
+const cleanShort = (v) => (v ? String(v).trim().slice(0, 120) : null) || null
+const cleanScript = (v) => (v ? String(v).trim().slice(0, 20000) : null) || null
+
 router.post('/', wrap(async (req, res) => {
   const {
     title, type = 'post', status_id = null,
@@ -244,6 +258,19 @@ router.post('/', wrap(async (req, res) => {
   if (!channels.every((ch) => canAccessDept(req.user, ch))) return res.status(403).json({ error: 'Not your channel' })
   if (!can(req.user, 'manage_content')) return res.status(403).json({ error: 'You don’t have permission to add tasks' })
   const safeType = CONTENT_TYPES.includes(type) ? type : 'post'
+
+  // The brief: format / rubrika / script, plus the required-field gate the
+  // admin configured for this content type.
+  const format = cleanShort(req.body?.format)
+  const rubrika = cleanShort(req.body?.rubrika)
+  const script = cleanScript(req.body?.script)
+  const fieldRules = await getTaskFields()
+  const missing = requiredMissing(fieldRules, safeType, {
+    format, rubrika, script,
+    reference: !!(reference_text || referenceLinks.length > 0 || photo),
+    description: !!(description && String(description).trim()),
+  })
+  if (missing) return res.status(400).json({ error: `«${missing}» is required for this type of task` })
 
   // Admins may assign the task to any number of people (or leave it
   // unassigned for the whole channel); everyone else creates for themselves.
@@ -297,8 +324,8 @@ router.post('/', wrap(async (req, res) => {
   const info = await run(`
     INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id,
       recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, release_date, release_time, description, ready_link,
-      shot_link, design_link, reference_text, reference_links, photo, photo_thumb, checklist, todo_sort, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      shot_link, design_link, reference_text, reference_links, format, rubrika, script, photo, photo_thumb, checklist, todo_sort, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     String(title).trim(), JSON.stringify(channels), safeType, assignee, JSON.stringify(assigneeList), req.user.id, status, campaignId,
     crew.operator_id, crew.editor_id, crew.designer_id,
@@ -306,6 +333,7 @@ router.post('/', wrap(async (req, res) => {
     description, cleanLink(req.body?.ready_link) || null,
     cleanLink(req.body?.shot_link) || null, cleanLink(req.body?.design_link) || null,
     reference_text ? String(reference_text).slice(0, 4000) : null, JSON.stringify(referenceLinks),
+    format, rubrika, script,
     photo || null, photo_thumb || null, JSON.stringify(Array.isArray(checklist) ? checklist : []),
     maxSort + 1, new Date().toISOString(),
   )
@@ -469,6 +497,22 @@ router.patch('/:id', wrap(async (req, res) => {
   if (body.reference_links !== undefined) {
     if (!can(req.user, 'manage_content')) return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
     patch.reference_links = JSON.stringify(cleanLinks(body.reference_links))
+  }
+
+  // The brief fields (format / rubrika / script) — manage_content, like the
+  // Reference. Clearing one the admin made required for this type is refused.
+  if (['format', 'rubrika', 'script'].some((f) => body[f] !== undefined)) {
+    if (!can(req.user, 'manage_content')) return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
+    const fieldRules = await getTaskFields()
+    const nextType = body.type !== undefined && CONTENT_TYPES.includes(body.type) ? body.type : row.type
+    for (const f of ['format', 'rubrika', 'script']) {
+      if (body[f] === undefined) continue
+      const v = f === 'script' ? cleanScript(body[f]) : cleanShort(body[f])
+      const r = fieldRules[f]
+      if (!v && row[f] && r?.state === 'required' && r.types.includes(nextType))
+        return res.status(400).json({ error: `«${FIELD_LABELS[f]}» is required for this type of task — it can’t be cleared` })
+      patch[f] = v
+    }
   }
 
   // Editing details needs manage_content.

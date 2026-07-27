@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
+  FileText, Layers, Hash,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
@@ -77,6 +78,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     design_link: item?.design_link || '',
     reference_text: item?.reference_text || '',
     reference_links: item?.reference_links?.length ? [...item.reference_links] : [],
+    format: item?.format || '',
+    rubrika: item?.rubrika || '',
+    script: item?.script || '',
     // Admins choose who the task is for (any number of people); everyone
     // else creates for themselves.
     ...(user.role === 'admin' ? {
@@ -98,6 +102,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   useEffect(() => {
     api.cached('/campaigns').then(setCampaigns).catch(() => {})
   }, [])
+  // The task-form rules the admin tuned: which brief fields exist for this
+  // type, which are required, and the Format / Rubrika option lists.
+  const [fieldRules, setFieldRules] = useState(null)
+  useEffect(() => {
+    api.cached('/fields').then(setFieldRules).catch(() => {})
+  }, [])
 
   // Lists carry only a thumbnail and no revision history — pull the full task
   // (original photo + Pravki history) in on demand when a task is opened.
@@ -118,6 +128,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     checklist: (item?.checklist?.length || 0) > 0,
     reference: false, // empty reference/delivery chrome hides until asked for
     delivery: false,
+    script: false,
   }))
 
   const canEdit = can(user, 'manage_content')
@@ -138,6 +149,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const plan = typeInfo(form.type).plan
   // A post is designed, not filmed: one designer hat instead of operator+editor.
   const isDesign = form.type === 'post'
+  // Does a brief field apply to this task's type — and is it demanded?
+  const fOn = (k) => { const r = fieldRules?.[k]; return !!r && r.state !== 'off' && r.types.includes(form.type) }
+  const fReq = (k) => { const r = fieldRules?.[k]; return !!r && r.state === 'required' && r.types.includes(form.type) }
   // Crew accounts work to the shoot and maker deadlines — the release date is
   // the channel's business and is not shown to them at all. They also can't
   // move the stage freely: they see it, and mark their one milestone.
@@ -282,6 +296,22 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const [conflict, setConflict] = useState(null)
   const save = async (force = false) => {
     if (busy || !form.title.trim()) return // guard against double-submit
+    // The admin's required brief fields gate the save — with the section
+    // opened so the cursor lands where the answer goes.
+    if (creating || canEdit) {
+      const missing = [
+        ['format', 'Format', form.format],
+        ['rubrika', 'Rubrika', form.rubrika],
+        ['script', 'Script', form.script.trim()],
+        ['description', 'Description', form.description.trim()],
+        ['reference', 'Reference', form.reference_text || form.reference_links.length > 0 || form.photo],
+      ].find(([k, , v]) => fReq(k) && !v)
+      if (missing) {
+        setShow((s) => ({ ...s, script: true, reference: true, description: true }))
+        setErr(`«${missing[1]}» is required for this type of task`)
+        return
+      }
+    }
     setBusy(true)
     setErr('')
     setConflict(null)
@@ -290,6 +320,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       payload = {
         ...form,
         title: form.title.trim(),
+        format: form.format || null,
+        rubrika: form.rubrika.trim() || null,
+        script: form.script.trim() || null,
         recording_date: form.recording_date || null,
         recording_time: form.recording_time || null,
         recording_end: form.recording_end || null,
@@ -488,6 +521,23 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      {/* The script — the words and shots the crew films by. Editors write it;
+          the crew read it. Folds behind the extras row unless demanded. */}
+      {fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
+        <div className="cm-row">
+          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> Script{fReq('script') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
+          <textarea className="input cm-script" rows={6} disabled={detailsLocked}
+            placeholder="The script / shot plan the crew works by…"
+            value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
+        </div>
+      )}
+      {(crewViewer || !canEdit) && form.script && (
+        <div className="cm-row">
+          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> Script</span>
+          <div className="crew-script">{form.script}</div>
+        </div>
+      )}
+
       {/* Review (SMM & admin): a Ready task waits here for release. Publish it,
           or send it back to the crew with one note (Pravki). */}
       {atReady && (canReview || canRequest) && (
@@ -621,6 +671,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           <span className="cm-key">About</span>
           <div className="crew-about">
             <span className={`chip ct-${form.type}`}>{typeInfo(form.type).label}</span>
+            {form.format && <span className="chip chip-muted"><Layers size={11} /> {form.format}</span>}
+            {form.rubrika && <span className="chip chip-muted"><Hash size={11} /> {form.rubrika}</span>}
             {form.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
             {[['operator_id', 'Shoots'], ['editor_id', 'Edits'], ['designer_id', 'Designs']].map(([f, verb]) => {
               const u = team.find((x) => x.id === form[f])
@@ -651,6 +703,50 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       </div>
       {creating && plan && (
         <div className="cm-hint">Raises the {plan} plan by one — completing the task fills it.</div>
+      )}
+
+      {/* The brief: Format (talking head, split screen…) and Rubrika (the
+          recurring column). The admin decides which types carry them and
+          whether they're demanded — Admin → Pipeline → The task form. */}
+      {(fOn('format') || fOn('rubrika')) && (
+        <div className="cm-row">
+          <span className="cm-key">Brief</span>
+          {/* Own classes on purpose: these are brief fields, not crew hats —
+              nothing that counts crew-fields may count these. */}
+          <div className="brief-fields">
+            {fOn('format') && (
+              <label className="brief-field">
+                <span className="brief-label"><Layers size={12} /> Format {fReq('format')
+                  ? <b className="req-star" data-tip="The admin made this required">*</b>
+                  : <span className="crew-opt">optional</span>}</span>
+                <select className="select" disabled={detailsLocked} value={form.format}
+                  onChange={(e) => setForm({ ...form, format: e.target.value })}>
+                  <option value="">— pick a format —</option>
+                  {[...new Set([...(fieldRules.format.options || []), ...(form.format ? [form.format] : [])])]
+                    .map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </label>
+            )}
+            {fOn('rubrika') && (
+              <label className="brief-field">
+                <span className="brief-label"><Hash size={12} /> Rubrika {fReq('rubrika')
+                  ? <b className="req-star" data-tip="The admin made this required">*</b>
+                  : <span className="crew-opt">optional</span>}</span>
+                {(fieldRules.rubrika.options || []).length > 0 ? (
+                  <select className="select" disabled={detailsLocked} value={form.rubrika}
+                    onChange={(e) => setForm({ ...form, rubrika: e.target.value })}>
+                    <option value="">— pick a rubrika —</option>
+                    {[...new Set([...(fieldRules.rubrika.options || []), ...(form.rubrika ? [form.rubrika] : [])])]
+                      .map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input className="input" disabled={detailsLocked} placeholder="e.g. SU events"
+                    value={form.rubrika} onChange={(e) => setForm({ ...form, rubrika: e.target.value })} />
+                )}
+              </label>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Platforms — a task can go out on several at once */}
@@ -733,12 +829,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs the artwork (thumbnail, cover…)' },
           ]).map((f) => {
             const holds = (u) => (u.crew_roles || []).includes(f.role)
-            const options = team
-              .filter((u) => holds(u) || u.id === form[f.key]) // a legacy pick stays visible
-              .sort((a, b) =>
-                (picks[b.id] || 0) - (picks[a.id] || 0) ||
-                holds(b) - holds(a) ||
-                a.name.localeCompare(b.name))
+            const bySort = (a, b) =>
+              (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name)
+            // Specialists lead the list, but ANYBODY can take the hat — a
+            // one-time editor, a content head doing the filming.
+            const specialists = team.filter(holds).sort(bySort)
+            const everyoneElse = team.filter((u) => !holds(u)).sort(bySort)
             return (
               <label key={f.key} className="crew-field">
                 <span className="crew-label">{f.label} <span className="crew-opt">optional</span></span>
@@ -746,9 +842,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   data-tip={f.tip}
                   onChange={(e) => setForm({ ...form, [f.key]: e.target.value === '' ? null : Number(e.target.value) })}>
                   <option value="">— nobody —</option>
-                  {options.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}{holds(u) ? '' : ' · no longer holds this role'}</option>
-                  ))}
+                  {specialists.length > 0 && (
+                    <optgroup label={`${f.label}s`}>
+                      {specialists.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </optgroup>
+                  )}
+                  {everyoneElse.length > 0 && (
+                    <optgroup label="Everyone else — one-time duty">
+                      {everyoneElse.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               </label>
             )
@@ -794,9 +897,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       )}
 
       {/* Extras appear only when wanted (the photo lives in Reference now). */}
-      {!detailsLocked && (!show.description || !show.checklist || (!hasRef && !show.reference) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
+      {!detailsLocked && (!show.description || !show.checklist || (!hasRef && !show.reference) || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
         <div className="extra-btns">
           {!hasRef && !show.reference && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, reference: true })}><BookOpen size={14} /> Reference</button>}
+          {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, script: true })}><FileText size={14} /> Script</button>}
           {!show.description && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, description: true })}><AlignLeft size={14} /> Description</button>}
           {!show.checklist && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, checklist: true })}><CheckSquare size={14} /> Checklist</button>}
           {!creating && !crewViewer && canEdit && !show.delivery && (

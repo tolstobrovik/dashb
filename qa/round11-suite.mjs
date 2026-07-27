@@ -60,9 +60,14 @@ ok('a post carries exactly one crew hat', (await page.locator('.modal .crew-fiel
 const crewLabels = await page.locator('.modal .crew-field .crew-label').allTextContents()
 ok('…and that hat is the Designer', crewLabels.length === 1 && /Designer/.test(crewLabels[0]), crewLabels.join(' | '))
 ok('the ready deadline is labeled for design', /Design ready/.test(await page.locator('.modal .dates-block').textContent()))
-const dezOptions = await page.locator('.modal .crew-field select').first().locator('option').allTextContents()
-ok('the designer list offers designer-role people', dezOptions.some((o) => o.includes('Dana Designer')))
-ok('…and nobody without the role', !dezOptions.some((o) => o.includes('Mirabbos') || o.includes('Jasmina')), dezOptions.join(' | '))
+// Round 27: specialists lead their own group; everyone else may still take
+// a one-time duty from the group below.
+const dezSel = page.locator('.modal .crew-field select').first()
+const dezSpecial = await dezSel.locator('optgroup[label="Designers"] option').allTextContents()
+const dezAnyone = await dezSel.locator('optgroup[label*="Everyone"] option').allTextContents()
+ok('the designer list offers designer-role people', dezSpecial.some((o) => o.includes('Dana Designer')))
+ok('…and non-designers wait in the one-time group', !dezSpecial.some((o) => o.includes('Mirabbos') || o.includes('Jasmina'))
+  && dezAnyone.some((o) => o.includes('Mirabbos')), dezSpecial.join(' | '))
 await page.locator('.modal .tchip', { hasText: 'Video' }).click()
 ok('flipping to video brings Operator + Editor + Designer', (await page.locator('.modal .crew-field').count()) === 3)
 await page.locator('.modal .tchip', { hasText: 'Post' }).click()
