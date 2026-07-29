@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  FileText, Layers, Hash,
+  FileText, Layers, Hash, CopyPlus,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
@@ -368,6 +368,34 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     if (!confirm('Delete this task?')) return
     try { await onDelete(item); toast('Task deleted'); onClose() } catch (e) { setErr(e.message) }
   }
+  // One press spawns the recurring piece: brief, crew and platforms ride
+  // along; dates, stage and delivery start clean.
+  const duplicate = async () => {
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      await api.post('/content', {
+        title: `${form.title.trim()} (copy)`,
+        channels: form.channels, type: form.type,
+        description: form.description,
+        checklist: form.checklist.map((c) => (typeof c === 'object' ? { ...c, done: false } : c)),
+        reference_text: form.reference_text || null, reference_links: form.reference_links,
+        format: form.format || null, rubrika: form.rubrika.trim() || null, script: form.script.trim() || null,
+        operator_id: form.operator_id, editor_id: form.editor_id, designer_id: form.designer_id,
+        campaign_id: form.campaign_id,
+        ...(user.role === 'admin' && form.assignee_ids ? { assignee_ids: form.assignee_ids } : {}),
+      })
+      toast('Duplicated — brief kept, dates cleared')
+      onClose()
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  // A task URL anyone on the team can open — pasteable into any chat.
+  const copyLink = () => {
+    const url = `${window.location.origin}/todo?task=${item.id}`
+    navigator.clipboard?.writeText(url)
+      .then(() => toast('Link copied — paste it anywhere'))
+      .catch(() => toast(url, 'err'))
+  }
   // The reviewer's release: move Ready → Published.
   const publish = async () => {
     if (busy || !finalStatusObj) return
@@ -394,6 +422,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       onClose={onClose}
       footer={<>
         {!creating && canEdit && <button className="btn btn-danger" onClick={del}><Trash2 size={15} /> Delete</button>}
+        {!creating && canEdit && !crewViewer && (
+          <button className="btn btn-ghost" onClick={duplicate} disabled={busy}
+            data-tip="A fresh copy: brief, crew and platforms kept — dates and stage cleared">
+            <CopyPlus size={15} /> Duplicate
+          </button>
+        )}
+        {!creating && (
+          <button className="btn btn-ghost btn-icon" onClick={copyLink} data-tip="Copy a link to this task" aria-label="Copy link">
+            <Link2 size={15} />
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         <button className="btn" onClick={onClose}>Cancel</button>
         {!readOnly && (

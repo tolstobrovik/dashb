@@ -6,6 +6,7 @@ import {
   SlidersHorizontal, Settings, Megaphone, CalendarClock, CheckCircle2, ArrowUp, ArrowDown, Rocket,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
+import { toast } from '../lib/toast.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
@@ -325,6 +326,12 @@ export default function Department() {
   }
   const moveStatus = (item, statusId) => updateContent(item, { status_id: statusId }).catch((e) => alert(e.message))
   const moveDate = (item, field, iso) => updateContent(item, { [field]: iso }).catch((e) => alert(e.message))
+  // The board's foot inputs: a title lands straight in that column.
+  const quickAdd = async (title, statusId) => {
+    const c = await api.post('/content', { title, status_id: statusId, channels: [key] })
+    setContent((prev) => [c, ...prev])
+    toast('Added — synced')
+  }
 
   // ---- customizable dashboard + channel settings ----
   const isAdmin = user.role === 'admin'
@@ -618,7 +625,8 @@ export default function Department() {
           onBack={() => setSelectedDate(null)}
         />
       ) : view === 'board' ? (
-        <ContentBoard items={lensContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} campaignsById={campaignsById} teamById={teamById} />
+        <ContentBoard items={lensContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem}
+          onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />
       ) : (
         <ContentCalendar
           items={liveContent}

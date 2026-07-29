@@ -2316,3 +2316,31 @@ button.cb-toggle:hover { color: var(--ink); }
 .brief-fields { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; }
 .brief-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 160px; }
 .brief-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+
+/* ============ Round 28: draggable post-production ============ */
+.tt-shoot { cursor: grab; }
+.tt-shoot:active { cursor: grabbing; }
+.tt-drop { outline: 2px dashed var(--brand-500, #a32234); outline-offset: -2px; background: var(--brand-50, rgba(163,34,52,0.06)) !important; }
+.crew-late-tray { margin-bottom: 10px; }
+.crew-late-tray .cal-tray-chip .chip-danger { font-size: 10.5px; padding: 1px 6px; }
+.crew-list-day { border-radius: 8px; }
+
+/* ============ Round 29: undo toasts, duplicate ============ */
+.toast-act {
+  margin-left: 8px; padding: 2px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.35);
+  background: transparent; color: inherit; font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer;
+}
+.toast-act:hover { background: rgba(255,255,255,0.15); }
+
+/* ============ Round 30: the design pass ============ */
+/* Keyboard travelers get a visible ring; mice stay clean. */
+:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+.input:focus-visible, .select:focus-visible { outline-offset: 0; }
+/* The board's foot inputs: type, Enter, next one. */
+.board-quick-btn {
+  display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%;
+  padding: 6px 8px; margin-top: 2px; border: 1px dashed var(--hairline); border-radius: 8px;
+  background: none; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.board-quick-btn:hover { color: var(--brand-600); border-color: var(--brand-300, #c98b95); }
+.board-quick-input { margin-top: 2px; font-size: 13px; }

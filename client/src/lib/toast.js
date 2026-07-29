@@ -3,4 +3,6 @@
 // means "synced", never "hopefully".
 let push = null
 export const registerToasts = (fn) => { push = fn }
-export const toast = (text, kind = 'ok') => { push?.(text, kind) }
+// action = { label, onClick } renders a button on the toast (e.g. Undo) and
+// keeps it up a little longer.
+export const toast = (text, kind = 'ok', action = null) => { push?.(text, kind, action) }

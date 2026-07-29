@@ -22,11 +22,15 @@ const resetFields = () => req('/fields', 'POST', {
 })
 const cleanup = async () => {
   for (const c of (await req('/content')).data.filter((c) => /x27:/.test(c.title))) await req(`/content/${c.id}`, 'DELETE')
+  for (const u of (await req('/users')).data.filter((u) => u.username === 'x27plain')) await req(`/users/${u.id}`, 'DELETE')
   await resetFields()
 }
 await cleanup()
 const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
+// The one-time-duty probe member exists BEFORE the browser opens — the UI
+// caches /users per session, so a mid-flow creation never reaches the modal.
+await req('/users', 'POST', { name: 'Plain X27 Member', username: 'x27plain', password: 'p1234', role: 'member' })
 
 // ---- 1) the API contract: defaults, admin writes, the required gate ----
 const eff = (await req('/fields')).data
@@ -82,10 +86,10 @@ ok('…and the script reached the record', !!made && made.script === 'Opening sh
 // ---- 3) the crew picker offers everyone ----
 await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
-await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(300)
+await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(600)
 const opSel = p.locator('.modal .crew-field', { hasText: 'Operator' }).locator('select')
 ok('the operator list carries the one-time group',
-  (await opSel.locator('optgroup[label*="Everyone"] option', { hasText: jas.name.split(' ')[0] }).count()) === 1)
+  (await opSel.locator('optgroup[label*="Everyone"] option', { hasText: 'Plain X27' }).count()) === 1)
 await p.keyboard.press('Escape')
 
 // ---- 4) the admin card edits the form live ----

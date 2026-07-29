@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus, Check, PartyPopper, Clapperboard, Send, GripVertical, Pin, Trash2, UserRound,
-  Lock, CalendarDays, StickyNote, CalendarClock, Video, Scissors, PenLine, Palette,
+  Lock, CalendarDays, StickyNote, CalendarClock, Video, Scissors, PenLine, Palette, CopyPlus,
 } from 'lucide-react'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { getPicks, bumpPick } from '../lib/picks.js'
@@ -20,7 +20,7 @@ const keyOf = (it) => (it.personal ? 'p' : 'c') + it.id
 // React would remount every row on each keystroke or poll — killing any drag
 // mid-flight and losing hover/focus. Out here they simply re-render.
 function Row({ item, ctx }) {
-  const { user, byKey, teamById, toggle, togglePin, removeTask, rescheduleToday, setOpenItem, dragKey, onDragOverRow, persistOrder, openMenu } = ctx
+  const { user, byKey, teamById, toggle, togglePin, removeTask, rescheduleToday, duplicateTask, setOpenItem, dragKey, onDragOverRow, persistOrder, openMenu } = ctx
   const isDone = !!item.done_at
   const canComplete = item.personal || user.role === 'admin' || can(user, 'move_tasks') || item.assignee_id === user.id
   const canPin = canComplete
@@ -43,6 +43,7 @@ function Row({ item, ctx }) {
         canComplete && { label: isDone ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => toggle(item) },
         canPin && !isDone && { label: item.pinned ? 'Unpin' : 'Pin to the top', icon: Pin, onClick: () => togglePin(item) },
         !isDone && due && due !== todayISO() && { label: 'Reschedule to today', icon: CalendarDays, onClick: () => rescheduleToday(item) },
+        !item.personal && can(user, 'manage_content') && { label: 'Duplicate', icon: CopyPlus, onClick: () => duplicateTask(item) },
         canDelete && { sep: true },
         canDelete && { label: 'Delete', icon: Trash2, danger: true, onClick: () => removeTask(item) },
       ])}
@@ -434,11 +435,45 @@ export default function Todo() {
     await api.del(`/content/${item.id}`)
     setItems((prev) => prev.filter((x) => x.id !== item.id))
   }
+  // One press spawns the recurring piece: brief, crew and platforms ride
+  // along; dates, stage and delivery start clean.
+  const duplicateTask = async (t) => {
+    try {
+      const u = await api.post('/content', {
+        title: `${t.title} (copy)`,
+        channels: t.channels, type: t.type,
+        description: t.description || '',
+        checklist: (t.checklist || []).map((c) => (typeof c === 'object' ? { ...c, done: false } : c)),
+        reference_text: t.reference_text || null, reference_links: t.reference_links || [],
+        format: t.format || null, rubrika: t.rubrika || null, script: t.script || null,
+        operator_id: t.operator_id, editor_id: t.editor_id, designer_id: t.designer_id,
+        campaign_id: t.campaign_id,
+        ...(user.role === 'admin' ? { assignee_ids: t.assignees?.length ? t.assignees : t.assignee_id ? [t.assignee_id] : [] } : {}),
+      })
+      setItems((prev) => [u, ...prev])
+      toast('Duplicated — brief kept, dates cleared')
+    } catch (e) { alert(e.message) }
+  }
+
+  // Hooks stay above the loading gate — a context read after an early return
+  // shifts the hook order on the loading→loaded flip.
+  const { openMenu } = useContextMenu()
+
+  // A pasted task link (…/todo?task=123) opens that task once the list is in.
+  const linkOpened = useRef(false)
+  useEffect(() => {
+    if (loading || linkOpened.current) return
+    const id = Number(new URLSearchParams(window.location.search).get('task'))
+    if (!id) return
+    linkOpened.current = true
+    const t = items.find((x) => x.id === id)
+    if (t) setOpenItem(t)
+    else toast('That task isn’t in your list — it may be deleted or off your channels', 'err')
+  }, [loading, items])
 
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 
-  const { openMenu } = useContextMenu()
-  const ctx = { user, byKey, teamById, toggle, togglePin, removeTask, rescheduleToday, setOpenItem, dragKey, onDragOverRow, persistOrder, openMenu }
+  const ctx = { user, byKey, teamById, toggle, togglePin, removeTask, rescheduleToday, duplicateTask, setOpenItem, dragKey, onDragOverRow, persistOrder, openMenu }
   const viewingMember = isAdmin && viewUser !== 'all' ? teamById[Number(viewUser)] : null
 
   return (

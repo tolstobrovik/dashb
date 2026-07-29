@@ -1,17 +1,27 @@
 import { useRef, useState } from 'react'
-import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors } from 'lucide-react'
+import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors, Plus } from 'lucide-react'
 import { dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
 
 // Simple kanban: one column per pipeline stage, drag a card to move it.
 // Dragging into the final stage completes the task and fills its plan.
-export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, campaignsById = {}, teamById = {} }) {
+// With onQuickAdd, every working column grows a foot input: type a title,
+// Enter — the task lands in that stage without a modal round-trip.
+export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, onQuickAdd, campaignsById = {}, teamById = {} }) {
   const { byKey } = useChannels()
   // Ref = source of truth for the drop (a fast drop must never read a stale
   // state value); state only drives the dimmed styling.
   const dragRef = useRef(null)
   const [dragId, setDragId] = useState(null)
   const [overCol, setOverCol] = useState(null)
+  const [addCol, setAddCol] = useState(null)
+  const [draft, setDraft] = useState('')
+  const submitQuick = async (s) => {
+    const title = draft.trim()
+    if (!title) { setAddCol(null); return }
+    setDraft('') // the input stays open — rapid entry is the whole point
+    try { await onQuickAdd(title, s.id) } catch (e) { alert(e.message) }
+  }
 
   const drop = (statusId) => {
     const item = items.find((i) => i.id === dragRef.current)
@@ -89,6 +99,23 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                 )
               })}
               {list.length === 0 && <div className="board-empty">{canMove ? 'Drop here' : '—'}</div>}
+              {/* You plan work, you don't create it published or deleted. */}
+              {onQuickAdd && !isDeletedLabel(s.label) && !s.is_final && (
+                addCol === s.id ? (
+                  <input className="input board-quick-input" autoFocus placeholder="Title — Enter adds it"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); submitQuick(s) }
+                      if (e.key === 'Escape') { setAddCol(null); setDraft('') }
+                    }}
+                    onBlur={() => { if (!draft.trim()) setAddCol(null) }} />
+                ) : (
+                  <button type="button" className="board-quick-btn" onClick={() => { setAddCol(s.id); setDraft('') }}>
+                    <Plus size={13} /> Add
+                  </button>
+                )
+              )}
             </div>
           </div>
         )

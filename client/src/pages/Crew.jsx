@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Clapperboard, Scissors, AlertTriangle, Clock, Pencil, Check, LayoutGrid, CalendarDays, Rows3, Palette, CheckCircle2,
 } from 'lucide-react'
@@ -224,6 +224,52 @@ export default function Crew() {
     setContent((prev) => prev.filter((x) => x.id !== item.id))
   }
 
+  // ---- drag a block to rebook it ----
+  // A shoot dropped on another day moves the shoot; dropped on another
+  // person's row it changes the operator too. An edit-due card moves the
+  // edit deadline / the editor the same way. The Late tray above the grid
+  // holds work whose date already slipped out of the week — drag it back in.
+  const dragInfo = useRef(null) // { id, kind: 'shoot' | 'edit' }
+  const [dropCell, setDropCell] = useState(null)
+  const startDrag = (e, t, kind) => {
+    dragInfo.current = { id: t.id, kind }
+    try { e.dataTransfer.setData('text/plain', String(t.id)); e.dataTransfer.effectAllowed = 'move' } catch { /* ok */ }
+  }
+  const endDrag = () => { dragInfo.current = null; setDropCell(null) }
+  const overCell = (e, key) => {
+    if (!dragInfo.current) return
+    e.preventDefault()
+    if (dropCell !== key) setDropCell(key)
+  }
+  // personId null = keep whoever holds the hat (day-only drops in the List).
+  const dropTask = async (personId, iso) => {
+    const drag = dragInfo.current
+    endDrag()
+    if (!drag) return
+    const t = content.find((x) => x.id === drag.id)
+    if (!t) return
+    const patch = {}
+    if (drag.kind === 'shoot') {
+      if ((t.recording_date || null) !== iso) patch.recording_date = iso
+      if (personId && t.operator_id !== personId) patch.operator_id = personId
+    } else {
+      if ((t.edit_ready_date || null) !== iso) patch.edit_ready_date = iso
+      if (personId && t.editor_id !== personId) patch.editor_id = personId
+    }
+    if (Object.keys(patch).length === 0) return
+    // Remember what the drop overwrote, so the toast can take it back.
+    const before = Object.fromEntries(Object.keys(patch).map((k) => [k, t[k] ?? null]))
+    try {
+      await updateContent(t, patch)
+      toast(drag.kind === 'shoot' ? 'Shoot rebooked — synced' : 'Edit deadline moved — synced', 'ok', {
+        label: 'Undo',
+        onClick: () => updateContent(t, before)
+          .then(() => toast('Put back — synced'))
+          .catch((e) => alert(e.message)),
+      })
+    } catch (e) { alert(e.message) }
+  }
+
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 
   const totalShoots = crew.reduce((n, u) => n + loads.get(u.id).days.reduce((x, d) => x + d.shoots.length, 0), 0)
@@ -389,7 +435,41 @@ export default function Crew() {
       })}
 
       {/* ---- Timetable: the big week grid, people × days ---- */}
-      {tab === 'video' && view === 'week' && (
+      {tab === 'video' && view === 'week' && (() => {
+        // Work whose date slipped out of the week is invisible on the grid —
+        // the Late tray keeps it in hand, ready to be dragged onto a day.
+        const crewIds = new Set(crew.map((u) => u.id))
+        const lateShoots = live.filter((t) => !t.done_at && t.recording_date && t.recording_date < today && crewIds.has(t.operator_id))
+        const lateCuts = live.filter((t) => !t.done_at && !t.ready_at && crewIds.has(t.editor_id) &&
+          (t.edit_ready_date || t.release_date) && (t.edit_ready_date || t.release_date) < today)
+        const nameOf = (id) => users.find((x) => x.id === id)?.name?.split(' ')[0] || '?'
+        return (
+          <>
+            {(lateShoots.length > 0 || lateCuts.length > 0) && (
+              <div className="cal-tray crew-late-tray">
+                <span className="cal-tray-label"><AlertTriangle size={13} /> Late — drag onto a day to rebook</span>
+                <div className="cal-tray-items">
+                  {lateShoots.map((t) => (
+                    <div key={`ls${t.id}`} className="cal-tray-chip" draggable
+                      onDragStart={(e) => startDrag(e, t, 'shoot')} onDragEnd={endDrag}
+                      onClick={() => setOpenItem(t)} title={t.title}>
+                      <Clapperboard size={12} />
+                      <span className="ev-txt">{t.title}</span>
+                      <span className="chip chip-danger">{nameOf(t.operator_id)} · {dateLabel(t.recording_date)}</span>
+                    </div>
+                  ))}
+                  {lateCuts.map((t) => (
+                    <div key={`lc${t.id}`} className="cal-tray-chip" draggable
+                      onDragStart={(e) => startDrag(e, t, 'edit')} onDragEnd={endDrag}
+                      onClick={() => setOpenItem(t)} title={t.title}>
+                      <Scissors size={12} />
+                      <span className="ev-txt">{t.title}</span>
+                      <span className="chip chip-danger">{nameOf(t.editor_id)} · {dateLabel(t.edit_ready_date || t.release_date)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
         <div className="card table-wrap tt-wrap">
           <table className="crew-tt">
             <thead>
@@ -410,24 +490,37 @@ export default function Crew() {
                         <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
                         <span>
                           <b>{u.name.split(' ')[0]}</b>
-                          <small>{u.work_start && u.work_end ? `${u.work_start}–${u.work_end}` : 'no hours set'}</small>
+                          <small>{u.work_start && u.work_end
+                            ? `${u.work_start}–${u.work_end}`
+                            : user.role === 'admin'
+                              ? <button className="lnk" onClick={() => setSchedFor(u)}>set hours</button>
+                              : 'no hours set'}</small>
                         </span>
                       </span>
                     </td>
                     {w.days.map((d) => {
                       const cuts = w.edits.filter((t) => (t.edit_ready_date || t.release_date) === d.iso)
+                      const cellKey = `${u.id}|${d.iso}`
                       return (
-                        <td key={d.iso} className={(d.working ? '' : 'tt-off') + (d.iso === today ? ' tt-today' : '')}>
+                        <td key={d.iso}
+                          className={(d.working ? '' : 'tt-off') + (d.iso === today ? ' tt-today' : '') + (dropCell === cellKey ? ' tt-drop' : '')}
+                          onDragOver={(e) => overCell(e, cellKey)}
+                          onDragLeave={() => { if (dropCell === cellKey) setDropCell(null) }}
+                          onDrop={(e) => { e.preventDefault(); dropTask(u.id, d.iso) }}>
                           {!d.working && d.shoots.length === 0 && cuts.length === 0 && <span className="tt-off-txt">off</span>}
                           {d.shoots.map((s) => (
-                            <button key={`s${s.id}`} className="tt-shoot" onClick={() => setOpenItem(s)} onContextMenu={(e) => blockMenu(e, s)} title={s.title}>
+                            <button key={`s${s.id}`} className="tt-shoot" draggable
+                              onDragStart={(e) => startDrag(e, s, 'shoot')} onDragEnd={endDrag}
+                              onClick={() => setOpenItem(s)} onContextMenu={(e) => blockMenu(e, s)} title={s.title}>
                               <b><Clapperboard size={11} /> Shoot{s.recording_time ? ` · ${s.recording_time}${s.recording_end ? `–${s.recording_end}` : ''}` : ''}</b>
                               <span>{s.title}</span>
                               <i className="tt-ch">{s.channels.map((c) => byKey[c]?.label || c).join(' · ')}</i>
                             </button>
                           ))}
                           {cuts.map((t) => (
-                            <button key={`e${t.id}`} className="tt-shoot tt-edit" onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)} title={t.title}>
+                            <button key={`e${t.id}`} className="tt-shoot tt-edit" draggable
+                              onDragStart={(e) => startDrag(e, t, 'edit')} onDragEnd={endDrag}
+                              onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)} title={t.title}>
                               <b><Scissors size={11} /> Edit due</b>
                               <span>{t.title}</span>
                               <i className="tt-ch">{t.channels.map((c) => byKey[c]?.label || c).join(' · ')}</i>
@@ -443,7 +536,9 @@ export default function Crew() {
           </table>
           {crew.length === 0 && <div className="empty">Nobody to show.</div>}
         </div>
-      )}
+          </>
+        )
+      })()}
 
       {/* ---- List: the week as plain rows ---- */}
       {tab === 'video' && view === 'list' && (
@@ -455,11 +550,18 @@ export default function Crew() {
             const cuts = crew.flatMap((u) =>
               loads.get(u.id).edits.filter((t) => (t.edit_ready_date || t.release_date) === iso).map((t) => ({ t, u })))
             if (shoots.length === 0 && cuts.length === 0) return null
+            // A day group is a drop target too: dragging a row onto another
+            // day rebooks the date and keeps the person.
             return (
-              <div key={iso} className="crew-list-day">
+              <div key={iso} className={'crew-list-day' + (dropCell === `day|${iso}` ? ' tt-drop' : '')}
+                onDragOver={(e) => overCell(e, `day|${iso}`)}
+                onDragLeave={() => { if (dropCell === `day|${iso}`) setDropCell(null) }}
+                onDrop={(e) => { e.preventDefault(); dropTask(null, iso) }}>
                 <div className="brief-h-head">{dateLabel(iso)}{iso === today ? ' · today' : ''}</div>
                 {shoots.map(({ s, u }) => (
-                  <button key={`s${s.id}`} className="ov-row" onClick={() => setOpenItem(s)} onContextMenu={(e) => blockMenu(e, s)}>
+                  <button key={`s${s.id}`} className="ov-row" draggable
+                    onDragStart={(e) => startDrag(e, s, 'shoot')} onDragEnd={endDrag}
+                    onClick={() => setOpenItem(s)} onContextMenu={(e) => blockMenu(e, s)}>
                     <span className="crew-list-time"><Clapperboard size={13} /> Shoot{s.recording_time ? ` · ${s.recording_time}${s.recording_end ? `–${s.recording_end}` : ''}` : ''}</span>
                     <span className="ov-title">{s.title}</span>
                     <span className="ov-chips">
@@ -469,7 +571,9 @@ export default function Crew() {
                   </button>
                 ))}
                 {cuts.map(({ t, u }) => (
-                  <button key={`c${t.id}`} className="ov-row" onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)}>
+                  <button key={`c${t.id}`} className="ov-row" draggable
+                    onDragStart={(e) => startDrag(e, t, 'edit')} onDragEnd={endDrag}
+                    onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)}>
                     <span className="crew-list-time crew-list-edit"><Scissors size={13} /> Edit due</span>
                     <span className="ov-title">{t.title}</span>
                     <span className="ov-chips">
