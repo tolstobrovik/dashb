@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Sun, Clapperboard, Scissors, Send, AlertCircle, CheckCircle2, CalendarRange, Check, StickyNote, ListTodo, PenLine, Trash2, Palette,
-  Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, RotateCcw, ExternalLink, Link2,
+  Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, RotateCcw, ExternalLink, Link2,
+  SlidersHorizontal, Eye, EyeOff,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
@@ -345,6 +346,39 @@ export default function Brief() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
+  // My Day, your order: the simple view's sections can be reordered and
+  // hidden per account (this browser). Defaults match the built-in order,
+  // so an untouched day looks exactly as it always did.
+  const DAY_KEYS = ['missing', 'pravki', 'review', 'today', 'personal', 'coming', 'done']
+  const [dayPrefs, setDayPrefs] = useState(() => {
+    try {
+      const o = JSON.parse(localStorage.getItem(`satashkent_day_${user.id}`) || 'null')
+      if (o && Array.isArray(o.order) && Array.isArray(o.hidden)) return o
+    } catch { /* defaults */ }
+    return { order: [], hidden: [] }
+  })
+  const [arranging, setArranging] = useState(false)
+  const saveDayPrefs = (next) => {
+    setDayPrefs(next)
+    try { localStorage.setItem(`satashkent_day_${user.id}`, JSON.stringify(next)) } catch { /* ok */ }
+  }
+  const orderedDayKeys = () => {
+    const pos = new Map(dayPrefs.order.map((k, i) => [k, i]))
+    return [...DAY_KEYS].sort((a, b) => (pos.has(a) ? pos.get(a) : 1e9) - (pos.has(b) ? pos.get(b) : 1e9))
+  }
+  const moveSection = (key, dir) => {
+    const keys = orderedDayKeys()
+    const i = keys.indexOf(key)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= keys.length) return
+    keys.splice(j, 0, keys.splice(i, 1)[0])
+    saveDayPrefs({ ...dayPrefs, order: keys })
+  }
+  const toggleSection = (key) => saveDayPrefs({
+    ...dayPrefs,
+    hidden: dayPrefs.hidden.includes(key) ? dayPrefs.hidden.filter((k) => k !== key) : [...dayPrefs.hidden, key],
+  })
+  const resetDayPrefs = () => saveDayPrefs({ order: [], hidden: [] })
 
   useEffect(() => {
     Promise.all([api.get('/content'), api.cached('/statuses'), api.get('/personal'), api.get('/content/revisions/mine')])
@@ -671,46 +705,24 @@ export default function Brief() {
   // ============ the simple view: admin & members ============
   if (!isCrew) {
     const nothingToday = dueToday.length === 0 && overdue.length === 0
-    return (
+    const todayBlock = dueToday.length > 0 && (
       <>
-        <div className="card card-pad brief-hero">
-          <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
-          <h2 className="brief-title">
-            {firstName}, today:{' '}
-            {nothingToday ? 'nothing on the schedule — enjoy the quiet.' : (
-              [
-                dueToday.length > 0 && `${dueToday.length} to do`,
-                overdue.length > 0 && `${overdue.length} missing`,
-              ].filter(Boolean).join(' · ')
-            )}
-          </h2>
+        <div className="section-head">
+          <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />
+          <h2>To do today</h2>
+          <span className="count">· {dueToday.length}</span>
         </div>
-
-        {missingBlock}
-
-        {pravkiBlock}
-
-        {reviewBlock}
-
-        {dueToday.length > 0 && (
-          <>
-            <div className="section-head">
-              <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />
-              <h2>To do today</h2>
-              <span className="count">· {dueToday.length}</span>
-            </div>
-            <div className="card card-pad brief-list">
-              {dueToday.map((t) => (
-                <BriefRow key={t.id} item={t} work={workOnDate(t, today)}
-                  time={hhmm(t.recording_date === today ? t.recording_time : t.release_time)}
-                  byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
-              ))}
-            </div>
-          </>
-        )}
-
-        {personalBlock}
-
+        <div className="card card-pad brief-list">
+          {dueToday.map((t) => (
+            <BriefRow key={t.id} item={t} work={workOnDate(t, today)}
+              time={hhmm(t.recording_date === today ? t.recording_time : t.release_time)}
+              byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
+          ))}
+        </div>
+      </>
+    )
+    const comingBlock = (
+      <>
         <div className="section-head">
           <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
           <h2>Coming up</h2>
@@ -763,8 +775,72 @@ export default function Brief() {
             )}
           </div>
         </div>
+      </>
+    )
+    // The day in the order YOU keep it — sections move and hide per account;
+    // untouched prefs render the built-in order exactly as before.
+    const SECTION_DEFS = {
+      missing: { label: 'Missing — past the deadline', node: missingBlock },
+      pravki: { label: 'Changes to make (Pravki)', node: pravkiBlock },
+      review: { label: 'Waiting for your review', node: reviewBlock },
+      today: { label: 'To do today', node: todayBlock },
+      personal: { label: 'Personal tasks', node: personalBlock },
+      coming: { label: 'Coming up', node: comingBlock },
+      done: { label: 'What you’ve done', node: doneBlock },
+    }
+    const orderedKeys = orderedDayKeys()
+    const customized = dayPrefs.order.length > 0 || dayPrefs.hidden.length > 0
+    return (
+      <>
+        <div className="card card-pad brief-hero">
+          <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
+          <h2 className="brief-title">
+            {firstName}, today:{' '}
+            {nothingToday ? 'nothing on the schedule — enjoy the quiet.' : (
+              [
+                dueToday.length > 0 && `${dueToday.length} to do`,
+                overdue.length > 0 && `${overdue.length} missing`,
+              ].filter(Boolean).join(' · ')
+            )}
+          </h2>
+          <button className={'icon-btn brief-arrange' + (arranging ? ' on' : '')}
+            onClick={() => setArranging((v) => !v)}
+            data-tip="Arrange your day — order and hide sections" data-tip-left="" aria-label="Arrange sections">
+            <SlidersHorizontal size={15} />
+          </button>
+        </div>
 
-        {doneBlock}
+        {arranging && (
+          <div className="card card-pad br-arrange">
+            <div className="pc-check-head" style={{ marginBottom: 6 }}>
+              <h3>Arrange your day</h3>
+              <span className="stat-sub">order and visibility — saved to this account</span>
+            </div>
+            {orderedKeys.map((k) => {
+              const off = dayPrefs.hidden.includes(k)
+              return (
+                <div key={k} className={'br-arr-row' + (off ? ' off' : '')}>
+                  <span className="br-arr-name">{SECTION_DEFS[k].label}</span>
+                  <button className="side-eye" onClick={() => moveSection(k, -1)} aria-label={`Move ${SECTION_DEFS[k].label} up`}><ChevronUp size={13} /></button>
+                  <button className="side-eye" onClick={() => moveSection(k, +1)} aria-label={`Move ${SECTION_DEFS[k].label} down`}><ChevronDown size={13} /></button>
+                  <button className={'side-eye' + (off ? ' off' : '')} onClick={() => toggleSection(k)}
+                    data-tip={off ? 'Show this section' : 'Hide this section'} data-tip-left=""
+                    aria-label={off ? `Show ${SECTION_DEFS[k].label}` : `Hide ${SECTION_DEFS[k].label}`}>
+                    {off ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              )
+            })}
+            <div className="br-arr-foot">
+              {customized && <button className="btn btn-sm" onClick={resetDayPrefs}><RotateCcw size={13} /> Reset</button>}
+              <button className="btn btn-sm btn-primary" onClick={() => setArranging(false)}><Check size={14} /> Done</button>
+            </div>
+          </div>
+        )}
+
+        {orderedKeys.filter((k) => !dayPrefs.hidden.includes(k)).map((k) => (
+          <Fragment key={k}>{SECTION_DEFS[k].node}</Fragment>
+        ))}
 
         {openItem && (
           <ContentModal item={openItem} statuses={statuses} onClose={() => setOpenItem(null)}

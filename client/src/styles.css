@@ -2388,3 +2388,23 @@ button.cb-toggle:hover { color: var(--ink); }
 .cmt-when { flex-shrink: 0; font-size: 10.5px; color: var(--muted); }
 .cmt-input .input { font-size: 13px; }
 .rq-copy { flex-shrink: 0; }
+
+/* ============ Round 34: your order, remembered filters, design lift ============ */
+.brief-hero { position: relative; }
+.brief-arrange { position: absolute; top: 12px; right: 12px; color: var(--muted); }
+.brief-arrange.on, .brief-arrange:hover { color: var(--brand-600); }
+.br-arrange { margin-bottom: 4px; }
+.br-arr-row { display: flex; align-items: center; gap: 6px; padding: 6px 2px; border-bottom: 1px solid var(--hairline); }
+.br-arr-row:last-of-type { border-bottom: none; }
+.br-arr-row.off .br-arr-name { opacity: 0.45; text-decoration: line-through; }
+.br-arr-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; }
+.br-arr-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; }
+/* The front door wears the brand: two quiet ruby washes behind the card. */
+.login-page {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 560px at 88% -12%, color-mix(in srgb, var(--brand-500) 13%, transparent), transparent 62%),
+    radial-gradient(900px 520px at -12% 112%, color-mix(in srgb, var(--brand-500) 9%, transparent), transparent 58%);
+}
+.login-card { box-shadow: 0 18px 48px rgba(90, 20, 30, 0.16); }
+[data-theme="dark"] .login-card { box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5); }

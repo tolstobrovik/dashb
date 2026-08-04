@@ -99,20 +99,30 @@ export default function Missed() {
 
   // Filters: period (day / week / month / custom dates), channel, person,
   // and project — the project narrows the numbers AND the missed list.
-  const [range, setRange] = useState('all')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [chan, setChan] = useState('all')
-  const [person, setPerson] = useState(0) // 0 = everyone (admin only)
+  // They REMEMBER: the page reopens exactly as this account left it.
+  const remembered = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem(`satashkent_stats_${user.id}`) || '{}') || {} } catch { return {} }
+  }, [user.id])
+  const [range, setRange] = useState(remembered.range || 'all')
+  const [from, setFrom] = useState(remembered.from || '')
+  const [to, setTo] = useState(remembered.to || '')
+  const [chan, setChan] = useState(remembered.chan || 'all')
+  const [person, setPerson] = useState(remembered.person || 0) // 0 = everyone (admin only)
   const [openPerson, setOpenPerson] = useState(0) // report row expanded to its tasks
-  const [project, setProject] = useState(0) // 0 = all projects
+  const [project, setProject] = useState(remembered.project || 0) // 0 = all projects
   // The numbers dashboard has its own window: this week by default.
-  const [statRange, setStatRange] = useState('tweek')
-  const [statFrom, setStatFrom] = useState('')
-  const [statTo, setStatTo] = useState('')
+  const [statRange, setStatRange] = useState(remembered.statRange || 'tweek')
+  const [statFrom, setStatFrom] = useState(remembered.statFrom || '')
+  const [statTo, setStatTo] = useState(remembered.statTo || '')
   // Published-by-channel rides the same window as the numbers above it —
   // one selector for the whole card; only the type filter is its own.
-  const [pubType, setPubType] = useState('all')
+  const [pubType, setPubType] = useState(remembered.pubType || 'all')
+  useEffect(() => {
+    try {
+      localStorage.setItem(`satashkent_stats_${user.id}`,
+        JSON.stringify({ range, from, to, chan, person, project, statRange, statFrom, statTo, pubType }))
+    } catch { /* ok */ }
+  }, [range, from, to, chan, person, project, statRange, statFrom, statTo, pubType, user.id])
   const [campaigns, setCampaigns] = useState([])
   const [projects, setProjects] = useState([])
   useEffect(() => {

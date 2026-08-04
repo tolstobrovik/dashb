@@ -39,7 +39,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
           <div
             key={s.id}
             className={`board-col${overCol === s.id ? ' over' : ''}${isDeletedLabel(s.label) ? ' dead-col' : ''}`}
-            style={{ borderTop: `3px solid ${s.color}` }}
+            style={{ borderTop: `3px solid ${s.color}`, background: `color-mix(in srgb, ${s.color} 6%, transparent)` }}
             onDragOver={(e) => { if (canMove) { e.preventDefault(); setOverCol(s.id) } }}
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol((c) => (c === s.id ? null : c)) }}
             onDrop={() => canMove && drop(s.id)}

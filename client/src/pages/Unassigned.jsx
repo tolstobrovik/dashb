@@ -76,13 +76,20 @@ export default function Unassigned() {
   const [openItem, setOpenItem] = useState(null)
 
   // The filters. `needs` maps a gap kind to 'only' (show tasks needing it)
-  // or 'not' (that kind stops counting); absent = indifferent.
-  const [range, setRange] = useState('any')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [chan, setChan] = useState('all')
-  const [person, setPerson] = useState(0)
-  const [needs, setNeeds] = useState({})
+  // or 'not' (that kind stops counting); absent = indifferent. They REMEMBER
+  // — the page reopens exactly as this account left it; Clear × wipes both.
+  const remembered = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem(`satashkent_gaps_${user.id}`) || '{}') || {} } catch { return {} }
+  }, [user.id])
+  const [range, setRange] = useState(remembered.range || 'any')
+  const [from, setFrom] = useState(remembered.from || '')
+  const [to, setTo] = useState(remembered.to || '')
+  const [chan, setChan] = useState(remembered.chan || 'all')
+  const [person, setPerson] = useState(remembered.person || 0)
+  const [needs, setNeeds] = useState(remembered.needs && typeof remembered.needs === 'object' ? remembered.needs : {})
+  useEffect(() => {
+    try { localStorage.setItem(`satashkent_gaps_${user.id}`, JSON.stringify({ range, from, to, chan, person, needs })) } catch { /* ok */ }
+  }, [range, from, to, chan, person, needs, user.id])
 
   useEffect(() => {
     Promise.all([api.get('/content'), api.cached('/users'), api.cached('/statuses')])
