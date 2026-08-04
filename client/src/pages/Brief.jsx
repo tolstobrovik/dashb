@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Sun, Clapperboard, Scissors, Send, AlertCircle, CheckCircle2, CalendarRange, Check, StickyNote, ListTodo, PenLine, Trash2, Palette,
-  Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, RotateCcw, ExternalLink,
+  Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, RotateCcw, ExternalLink, Link2,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
@@ -442,7 +442,10 @@ export default function Brief() {
     return content
       .filter((t) => !t.done_at && ready.has(t.status_id) &&
         (user.role === 'admin' || t.channels.some((c) => (user.departments || []).includes(c))))
-      .sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999'))
+      // The run-sheet order: release day, then the slot time — the way the
+      // SMM actually works down the list.
+      .sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999') ||
+        (a.release_time || '99').localeCompare(b.release_time || '99'))
   }, [content, statuses, user, isCrew])
 
 
@@ -575,13 +578,25 @@ export default function Brief() {
             onKeyDown={(e) => { if (e.key === 'Enter') setOpenItem(t) }}>
             <span className="brief-when">
               {t.release_date
-                ? <span className="brief-when-sub">{dateLabel(t.release_date)}</span>
+                ? <span className="brief-when-sub">{dateLabel(t.release_date)}{t.release_time ? ` · ${t.release_time.slice(0, 5)}` : ''}</span>
                 : <span className="brief-anytime">no date</span>}
             </span>
             <span className="brief-main"><span className="ov-title">{t.title}</span></span>
             <span className="ov-chips">
               <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
               {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
+              {(t.ready_link || t.design_link) && (
+                <button className="icon-btn rq-copy"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigator.clipboard?.writeText(t.ready_link || t.design_link)
+                      .then(() => toast('Delivery link copied — paste it into the platform'))
+                      .catch(() => {})
+                  }}
+                  data-tip="Copy the finished file's link" aria-label="Copy delivery link">
+                  <Link2 size={14} />
+                </button>
+              )}
               <button className="btn btn-sm btn-primary rq-pub"
                 onClick={(e) => { e.stopPropagation(); publishNow(t) }}
                 data-tip="Release it — Ready → Published">

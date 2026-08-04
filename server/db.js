@@ -661,6 +661,16 @@ export async function initSchema() {
     -- One-time flags (e.g. "campaigns seeded") so seed data never re-appears.
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
+    -- The talk that belongs to the task: one thread per piece of content.
+    CREATE TABLE IF NOT EXISTS comments (
+      id         ${ID},
+      content_id INTEGER NOT NULL,
+      user_id    INTEGER,
+      author     TEXT    NOT NULL DEFAULT '',
+      text       TEXT    NOT NULL,
+      created_at TEXT    NOT NULL
+    );
+
     -- The bell: persisted events (someone moved your task). Deadline
     -- reminders are computed at read time and never stored.
     CREATE TABLE IF NOT EXISTS notifications (
@@ -736,6 +746,7 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_content_sort ON content(pinned, todo_sort);
     CREATE INDEX IF NOT EXISTS idx_content_operator ON content(operator_id, recording_date);
     CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
+    CREATE INDEX IF NOT EXISTS idx_comments_content ON comments(content_id);
   `)
 }
 

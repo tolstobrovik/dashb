@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  FileText, Layers, Hash, CopyPlus,
+  FileText, Layers, Hash, CopyPlus, MessageSquare,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
@@ -113,10 +113,26 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // (original photo + Pravki history) in on demand when a task is opened.
   const [initialPhoto, setInitialPhoto] = useState(item?.photo ?? null)
   const [revisions, setRevisions] = useState(() => item?.revisions || [])
+  // The task's thread — pulled with the full record, appended on send.
+  const [comments, setComments] = useState(() => item?.comments || [])
+  const [cmtDraft, setCmtDraft] = useState('')
+  const [cmtBusy, setCmtBusy] = useState(false)
+  const cmtWhen = (ts) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(ts))
+  const sendComment = async () => {
+    const text = cmtDraft.trim()
+    if (!text || cmtBusy) return
+    setCmtBusy(true)
+    try {
+      const c = await api.post(`/content/${item.id}/comments`, { text })
+      setComments((prev) => [...prev, c])
+      setCmtDraft('')
+    } catch (e) { setErr(e.message) } finally { setCmtBusy(false) }
+  }
   useEffect(() => {
     if (!item) return
     api.get(`/content/${item.id}`).then((full) => {
       setRevisions(full.revisions || [])
+      setComments(full.comments || [])
       setForm((f) => ({ ...f, photo: full.photo, photo_thumb: full.photo_thumb }))
       setInitialPhoto(full.photo)
     }).catch(() => {})
@@ -977,6 +993,33 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <button className="btn btn-sm" onClick={addCheck}><Plus size={14} /></button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* The talk that belongs to the task — one thread, everyone on the
+          piece can speak (the crew included; that is the point), and the
+          bell carries each line to the rest. */}
+      {!creating && (
+        <div className="cm-row cm-comments">
+          <span className="cm-key"><MessageSquare size={13} style={{ verticalAlign: -2 }} /> Talk{comments.length > 0 && <span className="count"> · {comments.length}</span>}</span>
+          <div className="cmt-block">
+            {comments.map((c) => (
+              <div key={c.id} className="cmt-row">
+                <b className="cmt-who">{(c.author || '?').split(' ')[0]}</b>
+                <span className="cmt-text">{c.text}</span>
+                <span className="cmt-when">{cmtWhen(c.created_at)}</span>
+              </div>
+            ))}
+            {comments.length === 0 && <div className="tt-none" style={{ padding: '0 0 6px' }}>Nothing said yet — better here than lost in Telegram.</div>}
+            <div className="add-inline cmt-input">
+              <input className="input" value={cmtDraft} placeholder="Say it where the task lives…"
+                onChange={(e) => setCmtDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); sendComment() } }} />
+              <button className="btn btn-sm" onClick={sendComment} disabled={cmtBusy || !cmtDraft.trim()} aria-label="Send comment">
+                <Send size={14} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Modal>

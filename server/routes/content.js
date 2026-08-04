@@ -108,6 +108,7 @@ const LIST_COLUMNS = `id, title, channels, type, assignee_id, assignees, created
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, reference_text, reference_links, format, rubrika, script, release_date, release_time, description,
   checklist, todo_sort, pinned, photo_thumb,
+  (SELECT COUNT(*) FROM comments WHERE comments.content_id = content.id) AS comment_count,
   CASE WHEN photo IS NULL THEN 0 ELSE 1 END AS has_photo, done_at, created_at`
 
 const canSee = (user, row) =>
@@ -230,14 +231,46 @@ router.get('/open-revisions', wrap(async (req, res) => {
   })))
 }))
 
-// One task in full — including the original photo and its revision history.
+// One task in full — including the original photo, its revision history and
+// the comment thread.
 router.get('/:id', wrap(async (req, res) => {
   const row = parse(await get('SELECT * FROM content WHERE id = ?', req.params.id))
   if (!row || !canSee(req.user, row)) return res.status(404).json({ error: 'Not found' })
   const revisions = await all(
     'SELECT id, round, requested_by, requested_name, target, note, created_at, resolved_at FROM revisions WHERE content_id = ? ORDER BY round, id',
     row.id)
-  res.json({ ...row, revisions, has_photo: row.photo ? 1 : 0 })
+  const comments = await all(
+    'SELECT id, user_id, author, text, created_at FROM comments WHERE content_id = ? ORDER BY id',
+    row.id)
+  res.json({ ...row, revisions, comments, has_photo: row.photo ? 1 : 0 })
+}))
+
+// One line into the task's thread. Anyone who can SEE the task may speak —
+// the crew included; that is the point. Everyone else on the task (and
+// anyone who spoke before) hears it through the bell.
+router.post('/:id/comments', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const parsed = { ...row, channels: JSON.parse(row.channels || '[]') }
+  if (!canSee(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
+  const text = String(req.body?.text ?? '').trim().slice(0, 2000)
+  if (!text) return res.status(400).json({ error: 'Write something first' })
+  const now = new Date().toISOString()
+  const info = await run('INSERT INTO comments (content_id, user_id, author, text, created_at) VALUES (?, ?, ?, ?, ?)',
+    row.id, req.user.id, req.user.name || '', text, now)
+  let assignees = []
+  try { assignees = JSON.parse(row.assignees || '[]') } catch { assignees = [] }
+  const spoke = (await all('SELECT DISTINCT user_id FROM comments WHERE content_id = ?', row.id)).map((r) => r.user_id)
+  const people = [...new Set([...assignees, row.assignee_id, row.operator_id, row.editor_id, row.designer_id, ...spoke]
+    .filter((id) => id && id !== req.user.id))]
+  if (people.length) {
+    const preview = text.length > 80 ? `${text.slice(0, 80)}…` : text
+    await batch(people.map((id) => [
+      'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      id, 'comment', `${req.user.name} on «${row.title}»: ${preview}`, row.id, now,
+    ]))
+  }
+  res.status(201).json(await get('SELECT id, user_id, author, text, created_at FROM comments WHERE id = ?', info.lastInsertRowid))
 }))
 
 // Times come from <input type="time"> as HH:MM — anything else becomes null.

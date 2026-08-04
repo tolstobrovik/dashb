@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors, Plus } from 'lucide-react'
+import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors, Plus, MessageSquare } from 'lucide-react'
 import { dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
 
@@ -89,6 +89,9 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                       )}
                       {checks.length > 0 && (
                         <span className="chip chip-muted"><CheckSquare size={10} /> {done}/{checks.length}</span>
+                      )}
+                      {(item.comment_count || 0) > 0 && (
+                        <span className="chip chip-muted" data-tip="The task's thread"><MessageSquare size={10} /> {item.comment_count}</span>
                       )}
                       {!!(item.has_photo || item.photo) && !item.photo_thumb && <span className="chip chip-muted"><ImageIcon size={10} /></span>}
                       {others.map((c) => (

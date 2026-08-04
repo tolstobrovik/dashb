@@ -2378,3 +2378,13 @@ button.cb-toggle:hover { color: var(--ink); }
 .tt-shoot.tt-design { border-left-color: #7c5cd6; }
 .tt-shoot.tt-design b { color: #7c5cd6; }
 [data-theme="dark"] .tt-shoot.tt-design b { color: #a68df0; }
+
+/* ============ Round 33: the task's thread + the run-sheet ============ */
+.cm-comments { border-top: 1px solid var(--hairline); padding-top: 12px; margin-top: 4px; }
+.cmt-block { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.cmt-row { display: flex; align-items: baseline; gap: 7px; font-size: 13px; line-height: 1.45; }
+.cmt-who { flex-shrink: 0; font-weight: 800; font-size: 12.5px; }
+.cmt-text { flex: 1; min-width: 0; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmt-when { flex-shrink: 0; font-size: 10.5px; color: var(--muted); }
+.cmt-input .input { font-size: 13px; }
+.rq-copy { flex-shrink: 0; }
