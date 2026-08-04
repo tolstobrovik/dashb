@@ -67,7 +67,7 @@ await e.goto(BASE + '/login')
 await e.fill('input[name="username"]', 'r17ed'); await e.fill('input[name="password"]', 'e1234')
 await e.click('button[type="submit"]'); await e.waitForURL(/brief/, { timeout: 15000 })
 await e.waitForTimeout(1200)
-const editLane = await e.locator('.cb-col').nth(1).textContent()
+const editLane = await e.locator('.cb-col').first().textContent()
 ok('editor’s lane no longer shows the killed piece', !editLane.includes('r17: killed launch video'))
 await e.close()
 

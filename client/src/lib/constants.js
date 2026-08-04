@@ -1,6 +1,7 @@
 import {
   Instagram, Send, Youtube, Target, Camera, Clapperboard, Megaphone,
   Star, BarChart3, Globe, Music2, PenTool, Image as ImageIcon, Film, CirclePlay, Video, FileText,
+  Lightbulb, Scissors, CheckCircle2, Trash2,
 } from 'lucide-react'
 
 // Icons the admin can pick when creating a sidebar channel.
@@ -38,6 +39,20 @@ export const can = (user, perm) =>
 // The Deleted stage: killed content that stays on the record. It counts for
 // the planner/operator, never for the editor, and leaves every to-do view.
 export const isDeletedLabel = (label) => /^deleted$/i.test(label || '')
+
+// The little glyph a pipeline stage wears on calendar pills and chips —
+// matched by label so custom stages still land on something sensible.
+export const statusIcon = (label) => {
+  const l = (label || '').toLowerCase()
+  if (/deleted/.test(l)) return Trash2
+  if (/idea/.test(l)) return Lightbulb
+  if (/\bshot\b|filmed/.test(l)) return Film
+  if (/shoot/.test(l)) return Clapperboard
+  if (/edit/.test(l)) return Scissors
+  if (/ready|approv/.test(l)) return CheckCircle2
+  if (/publish|post|done|got|live/.test(l)) return Send
+  return null
+}
 
 export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 

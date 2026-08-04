@@ -223,8 +223,10 @@ export default function Department() {
     () => (hasLens && lens !== 'all' ? content.filter((t) => inLens(lens, t.channels)) : content),
     [content, lens, hasLens])
   // Killed pieces stay visible on the board (the Deleted column is their
-  // record) but leave the calendars, timetables and upcoming lists — a dead
-  // task has no shoot, release or to-do anymore.
+  // record) but leave the timetables and upcoming lists — a dead task has no
+  // shoot, release or to-do anymore. The CALENDARS keep them on purpose:
+  // dimmed, struck through, status written on the pill — the month should
+  // remember what was planned and killed.
   const liveContent = useMemo(
     () => lensContent.filter((t) => !isDeletedLabel(statusesById[t.status_id]?.label)),
     [lensContent, statusesById])
@@ -629,7 +631,7 @@ export default function Department() {
           onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />
       ) : (
         <ContentCalendar
-          items={liveContent}
+          items={lensContent}
           trayItems={unscheduled}
           mode={view}
           canMove={moveTasks}

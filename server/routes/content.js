@@ -680,6 +680,23 @@ router.patch('/:id', wrap(async (req, res) => {
   const keys = Object.keys(patch)
   await run(`UPDATE content SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`, ...keys.map((k) => patch[k]), row.id)
 
+  // The bell rings for everyone on the task except whoever moved it: a
+  // status change is news to the rest of the crew, not to its author.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id) {
+    const newSt = await get('SELECT label FROM statuses WHERE id = ?', patch.status_id)
+    let assignees = []
+    try { assignees = JSON.parse(row.assignees || '[]') } catch { assignees = [] }
+    const people = [...new Set([...assignees, row.assignee_id, row.operator_id, row.editor_id, row.designer_id]
+      .filter((id) => id && id !== req.user.id))]
+    if (people.length && newSt) {
+      const now = new Date().toISOString()
+      await batch(people.map((id) => [
+        'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+        id, 'status', `«${row.title}» → ${newSt.label} — by ${req.user.name}`, row.id, now,
+      ]))
+    }
+  }
+
   // A card moving on the kanban counts as activity for its campaign's project.
   const activityCampaign = patch.campaign_id !== undefined ? patch.campaign_id : row.campaign_id
   if (activityCampaign && (patch.status_id !== undefined || patch.done_at !== undefined || patch.campaign_id !== undefined))

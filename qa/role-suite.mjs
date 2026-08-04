@@ -66,7 +66,7 @@ await page.waitForURL(/brief/, { timeout: 15000 }).catch(() => {})
 ok('editor lands on the brief', page.url().includes('/brief'), page.url())
 await page.waitForSelector('.brief-title', { timeout: 10000 })
 await page.waitForTimeout(600)
-ok('their video sits in the edit lane (still-haunting, open by default)', (await page.locator('.cb-col').nth(1).textContent()).includes('Edit: campus film'))
+ok('their video sits in the edit lane (still-haunting, open by default)', (await page.locator('.cb-col').first().textContent()).includes('Edit: campus film'))
 const header = await page.locator('header').textContent()
 ok('crew chrome: My Day + To-Do, nothing else', header.includes('My Day') && header.includes('To-Do') && !header.includes('Projects'))
 

@@ -3,6 +3,7 @@ import {
   Plus, Check, PartyPopper, Clapperboard, Send, GripVertical, Pin, Trash2, UserRound,
   Lock, CalendarDays, StickyNote, CalendarClock, Video, Scissors, PenLine, Palette, CopyPlus,
 } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
@@ -247,6 +248,7 @@ function QuickAdd({ visible, canTeamAdd, isAdmin, team, chan, viewUser, onAddCon
 // plus your own personal tasks, visible to nobody but you. Admins can focus on
 // one member's workload and hand out the day's tasks per person.
 export default function Todo() {
+  const location = useLocation()
   const { user } = useAuth()
   const { visible, byKey } = useChannels()
   const canTeamAdd = can(user, 'manage_content')
@@ -459,17 +461,19 @@ export default function Todo() {
   // shifts the hook order on the loading→loaded flip.
   const { openMenu } = useContextMenu()
 
-  // A pasted task link (…/todo?task=123) opens that task once the list is in.
-  const linkOpened = useRef(false)
+  // A task link (…/todo?task=123) opens that task once the list is in —
+  // whether pasted into the address bar or reached from the bell while
+  // already on this page (the search string keys the reaction).
+  const linkOpened = useRef('')
   useEffect(() => {
-    if (loading || linkOpened.current) return
-    const id = Number(new URLSearchParams(window.location.search).get('task'))
-    if (!id) return
-    linkOpened.current = true
+    if (loading) return
+    const id = Number(new URLSearchParams(location.search).get('task'))
+    if (!id || linkOpened.current === location.search) return
+    linkOpened.current = location.search
     const t = items.find((x) => x.id === id)
     if (t) setOpenItem(t)
     else toast('That task isn’t in your list — it may be deleted or off your channels', 'err')
-  }, [loading, items])
+  }, [loading, items, location.search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 

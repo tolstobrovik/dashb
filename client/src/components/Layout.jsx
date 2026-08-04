@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import QuickFind from './QuickFind.jsx'
+import NotificationsBell from './NotificationsBell.jsx'
 import Logo from './Logo.jsx'
 import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
@@ -83,6 +84,7 @@ export default function Layout() {
             <ScrollText size={16} /> Docs & KPIs
           </NavLink>
           <button className="icon-btn" onClick={() => setFinding(true)} data-tip="Find anything — Ctrl K" aria-label="Quick find"><Search size={17} /></button>
+          <NotificationsBell user={user} />
           <ThemeToggle />
           <NavLink to="/profile" className="solo-avatar" data-tip="My profile — photo, appearance, password" data-tip-left="" aria-label="My profile">
             <Avatar name={user.name} color={user.color} src={user.avatar} size="sm" />
@@ -122,6 +124,7 @@ export default function Layout() {
             data-tip="Find anything — Ctrl K" data-tip-left="" aria-label="Quick find">
             <Search size={18} />
           </button>
+          <NotificationsBell user={user} />
         </header>
         <main className="content">
           <Outlet />

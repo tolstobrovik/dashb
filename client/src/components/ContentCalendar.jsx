@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clapperboard, Send, Plus } from 'lucide-react'
-import { WEEKDAYS, MONTHS, localISO, todayISO, addDaysISO, typeInfo, onColor } from '../lib/constants.js'
+import { WEEKDAYS, MONTHS, localISO, todayISO, addDaysISO, typeInfo, onColor, statusIcon, isDeletedLabel } from '../lib/constants.js'
 
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1)
@@ -184,10 +184,12 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                 <div className="wk-cards">
                   {dayItems.map((it) => {
                     const st = statusesById[it.status_id]
+                    const SIcon = st ? statusIcon(st.label) : null
+                    const dead = st ? isDeletedLabel(st.label) : false
                     return (
                       <div
                         key={it.id}
-                        className={`wk-card${dragId === it.id ? ' dim' : ''}`}
+                        className={`wk-card${dragId === it.id ? ' dim' : ''}${dead ? ' cal-dead' : ''}`}
                         style={st ? { borderLeftColor: st.color } : undefined}
                         draggable={canMove}
                         onDragStart={(e) => startDrag(e, it)}
@@ -198,7 +200,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                         <div className="wk-title">{it.title}</div>
                         <div className="wk-chips">
                           <span className={`chip ct-${it.type}`}>{typeInfo(it.type).label}</span>
-                          {st && <span className="chip" style={{ background: st.color, color: onColor(st.color) }}>{st.label}</span>}
+                          {st && <span className="chip" style={{ background: st.color, color: onColor(st.color) }}>{SIcon && <SIcon size={9} />} {st.label}</span>}
                           {it[timeField] && <span className="chip chip-muted"><Icon size={9} /> {it[timeField]}</span>}
                         </div>
                       </div>
@@ -233,20 +235,27 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                     <div className="cal-events">
                       {dayItems.slice(0, 4).map((it) => {
                         // The pill wears its pipeline stage's color (To shoot =
-                        // yellow, Editing = red, ...); type only as a fallback.
+                        // yellow, Editing = red, ...) and the stage's little
+                        // glyph; killed work stays on the record — dimmed,
+                        // struck through, its status written under the title.
                         const st = statusesById[it.status_id]
+                        const SIcon = (st && statusIcon(st.label)) || Icon
+                        const dead = st ? isDeletedLabel(st.label) : false
                         return (
                           <div
                             key={it.id}
-                            className={`rel-ev${st ? '' : ` ct-${it.type}`}${dragId === it.id ? ' dim' : ''}`}
+                            className={`rel-ev${st ? '' : ` ct-${it.type}`}${dragId === it.id ? ' dim' : ''}${dead ? ' cal-dead' : ''}`}
                             style={st ? { background: st.color, color: onColor(st.color), borderLeftColor: st.color } : undefined}
                             draggable={canMove}
                             onDragStart={(e) => startDrag(e, it)}
                             onDragEnd={endDrag}
                             title={`${it.title}${st ? ` · ${st.label}` : ''}`}
                           >
-                            <Icon size={10} style={{ flexShrink: 0 }} />
-                            <span className="ev-txt">{it[timeField] ? `${it[timeField]} ` : ''}{it.title}</span>
+                            <SIcon size={10} style={{ flexShrink: 0 }} />
+                            <span className="ev-txt">
+                              {it[timeField] ? `${it[timeField]} ` : ''}{it.title}
+                              {dead && <i className="ev-sub">{st.label}</i>}
+                            </span>
                           </div>
                         )
                       })}

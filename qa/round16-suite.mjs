@@ -98,7 +98,7 @@ await page2.fill('input[name="password"]', 'e1234')
 await page2.click('button[type="submit"]')
 await page2.waitForURL(/brief/, { timeout: 15000 })
 await page2.waitForTimeout(600)
-const editLane = page2.locator('.cb-col').nth(1)
+const editLane = page2.locator('.cb-col').first()
 ok('with nothing overdue the section is the calm all-clear', (await editLane.locator('.cb-clear').count()) === 1
   && /all clear/i.test(await editLane.locator('.cb-clear').textContent()))
 // the editor can open the ready link they saved

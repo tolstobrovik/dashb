@@ -189,7 +189,7 @@ function crewLanes(content, userId, statusesById, today) {
   return { shoot: split(lane.shoot), edit: split(lane.edit) }
 }
 
-function CrewBoard({ lanes, today, byKey, onOpen, onMenu }) {
+function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
   const [unfolded, setUnfolded] = useState({}) // "lane:section" → true
   const toggle = (k, dflt = false) => setUnfolded((s) => ({ ...s, [k]: !(s[k] === undefined ? dflt : s[k]) }))
   const KIND = {
@@ -270,10 +270,18 @@ function CrewBoard({ lanes, today, byKey, onOpen, onMenu }) {
       <Sec laneKey={laneKey} secKey="done" label="Done" items={data.done} />
     </div>
   )
+  // A lane earns its place by capability OR by work actually held — an
+  // editor-only account never stares at an empty SHOOT column, but a member
+  // handed a one-time shoot still sees it.
+  const has = (d) => d.missed.length + d.today.length + d.tomorrow.length + d.upcoming.length + d.done.length > 0
+  const showShoot = caps.includes('operator') || has(lanes.shoot)
+  const showEdit = caps.includes('editor') || caps.includes('designer') || has(lanes.edit)
+  const editTitle = caps.includes('designer') && !caps.includes('editor') ? 'DESIGN' : caps.includes('editor') && caps.includes('designer') ? 'EDIT & DESIGN' : 'EDIT'
+  const EditIcon = editTitle === 'DESIGN' ? Palette : Scissors
   return (
-    <div className="crew-board">
-      <Lane laneKey="shoot" icon={Clapperboard} title="SHOOT" data={lanes.shoot} />
-      <Lane laneKey="edit" icon={Scissors} title="EDIT" data={lanes.edit} />
+    <div className={'crew-board' + (showShoot && showEdit ? '' : ' one-lane')}>
+      {showShoot && <Lane laneKey="shoot" icon={Clapperboard} title="SHOOT" data={lanes.shoot} />}
+      {showEdit && <Lane laneKey="edit" icon={EditIcon} title={editTitle} data={lanes.edit} />}
     </div>
   )
 }
@@ -797,7 +805,7 @@ export default function Brief() {
 
       {myView !== 'calendar' && <>
       {pravkiBlock}
-      <CrewBoard lanes={lanes} today={today} byKey={byKey} onOpen={setOpenItem} onMenu={rowMenu} />
+      <CrewBoard lanes={lanes} caps={user.crew_roles || []} today={today} byKey={byKey} onOpen={setOpenItem} onMenu={rowMenu} />
       {personalBlock}
       </>}
 

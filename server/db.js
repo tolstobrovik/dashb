@@ -660,6 +660,18 @@ export async function initSchema() {
 
     -- One-time flags (e.g. "campaigns seeded") so seed data never re-appears.
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+
+    -- The bell: persisted events (someone moved your task). Deadline
+    -- reminders are computed at read time and never stored.
+    CREATE TABLE IF NOT EXISTS notifications (
+      id         ${ID},
+      user_id    INTEGER NOT NULL,
+      kind       TEXT    NOT NULL DEFAULT 'status',
+      text       TEXT    NOT NULL,
+      content_id INTEGER,
+      created_at TEXT    NOT NULL,
+      read_at    TEXT
+    );
   `)
 
   // Upgrades for existing Postgres databases (SQLite goes through migrate()).
@@ -723,6 +735,7 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_personal_user ON personal_tasks(user_id);
     CREATE INDEX IF NOT EXISTS idx_content_sort ON content(pinned, todo_sort);
     CREATE INDEX IF NOT EXISTS idx_content_operator ON content(operator_id, recording_date);
+    CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
   `)
 }
 
