@@ -213,6 +213,23 @@ router.get('/revisions/mine', wrap(async (req, res) => {
   res.json(mine.map((r) => ({ ...r, channels: JSON.parse(r.channels || '[]'), reference_links: parseLinks(r.reference_links) })))
 }))
 
+// Every OPEN Pravki across the team — the admin's view of who owes changes.
+// Powers the "N pravki" chips on Post Production.
+router.get('/open-revisions', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
+  const rows = await all(`
+    SELECT r.id, r.content_id, r.target, r.note, r.created_at,
+      c.title, c.operator_id, c.editor_id, c.designer_id
+    FROM revisions r JOIN content c ON c.id = r.content_id
+    WHERE r.resolved_at IS NULL
+      AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
+    ORDER BY r.created_at DESC`)
+  res.json(rows.map((r) => ({
+    id: r.id, content_id: r.content_id, target: r.target, note: r.note, created_at: r.created_at, title: r.title,
+    person_id: r.target === 'operator' ? r.operator_id : r.target === 'designer' ? r.designer_id : r.editor_id,
+  })))
+}))
+
 // One task in full — including the original photo and its revision history.
 router.get('/:id', wrap(async (req, res) => {
   const row = parse(await get('SELECT * FROM content WHERE id = ?', req.params.id))

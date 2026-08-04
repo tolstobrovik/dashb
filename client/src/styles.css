@@ -2373,3 +2373,8 @@ button.cb-toggle:hover { color: var(--ink); }
 .notif-ico { flex-shrink: 0; margin-top: 1px; color: var(--brand-500); }
 .notif-ico.notif-rem { color: var(--warn-ink, #BA7517); }
 @media (max-width: 720px) { .notif-panel { position: fixed; top: 54px; right: 8px; left: 8px; width: auto; } }
+
+/* ============ Round 32: the design week + pravki chips ============ */
+.tt-shoot.tt-design { border-left-color: #7c5cd6; }
+.tt-shoot.tt-design b { color: #7c5cd6; }
+[data-theme="dark"] .tt-shoot.tt-design b { color: #a68df0; }
