@@ -11,6 +11,7 @@ import { useAuth } from '../lib/auth.jsx'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
+import { activityLine } from '../lib/activity.js'
 
 // Defined at module level — an inline component would remount its date/time
 // inputs on every keystroke elsewhere in the modal and drop their focus.
@@ -117,6 +118,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const [comments, setComments] = useState(() => item?.comments || [])
   const [cmtDraft, setCmtDraft] = useState('')
   const [cmtBusy, setCmtBusy] = useState(false)
+  // The paper trail — who changed what, newest first; folded to three lines.
+  const [activity, setActivity] = useState(() => item?.activity || [])
+  const [allLog, setAllLog] = useState(false)
   const cmtWhen = (ts) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(ts))
   const sendComment = async () => {
     const text = cmtDraft.trim()
@@ -133,6 +137,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     api.get(`/content/${item.id}`).then((full) => {
       setRevisions(full.revisions || [])
       setComments(full.comments || [])
+      setActivity(full.activity || [])
       setForm((f) => ({ ...f, photo: full.photo, photo_thumb: full.photo_thumb }))
       setInitialPhoto(full.photo)
     }).catch(() => {})
@@ -1019,6 +1024,29 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <Send size={14} />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* The paper trail — every change on this task, written as a sentence:
+          who touched which field, from what, to what. Three lines by default;
+          the whole story on request. */}
+      {!creating && activity.length > 0 && (
+        <div className="cm-row cm-history">
+          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> History<span className="count"> · {activity.length}</span></span>
+          <div className="hist-block">
+            {(allLog ? activity : activity.slice(0, 3)).map((a) => (
+              <div key={a.id} className="cmt-row hist-row">
+                <b className="cmt-who">{(a.user_name || '?').split(' ')[0]}</b>
+                <span className="cmt-text">{activityLine(a)}</span>
+                <span className="cmt-when">{cmtWhen(a.created_at)}</span>
+              </div>
+            ))}
+            {activity.length > 3 && (
+              <button type="button" className="hist-more" onClick={() => setAllLog(!allLog)}>
+                {allLog ? 'Show less' : `Show all ${activity.length}`}
+              </button>
+            )}
           </div>
         </div>
       )}

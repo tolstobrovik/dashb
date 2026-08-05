@@ -111,6 +111,71 @@ const LIST_COLUMNS = `id, title, channels, type, assignee_id, assignees, created
   (SELECT COUNT(*) FROM comments WHERE comments.content_id = content.id) AS comment_count,
   CASE WHEN photo IS NULL THEN 0 ELSE 1 END AS has_photo, done_at, created_at`
 
+// ---- the paper trail --------------------------------------------------------
+// One activity row per meaningful change — who, which field, from → to. People
+// become names and stages become labels at write time, so the log still reads
+// like a sentence after members leave, stages get renamed or the task is gone.
+const actRow = (user, id, title, kind, field, oldV, newV, now) => [
+  'INSERT INTO activity (content_id, content_title, user_id, user_name, kind, field, old_value, new_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  id, title, user.id, user.name || '', kind, field ?? null, oldV ?? null, newV ?? null, now,
+]
+const logEvent = (user, id, title, kind) =>
+  run(...actRow(user, id, title, kind, null, null, null, new Date().toISOString()))
+
+// Paragraph-sized fields land as a quiet "updated the …" — no quoting essays.
+const QUIET_FIELDS = ['description', 'script', 'reference_text', 'reference_links', 'photo', 'checklist']
+const PLAIN_FIELDS = ['title', 'type', 'recording_date', 'recording_time', 'recording_end', 'edit_ready_date',
+  'design_ready_date', 'release_date', 'release_time', 'format', 'rubrika', 'ready_link', 'shot_link', 'design_link']
+
+async function logPatch(user, row, patch) {
+  const rows = []
+  const now = new Date().toISOString()
+  const title = patch.title !== undefined ? patch.title : row.title
+  const push = (field, oldV, newV) => rows.push(actRow(user, row.id, title, 'updated', field, oldV, newV, now))
+
+  // People fields → names, resolved in one query.
+  const ids = new Set()
+  for (const f of ['operator_id', 'editor_id', 'designer_id'])
+    if (patch[f] !== undefined && patch[f] !== row[f]) { if (row[f]) ids.add(row[f]); if (patch[f]) ids.add(patch[f]) }
+  let oldAss = null; let newAss = null
+  if (patch.assignees !== undefined) {
+    const o = assigneesOf(row); const n = JSON.parse(patch.assignees)
+    if (JSON.stringify(o) !== JSON.stringify(n)) { oldAss = o; newAss = n; for (const id of [...o, ...n]) ids.add(id) }
+  }
+  const names = {}
+  if (ids.size)
+    for (const u of await all(`SELECT id, name FROM users WHERE id IN (${[...ids].map(() => '?').join(',')})`, ...ids))
+      names[u.id] = u.name
+  const nameOf = (id) => (id ? names[id] || `#${id}` : null)
+  for (const f of ['operator_id', 'editor_id', 'designer_id'])
+    if (patch[f] !== undefined && patch[f] !== row[f]) push(f.replace('_id', ''), nameOf(row[f]), nameOf(patch[f]))
+  if (oldAss) push('owners', oldAss.map(nameOf).join(', ') || null, newAss.map(nameOf).join(', ') || null)
+
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id) {
+    const two = await all('SELECT id, label FROM statuses WHERE id IN (?, ?)', row.status_id ?? 0, patch.status_id ?? 0)
+    const lab = (id) => two.find((s) => s.id === id)?.label || null
+    push('stage', lab(row.status_id), lab(patch.status_id))
+  } else if (patch.done_at !== undefined && !!patch.done_at !== !!row.done_at) {
+    // Only when no stage move tells the story already ("→ Published" covers it).
+    push('done', null, patch.done_at ? 'yes' : 'no')
+  }
+  if (patch.pinned !== undefined && !!patch.pinned !== !!row.pinned) push('pinned', null, patch.pinned ? 'yes' : 'no')
+
+  if (patch.channels !== undefined) {
+    const o = JSON.parse(row.channels || '[]').join(', '); const n = JSON.parse(patch.channels).join(', ')
+    if (o !== n) push('platforms', o || null, n || null)
+  }
+  for (const f of PLAIN_FIELDS) {
+    if (patch[f] === undefined) continue
+    if (String(row[f] ?? '') !== String(patch[f] ?? '')) push(f, row[f] ?? null, patch[f] ?? null)
+  }
+  for (const f of QUIET_FIELDS) {
+    if (patch[f] === undefined) continue
+    if (String(row[f] ?? '') !== String(patch[f] ?? '')) push(/^reference/.test(f) ? 'reference' : f, null, null)
+  }
+  if (rows.length) await batch(rows)
+}
+
 const canSee = (user, row) =>
   user.role === 'admin' ||
   assigneesOf(row).includes(user.id) ||
@@ -231,8 +296,15 @@ router.get('/open-revisions', wrap(async (req, res) => {
   })))
 }))
 
-// One task in full — including the original photo, its revision history and
-// the comment thread.
+// The whole team's paper trail, newest first — the admin's History tab.
+router.get('/activity/all', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
+  res.json(await all(
+    'SELECT id, content_id, content_title, user_id, user_name, kind, field, old_value, new_value, created_at FROM activity ORDER BY id DESC LIMIT 150'))
+}))
+
+// One task in full — including the original photo, its revision history,
+// the comment thread and its paper trail.
 router.get('/:id', wrap(async (req, res) => {
   const row = parse(await get('SELECT * FROM content WHERE id = ?', req.params.id))
   if (!row || !canSee(req.user, row)) return res.status(404).json({ error: 'Not found' })
@@ -242,7 +314,10 @@ router.get('/:id', wrap(async (req, res) => {
   const comments = await all(
     'SELECT id, user_id, author, text, created_at FROM comments WHERE content_id = ? ORDER BY id',
     row.id)
-  res.json({ ...row, revisions, comments, has_photo: row.photo ? 1 : 0 })
+  const activity = await all(
+    'SELECT id, user_id, user_name, kind, field, old_value, new_value, created_at FROM activity WHERE content_id = ? ORDER BY id DESC LIMIT 80',
+    row.id)
+  res.json({ ...row, revisions, comments, activity, has_photo: row.photo ? 1 : 0 })
 }))
 
 // One line into the task's thread. Anyone who can SEE the task may speak —
@@ -388,6 +463,7 @@ router.post('/', wrap(async (req, res) => {
     maxSort + 1, new Date().toISOString(),
   )
   if (campaignId) await bumpProjectOfCampaign(campaignId)
+  await logEvent(req.user, info.lastInsertRowid, String(title).trim(), 'created')
   // A new task raises each channel's plan: 15/16 → 15/17.
   for (const ch of channels) await bumpPlan(ch, safeType, { target: +1 }, true)
   res.status(201).json(await listRow(info.lastInsertRowid))
@@ -431,7 +507,9 @@ router.post('/:id/revisions', wrap(async (req, res) => {
   if (sid && sid !== row.status_id) {
     await run('UPDATE content SET status_id = ?, done_at = NULL WHERE id = ?', sid, row.id)
     if (row.done_at) for (const ch of JSON.parse(row.channels || '[]')) await bumpPlan(ch, row.type, { current: -1 })
+    await logPatch(req.user, row, { status_id: sid })
   }
+  await run(...actRow(req.user, row.id, row.title, 'updated', 'pravki', null, target, new Date().toISOString()))
   res.status(201).json(await listRow(row.id))
 }))
 
@@ -460,7 +538,10 @@ router.post('/revisions/:rid/resolve', wrap(async (req, res) => {
   const readyId = await milestoneStatusId('ready')
   if (readyId) patch.status_id = readyId
   const keys = Object.keys(patch)
-  if (keys.length) await run(`UPDATE content SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id = ?`, ...keys.map((k) => patch[k]), row.id)
+  if (keys.length) {
+    await run(`UPDATE content SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id = ?`, ...keys.map((k) => patch[k]), row.id)
+    await logPatch(req.user, row, patch)
+  }
   res.json({ ok: true, task: await listRow(row.id) })
 }))
 
@@ -729,6 +810,7 @@ router.patch('/:id', wrap(async (req, res) => {
 
   const keys = Object.keys(patch)
   await run(`UPDATE content SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`, ...keys.map((k) => patch[k]), row.id)
+  await logPatch(req.user, row, patch)
 
   // The bell rings for everyone on the task except whoever moved it: a
   // status change is news to the rest of the crew, not to its author.
@@ -791,6 +873,7 @@ router.delete('/:id', wrap(async (req, res) => {
   // Removing a task lowers each channel's plan again (and its count if done).
   for (const ch of JSON.parse(row.channels || '[]'))
     await bumpPlan(ch, row.type, { target: -1, current: row.done_at ? -1 : 0 })
+  await logEvent(req.user, row.id, row.title, 'deleted')
   await run('DELETE FROM content WHERE id = ?', row.id)
   res.json({ ok: true })
 }))

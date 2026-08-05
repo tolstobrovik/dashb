@@ -184,6 +184,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                 <div className="wk-cards">
                   {dayItems.map((it) => {
                     const st = statusesById[it.status_id]
+                    const TIcon = typeInfo(it.type).icon
                     const SIcon = st ? statusIcon(st.label) : null
                     const dead = st ? isDeletedLabel(st.label) : false
                     return (
@@ -199,7 +200,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                       >
                         <div className="wk-title">{it.title}</div>
                         <div className="wk-chips">
-                          <span className={`chip ct-${it.type}`}>{typeInfo(it.type).label}</span>
+                          <span className={`chip ct-${it.type}`}><TIcon size={9} /> {typeInfo(it.type).label}</span>
                           {st && <span className="chip" style={{ background: st.color, color: onColor(st.color) }}>{SIcon && <SIcon size={9} />} {st.label}</span>}
                           {it[timeField] && <span className="chip chip-muted"><Icon size={9} /> {it[timeField]}</span>}
                         </div>
@@ -233,13 +234,17 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   >
                     <div className="cal-daynum">{date.getDate()}</div>
                     <div className="cal-events">
-                      {dayItems.slice(0, 4).map((it) => {
+                      {dayItems.map((it) => {
+                        // Every task shows — a crowded day makes its week row
+                        // taller instead of hiding work behind a "+N more".
                         // The pill wears its pipeline stage's color (To shoot =
-                        // yellow, Editing = red, ...) and the stage's little
-                        // glyph; killed work stays on the record — dimmed,
-                        // struck through, its status written under the title.
+                        // yellow, Editing = red, ...), the type's little icon
+                        // (post, reel, video...) and the stage's glyph; killed
+                        // work stays on the record — dimmed, struck through,
+                        // its status written under the title.
                         const st = statusesById[it.status_id]
-                        const SIcon = (st && statusIcon(st.label)) || Icon
+                        const TIcon = typeInfo(it.type).icon
+                        const SIcon = st && statusIcon(st.label)
                         const dead = st ? isDeletedLabel(st.label) : false
                         return (
                           <div
@@ -249,9 +254,10 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                             draggable={canMove}
                             onDragStart={(e) => startDrag(e, it)}
                             onDragEnd={endDrag}
-                            title={`${it.title}${st ? ` · ${st.label}` : ''}`}
+                            title={`${it.title} · ${typeInfo(it.type).label}${st ? ` · ${st.label}` : ''}`}
                           >
-                            <SIcon size={10} style={{ flexShrink: 0 }} />
+                            <TIcon size={10} style={{ flexShrink: 0 }} />
+                            {SIcon && <SIcon size={10} style={{ flexShrink: 0, opacity: 0.75 }} />}
                             <span className="ev-txt">
                               {it[timeField] ? `${it[timeField]} ` : ''}{it.title}
                               {dead && <i className="ev-sub">{st.label}</i>}
@@ -259,7 +265,6 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                           </div>
                         )
                       })}
-                      {dayItems.length > 4 && <div className="cal-more">+{dayItems.length - 4} more</div>}
                     </div>
                   </div>
                 )

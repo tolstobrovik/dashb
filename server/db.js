@@ -682,6 +682,23 @@ export async function initSchema() {
       created_at TEXT    NOT NULL,
       read_at    TEXT
     );
+
+    -- The paper trail: one row per meaningful change on a task — who, which
+    -- field, from what, to what. Names and stage labels are written down at
+    -- the moment of the change, so the log still reads like a sentence after
+    -- people or stages are renamed or removed (and after the task itself is).
+    CREATE TABLE IF NOT EXISTS activity (
+      id            ${ID},
+      content_id    INTEGER,
+      content_title TEXT    NOT NULL DEFAULT '',
+      user_id       INTEGER,
+      user_name     TEXT    NOT NULL DEFAULT '',
+      kind          TEXT    NOT NULL DEFAULT 'updated', -- created | updated | deleted
+      field         TEXT,
+      old_value     TEXT,
+      new_value     TEXT,
+      created_at    TEXT    NOT NULL
+    );
   `)
 
   // Upgrades for existing Postgres databases (SQLite goes through migrate()).
@@ -747,6 +764,7 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_content_operator ON content(operator_id, recording_date);
     CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
     CREATE INDEX IF NOT EXISTS idx_comments_content ON comments(content_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_content ON activity(content_id, id);
   `)
 }
 

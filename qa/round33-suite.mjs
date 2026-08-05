@@ -59,10 +59,11 @@ ok('one tap copies the finished file’s link',
   (await p.evaluate(() => navigator.clipboard.readText()).catch(() => '')) === 'https://drive.google.com/finished-cut')
 
 await p.goto(BASE + `/todo?task=${t1.id}`); await p.waitForTimeout(1400)
-ok('the thread renders in the modal', (await p.locator('.cmt-row', { hasText: 'color pass' }).count()) === 1)
+ok('the thread renders in the modal', (await p.locator('.cm-comments .cmt-row', { hasText: 'color pass' }).count()) === 1)
 await p.fill('.cmt-input .input', 'Looks good — publishing tonight')
 await p.locator('.cmt-input .btn').click(); await p.waitForTimeout(800)
-ok('a reply appends in place', (await p.locator('.cmt-row').count()) === 2)
+// scoped to the thread: since round 36 the History block reuses .cmt-row styling
+ok('a reply appends in place', (await p.locator('.cm-comments .cmt-row').count()) === 2)
 await p.close()
 await browser.close()
 ok('…and reaches the earlier speaker',

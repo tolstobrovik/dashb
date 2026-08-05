@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
-  X, CheckSquare, Scissors, Video,
+  X, CheckSquare, Scissors, Video, History,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
@@ -14,6 +14,7 @@ import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import Whiteboard from '../components/Whiteboard.jsx'
+import { activityLine } from '../lib/activity.js'
 
 // Distinct hues so member avatars/chips are tellable apart (matches Profile).
 const SWATCHES = ['#a32234', '#2a78d6', '#1D9E75', '#BA7517', '#7b5ad6', '#0e8f8f', '#d6499b', '#5a6b7a']
@@ -32,6 +33,7 @@ const TABS = [
   { key: 'channels', label: 'Channels', icon: PanelLeft },
   { key: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
   { key: 'reports', label: 'Reports', icon: FileBarChart },
+  { key: 'history', label: 'History', icon: History },
 ]
 
 export default function Admin() {
@@ -57,6 +59,53 @@ export default function Admin() {
       {tab === 'channels' && <ChannelsTab onOpenReport={openReport} />}
       {tab === 'pipeline' && <PipelineTab />}
       {tab === 'reports' && <ReportsTab channel={reportChannel} setChannel={setReportChannel} />}
+      {tab === 'history' && <HistoryTab />}
+    </>
+  )
+}
+
+/* ==================== HISTORY (the whole team's paper trail) ============= */
+/* Every change anyone made, newest first, written as a sentence — "Mirabbos
+   changed the shoot start: 10:00 → 11:00 on «Campus tour»". The task link
+   opens the piece; deleted tasks keep their name on the record. */
+function HistoryTab() {
+  const [rows, setRows] = useState([])
+  const [who, setWho] = useState('all')
+  useEffect(() => {
+    let on = true
+    const load = () => api.get('/content/activity/all').then((r) => { if (on) setRows(r) }).catch(() => {})
+    load()
+    const id = setInterval(load, 15000)
+    return () => { on = false; clearInterval(id) }
+  }, [])
+  const people = useMemo(() => [...new Set(rows.map((r) => r.user_name).filter(Boolean))].sort(), [rows])
+  const shown = who === 'all' ? rows : rows.filter((r) => r.user_name === who)
+  const when = (ts) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(ts))
+  return (
+    <>
+      <div className="section-head">
+        <h2>History</h2><span className="count">· {shown.length}</span>
+        <span style={{ flex: 1 }} />
+        <select className="select" value={who} onChange={(e) => setWho(e.target.value)} aria-label="Filter by person">
+          <option value="all">Everyone</option>
+          {people.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+      <div className="card" style={{ padding: '4px 14px' }}>
+        {shown.map((a) => (
+          <div key={a.id} className="alog-row">
+            <span className="alog-when">{when(a.created_at)}</span>
+            <b className="alog-who">{a.user_name || '?'}</b>
+            <span className="alog-text">
+              {activityLine(a)} on{' '}
+              {a.kind !== 'deleted' && a.content_id
+                ? <a className="alog-task" href={`/todo?task=${a.content_id}`}>«{a.content_title}»</a>
+                : <>«{a.content_title}»</>}
+            </span>
+          </div>
+        ))}
+        {shown.length === 0 && <div className="empty">Nothing yet — changes will be written down here.</div>}
+      </div>
     </>
   )
 }
