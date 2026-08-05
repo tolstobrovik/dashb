@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { authRequired, canAccessDept, can, wrap } from '../auth.js'
-import { tgMirror } from '../telegram.js'
+import { tgMirror, tgOriginFrom } from '../telegram.js'
 
 const router = Router()
 router.use(authRequired)
@@ -172,7 +172,7 @@ async function logPatch(user, row, patch) {
   }
   for (const f of QUIET_FIELDS) {
     if (patch[f] === undefined) continue
-    if (String(row[f] ?? '') !== String(patch[f] ?? '')) push(/^reference/.test(f) ? 'reference' : f, null, null)
+    if (String(patch[f] ?? '') !== String(row[f] ?? '')) push(/^reference/.test(f) ? 'reference' : f, null, null)
   }
   if (rows.length) await batch(rows)
 }
@@ -346,7 +346,8 @@ router.post('/:id/comments', wrap(async (req, res) => {
       'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
       id, 'comment', line, row.id, now,
     ]))
-    await tgMirror(people, `💬 ${line}`, row.id)
+    // Telegram gets the roomier cut: who spoke, on what, the words, the link.
+    await tgMirror(people, `💬 ${req.user.name} — «${row.title}»:\n${preview}`, row.id, tgOriginFrom(req))
   }
   res.status(201).json(await get('SELECT id, user_id, author, text, created_at FROM comments WHERE id = ?', info.lastInsertRowid))
 }))
@@ -830,7 +831,11 @@ router.patch('/:id', wrap(async (req, res) => {
         'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
         id, 'status', line, row.id, now,
       ]))
-      await tgMirror(people, `🔔 ${line}`, row.id)
+      // Telegram gets the roomier cut: the move, who made it, the release
+      // day if one is set, and the link — from the very first message.
+      const relDate = patch.release_date !== undefined ? patch.release_date : row.release_date
+      const tgLine = `🔔 «${row.title}» → ${newSt.label}\nby ${req.user.name}${relDate ? ` · release ${relDate}` : ''}`
+      await tgMirror(people, tgLine, row.id, tgOriginFrom(req))
     }
   }
 
