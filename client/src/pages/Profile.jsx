@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Camera, Check, AlertCircle, Trash2, Eye, EyeOff, KeyRound, UserRound, Type, Clock } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Camera, Check, AlertCircle, Trash2, Eye, EyeOff, KeyRound, UserRound, Type, Clock, Send } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import Avatar from '../components/Avatar.jsx'
@@ -47,6 +47,45 @@ export default function Profile() {
   const [textSize, setTextSize] = useState(getTextSize())
   const [theme, setTheme] = useState(getTheme())
   const [snd, setSnd] = useState(soundsOn())
+
+  // The Telegram bridge — the bell, mirrored to your pocket. Connect mints a
+  // one-time deep link; pressing Start in Telegram completes it, and the page
+  // notices on its own.
+  const [tg, setTg] = useState(null) // { enabled, linked, bot }
+  const [tgLink, setTgLinkState] = useState(null) // { url, bot } while waiting for Start
+  const [tgMsg, setTgMsg] = useState('')
+  useEffect(() => { api.get('/telegram/status').then(setTg).catch(() => setTg({ enabled: false })) }, [])
+  useEffect(() => {
+    if (!tgLink || tg?.linked) return
+    const id = setInterval(() => api.get('/telegram/status').then((s) => {
+      setTg(s)
+      if (s.linked) setTgLinkState(null)
+    }).catch(() => {}), 3000)
+    return () => clearInterval(id)
+  }, [tgLink, tg?.linked])
+  const tgConnect = async () => {
+    setTgMsg('')
+    try {
+      const l = await api.post('/telegram/link', {})
+      setTgLinkState(l)
+      if (l.url) window.open(l.url, '_blank', 'noopener')
+    } catch (e) { setTgMsg(e.message) }
+  }
+  const tgDisconnect = async () => {
+    setTgMsg('')
+    try { await api.post('/telegram/unlink', {}); setTg((s) => ({ ...s, linked: false })); setTgLinkState(null) } catch (e) { setTgMsg(e.message) }
+  }
+  const tgActivate = async () => {
+    setTgMsg('')
+    try {
+      const out = await api.post('/telegram/set-webhook', {})
+      setTgMsg(out.ok ? `Webhook set: ${out.url}` : 'Telegram refused the webhook — check the token and try again')
+    } catch (e) { setTgMsg(e.message) }
+  }
+  const tgTest = async () => {
+    setTgMsg('')
+    try { await api.post('/telegram/test', {}); setTgMsg('Sent — check Telegram') } catch (e) { setTgMsg(e.message) }
+  }
 
   // password form
   const [curPw, setCurPw] = useState('')
@@ -186,6 +225,50 @@ export default function Profile() {
           <button className="btn btn-primary" onClick={saveSchedule}>Save schedule</button>
           {schedSaved && <span className="save-ok"><Check size={15} /> Saved</span>}
         </div>
+      </div>
+
+      <div className="section-head" style={{ marginTop: 22 }}><h2><Send size={16} style={{ verticalAlign: -2 }} /> Telegram</h2></div>
+      <div className="card card-pad">
+        {!tg ? (
+          <div className="stat-sub">Checking…</div>
+        ) : !tg.enabled ? (
+          <div className="stat-sub">
+            {user.role === 'admin'
+              ? 'The bot isn’t configured yet: create one with @BotFather, put its token into TELEGRAM_BOT_TOKEN (Vercel → Settings → Environment Variables), redeploy — then press Activate here.'
+              : 'The bot isn’t switched on yet — ask the admin.'}
+          </div>
+        ) : tg.linked ? (
+          <>
+            <div className="stat-sub" style={{ marginBottom: 10 }}>
+              <Check size={14} style={{ verticalAlign: -2, color: 'var(--ok, #1D9E75)' }} /> Connected{tg.bot ? <> to <b>@{tg.bot}</b></> : null} — status moves, comments and deadline reminders land in Telegram too.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button className="btn btn-sm" onClick={tgTest}>Send a test</button>
+              <button className="btn btn-sm" onClick={tgDisconnect}>Disconnect</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="stat-sub" style={{ marginBottom: 10 }}>
+              The bell, mirrored to your pocket: status moves, comments and deadline reminders arrive in Telegram.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={tgConnect}><Send size={14} /> Connect Telegram</button>
+              {tgLink && (
+                <span className="stat-sub">
+                  Press <b>Start</b> in the chat that opened{tgLink.url ? <> (or open <a href={tgLink.url} target="_blank" rel="noreferrer">@{tgLink.bot}</a>)</> : null} — this page will notice by itself.
+                </span>
+              )}
+            </div>
+          </>
+        )}
+        {tg?.enabled && user.role === 'admin' && (
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <button className="btn btn-sm" onClick={tgActivate}>Activate webhook</button>
+            <span className="stat-sub">Admin, once after the token lands or the domain changes.</span>
+          </div>
+        )}
+        {tgMsg && <div className="stat-sub" style={{ marginTop: 8 }}>{tgMsg}</div>}
       </div>
 
       <div className="section-head" style={{ marginTop: 22 }}><h2><Moon size={16} style={{ verticalAlign: -2 }} /> Appearance</h2></div>

@@ -27,7 +27,9 @@ import personalRoutes from './routes/personal.js'
 import programRoutes from './routes/programs.js'
 import hiringRoutes from './routes/hiring.js'
 import candidateRoutes from './routes/candidates.js'
+import telegramRoutes from './routes/telegram.js'
 import { docsRouter, kpisRouter } from './routes/docs.js'
+import { tgDailyReminders } from './telegram.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -46,10 +48,14 @@ app.get('/api/cron/daily', wrap(async (req, res) => {
   await initDb()
   const trackers = await all('SELECT id FROM trackers')
   for (const t of trackers) await snapshotTracker(t.id)
+  // The morning half of the bell, delivered instead of waited for: deadline
+  // reminders pushed to every Telegram-linked member.
+  let reminded = 0
+  try { reminded = await tgDailyReminders() } catch (e) { console.error('telegram reminders failed:', e.message) }
   // In GitHub-storage mode, also compact the data branch to one commit.
   let squashed = false
   try { await squashData(); squashed = true } catch (e) { console.error('squash failed:', e.message) }
-  res.json({ ok: true, day: dayISO(), snapped: trackers.length, squashed })
+  res.json({ ok: true, day: dayISO(), snapped: trackers.length, reminded, squashed })
 }))
 app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
@@ -67,6 +73,7 @@ app.use('/api/personal', personalRoutes)
 app.use('/api/programs', programRoutes)
 app.use('/api/hiring', hiringRoutes)
 app.use('/api/candidates', candidateRoutes)
+app.use('/api/telegram', telegramRoutes)
 app.use('/api/docs', docsRouter)
 app.use('/api/kpis', kpisRouter)
 

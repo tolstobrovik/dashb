@@ -403,6 +403,8 @@ export async function initSchema() {
       work_start    TEXT,
       work_end      TEXT,
       work_days     TEXT,
+      telegram_chat_id TEXT,
+      telegram_code    TEXT,
       created_at    TEXT    NOT NULL
     );
 
@@ -753,6 +755,8 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS format TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS rubrika TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script TEXT')
+    await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT')
+    await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_code TEXT')
   }
 
   await migrate()
@@ -859,6 +863,7 @@ async function migrate() {
     if (!(await hasColumn('content', 'shot_link'))) await exec('ALTER TABLE content ADD COLUMN shot_link TEXT; ALTER TABLE content ADD COLUMN design_link TEXT;')
     if (!(await hasColumn('content', 'format'))) await exec('ALTER TABLE content ADD COLUMN format TEXT; ALTER TABLE content ADD COLUMN rubrika TEXT; ALTER TABLE content ADD COLUMN script TEXT;')
     if (!(await hasColumn('content', 'reference_text'))) await exec("ALTER TABLE content ADD COLUMN reference_text TEXT; ALTER TABLE content ADD COLUMN reference_links TEXT NOT NULL DEFAULT '[]';")
+    if (!(await hasColumn('users', 'telegram_chat_id'))) await exec('ALTER TABLE users ADD COLUMN telegram_chat_id TEXT; ALTER TABLE users ADD COLUMN telegram_code TEXT;')
   } catch (e) {
     console.warn('Skipping legacy migrations:', e.message)
   }

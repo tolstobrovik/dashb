@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { authRequired, canAccessDept, can, wrap } from '../auth.js'
+import { tgMirror } from '../telegram.js'
 
 const router = Router()
 router.use(authRequired)
@@ -340,10 +341,12 @@ router.post('/:id/comments', wrap(async (req, res) => {
     .filter((id) => id && id !== req.user.id))]
   if (people.length) {
     const preview = text.length > 80 ? `${text.slice(0, 80)}…` : text
+    const line = `${req.user.name} on «${row.title}»: ${preview}`
     await batch(people.map((id) => [
       'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
-      id, 'comment', `${req.user.name} on «${row.title}»: ${preview}`, row.id, now,
+      id, 'comment', line, row.id, now,
     ]))
+    await tgMirror(people, `💬 ${line}`)
   }
   res.status(201).json(await get('SELECT id, user_id, author, text, created_at FROM comments WHERE id = ?', info.lastInsertRowid))
 }))
@@ -822,10 +825,12 @@ router.patch('/:id', wrap(async (req, res) => {
       .filter((id) => id && id !== req.user.id))]
     if (people.length && newSt) {
       const now = new Date().toISOString()
+      const line = `«${row.title}» → ${newSt.label} — by ${req.user.name}`
       await batch(people.map((id) => [
         'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
-        id, 'status', `«${row.title}» → ${newSt.label} — by ${req.user.name}`, row.id, now,
+        id, 'status', line, row.id, now,
       ]))
+      await tgMirror(people, `🔔 ${line}`)
     }
   }
 

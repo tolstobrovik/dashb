@@ -216,10 +216,26 @@ Environment variables (all optional):
 | `TURSO_DATABASE_URL` | *(unset)*                         | Remote libsql/Turso database URL (alternative) |
 | `TURSO_AUTH_TOKEN`   | *(unset)*                         | Auth token for the remote database             |
 | `DATA_DIR`           | `./data` (`/tmp` on serverless)   | Where the SQLite file lives in file mode       |
+| `TELEGRAM_BOT_TOKEN` | *(unset — bridge off)*            | Bot token from @BotFather; mirrors the bell to Telegram |
 
 ```bash
 JWT_SECRET="a-long-random-string" PORT=8080 npm start
 ```
+
+### The Telegram bridge
+
+With `TELEGRAM_BOT_TOKEN` set, every bell notification (status moves, task
+comments) is mirrored to each member's Telegram, and the nightly cron pushes
+deadline reminders (a day and a week ahead, Tashkent time). Setup, once:
+
+1. In Telegram, talk to **@BotFather** → `/newbot` → copy the token.
+2. Put it into the deployment's environment (Vercel → Settings →
+   Environment Variables → `TELEGRAM_BOT_TOKEN`) and redeploy. The token
+   lives only in the environment — never in the repo or the database.
+3. In the dashboard, open **Profile → Telegram** as an admin and press
+   **Activate webhook** (repeat only if the token or domain changes).
+4. Each member presses **Connect Telegram** on their Profile and taps
+   **Start** in the chat that opens. `/stop` (or Disconnect) turns it off.
 
 <br>
 
