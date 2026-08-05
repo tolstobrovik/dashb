@@ -40,6 +40,10 @@ export const can = (user, perm) =>
 // the planner/operator, never for the editor, and leaves every to-do view.
 export const isDeletedLabel = (label) => /^deleted$/i.test(label || '')
 
+// The Idea stage: a thought, not a commitment — no crew or dates expected yet,
+// so planning views don't count its blanks as gaps.
+export const isIdeaLabel = (label) => /idea/i.test(label || '')
+
 // The little glyph a pipeline stage wears on calendar pills and chips —
 // matched by label so custom stages still land on something sensible.
 export const statusIcon = (label) => {

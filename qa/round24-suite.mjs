@@ -20,9 +20,11 @@ await cleanup()
 const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
 const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + d * 864e5))
-const orphan = (await req('/content', 'POST', { title: 'x24: orphan video', channels: ['youtube'], type: 'video' })).data
-const dateless = (await req('/content', 'POST', { title: 'x24: staffed dateless', channels: ['instagram_main'], type: 'reel', assignees: [jas.id], operator_id: jas.id, editor_id: jas.id })).data
-await req('/content', 'POST', { title: 'x24: late post', channels: ['instagram_main'], type: 'post', assignees: [jas.id], designer_id: jas.id, release_date: iso(-2) })
+// seeds start in To shoot: since round 35, Idea-stage tasks sit out the gap views
+const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+const orphan = (await req('/content', 'POST', { title: 'x24: orphan video', channels: ['youtube'], type: 'video', status_id: shootId })).data
+const dateless = (await req('/content', 'POST', { title: 'x24: staffed dateless', channels: ['instagram_main'], type: 'reel', assignees: [jas.id], operator_id: jas.id, editor_id: jas.id, status_id: shootId })).data
+await req('/content', 'POST', { title: 'x24: late post', channels: ['instagram_main'], type: 'post', assignees: [jas.id], designer_id: jas.id, release_date: iso(-2), status_id: shootId })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 // ---- 1) admin: the Unassigned page ----

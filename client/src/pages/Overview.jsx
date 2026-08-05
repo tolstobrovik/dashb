@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { CalendarClock, Check, AlertCircle, Megaphone, Rows3, UserX, ArrowRight } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, isIdeaLabel, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PC, daysUntil } from '../components/ProjectBits.jsx'
@@ -127,9 +127,9 @@ export default function Overview() {
   // Planning gaps — live tasks missing people or dates; the strip below the
   // campaigns points at the Unassigned page only while there's work to do.
   const gapCount = useMemo(() => {
-    const dead = new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id))
+    const skip = new Set(statuses.filter((s) => isDeletedLabel(s.label) || isIdeaLabel(s.label)).map((s) => s.id))
     return content.filter((t) => {
-      if (t.done_at || dead.has(t.status_id)) return false
+      if (t.done_at || skip.has(t.status_id)) return false
       const g = gapsOf(t)
       return g.people.length > 0 || g.dates.length > 0
     }).length

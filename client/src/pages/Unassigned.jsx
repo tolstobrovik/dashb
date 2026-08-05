@@ -3,7 +3,7 @@ import { UserX, CalendarX2, CalendarRange, Clapperboard, Scissors, Palette, User
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, isIdeaLabel } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
 
 // The planning gaps, on one page: every live task that nobody owns yet —
@@ -110,15 +110,17 @@ export default function Unassigned() {
 
   const today = todayISO()
   const deadIds = useMemo(() => new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id)), [statuses])
+  const ideaIds = useMemo(() => new Set(statuses.filter((s) => isIdeaLabel(s.label)).map((s) => s.id)), [statuses])
 
   // Every live task with raw gaps — the filters carve this list, the hero
   // keeps quoting it whole so the headline never argues with reality.
+  // Ideas sit out: a task only owes people and dates once it leaves the Idea stage.
   const rows = useMemo(() => content
-    .filter((t) => !t.done_at && !deadIds.has(t.status_id))
+    .filter((t) => !t.done_at && !deadIds.has(t.status_id) && !ideaIds.has(t.status_id))
     .map((t) => ({ t, gaps: gapsOf(t) }))
     .filter((r) => r.gaps.people.length > 0 || r.gaps.dates.length > 0)
     .sort((a, b) => (a.t.release_date || '9999').localeCompare(b.t.release_date || '9999') || b.t.id - a.t.id),
-  [content, deadIds])
+  [content, deadIds, ideaIds])
 
   const holdsHat = (t, id) =>
     (t.assignees?.length ? t.assignees.includes(id) : t.assignee_id === id) ||
