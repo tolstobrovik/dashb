@@ -34,6 +34,7 @@ const TABS = [
   { key: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
   { key: 'reports', label: 'Reports', icon: FileBarChart },
   { key: 'history', label: 'History', icon: History },
+  { key: 'telegram', label: 'Telegram', icon: Send },
 ]
 
 export default function Admin() {
@@ -60,6 +61,105 @@ export default function Admin() {
       {tab === 'pipeline' && <PipelineTab />}
       {tab === 'reports' && <ReportsTab channel={reportChannel} setChannel={setReportChannel} />}
       {tab === 'history' && <HistoryTab />}
+      {tab === 'telegram' && <TelegramTab />}
+    </>
+  )
+}
+
+/* ==================== TELEGRAM (the bot's admin panel) =================== */
+/* The bridge at a glance: is it configured, where the webhook points (straight
+   from Telegram, last error included), who of the team is wired up — with an
+   admin unlink for people who left — and a broadcast line to everyone linked. */
+function TelegramTab() {
+  const [st, setSt] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [cast, setCast] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = () => api.get('/telegram/admin').then(setSt).catch((e) => setMsg(e.message))
+  useEffect(() => {
+    load()
+    const id = setInterval(load, 15000)
+    return () => clearInterval(id)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const activate = async () => {
+    setMsg(''); setBusy(true)
+    try {
+      const out = await api.post('/telegram/set-webhook', {})
+      setMsg(out.ok ? `Webhook set: ${out.url}` : 'Telegram refused the webhook — check the token')
+      await load()
+    } catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
+  const unlink = async (u) => {
+    if (!confirm(`Disconnect ${u.name} from the bot?`)) return
+    try { await api.post('/telegram/admin/unlink', { user_id: u.id }); await load() } catch (e) { setMsg(e.message) }
+  }
+  const broadcast = async () => {
+    const text = cast.trim()
+    if (!text) return
+    setBusy(true); setMsg('')
+    try {
+      const out = await api.post('/telegram/broadcast', { text })
+      toast(`Sent to ${out.sent} ${out.sent === 1 ? 'person' : 'people'}`, 'ok')
+      setCast('')
+    } catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
+  if (!st) return <div className="card card-pad"><div className="stat-sub">Checking the bridge…</div></div>
+  const linked = st.members.filter((m) => m.linked)
+  return (
+    <>
+      <div className="section-head"><h2>The bridge</h2></div>
+      <div className="card card-pad">
+        {!st.enabled ? (
+          <div className="stat-sub">
+            The bot isn’t configured. Put the @BotFather token into <b>TELEGRAM_BOT_TOKEN</b> (Vercel → Environment Variables) or into <b>server/config.js</b> of the private repo, redeploy — then press Activate here.
+          </div>
+        ) : (
+          <>
+            <div className="stat-sub" style={{ marginBottom: 8 }}>
+              Bot: <b>{st.bot ? `@${st.bot}` : '—'}</b>
+              {' · '}Webhook: {st.webhook?.url ? <b>{st.webhook.url}</b> : <b>not set</b>}
+              {st.webhook?.last_error_message ? <> · <span style={{ color: 'var(--critical)' }}>last error: {st.webhook.last_error_message}</span></> : null}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary btn-sm" onClick={activate} disabled={busy}>Activate webhook</button>
+              <span className="stat-sub">Once after the token lands or the domain changes{st.public_url ? <> · task links point to <b>{st.public_url}</b></> : null}.</span>
+            </div>
+          </>
+        )}
+        {msg && <div className="stat-sub" style={{ marginTop: 8 }}>{msg}</div>}
+      </div>
+
+      <div className="section-head" style={{ marginTop: 18 }}><h2>Connected</h2><span className="count">· {linked.length} of {st.members.length}</span></div>
+      <div className="card" style={{ padding: '4px 14px' }}>
+        {st.members.map((m) => (
+          <div key={m.id} className="alog-row">
+            <b className="alog-who">{m.name}</b>
+            <span className="stat-sub">@{m.username}{m.role === 'admin' ? ' · admin' : ''}</span>
+            <span style={{ flex: 1 }} />
+            {m.linked
+              ? <><span className="save-ok"><Check size={14} /> connected</span>
+                <button className="btn btn-sm" onClick={() => unlink(m)}>Unlink</button></>
+              : <span className="stat-sub">—</span>}
+          </div>
+        ))}
+      </div>
+
+      {st.enabled && (
+        <>
+          <div className="section-head" style={{ marginTop: 18 }}><h2>Broadcast</h2></div>
+          <div className="card card-pad">
+            <div className="stat-sub" style={{ marginBottom: 8 }}>One announcement to everyone connected — planning changes, «планёрка в 15:00».</div>
+            <div className="add-inline">
+              <input className="input" value={cast} placeholder="Write the announcement…"
+                onChange={(e) => setCast(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); broadcast() } }} />
+              <button className="btn btn-primary btn-sm" onClick={broadcast} disabled={busy || !cast.trim() || linked.length === 0}>
+                <Send size={14} /> Send to {linked.length}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   )
 }
