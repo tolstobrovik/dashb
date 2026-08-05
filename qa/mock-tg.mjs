@@ -17,6 +17,9 @@ const server = http.createServer((req, res) => {
     try { payload = JSON.parse(body || '{}') } catch { payload = {} }
     if (m) sent.push({ token: m[1], method: m[2], ...payload })
     if (m && m[2] === 'getMe') return res.end(JSON.stringify({ ok: true, result: { username: 'SatashkentBot' } }))
+    if (m && m[2] === 'setWebhook') { server.hookUrl = payload.url || ''; return res.end(JSON.stringify({ ok: true, result: true })) }
+    if (m && m[2] === 'getWebhookInfo')
+      return res.end(JSON.stringify({ ok: true, result: { url: server.hookUrl || '', pending_update_count: 0 } }))
     res.end(JSON.stringify({ ok: true, result: {} }))
   })
 })

@@ -5,10 +5,29 @@
 // is inert and invisible. Messages are plain text on purpose — task titles
 // need no escaping rules.
 import { createHash } from 'crypto'
-import { all, get, dayISO } from './db.js'
+import { all, get, run, dayISO } from './db.js'
+// Namespace import on purpose: config.js may or may not export the token
+// (the public mirror's placeholder doesn't) — a missing name reads as
+// undefined instead of breaking the module graph.
+import * as cfg from './config.js'
 
-export const tgToken = () => process.env.TELEGRAM_BOT_TOKEN || ''
+// The token: the environment always wins (an empty TELEGRAM_BOT_TOKEN= is an
+// explicit off-switch); the config.js value only counts on the real
+// deployment (Vercel), so local dev stacks and the QA gate can never ring a
+// real bot by accident.
+export const tgToken = () => {
+  if (process.env.TELEGRAM_BOT_TOKEN !== undefined) return process.env.TELEGRAM_BOT_TOKEN
+  return process.env.VERCEL ? (cfg.TELEGRAM_BOT_TOKEN || '') : ''
+}
 export const tgEnabled = () => !!tgToken()
+
+// Where the dashboard lives publicly — learned the day the admin presses
+// "Activate webhook" and remembered, so messages can carry task links.
+export async function tgPublicUrl() {
+  return (await get("SELECT value FROM meta WHERE key = 'public_url'"))?.value || ''
+}
+export const tgRememberUrl = (origin) =>
+  run("INSERT INTO meta (key, value) VALUES ('public_url', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", origin)
 // api.telegram.org, unless the QA mock points elsewhere.
 const base = () => process.env.TELEGRAM_API_BASE || 'https://api.telegram.org'
 
@@ -44,8 +63,17 @@ export async function tgSendTo(userId, text) {
     await tgApi('sendMessage', { chat_id: u.telegram_chat_id, text, disable_web_page_preview: true })
   } catch (e) { console.error('telegram send failed:', e.message) }
 }
-export const tgMirror = (userIds, text) =>
-  Promise.allSettled([...new Set(userIds)].map((id) => tgSendTo(id, text)))
+// The bell's fan-out, with a tap-to-open task link when the public address
+// is known.
+export async function tgMirror(userIds, text, contentId = null) {
+  if (!tgEnabled()) return
+  let line = text
+  if (contentId) {
+    const origin = await tgPublicUrl().catch(() => '')
+    if (origin) line += `\n${origin}/todo?task=${contentId}`
+  }
+  await Promise.allSettled([...new Set(userIds)].map((id) => tgSendTo(id, line)))
+}
 
 // The nightly half of the bell, pushed instead of waited for: deadlines
 // standing exactly a day and exactly a week away (Tashkent days), per the hat
