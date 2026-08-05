@@ -70,13 +70,22 @@ export async function tgSendTo(userId, text) {
     await tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: tgClip(text), disable_web_page_preview: true })
   } catch (e) { console.error('telegram send failed:', e.message) }
 }
-// The bell's fan-out, with a tap-to-open task link when the public address
-// is known.
-export async function tgMirror(userIds, text, contentId = null) {
+// Where a message's task link should point: the remembered public address
+// when the admin has activated the webhook, otherwise the address the
+// triggering request itself arrived on — so links work from the very first
+// notification, not only after Activate.
+export const tgOriginFrom = (req) => {
+  const h = req?.get?.('host') || ''
+  if (!h) return ''
+  return `${/^(localhost|127\.)/.test(h) ? 'http' : 'https'}://${h}`
+}
+
+// The bell's fan-out, with a tap-to-open task link — immediately.
+export async function tgMirror(userIds, text, contentId = null, fallbackOrigin = '') {
   if (!tgEnabled()) return
   let line = text
   if (contentId) {
-    const origin = await tgPublicUrl().catch(() => '')
+    const origin = (await tgPublicUrl().catch(() => '')) || fallbackOrigin
     if (origin) line += `\n${origin}/todo?task=${contentId}`
   }
   await Promise.allSettled([...new Set(userIds)].map((id) => tgSendTo(id, line)))
@@ -95,12 +104,14 @@ export async function tgDailyReminders() {
   const dead = new Set(statuses.filter((s) => /^deleted$/i.test(s.label || '')).map((s) => s.id))
   const rows = await all(`SELECT id, title, assignee_id, assignees, operator_id, editor_id, designer_id,
     recording_date, edit_ready_date, design_ready_date, release_date, status_id FROM content WHERE done_at IS NULL`)
+  const origin = await tgPublicUrl().catch(() => '')
   let sent = 0
   for (const u of linked) {
     const lines = []
     const push = (t, date, what) => {
       if (date !== tomorrow && date !== week) return
-      lines.push(`«${t.title}» — ${what} ${date === tomorrow ? 'tomorrow' : 'in a week'}`)
+      // each line carries its own tap-to-open link when the address is known
+      lines.push(`«${t.title}» — ${what} ${date === tomorrow ? 'tomorrow' : 'in a week'}${origin ? `\n${origin}/todo?task=${t.id}` : ''}`)
     }
     for (const t of rows) {
       if (dead.has(t.status_id)) continue
