@@ -4,9 +4,9 @@
 // one-press webhook activation after a deploy.
 import { Router } from 'express'
 import { randomBytes } from 'crypto'
-import { get, run } from '../db.js'
+import { all, get, run } from '../db.js'
 import { authRequired, wrap } from '../auth.js'
-import { tgEnabled, tgApi, tgBotUsername, tgWebhookSecret, tgSendTo } from '../telegram.js'
+import { tgEnabled, tgApi, tgBotUsername, tgWebhookSecret, tgSendTo, tgPublicUrl, tgRememberUrl } from '../telegram.js'
 
 const router = Router()
 
@@ -67,7 +67,47 @@ router.post('/set-webhook', wrap(async (req, res) => {
   const url = String(req.body?.url || `https://${req.get('host')}/api/telegram/webhook`)
   if (!/^https:\/\//.test(url)) return res.status(400).json({ error: 'The webhook needs a public https:// URL' })
   const out = await tgApi('setWebhook', { url, secret_token: tgWebhookSecret(), allowed_updates: ['message'] })
+  // Remember where we live — from now on messages carry task links.
+  if (out?.ok) await tgRememberUrl(url.replace(/\/api\/telegram\/webhook$/, ''))
   res.json({ ok: !!out?.ok, url, telegram: out })
+}))
+
+// ---- the admin panel ----
+// One picture for the admin: is the bridge alive, where the webhook points
+// (straight from Telegram, errors included), and who of the team is wired up.
+router.get('/admin', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
+  const members = (await all('SELECT id, name, username, role, telegram_chat_id FROM users ORDER BY role DESC, name'))
+    .map((u) => ({ id: u.id, name: u.name, username: u.username, role: u.role, linked: !!u.telegram_chat_id }))
+  const webhook = tgEnabled() ? (await tgApi('getWebhookInfo', {}))?.result || null : null
+  res.json({
+    enabled: tgEnabled(), bot: await tgBotUsername(), webhook,
+    public_url: await tgPublicUrl(), members,
+  })
+}))
+
+// The admin untangles someone who left the team or lost the phone.
+router.post('/admin/unlink', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
+  const uid = Number(req.body?.user_id)
+  if (!uid) return res.status(400).json({ error: 'user_id required' })
+  const u = await get('SELECT telegram_chat_id FROM users WHERE id = ?', uid)
+  await run('UPDATE users SET telegram_chat_id = NULL, telegram_code = NULL WHERE id = ?', uid)
+  if (u?.telegram_chat_id) await tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: 'The admin disconnected this chat from the dashboard. Profile → Telegram → Connect brings it back.' })
+  res.json({ ok: true })
+}))
+
+// One announcement to everyone who is wired up — planning changes, "планёрка
+// в 15:00", a released video worth celebrating.
+router.post('/broadcast', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
+  if (!tgEnabled()) return res.status(503).json({ error: 'Set the bot token first' })
+  const text = String(req.body?.text ?? '').trim().slice(0, 3000)
+  if (!text) return res.status(400).json({ error: 'Write the announcement first' })
+  const linked = await all('SELECT id, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL')
+  await Promise.allSettled(linked.map((u) =>
+    tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: `📢 ${req.user.name}: ${text}`, disable_web_page_preview: true })))
+  res.json({ ok: true, sent: linked.length })
 }))
 
 // A signed-in sanity check: send myself a test line through the bridge.
