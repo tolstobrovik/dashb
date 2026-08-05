@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Camera, Check, AlertCircle, Trash2, Eye, EyeOff, KeyRound, UserRound, Type, Clock, Send } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
@@ -54,6 +54,11 @@ export default function Profile() {
   const [tg, setTg] = useState(null) // { enabled, linked, bot }
   const [tgLink, setTgLinkState] = useState(null) // { url, bot } while waiting for Start
   const [tgMsg, setTgMsg] = useState('')
+  // One press = one request: every bridge button locks while its call runs,
+  // so an eager thumb can't send five test lines. The lock lives in a ref —
+  // synchronous on purpose; a burst of clicks outruns any state re-render.
+  const [tgBusy, setTgBusy] = useState(false)
+  const tgLock = useRef(false)
   useEffect(() => { api.get('/telegram/status').then(setTg).catch(() => setTg({ enabled: false })) }, [])
   useEffect(() => {
     if (!tgLink || tg?.linked) return
@@ -63,29 +68,32 @@ export default function Profile() {
     }).catch(() => {}), 3000)
     return () => clearInterval(id)
   }, [tgLink, tg?.linked])
-  const tgConnect = async () => {
-    setTgMsg('')
-    try {
-      const l = await api.post('/telegram/link', {})
-      setTgLinkState(l)
-      if (l.url) window.open(l.url, '_blank', 'noopener')
-    } catch (e) { setTgMsg(e.message) }
+  const tgCall = async (fn) => {
+    if (tgLock.current) return
+    tgLock.current = true
+    setTgBusy(true); setTgMsg('')
+    try { await fn() } catch (e) { setTgMsg(e.message) }
+    // The lock outlives the request by a second — a burst of eager clicks
+    // becomes one action, not one per round-trip.
+    setTimeout(() => { tgLock.current = false; setTgBusy(false) }, 1000)
   }
-  const tgDisconnect = async () => {
-    setTgMsg('')
-    try { await api.post('/telegram/unlink', {}); setTg((s) => ({ ...s, linked: false })); setTgLinkState(null) } catch (e) { setTgMsg(e.message) }
-  }
-  const tgActivate = async () => {
-    setTgMsg('')
-    try {
-      const out = await api.post('/telegram/set-webhook', {})
-      setTgMsg(out.ok ? `Webhook set: ${out.url}` : 'Telegram refused the webhook — check the token and try again')
-    } catch (e) { setTgMsg(e.message) }
-  }
-  const tgTest = async () => {
-    setTgMsg('')
-    try { await api.post('/telegram/test', {}); setTgMsg('Sent — check Telegram') } catch (e) { setTgMsg(e.message) }
-  }
+  const tgConnect = () => tgCall(async () => {
+    const l = await api.post('/telegram/link', {})
+    setTgLinkState(l)
+    if (l.url) window.open(l.url, '_blank', 'noopener')
+  })
+  const tgDisconnect = () => tgCall(async () => {
+    await api.post('/telegram/unlink', {})
+    setTg((s) => ({ ...s, linked: false })); setTgLinkState(null)
+  })
+  const tgActivate = () => tgCall(async () => {
+    const out = await api.post('/telegram/set-webhook', {})
+    setTgMsg(out.ok ? `Webhook set: ${out.url}` : 'Telegram refused the webhook — check the token and try again')
+  })
+  const tgTest = () => tgCall(async () => {
+    await api.post('/telegram/test', {})
+    setTgMsg('Sent — check Telegram')
+  })
 
   // password form
   const [curPw, setCurPw] = useState('')
@@ -243,8 +251,8 @@ export default function Profile() {
               <Check size={14} style={{ verticalAlign: -2, color: 'var(--ok, #1D9E75)' }} /> Connected{tg.bot ? <> to <b>@{tg.bot}</b></> : null} — status moves, comments and deadline reminders land in Telegram too.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button className="btn btn-sm" onClick={tgTest}>Send a test</button>
-              <button className="btn btn-sm" onClick={tgDisconnect}>Disconnect</button>
+              <button className="btn btn-sm" onClick={tgTest} disabled={tgBusy}>Send a test</button>
+              <button className="btn btn-sm" onClick={tgDisconnect} disabled={tgBusy}>Disconnect</button>
             </div>
           </>
         ) : (
@@ -253,7 +261,7 @@ export default function Profile() {
               The bell, mirrored to your pocket: status moves, comments and deadline reminders arrive in Telegram.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={tgConnect}><Send size={14} /> Connect Telegram</button>
+              <button className="btn btn-primary" onClick={tgConnect} disabled={tgBusy}><Send size={14} /> Connect Telegram</button>
               {tgLink && (
                 <span className="stat-sub">
                   Press <b>Start</b> in the chat that opened{tgLink.url ? <> (or open <a href={tgLink.url} target="_blank" rel="noreferrer">@{tgLink.bot}</a>)</> : null} — this page will notice by itself.
@@ -264,7 +272,7 @@ export default function Profile() {
         )}
         {tg?.enabled && user.role === 'admin' && (
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <button className="btn btn-sm" onClick={tgActivate}>Activate webhook</button>
+            <button className="btn btn-sm" onClick={tgActivate} disabled={tgBusy}>Activate webhook</button>
             <span className="stat-sub">Admin, once after the token lands or the domain changes.</span>
           </div>
         )}
