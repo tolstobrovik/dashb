@@ -177,6 +177,28 @@ async function logPatch(user, row, patch) {
   if (rows.length) await batch(rows)
 }
 
+// New work rings its people: one bell row + the Telegram cut per person,
+// naming the hat they just got. Whoever did the assigning hears nothing.
+async function notifyAssigned(req, contentId, title, roleById, extra = '') {
+  const now = new Date().toISOString()
+  const ids = [...roleById.keys()].filter((id) => id && id !== req.user.id)
+  if (!ids.length) return
+  await batch(ids.map((id) => [
+    'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+    id, 'assigned', `You're on «${title}» as ${roleById.get(id)} — by ${req.user.name}`, contentId, now,
+  ]))
+  for (const id of ids)
+    await tgMirror([id], `📌 «${title}»\nyou're the ${roleById.get(id)} · by ${req.user.name}${extra}`, contentId, tgOriginFrom(req))
+}
+// A person can wear two hats on one task — the message names both.
+const addRole = (map, id, role) => {
+  if (!id) return
+  map.set(id, map.has(id) ? `${map.get(id)} & ${role}` : role)
+}
+// The date worth mentioning when handing someone work: the shoot if one is
+// booked, otherwise the release.
+const dateBit = (rec, rel) => (rec ? ` · shoot ${rec}` : rel ? ` · release ${rel}` : '')
+
 const canSee = (user, row) =>
   user.role === 'admin' ||
   assigneesOf(row).includes(user.id) ||
@@ -468,6 +490,13 @@ router.post('/', wrap(async (req, res) => {
   )
   if (campaignId) await bumpProjectOfCampaign(campaignId)
   await logEvent(req.user, info.lastInsertRowid, String(title).trim(), 'created')
+  // Everyone handed a hat on the fresh task learns about it right away.
+  const roles = new Map()
+  for (const id of assigneeList) addRole(roles, id, 'owner')
+  addRole(roles, crew.operator_id, 'operator')
+  addRole(roles, crew.editor_id, 'editor')
+  addRole(roles, crew.designer_id, 'designer')
+  await notifyAssigned(req, info.lastInsertRowid, String(title).trim(), roles, dateBit(recording_date, release_date))
   // A new task raises each channel's plan: 15/16 → 15/17.
   for (const ch of channels) await bumpPlan(ch, safeType, { target: +1 }, true)
   res.status(201).json(await listRow(info.lastInsertRowid))
@@ -514,6 +543,15 @@ router.post('/:id/revisions', wrap(async (req, res) => {
     await logPatch(req.user, row, { status_id: sid })
   }
   await run(...actRow(req.user, row.id, row.title, 'updated', 'pravki', null, target, new Date().toISOString()))
+  // The person who owes the fix hears the actual note — in the bell and in
+  // Telegram — not just a stage move.
+  const fixerId = row[`${target}_id`]
+  if (fixerId && fixerId !== req.user.id) {
+    const preview = note.length > 120 ? `${note.slice(0, 120)}…` : note
+    await run('INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      fixerId, 'pravki', `Pravki from ${req.user.name} on «${row.title}»: ${preview}`, row.id, new Date().toISOString())
+    await tgMirror([fixerId], `🔧 Pravki — «${row.title}»\nfrom ${req.user.name}: ${preview}`, row.id, tgOriginFrom(req))
+  }
   res.status(201).json(await listRow(row.id))
 }))
 
@@ -815,6 +853,24 @@ router.patch('/:id', wrap(async (req, res) => {
   const keys = Object.keys(patch)
   await run(`UPDATE content SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`, ...keys.map((k) => patch[k]), row.id)
   await logPatch(req.user, row, patch)
+
+  // People just handed a hat hear about it — only the NEW names, never the
+  // ones already on the task, never the assigner.
+  {
+    const roles = new Map()
+    for (const { f, role } of [
+      { f: 'operator_id', role: 'operator' }, { f: 'editor_id', role: 'editor' }, { f: 'designer_id', role: 'designer' },
+    ]) if (patch[f] !== undefined && patch[f] && patch[f] !== row[f]) addRole(roles, patch[f], role)
+    if (patch.assignees !== undefined) {
+      const before = new Set(assigneesOf(row))
+      for (const id of JSON.parse(patch.assignees)) if (!before.has(id)) addRole(roles, id, 'owner')
+    }
+    if (roles.size) {
+      const rec = patch.recording_date !== undefined ? patch.recording_date : row.recording_date
+      const rel = patch.release_date !== undefined ? patch.release_date : row.release_date
+      await notifyAssigned(req, row.id, row.title, roles, dateBit(rec, rel))
+    }
+  }
 
   // The bell rings for everyone on the task except whoever moved it: a
   // status change is news to the rest of the crew, not to its author.
