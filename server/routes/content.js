@@ -346,7 +346,7 @@ router.post('/:id/comments', wrap(async (req, res) => {
       'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
       id, 'comment', line, row.id, now,
     ]))
-    await tgMirror(people, `💬 ${line}`)
+    await tgMirror(people, `💬 ${line}`, row.id)
   }
   res.status(201).json(await get('SELECT id, user_id, author, text, created_at FROM comments WHERE id = ?', info.lastInsertRowid))
 }))
@@ -830,7 +830,7 @@ router.patch('/:id', wrap(async (req, res) => {
         'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
         id, 'status', line, row.id, now,
       ]))
-      await tgMirror(people, `🔔 ${line}`)
+      await tgMirror(people, `🔔 ${line}`, row.id)
     }
   }
 
