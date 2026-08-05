@@ -6,7 +6,7 @@ import { Router } from 'express'
 import { randomBytes } from 'crypto'
 import { all, get, run } from '../db.js'
 import { authRequired, wrap } from '../auth.js'
-import { tgEnabled, tgApi, tgBotUsername, tgWebhookSecret, tgSendTo, tgPublicUrl, tgRememberUrl } from '../telegram.js'
+import { tgEnabled, tgApi, tgBotUsername, tgWebhookSecret, tgSendTo, tgPublicUrl, tgRememberUrl, tgClip } from '../telegram.js'
 
 const router = Router()
 
@@ -106,7 +106,7 @@ router.post('/broadcast', wrap(async (req, res) => {
   if (!text) return res.status(400).json({ error: 'Write the announcement first' })
   const linked = await all('SELECT id, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL')
   await Promise.allSettled(linked.map((u) =>
-    tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: `📢 ${req.user.name}: ${text}`, disable_web_page_preview: true })))
+    tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: tgClip(`📢 ${req.user.name}: ${text}`), disable_web_page_preview: true })))
   res.json({ ok: true, sent: linked.length })
 }))
 

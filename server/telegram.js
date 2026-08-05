@@ -53,6 +53,13 @@ export async function tgBotUsername() {
   return botName
 }
 
+// Telegram refuses messages over 4096 characters — a runaway task title or
+// pasted essay must never silence the whole notification.
+export const tgClip = (s) => {
+  const t = String(s ?? '')
+  return t.length > 4000 ? `${t.slice(0, 4000)}…` : t
+}
+
 // One message to one linked member. A Telegram hiccup must never break the
 // request that triggered it — the bell row is already written; this is a mirror.
 export async function tgSendTo(userId, text) {
@@ -60,7 +67,7 @@ export async function tgSendTo(userId, text) {
   try {
     const u = await get('SELECT telegram_chat_id FROM users WHERE id = ?', userId)
     if (!u?.telegram_chat_id) return
-    await tgApi('sendMessage', { chat_id: u.telegram_chat_id, text, disable_web_page_preview: true })
+    await tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: tgClip(text), disable_web_page_preview: true })
   } catch (e) { console.error('telegram send failed:', e.message) }
 }
 // The bell's fan-out, with a tap-to-open task link when the public address
