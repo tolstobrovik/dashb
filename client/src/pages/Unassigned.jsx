@@ -42,9 +42,14 @@ const GAP_KINDS = [
   { key: 'editor', label: 'Editor' }, { key: 'designer', label: 'Designer' },
   { key: 'shoot', label: 'Shoot day' }, { key: 'release', label: 'Release day' },
 ]
+// "Due soon" is the default: work whose nearest date (shoot or release)
+// stands within DUE_SOON_DAYS — plus everything overdue or undated. A reel
+// releasing next week stays off the page until it actually approaches;
+// "Any date" is one tap away for planning ahead.
+export const DUE_SOON_DAYS = 3
 const RANGES = [
-  { key: 'any', label: 'Any date' }, { key: 'today', label: 'Today' },
-  { key: '7d', label: 'Next 7 days' }, { key: 'custom', label: 'Custom…' },
+  { key: 'soon', label: 'Due soon' }, { key: 'today', label: 'Today' },
+  { key: '7d', label: 'Next 7 days' }, { key: 'any', label: 'Any date' }, { key: 'custom', label: 'Custom…' },
 ]
 
 function GapRow({ t, holes, byKey, onOpen }) {
@@ -82,17 +87,20 @@ export default function Unassigned() {
   // The filters. `needs` maps a gap kind to 'only' (show tasks needing it)
   // or 'not' (that kind stops counting); absent = indifferent. They REMEMBER
   // — the page reopens exactly as this account left it; Clear × wipes both.
+  // v2 key on purpose: the old default ("any") auto-saved itself into every
+  // account, so a plain default change would never reach anyone — the bump
+  // resets the page to "Due soon" once, then remembers choices as before.
   const remembered = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem(`satashkent_gaps_${user.id}`) || '{}') || {} } catch { return {} }
+    try { return JSON.parse(localStorage.getItem(`satashkent_gaps2_${user.id}`) || '{}') || {} } catch { return {} }
   }, [user.id])
-  const [range, setRange] = useState(remembered.range || 'any')
+  const [range, setRange] = useState(remembered.range || 'soon')
   const [from, setFrom] = useState(remembered.from || '')
   const [to, setTo] = useState(remembered.to || '')
   const [chan, setChan] = useState(remembered.chan || 'all')
   const [person, setPerson] = useState(remembered.person || 0)
   const [needs, setNeeds] = useState(remembered.needs && typeof remembered.needs === 'object' ? remembered.needs : {})
   useEffect(() => {
-    try { localStorage.setItem(`satashkent_gaps_${user.id}`, JSON.stringify({ range, from, to, chan, person, needs })) } catch { /* ok */ }
+    try { localStorage.setItem(`satashkent_gaps2_${user.id}`, JSON.stringify({ range, from, to, chan, person, needs })) } catch { /* ok */ }
   }, [range, from, to, chan, person, needs, user.id])
 
   useEffect(() => {
@@ -139,13 +147,23 @@ export default function Unassigned() {
     people: r.gaps.people.filter((h) => needs[h.key] !== 'not'),
     dates: r.gaps.dates.filter((h) => needs[h.key] !== 'not'),
   })
-  const matches = (r, ignore) => {
-    if (ignore !== 'date') {
-      const d = r.t.release_date
-      if (range === 'today' && d !== today) return false
-      if (range === '7d' && !(d && d >= today && d <= addDaysISO(today, 7))) return false
-      if (range === 'custom' && !(d && (!from || d >= from) && (!to || d <= to))) return false
+  // The date predicate, shared by the row filter and the hero. "Due soon"
+  // judges by the NEAREST date the task owns — a shoot booked for tomorrow
+  // makes it urgent even when the release is weeks out. Overdue and undated
+  // work always shows: those ARE the emergencies.
+  const inDates = (t) => {
+    const d = t.release_date
+    if (range === 'soon') {
+      const nearest = [t.recording_date, t.release_date].filter(Boolean).sort()[0] || null
+      if (nearest && nearest > addDaysISO(today, DUE_SOON_DAYS)) return false
     }
+    if (range === 'today' && d !== today) return false
+    if (range === '7d' && !(d && d >= today && d <= addDaysISO(today, 7))) return false
+    if (range === 'custom' && !(d && (!from || d >= from) && (!to || d <= to))) return false
+    return true
+  }
+  const matches = (r, ignore) => {
+    if (ignore !== 'date' && !inDates(r.t)) return false
     if (ignore !== 'chan' && chan !== 'all' && !r.t.channels.includes(chan)) return false
     if (ignore !== 'person' && person && !holdsHat(r.t, person)) return false
     if (ignore !== 'needs') {
@@ -194,16 +212,21 @@ export default function Unassigned() {
 
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 
-  // The hero speaks for the whole list; the sections below obey the filters.
-  const allUnowned = rows.filter((r) => r.gaps.people.length > 0).length
-  const total = rows.length
+  // The hero speaks for the chosen horizon (the date pill), so the headline
+  // and the list below always tell the same story; the finer filters
+  // (channel, person, kind) still only carve the sections.
+  const heroRows = rows.filter((r) => inDates(r.t))
+  const allUnowned = heroRows.filter((r) => r.gaps.people.length > 0).length
+  const total = heroRows.length
   return (
     <>
       <div className="card card-pad brief-hero">
         <div className="brief-hello"><UserX size={17} /> Unassigned</div>
         <h2 className="brief-title">
           {total === 0
-            ? 'Every task has its people and its dates.'
+            ? (rows.length > 0
+              ? 'Nothing urgent — the gaps sit further out in the calendar.'
+              : 'Every task has its people and its dates.')
             : [
               allUnowned > 0 && `${allUnowned} waiting for a person`,
               total - allUnowned > 0 && `${total - allUnowned} waiting for dates`,
@@ -211,7 +234,7 @@ export default function Unassigned() {
         </h2>
       </div>
 
-      {total > 0 && (
+      {rows.length > 0 && (
         <>
           <div className="miss-filters">
             <span className="miss-f-label"><CalendarRange size={14} /> Date</span>

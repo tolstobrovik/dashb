@@ -7,7 +7,7 @@ import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo,
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PC, daysUntil } from '../components/ProjectBits.jsx'
-import { gapsOf } from './Unassigned.jsx'
+import { gapsOf, DUE_SOON_DAYS } from './Unassigned.jsx'
 
 // The admin's landing view: every department's process on one screen —
 // plan meters, the pipeline as a colored strip, overdue counts — plus a
@@ -133,10 +133,15 @@ export default function Overview() {
   }, [])
   const gapCount = useMemo(() => {
     const skip = new Set(statuses.filter((s) => isDeletedLabel(s.label) || isIdeaLabel(s.label)).map((s) => s.id))
+    const horizon = addDaysISO(todayISO(), DUE_SOON_DAYS)
     return content.filter((t) => {
       if (t.done_at || skip.has(t.status_id)) return false
       const g = gapsOf(t, crewNeeds)
-      return g.people.length > 0 || g.dates.length > 0
+      if (!(g.people.length > 0 || g.dates.length > 0)) return false
+      // the strip keeps the Unassigned page's "due soon" horizon, so its
+      // number and the page it opens always tell the same story
+      const nearest = [t.recording_date, t.release_date].filter(Boolean).sort()[0] || null
+      return !nearest || nearest <= horizon
     }).length
   }, [content, statuses, crewNeeds])
 
