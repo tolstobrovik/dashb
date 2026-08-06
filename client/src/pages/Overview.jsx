@@ -124,16 +124,21 @@ export default function Overview() {
     ])),
   })), [channels, content, laneDays])
 
-  // Planning gaps — live tasks missing people or dates; the strip below the
+  // Planning gaps — live tasks missing people or dates, counted by the same
+  // admin-tuned crew rules the Unassigned page uses; the strip below the
   // campaigns points at the Unassigned page only while there's work to do.
+  const [crewNeeds, setCrewNeeds] = useState(null)
+  useEffect(() => {
+    api.cached('/fields').then((f) => setCrewNeeds(f.crew || null)).catch(() => {})
+  }, [])
   const gapCount = useMemo(() => {
     const skip = new Set(statuses.filter((s) => isDeletedLabel(s.label) || isIdeaLabel(s.label)).map((s) => s.id))
     return content.filter((t) => {
       if (t.done_at || skip.has(t.status_id)) return false
-      const g = gapsOf(t)
+      const g = gapsOf(t, crewNeeds)
       return g.people.length > 0 || g.dates.length > 0
     }).length
-  }, [content, statuses])
+  }, [content, statuses, crewNeeds])
 
   // ---- timeline ----
   const dateOf = (t) => t.release_date || t.recording_date || null

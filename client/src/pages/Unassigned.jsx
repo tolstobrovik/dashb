@@ -15,20 +15,23 @@ import ContentModal from '../components/ContentModal.jsx'
 // gap kinds themselves — each kind-pill cycles include → exclude → off,
 // and an excluded kind stops counting toward a task's gaps entirely.
 
-// What a task is missing. Filmed types need a shoot/edit chain and a
-// recording day; posts need a designer; everything needs an owner and a
-// release day. Work already past the edit (ready_at) stopped needing its
-// shoot-side people and date long ago. Icon-free so Overview can count
-// gaps without dragging this page's chrome along.
-export const gapsOf = (t) => {
+// What a task is missing. WHICH hats count as missing is the admin's call
+// (Admin → Pipeline → Who must be on a task, served as /fields `crew`):
+// a text-only post stops shouting "needs a designer" the day the admin
+// unticks it. Dates keep their own logic: filmed work wants a shoot day,
+// everything wants a release day, and work already past the edit (ready_at)
+// stopped needing its shoot-side people long ago. Icon-free so Overview can
+// count gaps without dragging this page's chrome along.
+export const gapsOf = (t, crew) => {
+  const need = (hat, fallback) => (Array.isArray(crew?.[hat]) ? crew[hat] : fallback).includes(t.type)
   const filmed = t.type === 'reel' || t.type === 'video'
   const preEdit = !t.ready_at
   const people = []
   const dates = []
   if (!(t.assignees?.length ? t.assignees.length : t.assignee_id)) people.push({ key: 'owner', label: 'needs an owner' })
-  if (filmed && preEdit && !t.operator_id) people.push({ key: 'operator', label: 'needs an operator' })
-  if (filmed && preEdit && !t.editor_id) people.push({ key: 'editor', label: 'needs an editor' })
-  if (t.type === 'post' && !t.designer_id) people.push({ key: 'designer', label: 'needs a designer' })
+  if (need('operator', ['reel', 'video']) && preEdit && !t.operator_id) people.push({ key: 'operator', label: 'needs an operator' })
+  if (need('editor', ['reel', 'video']) && preEdit && !t.editor_id) people.push({ key: 'editor', label: 'needs an editor' })
+  if (need('designer', ['post']) && !t.designer_id) people.push({ key: 'designer', label: 'needs a designer' })
   if (filmed && preEdit && !t.recording_date) dates.push({ key: 'shoot', label: 'no shoot day' })
   if (!t.release_date) dates.push({ key: 'release', label: 'no release day' })
   return { people, dates }
@@ -74,6 +77,7 @@ export default function Unassigned() {
   const [statuses, setStatuses] = useState(boot?.statuses || [])
   const [loading, setLoading] = useState(!boot)
   const [openItem, setOpenItem] = useState(null)
+  const [crew, setCrew] = useState(null) // the admin's who-must-be-on-a-task rules
 
   // The filters. `needs` maps a gap kind to 'only' (show tasks needing it)
   // or 'not' (that kind stops counting); absent = indifferent. They REMEMBER
@@ -98,6 +102,8 @@ export default function Unassigned() {
         cache.set(`unassigned:${user.id}`, { content: ct.map(({ photo_thumb: _t, ...r }) => r), users: us, statuses: st })
       })
       .finally(() => setLoading(false))
+    // the admin's crew rules — which hats a task of each type must carry
+    api.cached('/fields').then((f) => setCrew(f.crew || null)).catch(() => {})
   }, [user.id])
   useEffect(() => {
     const refresh = () => {
@@ -117,10 +123,10 @@ export default function Unassigned() {
   // Ideas sit out: a task only owes people and dates once it leaves the Idea stage.
   const rows = useMemo(() => content
     .filter((t) => !t.done_at && !deadIds.has(t.status_id) && !ideaIds.has(t.status_id))
-    .map((t) => ({ t, gaps: gapsOf(t) }))
+    .map((t) => ({ t, gaps: gapsOf(t, crew) }))
     .filter((r) => r.gaps.people.length > 0 || r.gaps.dates.length > 0)
     .sort((a, b) => (a.t.release_date || '9999').localeCompare(b.t.release_date || '9999') || b.t.id - a.t.id),
-  [content, deadIds, ideaIds])
+  [content, deadIds, ideaIds, crew])
 
   const holdsHat = (t, id) =>
     (t.assignees?.length ? t.assignees.includes(id) : t.assignee_id === id) ||

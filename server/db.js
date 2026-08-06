@@ -944,6 +944,32 @@ export async function getTaskFields() {
   return out
 }
 
+// Which crew hats a task of each type is EXPECTED to carry — the rule the
+// Unassigned / gap views count by. The admin tunes it (Admin → Pipeline) so
+// a text-only post stops demanding a designer nobody ever planned to assign.
+// Stored in meta 'crew_needs'; missing keys fall back to these defaults,
+// which reproduce the pre-tuning behavior exactly.
+export const CREW_NEED_KEYS = ['operator', 'editor', 'designer']
+export const DEFAULT_CREW_NEEDS = {
+  operator: ['reel', 'video'],
+  editor: ['reel', 'video'],
+  designer: ['post'],
+}
+export async function getCrewNeeds() {
+  let stored = {}
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'crew_needs'"))?.value || '{}')
+    if (!stored || typeof stored !== 'object') stored = {}
+  } catch { stored = {} }
+  const out = {}
+  for (const k of CREW_NEED_KEYS) {
+    out[k] = Array.isArray(stored[k])
+      ? stored[k].map(String).filter((t) => ALL_TYPES.includes(t))
+      : [...DEFAULT_CREW_NEEDS[k]]
+  }
+  return out
+}
+
 // Record today's value for a metric (upsert), so comparisons have data.
 export async function snapshotTracker(trackerId) {
   const row = await get('SELECT current FROM trackers WHERE id = ?', trackerId)

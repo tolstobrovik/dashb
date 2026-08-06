@@ -744,6 +744,18 @@ function PipelineTab() {
     setOptDraft({ ...optDraft, [k]: '' })
     patchField(k, { options: [...new Set([...(fields[k].options || []), v])] })
   }
+  // The crew rules: which types DEMAND each hat — what the Unassigned page
+  // and Overview's gap strip count as a real gap.
+  const patchCrew = (hat, type) => {
+    const cur = fields.crew?.[hat] || []
+    const next = {
+      ...fields,
+      crew: { ...fields.crew, [hat]: cur.includes(type) ? cur.filter((x) => x !== type) : [...cur, type] },
+    }
+    setFields(next)
+    api.post('/fields', next).then((eff) => { setFields(eff); toast('Crew rules saved — synced') })
+      .catch((e) => { alert(e.message); load() })
+  }
 
   const toggleRule = async (actor, sid) => {
     const next = { ...rules, [actor]: { ...rules[actor], [sid]: !rules[actor]?.[sid] } }
@@ -926,6 +938,54 @@ function PipelineTab() {
               Off hides the field from the task card entirely; the crew always see what’s filled in.
             </div>
           </div>
+
+          {/* ---- who must be on a task: the hats the gap views count ---- */}
+          {fields.crew && (
+            <>
+              <div className="section-head" style={{ marginTop: 18 }}>
+                <h2>Who must be on a task</h2>
+                <span className="count">· only these hats count as gaps on Unassigned and Overview</span>
+              </div>
+              <div className="card table-wrap">
+                <table className="tbl crew-tbl">
+                  <thead>
+                    <tr><th>Hat</th><th>Demanded on</th></tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { key: 'operator', label: 'Operator', hint: 'who films it' },
+                      { key: 'editor', label: 'Editor', hint: 'who cuts it' },
+                      { key: 'designer', label: 'Designer', hint: 'who draws the artwork' },
+                    ].map((h) => (
+                      <tr key={h.key}>
+                        <td>
+                          <b>{h.label}</b>
+                          <div className="stat-sub">{h.hint}</div>
+                        </td>
+                        <td>
+                          <div className="pill-group">
+                            {CONTENT_TYPES.map((t) => (
+                              <button key={t.key} type="button"
+                                className={'pill' + ((fields.crew[h.key] || []).includes(t.key) ? ' active' : '')}
+                                data-tip={(fields.crew[h.key] || []).includes(t.key)
+                                  ? `A ${t.label.toLowerCase()} without ${h.label.toLowerCase()} shows on Unassigned`
+                                  : `${t.label}s never ask for ${h.label.toLowerCase()}`}
+                                onClick={() => patchCrew(h.key, t.key)}>
+                                {t.label}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
+                  Untick a type and its tasks stop shouting for that hat — the Unassigned page quiets down instantly.
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
 

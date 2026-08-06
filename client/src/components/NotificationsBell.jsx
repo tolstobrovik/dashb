@@ -22,10 +22,12 @@ export default function NotificationsBell({ user }) {
 
   useEffect(() => {
     api.get('/notifications').then(setData).catch(() => {})
+    // The bell keeps the pace of the content pages (ETag-cheap 304s), so news
+    // lands within seconds, not half a minute.
     const id = setInterval(() => {
       if (document.hidden) return
       api.pollView('/notifications').then((d) => { if (d) setData(d) }).catch(() => {})
-    }, 30000)
+    }, 12000)
     return () => clearInterval(id)
   }, [])
   // A tap anywhere else closes the panel.
@@ -55,7 +57,12 @@ export default function NotificationsBell({ user }) {
 
   return (
     <span className="notif-wrap" ref={wrapRef}>
-      <button className="icon-btn" onClick={() => setOpen((o) => !o)}
+      <button className="icon-btn"
+        onClick={() => setOpen((o) => {
+          // opening the panel asks for the freshest news right away
+          if (!o) api.pollView('/notifications').then((d) => { if (d) setData(d) }).catch(() => {})
+          return !o
+        })}
         data-tip="Notifications" aria-label={`Notifications${unread ? ` — ${unread} unread` : ''}`}>
         <Bell size={17} />
         {unread > 0 && <span className="notif-badge">{unread > 9 ? '9+' : unread}</span>}

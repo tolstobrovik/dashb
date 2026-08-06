@@ -24,11 +24,19 @@ export const tgEnabled = () => !!tgToken()
 
 // Where the dashboard lives publicly — learned the day the admin presses
 // "Activate webhook" and remembered, so messages can carry task links.
+// Cached in-process for a minute: the address basically never changes, and a
+// burst of notifications should not pay a database read per message.
+let urlCache = { v: null, at: 0 }
 export async function tgPublicUrl() {
-  return (await get("SELECT value FROM meta WHERE key = 'public_url'"))?.value || ''
+  if (urlCache.v !== null && Date.now() - urlCache.at < 60000) return urlCache.v
+  const v = (await get("SELECT value FROM meta WHERE key = 'public_url'"))?.value || ''
+  urlCache = { v, at: Date.now() }
+  return v
 }
-export const tgRememberUrl = (origin) =>
-  run("INSERT INTO meta (key, value) VALUES ('public_url', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", origin)
+export const tgRememberUrl = (origin) => {
+  urlCache = { v: origin, at: Date.now() }
+  return run("INSERT INTO meta (key, value) VALUES ('public_url', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", origin)
+}
 // api.telegram.org, unless the QA mock points elsewhere.
 const base = () => process.env.TELEGRAM_API_BASE || 'https://api.telegram.org'
 

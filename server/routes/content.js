@@ -187,8 +187,10 @@ async function notifyAssigned(req, contentId, title, roleById, extra = '') {
     'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
     id, 'assigned', `You're on «${title}» as ${roleById.get(id)} — by ${req.user.name}`, contentId, now,
   ]))
-  for (const id of ids)
-    await tgMirror([id], `📌 <b>«${tgEsc(title)}»</b> — you're the ${roleById.get(id)}\nAssigned by ${tgEsc(req.user.name)}${extra}`, contentId, tgOriginFrom(req))
+  // Every hand-off leaves at once — nobody's message waits in line behind
+  // another person's Telegram round-trip.
+  await Promise.allSettled(ids.map((id) =>
+    tgMirror([id], `📌 <b>«${tgEsc(title)}»</b> — you're the ${roleById.get(id)}\nAssigned by ${tgEsc(req.user.name)}${extra}`, contentId, tgOriginFrom(req))))
 }
 // A person can wear two hats on one task — the message names both.
 const addRole = (map, id, role) => {

@@ -202,8 +202,21 @@ function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
     const late = !e.done && e.due && e.due < today
     const K = KIND[e.kind]
     const Icon = K.icon
+    // The files this row's work runs on, told apart at a glance: the
+    // operator's raw FOOTAGE is the editor's source; the CUT (or the DESIGN)
+    // is this person's own deliverable. No more guessing which link is which.
+    const ok = (u) => u && /^https?:\/\//i.test(u)
+    const links = [
+      ok(e.t.shot_link) && (e.kind !== 'shoot'
+        ? { url: e.t.shot_link, label: 'Footage', cls: 'src', LIcon: Clapperboard, tip: 'The raw material from the operator — your source' }
+        : { url: e.t.shot_link, label: 'Footage', cls: 'mine', LIcon: Clapperboard, tip: 'Your delivered footage' }),
+      e.kind === 'edit' && ok(e.t.ready_link) && { url: e.t.ready_link, label: 'Cut', cls: 'mine', LIcon: Scissors, tip: 'Your finished cut' },
+      e.kind === 'design' && ok(e.t.design_link) && { url: e.t.design_link, label: 'Design', cls: 'mine', LIcon: Palette, tip: 'Your finished artwork' },
+    ].filter(Boolean)
     return (
-      <button className="cb-row" onClick={() => onOpen(e.t)} onContextMenu={onMenu ? (ev) => onMenu(ev, e.t) : undefined}>
+      <div className="cb-row" role="button" tabIndex={0} onClick={() => onOpen(e.t)}
+        onKeyDown={(ev) => { if (ev.key === 'Enter') onOpen(e.t) }}
+        onContextMenu={onMenu ? (ev) => onMenu(ev, e.t) : undefined}>
         <span className={'cb-when' + (late ? ' late' : '')}>
           {e.done
             ? <CheckCircle2 size={13} />
@@ -218,11 +231,21 @@ function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
             {e.t.channels.map((c) => byKey[c]?.label || c).join(' · ')}
             {late && <b className="cb-late"> · late</b>}
           </span>
+          {links.length > 0 && (
+            <span className="cb-links">
+              {links.map((l) => (
+                <a key={l.label} className={`cb-link cb-link-${l.cls}`} href={l.url} target="_blank" rel="noreferrer"
+                  data-tip={l.tip} onClick={(ev) => ev.stopPropagation()}>
+                  <l.LIcon size={10} /> {l.label}
+                </a>
+              ))}
+            </span>
+          )}
           {!e.done && e.t.description && (
             <span className="cb-note">{e.t.description.length > 90 ? `${e.t.description.slice(0, 90)}…` : e.t.description}</span>
           )}
         </span>
-      </button>
+      </div>
     )
   }
   const Sec = ({ laneKey, secKey, label, items, always = false }) => {

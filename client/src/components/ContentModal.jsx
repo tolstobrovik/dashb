@@ -219,9 +219,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // exist — three empty Drive inputs on every open were pure chrome. The
   // extras row reveals the empty ones when an editor wants to paste by hand.
   const deliveryFields = [
-    !isDesign && { col: 'shot_link', label: 'Shot footage', icon: Clapperboard, mine: myHats.operator, present: !!item?.operator_id },
-    !isDesign && { col: 'ready_link', label: 'Edit ready', icon: Scissors, mine: myHats.editor, present: !!item?.editor_id },
-    { col: 'design_link', label: 'Design ready', icon: Palette, mine: myHats.designer, present: !!item?.designer_id },
+    !isDesign && { col: 'shot_link', label: 'Shot footage', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, mine: myHats.operator, present: !!item?.operator_id },
+    !isDesign && { col: 'ready_link', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, mine: myHats.editor, present: !!item?.editor_id },
+    { col: 'design_link', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, mine: myHats.designer, present: !!item?.designer_id },
   ].filter(Boolean).filter((f) => (crewViewer
     ? (f.mine || form[f.col] || f.present)
     : (form[f.col] || (canEdit && show.delivery))))
@@ -721,7 +721,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               const editable = f.mine || canEdit
               return (
                 <label key={f.col} className="ready-link-field">
-                  <span className="crew-label"><Icon size={12} /> {f.label} <span className="crew-opt">Google Drive</span></span>
+                  <span className="crew-label"><Icon size={12} /> {f.label} <span className="crew-opt">{f.sub}</span></span>
                   <span className="ready-link-input">
                     <input className="input" placeholder="https://drive.google.com/…"
                       disabled={!editable}
