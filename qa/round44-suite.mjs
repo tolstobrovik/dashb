@@ -53,6 +53,20 @@ ok('the choice survives a reload', (await p.locator('.pill.active', { hasText: '
 await p.locator('.pill', { hasText: 'Due soon' }).click()
 await p.waitForTimeout(400)
 
+// ---- every deadline counts, and the row explains itself ----
+// A cut due tomorrow makes the task urgent whatever its release; a shoot
+// that already slipped keeps it on the page — and the date cell shows THE
+// date that pulled it in (its kind's icon, marked late), never a far-off
+// release that would make the row look like it sneaked in early.
+await req('/content', 'POST', { title: 'x44: cut due tomorrow', channels: ['youtube'], type: 'reel', edit_ready_date: day(1), release_date: day(10), status_id: sid(/editing/i) })
+await req('/content', 'POST', { title: 'x44: shot slipped', channels: ['youtube'], type: 'reel', recording_date: day(-2), release_date: day(6), status_id: sid(/to shoot/i) })
+await p.reload(); await p.waitForTimeout(1400)
+ok('a cut deadline pulls the task in — release still far', (await p.locator('text=x44: cut due tomorrow').count()) === 1)
+const slipped = p.locator('.ov-row', { hasText: 'x44: shot slipped' })
+ok('an overdue shoot keeps the task on the page', (await slipped.count()) === 1)
+ok('…and the row shows the slipped SHOOT date, marked late',
+  (await slipped.locator('.ov-date.late').count()) === 1 && (await slipped.locator('.ov-date svg').count()) === 1)
+
 // ---- Overview's strip keeps the same horizon ----
 await p.goto(BASE + '/overview'); await p.waitForTimeout(1200)
 const stripCount = async () => {

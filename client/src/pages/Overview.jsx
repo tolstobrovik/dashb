@@ -7,7 +7,7 @@ import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo,
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PC, daysUntil } from '../components/ProjectBits.jsx'
-import { gapsOf, DUE_SOON_DAYS } from './Unassigned.jsx'
+import { gapsOf, DUE_SOON_DAYS, nearestOf } from './Unassigned.jsx'
 
 // The admin's landing view: every department's process on one screen —
 // plan meters, the pipeline as a colored strip, overdue counts — plus a
@@ -140,8 +140,8 @@ export default function Overview() {
       if (!(g.people.length > 0 || g.dates.length > 0)) return false
       // the strip keeps the Unassigned page's "due soon" horizon, so its
       // number and the page it opens always tell the same story
-      const nearest = [t.recording_date, t.release_date].filter(Boolean).sort()[0] || null
-      return !nearest || nearest <= horizon
+      const near = nearestOf(t)
+      return !near || near.d <= horizon
     }).length
   }, [content, statuses, crewNeeds])
 

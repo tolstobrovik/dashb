@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { UserX, CalendarX2, CalendarRange, Clapperboard, Scissors, Palette, User } from 'lucide-react'
+import { UserX, CalendarX2, CalendarRange, Clapperboard, Scissors, Palette, User, Send } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -42,21 +42,38 @@ const GAP_KINDS = [
   { key: 'editor', label: 'Editor' }, { key: 'designer', label: 'Designer' },
   { key: 'shoot', label: 'Shoot day' }, { key: 'release', label: 'Release day' },
 ]
-// "Due soon" is the default: work whose nearest date (shoot or release)
-// stands within DUE_SOON_DAYS — plus everything overdue or undated. A reel
-// releasing next week stays off the page until it actually approaches;
-// "Any date" is one tap away for planning ahead.
+// "Due soon" is the default: work whose nearest date stands within
+// DUE_SOON_DAYS — plus everything overdue or undated. A reel releasing next
+// week stays off the page until it actually approaches; "Any date" is one
+// tap away for planning ahead.
 export const DUE_SOON_DAYS = 3
+// The date that makes a task urgent — the EARLIEST thing it owes: the shoot,
+// the cut deadline, the artwork deadline or the release. The row's date cell
+// shows exactly this one (with its kind's icon), so a task pulled in by a
+// booked shoot never looks like it sneaked in ahead of its release day.
+export const nearestOf = (t) => {
+  const dd = [
+    t.recording_date && { d: t.recording_date, kind: 'shoot' },
+    t.edit_ready_date && { d: t.edit_ready_date, kind: 'edit' },
+    t.design_ready_date && { d: t.design_ready_date, kind: 'design' },
+    t.release_date && { d: t.release_date, kind: 'release' },
+  ].filter(Boolean).sort((a, b) => a.d.localeCompare(b.d))
+  return dd[0] || null
+}
+const NEAR_ICONS = { shoot: Clapperboard, edit: Scissors, design: Palette, release: Send }
 const RANGES = [
   { key: 'soon', label: 'Due soon' }, { key: 'today', label: 'Today' },
   { key: '7d', label: 'Next 7 days' }, { key: 'any', label: 'Any date' }, { key: 'custom', label: 'Custom…' },
 ]
 
-function GapRow({ t, holes, byKey, onOpen }) {
+function GapRow({ t, holes, byKey, onOpen, today }) {
+  const near = nearestOf(t)
+  const NIcon = near ? NEAR_ICONS[near.kind] : null
   return (
     <button className="ov-row" onClick={() => onOpen(t)}>
-      <span className={'ov-date' + (t.release_date ? '' : ' late')}>
-        {t.release_date ? dateLabel(t.release_date) : 'no date'}
+      <span className={'ov-date' + (!near || near.d < today ? ' late' : '')}
+        title={near ? { shoot: 'the shoot day', edit: 'the cut deadline', design: 'the artwork deadline', release: 'the release day' }[near.kind] : undefined}>
+        {near ? <><NIcon size={11} style={{ verticalAlign: -1.5, marginRight: 3 }} />{dateLabel(near.d)}</> : 'no date'}
       </span>
       <span className="brief-main">
         <span className="ov-title">{t.title}</span>
@@ -154,8 +171,8 @@ export default function Unassigned() {
   const inDates = (t) => {
     const d = t.release_date
     if (range === 'soon') {
-      const nearest = [t.recording_date, t.release_date].filter(Boolean).sort()[0] || null
-      if (nearest && nearest > addDaysISO(today, DUE_SOON_DAYS)) return false
+      const near = nearestOf(t)
+      if (near && near.d > addDaysISO(today, DUE_SOON_DAYS)) return false
     }
     if (range === 'today' && d !== today) return false
     if (range === '7d' && !(d && d >= today && d <= addDaysISO(today, 7))) return false
@@ -315,7 +332,7 @@ export default function Unassigned() {
             <span className="count">· {unowned.length}</span>
           </div>
           <div className="card card-pad brief-list">
-            {unowned.map((r) => <GapRow key={r.t.id} t={r.t} holes={r.holes} byKey={byKey} onOpen={setOpenItem} />)}
+            {unowned.map((r) => <GapRow key={r.t.id} t={r.t} holes={r.holes} byKey={byKey} onOpen={setOpenItem} today={today} />)}
           </div>
         </>
       )}
@@ -328,7 +345,7 @@ export default function Unassigned() {
             <span className="count">· {undated.length}</span>
           </div>
           <div className="card card-pad brief-list">
-            {undated.map((r) => <GapRow key={r.t.id} t={r.t} holes={r.holes} byKey={byKey} onOpen={setOpenItem} />)}
+            {undated.map((r) => <GapRow key={r.t.id} t={r.t} holes={r.holes} byKey={byKey} onOpen={setOpenItem} today={today} />)}
           </div>
         </>
       )}
