@@ -56,17 +56,18 @@ await p.locator('.pill', { hasText: 'Recording' }).click()
 await p.waitForSelector('.cal-tray', { timeout: 8000 })
 ok('the Recording tab shows the undated clip in the tray', (await p.locator('.cal-tray-chip', { hasText: 'r21: dateless clip' }).count()) === 1)
 await p.screenshot({ path: 'r21-tray.png' })
-// Drop it on today. Native mouse-drag emulation can't start HTML5 drags in
-// this headless build, so the suite dispatches the real DragEvent sequence —
-// the exact events a user's browser fires — through React's handlers.
-await p.evaluate(() => {
-  const chip = [...document.querySelectorAll('.cal-tray-chip')].find((c) => c.textContent.includes('r21: dateless clip'))
-  const day = document.querySelector('.cal-day.today')
-  const dt = new DataTransfer()
-  chip.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }))
-  day.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }))
-  day.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
-})
+// Drop it on today. Pills travel by pointer events now (a mouse and a finger
+// take the same path) — the suite drags exactly like a person would: press,
+// slide, release.
+{
+  const cb = await p.locator('.cal-tray-chip', { hasText: 'r21: dateless clip' }).boundingBox()
+  const db = await p.locator('.cal-day.today').boundingBox()
+  await p.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2)
+  await p.mouse.down()
+  await p.mouse.move(cb.x + cb.width / 2 + 14, cb.y + cb.height / 2 + 8, { steps: 3 })
+  await p.mouse.move(db.x + db.width / 2, db.y + db.height / 2, { steps: 8 })
+  await p.mouse.up()
+}
 await p.waitForTimeout(900)
 const fmtT = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
 const after = (await req('/content')).data.find((x) => x.id === t3.id)

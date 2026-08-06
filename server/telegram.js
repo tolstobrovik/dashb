@@ -2,8 +2,9 @@
 // Configured by ONE secret — the TELEGRAM_BOT_TOKEN environment variable
 // (Vercel → Settings → Environment Variables, or the local shell). It is
 // never written to the repo or the database; with no token the whole bridge
-// is inert and invisible. Messages are plain text on purpose — task titles
-// need no escaping rules.
+// is inert and invisible. Messages are Telegram-HTML — titles read bold and
+// links hide behind words — so every scrap of user-typed text (titles,
+// names, notes) walks through tgEsc before joining a message.
 import { createHash } from 'crypto'
 import { all, get, run, dayISO } from './db.js'
 // Namespace import on purpose: config.js may or may not export the token
@@ -53,6 +54,21 @@ export async function tgBotUsername() {
   return botName
 }
 
+// Telegram-HTML knows four special characters; everything a person typed
+// passes through here before joining a message, so a title like "A <b> tag"
+// can never break (or style) the notification.
+export const tgEsc = (s) => String(s ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// Dates the way people read them: 2026-08-12 → "Wed, 12 Aug".
+export const tgDate = (iso) => {
+  const s = String(iso ?? '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return iso || ''
+  return new Date(`${s}T12:00:00Z`).toLocaleDateString('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+  })
+}
+
 // Telegram refuses messages over 4096 characters — a runaway task title or
 // pasted essay must never silence the whole notification.
 export const tgClip = (s) => {
@@ -61,13 +77,19 @@ export const tgClip = (s) => {
 }
 
 // One message to one linked member. A Telegram hiccup must never break the
-// request that triggered it — the bell row is already written; this is a mirror.
+// request that triggered it — the bell row is already written; this is a
+// mirror. If the HTML ever fails to parse (a clipped tag), the same words go
+// out plain rather than not at all.
 export async function tgSendTo(userId, text) {
   if (!tgEnabled() || !userId) return
   try {
     const u = await get('SELECT telegram_chat_id FROM users WHERE id = ?', userId)
     if (!u?.telegram_chat_id) return
-    await tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: tgClip(text), disable_web_page_preview: true })
+    const r = await tgApi('sendMessage', {
+      chat_id: u.telegram_chat_id, text: tgClip(text), parse_mode: 'HTML', disable_web_page_preview: true,
+    })
+    if (r && r.ok === false)
+      await tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: tgClip(text), disable_web_page_preview: true })
   } catch (e) { console.error('telegram send failed:', e.message) }
 }
 // Where a message's task link should point: the remembered public address
@@ -86,7 +108,7 @@ export async function tgMirror(userIds, text, contentId = null, fallbackOrigin =
   let line = text
   if (contentId) {
     const origin = (await tgPublicUrl().catch(() => '')) || fallbackOrigin
-    if (origin) line += `\n${origin}/todo?task=${contentId}`
+    if (origin) line += `\n<a href="${origin}/todo?task=${contentId}">Open the task ↗</a>`
   }
   await Promise.allSettled([...new Set(userIds)].map((id) => tgSendTo(id, line)))
 }
@@ -94,8 +116,17 @@ export async function tgMirror(userIds, text, contentId = null, fallbackOrigin =
 // The nightly half of the bell, pushed instead of waited for: deadlines
 // standing exactly a day and exactly a week away (Tashkent days), per the hat
 // each linked member holds — the same rules the in-app reminders use.
+// The day is claimed in meta before anything goes out, so a retried cron, a
+// second server instance or a curious visitor on the cron URL can never make
+// the team's phones ring twice.
 export async function tgDailyReminders() {
   if (!tgEnabled()) return 0
+  const today = dayISO(0)
+  const claimed = await run("INSERT INTO meta (key, value) VALUES ('digest_day', ?) ON CONFLICT(key) DO NOTHING", today)
+  if (!claimed?.changes) {
+    const turn = await run("UPDATE meta SET value = ? WHERE key = 'digest_day' AND value <> ?", today, today)
+    if (!turn?.changes) return 0 // today's digest already went out
+  }
   const linked = await all('SELECT id, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL')
   if (linked.length === 0) return 0
   const tomorrow = dayISO(1)
@@ -107,12 +138,8 @@ export async function tgDailyReminders() {
   const origin = await tgPublicUrl().catch(() => '')
   let sent = 0
   for (const u of linked) {
-    const lines = []
-    const push = (t, date, what) => {
-      if (date !== tomorrow && date !== week) return
-      // each line carries its own tap-to-open link when the address is known
-      lines.push(`«${t.title}» — ${what} ${date === tomorrow ? 'tomorrow' : 'in a week'}${origin ? `\n${origin}/todo?task=${t.id}` : ''}`)
-    }
+    const buckets = { [tomorrow]: [], [week]: [] }
+    const push = (t, date, what) => { if (buckets[date]) buckets[date].push({ t, what }) }
     for (const t of rows) {
       if (dead.has(t.status_id)) continue
       let assignees = []
@@ -123,8 +150,15 @@ export async function tgDailyReminders() {
       if (t.designer_id === u.id && t.design_ready_date) push(t, t.design_ready_date, 'the artwork is due')
       if (owns && t.release_date) push(t, t.release_date, 'the release')
     }
+    const lines = []
+    for (const [label, list] of [['Tomorrow', buckets[tomorrow]], ['In a week', buckets[week]]]) {
+      if (!list.length) continue
+      lines.push(`<b>${label}</b>`)
+      for (const { t, what } of list)
+        lines.push(`• «${tgEsc(t.title)}» — ${what}${origin ? ` · <a href="${origin}/todo?task=${t.id}">open ↗</a>` : ''}`)
+    }
     if (lines.length) {
-      await tgSendTo(u.id, `⏰ Deadlines:\n${lines.join('\n')}`)
+      await tgSendTo(u.id, `⏰ Heads-up — your deadlines:\n${lines.join('\n')}`)
       sent++
     }
   }

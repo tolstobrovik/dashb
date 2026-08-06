@@ -110,7 +110,7 @@ const deadId = (await req('/statuses')).data.find((s) => /^deleted$/i.test(s.lab
 const killed = (await req('/content', 'POST', { title: 'x39: killed launch', channels: [chKey], type: 'post', assignee_ids: [member.id], release_date: tomorrow, status_id: deadId })).data
 await reset()
 await fetch(BASE + '/api/cron/daily')
-const digest = (await sentList()).find((s) => String(s.chat_id) === '702' && /Deadlines/.test(s.text || ''))
+const digest = (await sentList()).find((s) => String(s.chat_id) === '702' && /deadlines/i.test(s.text || ''))
 ok('the digest names the live release', !!digest && /moved phone video/.test(digest.text))
 ok('…and never the killed one', !!digest && !/killed launch/.test(digest.text))
 

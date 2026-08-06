@@ -241,6 +241,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   ].filter(Boolean)
   if (pravkiTargets.length === 0) pravkiTargets.push({ key: 'editor', label: 'Editor' })
   const [pravki, setPravki] = useState(null) // null | { note, target }
+  // The finished files, ready to open right in the Review row — reviewing
+  // means watching the work, not hunting for its link further down the modal.
+  const reviewLinks = [
+    { url: form.ready_link, label: '▶ Watch the cut' },
+    { url: form.design_link, label: '🎨 See the design' },
+    { url: form.shot_link, label: '🎬 Raw footage' },
+  ].filter((l) => l.url && /^https?:\/\//i.test(l.url))
 
   // Admin's shortcut: a brand-new department without leaving the task.
   // The icon picks itself from the name (Instagram/Telegram/YouTube/Target…).
@@ -604,6 +611,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         <div className="cm-row cm-review">
           <span className="cm-key">Review</span>
           <div className="review-block">
+            {reviewLinks.length > 0 && (
+              <div className="review-links">
+                {reviewLinks.map((l) => (
+                  <a key={l.label} className="btn btn-sm" href={l.url} target="_blank" rel="noreferrer">
+                    {l.label} <ExternalLink size={12} />
+                  </a>
+                ))}
+              </div>
+            )}
             {!pravki && (
               <div className="review-actions">
                 {canReview && (

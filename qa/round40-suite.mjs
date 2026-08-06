@@ -67,14 +67,15 @@ await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 let m = (await sentList()).find((s) => String(s.chat_id) === '900' && /🔔/.test(s.text || ''))
 ok('the very first bell already carries the link', !!m && m.text.includes(`http://localhost:4098/todo?task=${task.id}`), m?.text)
 ok('…names who moved it', !!m && /by Admin/.test(m.text))
-ok('…and the release day', !!m && m.text.includes(`release ${tomorrow}`))
+const humanDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+ok('…and the release day, human-sized', !!m && m.text.includes(`release ${humanDate(tomorrow)}`))
 
 // ---- the comment cut: who spoke, on what, the words, the link ----
 await reset()
 await req(`/content/${task.id}/comments`, 'POST', { text: 'интро переснимаем завтра' })
 m = (await sentList()).find((s) => String(s.chat_id) === '900' && /💬/.test(s.text || ''))
-ok('a comment names the speaker and the task', !!m && /💬 Admin — «x40: rich video»:/.test(m.text))
-ok('…quotes the words on their own line', !!m && /\nинтро переснимаем завтра/.test(m.text))
+ok('a comment names the speaker and the task', !!m && /💬 Admin — on .*«x40: rich video»/.test(m.text))
+ok('…quotes the words on their own line', !!m && /\n“интро переснимаем завтра”/.test(m.text))
 ok('…and links the task', !!m && m.text.includes(`/todo?task=${task.id}`))
 
 // ---- once activated, the remembered origin wins over the request host ----
@@ -88,7 +89,7 @@ ok('after Activate the public origin takes over', !!m && m.text.includes(`https:
 // ---- the nightly digest links every line ----
 await reset()
 const cron = await (await fetch(BASE + '/api/cron/daily')).json()
-m = (await sentList()).find((s) => String(s.chat_id) === '900' && /Deadlines/.test(s.text || ''))
+m = (await sentList()).find((s) => String(s.chat_id) === '900' && /deadlines/i.test(s.text || ''))
 ok('the digest still fires', cron.reminded === 1 && !!m)
 ok('…and each line carries its own link', !!m && m.text.includes(`https://team.example.org/todo?task=${task.id}`))
 

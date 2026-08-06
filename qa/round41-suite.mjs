@@ -71,7 +71,8 @@ const to1 = sent.find((s) => String(s.chat_id) === '111' && /📌/.test(s.text |
 const to2 = sent.find((s) => String(s.chat_id) === '222' && /📌/.test(s.text || ''))
 ok('the owner hears about the fresh task', !!to1 && /you're the owner/.test(to1.text), to1?.text)
 ok('…the editor too, with THEIR hat named', !!to2 && /you're the editor/.test(to2.text))
-ok('…the shoot day rides along', !!to2 && to2.text.includes(`shoot ${tomorrow}`))
+const humanDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+ok('…the shoot day rides along, human-sized', !!to2 && to2.text.includes(`shoot ${humanDate(tomorrow)}`))
 ok('…and the task link', !!to2 && to2.text.includes(`/todo?task=${task.id}`))
 const bell1 = (await req('/notifications', 'GET', undefined, T1)).data.events
 ok('the in-app bell carries the assignment too', bell1.some((e) => e.kind === 'assigned' && /x41: handed video.*owner/.test(e.text)))

@@ -295,6 +295,8 @@ function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
   const relCol = rev.target === 'operator' ? 'shot_link' : rev.target === 'designer' ? 'design_link' : 'ready_link'
   const [link, setLink] = useState(rev[relCol] || '')
   const [busy, setBusy] = useState(false)
+  // The task's other rounds — everything asked before this one.
+  const prior = (rev.history || []).filter((h) => h.round !== rev.round)
   const deadline = rev.target === 'operator' ? rev.recording_date
     : rev.target === 'designer' ? (rev.design_ready_date || rev.release_date)
       : (rev.edit_ready_date || rev.release_date)
@@ -320,8 +322,39 @@ function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
           </div>
         )}
       </button>
+      {/* The fixer's context, right on the card: the brief (ТЗ) the piece was
+          made to, and the rounds that came before this one — no digging. */}
+      {(rev.format || rev.rubrika || rev.script) && (
+        <div className="pravki-brief">
+          {rev.format && <span className="chip chip-muted">{rev.format}</span>}
+          {rev.rubrika && <span className="chip chip-muted">#{rev.rubrika}</span>}
+          {rev.script && (
+            <details className="pravki-extra">
+              <summary>The script / ТЗ</summary>
+              <div className="crew-script">{rev.script}</div>
+            </details>
+          )}
+        </div>
+      )}
+      {prior.length > 0 && (
+        <details className="pravki-extra">
+          <summary>Earlier rounds · {prior.length}</summary>
+          <div className="pravki-prior">
+            {prior.map((h) => (
+              <div key={h.round} className="pravki-prior-row">
+                <b>#{h.round}</b>{h.note}
+                <span className="done-txt"> — {h.requested_name || 'SMM'}{h.resolved_at ? ' · fixed' : ''}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       <div className="pravki-fix">
         <input className="input" placeholder="Updated Google-Drive link…" value={link} onChange={(e) => setLink(e.target.value)} />
+        {rev[relCol] && /^https?:\/\//i.test(rev[relCol]) && (
+          <a className="btn btn-sm" href={rev[relCol]} target="_blank" rel="noreferrer"
+            data-tip="Open the current file" aria-label="Open the current file"><ExternalLink size={14} /></a>
+        )}
         <button className="btn btn-sm btn-primary" disabled={busy} onClick={fix}><Check size={14} /> Fixed</button>
       </div>
     </div>
@@ -620,16 +653,25 @@ export default function Brief() {
               <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
               {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
               {(t.ready_link || t.design_link) && (
-                <button className="icon-btn rq-copy"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    navigator.clipboard?.writeText(t.ready_link || t.design_link)
-                      .then(() => toast('Delivery link copied — paste it into the platform'))
-                      .catch(() => {})
-                  }}
-                  data-tip="Copy the finished file's link" aria-label="Copy delivery link">
-                  <Link2 size={14} />
-                </button>
+                <>
+                  {/^https?:\/\//i.test(t.ready_link || t.design_link) && (
+                    <a className="btn btn-sm rq-open" href={t.ready_link || t.design_link}
+                      target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                      data-tip="Watch the finished file before releasing it">
+                      <ExternalLink size={13} /> {t.ready_link ? 'Cut' : 'Design'}
+                    </a>
+                  )}
+                  <button className="icon-btn rq-copy"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigator.clipboard?.writeText(t.ready_link || t.design_link)
+                        .then(() => toast('Delivery link copied — paste it into the platform'))
+                        .catch(() => {})
+                    }}
+                    data-tip="Copy the finished file's link" aria-label="Copy delivery link">
+                    <Link2 size={14} />
+                  </button>
+                </>
               )}
               <button className="btn btn-sm btn-primary rq-pub"
                 onClick={(e) => { e.stopPropagation(); publishNow(t) }}

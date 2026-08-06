@@ -1,8 +1,8 @@
 import { Router } from 'express'
-import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields } from '../db.js'
+import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, publicUser } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { authRequired, canAccessDept, can, wrap } from '../auth.js'
-import { tgMirror, tgOriginFrom } from '../telegram.js'
+import { tgMirror, tgOriginFrom, tgEsc, tgDate } from '../telegram.js'
 
 const router = Router()
 router.use(authRequired)
@@ -188,7 +188,7 @@ async function notifyAssigned(req, contentId, title, roleById, extra = '') {
     id, 'assigned', `You're on «${title}» as ${roleById.get(id)} — by ${req.user.name}`, contentId, now,
   ]))
   for (const id of ids)
-    await tgMirror([id], `📌 «${title}»\nyou're the ${roleById.get(id)} · by ${req.user.name}${extra}`, contentId, tgOriginFrom(req))
+    await tgMirror([id], `📌 <b>«${tgEsc(title)}»</b> — you're the ${roleById.get(id)}\nAssigned by ${tgEsc(req.user.name)}${extra}`, contentId, tgOriginFrom(req))
 }
 // A person can wear two hats on one task — the message names both.
 const addRole = (map, id, role) => {
@@ -197,7 +197,7 @@ const addRole = (map, id, role) => {
 }
 // The date worth mentioning when handing someone work: the shoot if one is
 // booked, otherwise the release.
-const dateBit = (rec, rel) => (rec ? ` · shoot ${rec}` : rel ? ` · release ${rel}` : '')
+const dateBit = (rec, rel) => (rec ? ` · shoot ${tgDate(rec)}` : rel ? ` · release ${tgDate(rel)}` : '')
 
 const canSee = (user, row) =>
   user.role === 'admin' ||
@@ -288,6 +288,7 @@ router.get('/revisions/mine', wrap(async (req, res) => {
     SELECT r.id, r.content_id, r.round, r.requested_by, r.requested_name, r.target, r.note, r.created_at,
       c.title, c.channels, c.type, c.reference_text, c.reference_links,
       c.shot_link, c.ready_link, c.design_link,
+      c.format, c.rubrika, c.script,
       c.operator_id, c.editor_id, c.designer_id,
       c.recording_date, c.edit_ready_date, c.design_ready_date, c.release_date,
       CASE WHEN c.photo IS NULL THEN 0 ELSE 1 END AS has_photo
@@ -299,7 +300,18 @@ router.get('/revisions/mine', wrap(async (req, res) => {
     (r.target === 'operator' && r.operator_id === req.user.id) ||
     (r.target === 'editor' && r.editor_id === req.user.id) ||
     (r.target === 'designer' && r.designer_id === req.user.id))
-  res.json(mine.map((r) => ({ ...r, channels: JSON.parse(r.channels || '[]'), reference_links: parseLinks(r.reference_links) })))
+  // The task's earlier rounds ride along, so the fixer sees the whole
+  // conversation ("round 1 asked for X, round 2 now asks for Y") in place.
+  const ids = [...new Set(mine.map((r) => r.content_id))]
+  const history = ids.length ? await all(`
+    SELECT content_id, round, note, requested_name, target, resolved_at, created_at
+    FROM revisions WHERE content_id IN (${ids.map(() => '?').join(',')}) ORDER BY round, id`, ...ids) : []
+  res.json(mine.map((r) => ({
+    ...r,
+    channels: JSON.parse(r.channels || '[]'),
+    reference_links: parseLinks(r.reference_links),
+    history: history.filter((h) => h.content_id === r.content_id),
+  })))
 }))
 
 // Every OPEN Pravki across the team — the admin's view of who owes changes.
@@ -369,7 +381,7 @@ router.post('/:id/comments', wrap(async (req, res) => {
       id, 'comment', line, row.id, now,
     ]))
     // Telegram gets the roomier cut: who spoke, on what, the words, the link.
-    await tgMirror(people, `💬 ${req.user.name} — «${row.title}»:\n${preview}`, row.id, tgOriginFrom(req))
+    await tgMirror(people, `💬 ${tgEsc(req.user.name)} — on <b>«${tgEsc(row.title)}»</b>:\n“${tgEsc(preview)}”`, row.id, tgOriginFrom(req))
   }
   res.status(201).json(await get('SELECT id, user_id, author, text, created_at FROM comments WHERE id = ?', info.lastInsertRowid))
 }))
@@ -550,7 +562,7 @@ router.post('/:id/revisions', wrap(async (req, res) => {
     const preview = note.length > 120 ? `${note.slice(0, 120)}…` : note
     await run('INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
       fixerId, 'pravki', `Pravki from ${req.user.name} on «${row.title}»: ${preview}`, row.id, new Date().toISOString())
-    await tgMirror([fixerId], `🔧 Pravki — «${row.title}»\nfrom ${req.user.name}: ${preview}`, row.id, tgOriginFrom(req))
+    await tgMirror([fixerId], `🔧 <b>«${tgEsc(row.title)}»</b> — changes requested\n${tgEsc(req.user.name)}: “${tgEsc(preview)}”\nRound ${round} — it's back with you`, row.id, tgOriginFrom(req))
   }
   res.status(201).json(await listRow(row.id))
 }))
@@ -873,25 +885,52 @@ router.patch('/:id', wrap(async (req, res) => {
   }
 
   // The bell rings for everyone on the task except whoever moved it: a
-  // status change is news to the rest of the crew, not to its author.
+  // status change is news to the rest of the crew, not to its author. A move
+  // onto Ready is ALSO the reviewers' cue — the admins and the channel's
+  // SMMs hear it too, cut link in hand, so "the edit is done" never has to
+  // be discovered by accident.
   if (patch.status_id !== undefined && patch.status_id !== row.status_id) {
-    const newSt = await get('SELECT label FROM statuses WHERE id = ?', patch.status_id)
+    const newSt = await get('SELECT label, is_final FROM statuses WHERE id = ?', patch.status_id)
     let assignees = []
     try { assignees = JSON.parse(row.assignees || '[]') } catch { assignees = [] }
     const people = [...new Set([...assignees, row.assignee_id, row.operator_id, row.editor_id, row.designer_id]
       .filter((id) => id && id !== req.user.id))]
-    if (people.length && newSt) {
+    const isReady = !!newSt && /^ready$/i.test(newSt.label)
+    let recipients = people
+    if (isReady) {
+      const chans = JSON.parse(row.channels || '[]')
+      const reviewers = (await all('SELECT * FROM users')).map(publicUser).filter((u) =>
+        u.id !== req.user.id &&
+        (u.role === 'admin' || (!!u.permissions.review_publish && chans.some((ch) => u.departments.includes(ch)))))
+      recipients = [...new Set([...people, ...reviewers.map((u) => u.id)])]
+    }
+    if (recipients.length && newSt) {
       const now = new Date().toISOString()
       const line = `«${row.title}» → ${newSt.label} — by ${req.user.name}`
-      await batch(people.map((id) => [
+      await batch(recipients.map((id) => [
         'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
         id, 'status', line, row.id, now,
       ]))
-      // Telegram gets the roomier cut: the move, who made it, the release
-      // day if one is set, and the link — from the very first message.
+      // The Telegram cut reads like a person wrote it: what happened, who did
+      // it, the date that matters — and for a review, the file itself.
       const relDate = patch.release_date !== undefined ? patch.release_date : row.release_date
-      const tgLine = `🔔 «${row.title}» → ${newSt.label}\nby ${req.user.name}${relDate ? ` · release ${relDate}` : ''}`
-      await tgMirror(people, tgLine, row.id, tgOriginFrom(req))
+      const rel = relDate ? ` · release ${tgDate(relDate)}` : ''
+      const title = `<b>«${tgEsc(row.title)}»</b>`
+      const who = tgEsc(req.user.name)
+      let tgLine
+      if (isReady) {
+        const cut = (patch.ready_link !== undefined ? patch.ready_link : row.ready_link) ||
+          (patch.design_link !== undefined ? patch.design_link : row.design_link)
+        const watch = cut && /^https?:\/\//i.test(cut) ? `\n▶️ <a href="${tgEsc(cut)}">Watch the cut</a>` : ''
+        tgLine = `✅ ${title} is ready for review\nFinished by ${who}${rel}${watch}`
+      } else if (newSt.is_final) {
+        tgLine = `🚀 ${title} is out!\nPublished by ${who}`
+      } else if (/^deleted$/i.test(newSt.label)) {
+        tgLine = `🗑 ${title} was taken off the plan\nby ${who}`
+      } else {
+        tgLine = `🔔 ${title} → <b>${tgEsc(newSt.label)}</b>\nMoved by ${who}${rel}`
+      }
+      await tgMirror(recipients, tgLine, row.id, tgOriginFrom(req))
     }
   }
 

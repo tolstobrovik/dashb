@@ -70,19 +70,31 @@ await a.waitForTimeout(900)
 const fmtT = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
 let t2b = (await req('/content')).data.find((x) => x.id === t2.id)
 ok('the Today tap schedules the shoot', t2b.recording_date === fmtT, `got ${t2b.recording_date}`)
-// now drag its pill back to the tray (synthetic DragEvent sequence)
+// now drag its pill back to the tray — by pointer, the way the calendar
+// actually moves pills (mouse and finger take the same path)
 await a.waitForTimeout(600)
-const unscheduled = await a.evaluate(() => {
-  const pill = [...document.querySelectorAll('.rel-ev')].find((el) => el.textContent.includes('x22: dateless'))
-  if (!pill) return 'no pill'
-  const dt = new DataTransfer()
-  pill.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }))
-  const tray = document.querySelector('.cal-tray')
-  if (!tray) return 'no tray'
-  tray.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }))
-  tray.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
-  return 'ok'
-})
+let unscheduled = 'ok'
+{
+  // a crowded month can push today's cell below the fold — walk to the pill
+  // first, the way a person would, then press it
+  const pillLoc = a.locator('.rel-ev', { hasText: 'x22: dateless' })
+  await pillLoc.scrollIntoViewIfNeeded().catch(() => {})
+  await a.waitForTimeout(250)
+  const pb = await pillLoc.boundingBox().catch(() => null)
+  if (!pb) unscheduled = 'no pill'
+  else {
+    await a.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2)
+    await a.mouse.down()
+    await a.mouse.move(pb.x + pb.width / 2 + 14, pb.y + pb.height / 2 + 8, { steps: 3 })
+    await a.waitForTimeout(200) // the tray reveals itself as a drop target mid-drag
+    const tb = await a.locator('.cal-tray').boundingBox().catch(() => null)
+    if (!tb) { unscheduled = 'no tray'; await a.mouse.up() }
+    else {
+      await a.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, { steps: 8 })
+      await a.mouse.up()
+    }
+  }
+}
 await a.waitForTimeout(900)
 t2b = (await req('/content')).data.find((x) => x.id === t2.id)
 ok('dragging the pill back to the tray unschedules it', unscheduled === 'ok' && t2b.recording_date === null, `${unscheduled}, date=${t2b.recording_date}`)
