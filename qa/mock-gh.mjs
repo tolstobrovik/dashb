@@ -17,6 +17,7 @@ let etagN = 0
 let currentEtag = null // etag of the current contents state
 let calls = {}
 let outage = false
+let requireToken = null
 const count = (k) => { calls[k] = (calls[k] || 0) + 1 }
 const bumpEtag = () => { currentEtag = `"etag-${++etagN}"` }
 bumpEtag()
@@ -38,7 +39,14 @@ const server = http.createServer((req, res) => {
     if (p === '/__reset' && req.method === 'POST') { calls = {}; return send(200, { ok: true }) }
     // Simulate a GitHub outage: every API request answers 500 while on.
     if (p === '/__outage' && req.method === 'POST') { outage = !!body?.on; return send(200, { outage }) }
+    // Refuse every token but this one — an expired credential, the one storage
+    // failure that never heals on its own.
+    if (p === '/__require' && req.method === 'POST') { requireToken = body?.token || null; return send(200, { requireToken }) }
     if (outage) { count('outage-500'); return send(500, { message: 'Server Error (simulated outage)' }) }
+    if (requireToken && !(req.headers.authorization || '').includes(requireToken)) {
+      count('unauthorized-401')
+      return send(401, { message: 'Bad credentials' })
+    }
 
     // --- refs ---
     let m = p.match(/^\/repos\/[^/]+\/[^/]+\/git\/ref\/heads\/(.+)$/)

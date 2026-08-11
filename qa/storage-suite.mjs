@@ -18,14 +18,17 @@ const outage = (on) => fetch(`${MOCK}/__outage`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }),
 })
 
-async function start(port, dir) {
+const requireToken = (token) => fetch(`${MOCK}/__require`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }),
+})
+async function start(port, dir, env = {}) {
   const child = spawn('node', ['-e', `
     import('http').then(async ({ default: http }) => {
       const { default: handler } = await import('${REPO}/api/index.js')
       http.createServer((req, res) => handler(req, res)).listen(${port}, () => console.log('ready'))
     })
   `], {
-    env: { ...process.env, GITHUB_API_BASE: MOCK, GITHUB_DATA_FORCE: '1', DATA_DIR: dir, PATH: process.env.PATH },
+    env: { ...process.env, GITHUB_API_BASE: MOCK, GITHUB_DATA_FORCE: '1', DATA_DIR: dir, PATH: process.env.PATH, ...env },
     stdio: ['ignore', 'pipe', 'ignore'],
   })
   procs.push(child)
@@ -85,7 +88,8 @@ await A.req('/content', { token: T2 })
 await new Promise((r) => setTimeout(r, 1500)) // let the post-response flush land
 ok('the instance reports itself current again', !(await A.req('/health')).data.stale)
 const B = await start(4297, '/tmp/stg-b') // a brand-new container reads GitHub, not /tmp
-const fresh = (await B.req('/content', { token: await login(B) })).data
+const freshRes = await B.req('/content', { token: await login(B) })
+const fresh = Array.isArray(freshRes.data) ? freshRes.data : [] // a bad answer fails a pin, never the run
 ok('the blind write reached GitHub for everyone', fresh.some((c) => c.title === 'stg: written blind'))
 ok('…and nothing older was lost', fresh.some((c) => c.title === 'stg: before the storm'))
 
@@ -96,6 +100,22 @@ const nothing = await C.req('/health')
 ok('an empty container says so, retryably', nothing.status === 503 && nothing.data.retryable === true, JSON.stringify(nothing.data).slice(0, 90))
 await outage(false)
 ok('…and heals itself on the next request once GitHub answers', (await C.req('/health')).status === 200)
+
+// ---- a refused token is not a blip: it says so, and asks not to be retried ----
+execSync('rm -rf /tmp/stg-d /tmp/stg-e')
+await requireToken('THE-GOOD-TOKEN')
+const D = await start(4299, '/tmp/stg-d')
+const locked = await D.req('/health')
+ok('a refused token names itself', locked.status === 503 && /refused the storage token/.test(JSON.stringify(locked.data)),
+  JSON.stringify(locked.data).slice(0, 120))
+ok('…and asks not to be retried — waiting cannot mend it', locked.data.retryable === false)
+
+// ---- a fresh token from the environment takes over, no commit needed ----
+const E = await start(4300, '/tmp/stg-e', { GITHUB_DATA_TOKEN: 'THE-GOOD-TOKEN' })
+const healed = await E.req('/health')
+ok('a token from the environment brings storage back', healed.status === 200 && healed.data.storage === 'github', JSON.stringify(healed.data).slice(0, 110))
+ok('…and health says where it came from', healed.data.token === 'set' && healed.data.token_from === 'environment')
+await requireToken(null)
 
 for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } }
 await new Promise((r) => setTimeout(r, 300))

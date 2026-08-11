@@ -14,6 +14,13 @@
 // fall back to one extra blob download).
 const API = process.env.GITHUB_API_BASE || 'https://api.github.com'
 
+// GitHub refusing the token looks the same as GitHub being down unless
+// somebody says otherwise — and these tokens expire, which is the one storage
+// failure that never heals by itself. So name it where anyone will read it.
+const authHint = (status) => (status === 401 || status === 403
+  ? ' — GitHub refused the storage token (expired, revoked or lacking Contents write). Issue a new one and set GITHUB_DATA_TOKEN in the deployment’s environment.'
+  : '')
+
 export function createGhStore({ token, repo, branch, path }) {
   const headers = {
     Authorization: `Bearer ${token}`,
@@ -67,7 +74,7 @@ export function createGhStore({ token, repo, branch, path }) {
   async function branchHead() {
     const res = await gh('GET', `/repos/${repo}/git/ref/heads/${branch}`)
     if (res.status === 404) return null
-    if (!res.ok) throw new Error(`ref read failed (${res.status})`)
+    if (!res.ok) throw new Error(`ref read failed (${res.status})${authHint(res.status)}`)
     return (await readJson(res)).object?.sha || null
   }
 
@@ -83,7 +90,7 @@ export function createGhStore({ token, repo, branch, path }) {
         etag = null
         return { changed: false, bytes: null, exists: false }
       }
-      if (!res.ok) throw new Error(`data download failed (${res.status})`)
+      if (!res.ok) throw new Error(`data download failed (${res.status})${authHint(res.status)}`)
       const json = await readJson(res)
       const freshEtag = res.headers.get('etag')
       if (json.sha && json.sha === fileSha) {
@@ -99,7 +106,7 @@ export function createGhStore({ token, repo, branch, path }) {
         // Databases over 1 MB come back without inline content — fetch the
         // blob directly (works up to 100 MB).
         const raw = await gh('GET', `/repos/${repo}/git/blobs/${json.sha}`, null, 'application/vnd.github.raw+json')
-        if (!raw.ok) throw new Error(`blob download failed (${raw.status})`)
+        if (!raw.ok) throw new Error(`blob download failed (${raw.status})${authHint(raw.status)}`)
         bytes = Buffer.from(await raw.arrayBuffer())
       }
       fileSha = json.sha
@@ -118,7 +125,7 @@ export function createGhStore({ token, repo, branch, path }) {
       }
       const res = await gh('PUT', `/repos/${repo}/contents/${path}`, body)
       if (res.status === 409 || res.status === 422) return 'conflict'
-      if (!res.ok) throw new Error(`data upload failed (${res.status}): ${JSON.stringify(await readJson(res)).slice(0, 200)}`)
+      if (!res.ok) throw new Error(`data upload failed (${res.status})${authHint(res.status)}: ${JSON.stringify(await readJson(res)).slice(0, 200)}`)
       const out = await readJson(res)
       fileSha = out.content?.sha || fileSha
       return true
@@ -130,7 +137,7 @@ export function createGhStore({ token, repo, branch, path }) {
       const repoRes = await gh('GET', `/repos/${repo}`)
       const defaultBranch = (await readJson(repoRes)).default_branch || 'main'
       const mainRes = await gh('GET', `/repos/${repo}/git/ref/heads/${defaultBranch}`)
-      if (!mainRes.ok) throw new Error(`cannot read default branch (${mainRes.status})`)
+      if (!mainRes.ok) throw new Error(`cannot read default branch (${mainRes.status})${authHint(mainRes.status)}`)
       const sha = (await readJson(mainRes)).object.sha
       const mk = await gh('POST', `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha })
       if (!mk.ok && mk.status !== 422) throw new Error(`cannot create data branch (${mk.status})`)

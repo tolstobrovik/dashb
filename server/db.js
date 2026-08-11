@@ -27,9 +27,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ON_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY)
 const DATA_DIR = process.env.DATA_DIR || (ON_SERVERLESS ? '/tmp/satashkent-data' : join(__dirname, '..', 'data'))
 
+// The storage credentials, environment first. A token in config.js has to be
+// committed and redeployed to change; one in the host's environment can be
+// replaced in a minute, without a commit and without the secret ever touching
+// the repository. That matters because these tokens EXPIRE — when this one
+// does, the whole dashboard goes dark until it is replaced.
+const GH_DATA = GITHUB_DATA && {
+  ...GITHUB_DATA,
+  token: process.env.GITHUB_DATA_TOKEN || process.env.GH_DATA_TOKEN || GITHUB_DATA.token,
+  repo: process.env.GITHUB_DATA_REPO || GITHUB_DATA.repo,
+  branch: process.env.GITHUB_DATA_BRANCH || GITHUB_DATA.branch,
+  path: process.env.GITHUB_DATA_PATH || GITHUB_DATA.path,
+}
+// A placeholder is not a token — treat the unfilled default as "not set" so
+// the app says so plainly instead of arguing with GitHub about it.
+const GH_TOKEN_SET = !!GH_DATA?.token && !/^REPLACE_WITH/.test(GH_DATA.token)
+
 // GitHub-repo storage engages on serverless hosts (or when forced for tests)
 // whenever no real database URL is configured — the repo itself holds the data.
-const GH_MODE = !PG_URL && !TURSO_URL && !!GITHUB_DATA?.token &&
+const GH_MODE = !PG_URL && !TURSO_URL && !!GH_DATA?.token &&
   (ON_SERVERLESS || process.env.GITHUB_DATA_FORCE === '1')
 export const STORAGE = IS_PG ? 'postgres' : TURSO_URL ? 'turso' : GH_MODE ? 'github' : 'file'
 
@@ -125,7 +141,7 @@ async function createLibsqlBackend() {
 // this instance's unflushed statements are replayed on top, then retried.
 async function createGithubBackend() {
   const { createClient } = await import('@libsql/client')
-  const store = createGhStore(GITHUB_DATA)
+  const store = createGhStore(GH_DATA)
   mkdirSync(DATA_DIR, { recursive: true })
   const file = join(DATA_DIR, 'dashboard.db')
 
@@ -337,9 +353,11 @@ async function createGithubBackend() {
       // instead of only ever growing.
       try { await client.executeMultiple('VACUUM;') } catch (e) { console.error('vacuum failed:', e.message) }
       const bytes = readFileSync(file)
-      cleanHash = hashOf(bytes)
       const result = await store.squash(bytes)
       if (result !== true) throw new Error('squash upload conflicted')
+      // Only a landed upload makes the file "clean" — marking it earlier would
+      // let the next flush skip a real change and quietly lose it.
+      cleanHash = hashOf(bytes)
     },
   }
 }
@@ -364,7 +382,14 @@ export async function flushPending() {
 }
 export async function storageStatus() {
   const b = await backend()
-  return { storage: STORAGE, ...(b.status ? b.status() : {}) }
+  return {
+    storage: STORAGE,
+    // These tokens expire, and an expired one looks exactly like an outage
+    // from the outside — so health says out loud whether one is even set, and
+    // where it came from, before anybody starts guessing.
+    ...(GH_MODE ? { token: GH_TOKEN_SET ? 'set' : 'missing', token_from: process.env.GITHUB_DATA_TOKEN || process.env.GH_DATA_TOKEN ? 'environment' : 'config.js' } : {}),
+    ...(b.status ? b.status() : {}),
+  }
 }
 // Force-refresh the local copy from the durable store (github mode only) —
 // used when a just-created user isn't visible to this instance yet.
