@@ -39,7 +39,17 @@ app.use(cors())
 app.use(compression()) // JSON with attachments shrinks ~5-10x over the wire
 app.use(express.json({ limit: '8mb' })) // room for photo attachments (data URLs)
 
-app.get('/api/health', wrap(async (req, res) => res.json({ ok: true, ...(await storageStatus()) })))
+// Health must answer even when the data store is the thing that is ill —
+// that is precisely when someone is looking at it. It reports what the
+// storage layer knows (mode, size, unflushed writes, the last error) instead
+// of failing with the rest.
+app.get('/api/health', async (req, res) => {
+  try {
+    res.json({ ok: true, ...(await storageStatus()) })
+  } catch (e) {
+    res.status(503).json({ ok: false, storage: 'unreachable', error: e.message, retryable: true })
+  }
+})
 
 // Nightly tick (vercel.json cron, 00:05 Tashkent): writes today's snapshot for
 // every metric so the growth comparison always has a point per day, even on

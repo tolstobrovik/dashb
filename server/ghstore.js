@@ -23,8 +23,13 @@ export function createGhStore({ token, repo, branch, path }) {
   let fileSha = null // blob sha of the database file at our last sync
   let etag = null    // ETag of the last contents download → free 304 checks
 
+  // A read that fails on a hiccup — a 5xx, a rate-limit pause, a dropped
+  // connection — is worth asking again before anyone hears about it. Only
+  // GETs retry: they change nothing, so a repeat is always safe. Writes keep
+  // their own compare-and-swap loop upstairs, where a repeat has meaning.
+  const TRANSIENT = new Set([408, 429, 500, 502, 503, 504])
   const gh = async (method, url, body, accept = 'application/vnd.github+json', extra) => {
-    const res = await fetch(`${API}${url}`, {
+    const send = () => fetch(`${API}${url}`, {
       method,
       headers: {
         ...headers,
@@ -34,7 +39,24 @@ export function createGhStore({ token, repo, branch, path }) {
       },
       body: body ? JSON.stringify(body) : undefined,
     })
-    return res
+    if (method !== 'GET') return send()
+    let last = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await send()
+        if (!TRANSIENT.has(res.status) || attempt === 2) return res
+        last = res
+        // GitHub says when to come back after a rate-limit pause; otherwise
+        // wait a beat longer each time (with jitter, so instances don't
+        // stampede the API in lockstep).
+        const after = Number(res.headers.get('retry-after'))
+        await new Promise((r) => setTimeout(r, after > 0 ? Math.min(after, 5) * 1000 : 200 * 2 ** attempt + Math.random() * 120))
+      } catch (e) {
+        if (attempt === 2) throw e
+        await new Promise((r) => setTimeout(r, 200 * 2 ** attempt + Math.random() * 120))
+      }
+    }
+    return last
   }
 
   const readJson = async (res) => {

@@ -44,24 +44,33 @@ export const cache = {
   },
 }
 
+// A serverless instance that cannot reach the data store answers 503 with
+// `retryable` BEFORE the request touches anything — nothing was read, written
+// or half-done, so sending it again is always safe. The wait is short and
+// silent: a storage hiccup should cost a heartbeat, not somebody's typed task.
+const RETRY_WAITS = [400, 1200, 2500]
 async function request(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`/api${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) return data
+    if (res.status === 503 && data.retryable && attempt < RETRY_WAITS.length) {
+      await new Promise((r) => setTimeout(r, RETRY_WAITS[attempt]))
+      continue
+    }
     if (res.status === 401) setToken(null)
     const err = new Error(data.error || `Request failed (${res.status})`)
     err.status = res.status
     err.data = data // extra payload (e.g. scheduling conflicts) for smarter UIs
     throw err
   }
-  return data
 }
 
 // Short-lived GET memo with in-flight de-duplication: reference lists like the

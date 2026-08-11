@@ -17,7 +17,15 @@ export default async function handler(req, res) {
     console.error('DB boot failed:', e)
     res.statusCode = 503
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'The data store is briefly unreachable — try again in a moment' }))
+    res.setHeader('Retry-After', '2')
+    // This answer is sent BEFORE the app ever sees the request, so nothing was
+    // read, written or half-done — the client may safely send it again. The
+    // flag says exactly that, so a blip becomes a pause instead of a dead end
+    // (and a lost task).
+    res.end(JSON.stringify({
+      error: 'The data store is briefly unreachable — try again in a moment',
+      retryable: true,
+    }))
     return
   }
   await new Promise((resolve) => {

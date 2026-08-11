@@ -12,7 +12,7 @@ import bcrypt from 'bcryptjs'
 import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, existsSync } from 'fs'
+import { mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, existsSync, statSync } from 'fs'
 import { DATABASE_URL as CONFIG_DATABASE_URL, GITHUB_DATA } from './config.js'
 import { createGhStore } from './ghstore.js'
 
@@ -138,6 +138,8 @@ async function createGithubBackend() {
   let flushError = null
   let flushes = 0
   let cleanHash = null // file hash as of the last pull/upload — skips no-op flushes
+  let staleBoot = null // set when we opened a local copy because GitHub was down
+  let lastSync = 0     // when the durable store last answered us
 
   const hashOf = (bytes) => createHash('sha256').update(bytes).digest('hex')
   const openClient = () => createClient({ url: `file:${file}`, intMode: 'number' })
@@ -172,6 +174,8 @@ async function createGithubBackend() {
       try {
         const { changed, bytes } = await store.pull()
         lastCheck = Date.now()
+        lastSync = Date.now()
+        staleBoot = null // the durable store answered — we are current again
         if (changed && bytes) {
           await applyBytes(bytes)
           if (journal.length) await replayJournal()
@@ -191,26 +195,49 @@ async function createGithubBackend() {
 
   // First boot: one download brings sha + contents together; the branch only
   // needs creating the very first time the app ever runs. GitHub blips at
-  // cold start are retried here, and a still-failing boot is thrown to the
-  // caller — which retries the whole backend on the next request rather than
-  // caching the rejection for the life of the instance.
-  let initial
-  for (let attempt = 0; ; attempt++) {
+  // cold start are retried here with a widening backoff.
+  let initial = null
+  let bootError = null
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
       initial = await store.pull()
+      bootError = null
       break
     } catch (e) {
-      if (attempt >= 2) throw e
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+      bootError = e
+      if (attempt < 4) await new Promise((r) => setTimeout(r, 250 * 2 ** attempt + Math.random() * 150))
     }
   }
-  if (!initial.exists) await store.ensureBranch()
-  lastCheck = Date.now()
-  if (initial.bytes) {
-    writeFileSync(file, initial.bytes)
-    cleanHash = hashOf(initial.bytes)
-  } else if (existsSync(file)) rmSync(file) // stale /tmp leftovers from a previous instance
-  client = openClient()
+  if (bootError) {
+    // GitHub is still unreachable. A WARM instance rides this out on its local
+    // copy (see sync's catch) — a cold one used to answer every request "the
+    // data store is briefly unreachable" instead. So when this machine still
+    // holds a database file from an earlier boot, open THAT and carry on:
+    // sync() pulls the fresh copy the moment GitHub answers again, and the
+    // compare-and-swap upload keeps writes correct meanwhile.
+    if (!existsSync(file)) throw bootError
+    client = openClient()
+    try {
+      await client.execute({ sql: 'SELECT 1 FROM meta LIMIT 1', args: [] })
+    } catch {
+      // half-written leftovers of a killed instance — unusable, say so plainly
+      try { client.close() } catch { /* not open */ }
+      rmSync(file, { force: true })
+      throw bootError
+    }
+    staleBoot = bootError.message
+    lastCheck = 0 // the next query re-pulls the moment GitHub is back
+    console.error('GitHub unreachable at boot — serving this machine’s copy:', bootError.message)
+  } else {
+    if (!initial.exists) await store.ensureBranch()
+    lastCheck = Date.now()
+    lastSync = Date.now()
+    if (initial.bytes) {
+      writeFileSync(file, initial.bytes)
+      cleanHash = hashOf(initial.bytes)
+    } else if (existsSync(file)) rmSync(file) // stale /tmp leftovers from a previous instance
+    client = openClient()
+  }
 
   const flush = async () => {
     if (!dirty) return
@@ -293,10 +320,25 @@ async function createGithubBackend() {
     close: () => client.close(),
     flush,
     resync: () => sync(true),
-    status: () => ({ dirty, flushError }),
+    // Everything an admin needs to tell "all is well" from "GitHub is down"
+    // or "this database is getting heavy" — one glance at /api/health.
+    status: () => ({
+      dirty,
+      flushError,
+      stale: staleBoot,                                   // serving a local copy; GitHub said this
+      bytes: existsSync(file) ? statSync(file).size : 0,   // every write re-uploads this much
+      pending: journal.length,
+      synced_secs_ago: lastSync ? Math.round((Date.now() - lastSync) / 1000) : null,
+    }),
     squash: async () => {
       await flush()
-      const result = await store.squash(readFileSync(file))
+      // Deleted photos leave free pages behind — reclaim them before the
+      // upload, so the file the team pays for on every write keeps shrinking
+      // instead of only ever growing.
+      try { await client.executeMultiple('VACUUM;') } catch (e) { console.error('vacuum failed:', e.message) }
+      const bytes = readFileSync(file)
+      cleanHash = hashOf(bytes)
+      const result = await store.squash(bytes)
       if (result !== true) throw new Error('squash upload conflicted')
     },
   }

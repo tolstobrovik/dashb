@@ -16,7 +16,7 @@ DATA_DIR=$SP/uxdata PORT=4090 node /home/user/dashb/server/index.js > $SP/api409
 for i in $(seq 1 30); do curl -s http://localhost:4090/api/health >/dev/null 2>&1 && break; sleep 0.5; done
 node seed.mjs > $SP/seed-run.log 2>&1 && echo "seed OK" >> $RES || echo "seed FAIL" >> $RES
 
-for s in dash-suite brief-suite role-suite polish-suite programs-suite lens-dark-suite polish2-suite round-suite round3-suite round4-suite round5-suite round6-suite round7-suite round8-suite round9-suite round10-suite round11-suite round12-suite round13-suite round14-suite round15-suite round16-suite round17-suite round19-suite round20-suite round21-suite round22-suite round23-suite round24-suite round25-suite round26-suite round27-suite round28-suite round29-suite round30-suite round31-suite round32-suite round33-suite round34-suite round35-suite round36-suite round37-suite round38-suite round39-suite round40-suite round41-suite round42-suite round43-suite round44-suite; do
+for s in dash-suite brief-suite role-suite polish-suite programs-suite lens-dark-suite polish2-suite round-suite round3-suite round4-suite round5-suite round6-suite round7-suite round8-suite round9-suite round10-suite round11-suite round12-suite round13-suite round14-suite round15-suite round16-suite round17-suite round19-suite round20-suite round21-suite round22-suite round23-suite round24-suite round25-suite round26-suite round27-suite round28-suite round29-suite round30-suite round31-suite round32-suite round33-suite round34-suite round35-suite round36-suite round37-suite round38-suite round39-suite round40-suite round41-suite round42-suite round43-suite round44-suite round45-suite; do
   # One retry per suite: the sandbox's memory flake crashes a random suite's
   # page mid-run about once per full gate. A retried pass is marked PASS* so
   # a REAL regression (failing twice) never hides behind the retry.
@@ -47,6 +47,10 @@ MOCK_PORT=9977 node mock-gh.mjs > $SP/mock-gh.log 2>&1 &
 sleep 1
 if node gh500-suite.mjs > $SP/out-gh500-suite.log 2>&1; then echo "gh500-suite PASS" >> $RES; else echo "gh500-suite FAIL" >> $RES; fi
 fuser -k 9977/tcp 2>/dev/null; sleep 0.5
+# storage-suite brings its own mock (9989) and instances — outage survival
+fuser -k 9989/tcp 2>/dev/null; sleep 0.5
+if node storage-suite.mjs > $SP/out-storage-suite.log 2>&1; then echo "storage-suite PASS" >> $RES; else echo "storage-suite FAIL" >> $RES; fi
+fuser -k 9989/tcp 2>/dev/null; sleep 0.5
 
 # ---- pc-suite + journey on 4081 ----
 if bash pc-suite.sh > $SP/out-pc-suite.log 2>&1; then echo "pc-suite PASS" >> $RES; else echo "pc-suite FAIL" >> $RES; fi
