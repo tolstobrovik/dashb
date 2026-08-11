@@ -109,12 +109,22 @@ const locked = await D.req('/health')
 ok('a refused token names itself', locked.status === 503 && /refused the storage token/.test(JSON.stringify(locked.data)),
   JSON.stringify(locked.data).slice(0, 120))
 ok('…and asks not to be retried — waiting cannot mend it', locked.data.retryable === false)
+// Locked out is exactly when /api/health cannot be reached to ask what the
+// app is configured with — so the refusal carries that itself.
+// This tree carries the token-free placeholder, so the honest answer here is
+// "missing, from config.js" — the very reading that tells an admin their new
+// environment variable never arrived.
+ok('…and still says which token it is using', locked.data.config?.token_from === 'config.js' && locked.data.config?.token === 'missing',
+  JSON.stringify(locked.data.config))
+ok('…naming the repository, never the secret', locked.data.config?.repo === 'tolstobrovik/marketing-dashboard' &&
+  !/REPLACE_WITH|THE-GOOD-TOKEN/.test(JSON.stringify(locked.data)))
 
 // ---- a fresh token from the environment takes over, no commit needed ----
 const E = await start(4300, '/tmp/stg-e', { GITHUB_DATA_TOKEN: 'THE-GOOD-TOKEN' })
 const healed = await E.req('/health')
 ok('a token from the environment brings storage back', healed.status === 200 && healed.data.storage === 'github', JSON.stringify(healed.data).slice(0, 110))
 ok('…and health says where it came from', healed.data.token === 'set' && healed.data.token_from === 'environment')
+ok('…naming the repository it writes to', !!healed.data.repo && !!healed.data.branch, JSON.stringify(healed.data).slice(0, 100))
 await requireToken(null)
 
 for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } }

@@ -380,16 +380,28 @@ export async function flushPending() {
   const b = await backend()
   if (b.flush) await b.flush()
 }
-export async function storageStatus() {
-  const b = await backend()
+// What the app was CONFIGURED with — readable without a working database, so
+// a locked-out deployment can still explain itself. Never the token's value:
+// only whether one is set, and which source won. That single word separates
+// "the new token never reached the app" (still says config.js → the variable
+// went to the wrong place, or the deploy predates it) from "the token itself
+// is refused" (says environment → the credential lacks Contents write, or
+// was pasted with a stray space).
+export function storageConfig() {
+  if (!GH_MODE) return { storage: STORAGE }
+  const fromEnv = !!(process.env.GITHUB_DATA_TOKEN || process.env.GH_DATA_TOKEN)
   return {
     storage: STORAGE,
-    // These tokens expire, and an expired one looks exactly like an outage
-    // from the outside — so health says out loud whether one is even set, and
-    // where it came from, before anybody starts guessing.
-    ...(GH_MODE ? { token: GH_TOKEN_SET ? 'set' : 'missing', token_from: process.env.GITHUB_DATA_TOKEN || process.env.GH_DATA_TOKEN ? 'environment' : 'config.js' } : {}),
-    ...(b.status ? b.status() : {}),
+    token: GH_TOKEN_SET ? 'set' : 'missing',
+    token_from: fromEnv ? 'environment' : 'config.js',
+    token_tail: GH_TOKEN_SET ? `…${String(GH_DATA.token).slice(-4)}` : null, // enough to tell two tokens apart
+    repo: GH_DATA?.repo,
+    branch: GH_DATA?.branch,
   }
+}
+export async function storageStatus() {
+  const b = await backend()
+  return { ...storageConfig(), ...(b.status ? b.status() : {}) }
 }
 // Force-refresh the local copy from the durable store (github mode only) —
 // used when a just-created user isn't visible to this instance yet.

@@ -8,7 +8,7 @@
 // boot — initDb never caches a rejection); a failed post-response flush is
 // logged and retried on the next request's flush.
 import { app } from '../server/app.js'
-import { initDb, flushPending } from '../server/db.js'
+import { initDb, flushPending, storageConfig } from '../server/db.js'
 
 export default async function handler(req, res) {
   try {
@@ -32,6 +32,9 @@ export default async function handler(req, res) {
         : 'The data store is briefly unreachable — try again in a moment',
       reason: e.message,
       retryable: !refused,
+      // Locked out is exactly when nobody can reach /api/health to ask what
+      // the app is even configured with — so it comes along with the refusal.
+      config: (() => { try { return storageConfig() } catch { return null } })(),
     }))
     return
   }
