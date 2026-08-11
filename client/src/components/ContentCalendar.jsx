@@ -98,15 +98,26 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
     d.tick = () => {
       const p = d.press
       if (!p || !p.started) return
-      if (p.py > window.innerHeight - 56) window.scrollBy(0, 10)
-      else if (p.py < 72) window.scrollBy(0, -10)
       const sb = p.scrollBox
-      if (sb) {
-        const r = sb.getBoundingClientRect()
-        // slow enough to aim: about a column per beat, highlight leading the way
-        if (p.px > r.right - 44) sb.scrollLeft += 6
-        else if (p.px < r.left + 44) sb.scrollLeft -= 6
-      }
+      const r = sb?.getBoundingClientRect()
+      const down = p.py > window.innerHeight - 56
+      const up = p.py < 72
+      const right = r && p.px > r.right - 44
+      const left = r && p.px < r.left + 44
+      // Walking only begins once the pointer has DWELLED at the edge: a drop
+      // aimed at a day that happens to sit near the window's edge must not
+      // have the ground pulled out from under it, while a deliberate park
+      // still travels to what lies beyond.
+      if (down || up || right || left) {
+        p.bandSince ||= Date.now()
+        if (Date.now() - p.bandSince > 250) {
+          if (down) window.scrollBy(0, 10)
+          else if (up) window.scrollBy(0, -10)
+          // slow enough to aim: about a column per beat, highlight leading the way
+          if (right) sb.scrollLeft += 6
+          else if (left) sb.scrollLeft -= 6
+        }
+      } else p.bandSince = 0
       setOverCell(d.targetAt(p.px, p.py))
       p.raf = requestAnimationFrame(d.tick)
     }

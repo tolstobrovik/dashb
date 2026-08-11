@@ -60,6 +60,10 @@ await p.screenshot({ path: 'r21-tray.png' })
 // take the same path) — the suite drags exactly like a person would: press,
 // slide, release.
 {
+  // Bring today's cell into view first — a pointer cannot travel outside the
+  // window, and neither can a person's hand.
+  await p.locator('.cal-day.today').scrollIntoViewIfNeeded()
+  await p.waitForTimeout(300)
   const cb = await p.locator('.cal-tray-chip', { hasText: 'r21: dateless clip' }).boundingBox()
   const db = await p.locator('.cal-day.today').boundingBox()
   await p.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2)

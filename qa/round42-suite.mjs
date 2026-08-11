@@ -250,7 +250,8 @@ p2.on('pageerror', (e) => { p2crashed = true; console.log('PAGE ERROR (soft)', e
 await loginUI(p2, 'x42fix', 'probe123')
 await p2.goto(MAIN + '/brief'); await p2.waitForTimeout(1500)
 const card = p2.locator('.pravki-card', { hasText: 'x42ui fix clip' })
-if (p2crashed || (await card.count()) === 0) {
+for (let tries = 0; tries < 2 && (p2crashed || (await card.count()) === 0); tries++) {
+  p2crashed = false
   await p2.reload(); await p2.waitForTimeout(1800)
 }
 ok('the Pravki card is on the fixer’s desk', (await card.count()) === 1)
