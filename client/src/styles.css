@@ -2439,6 +2439,7 @@ button.cb-toggle:hover { color: var(--ink); }
 /* The pill in flight, riding under the pointer. */
 .drag-ghost {
   position: fixed; z-index: 4000; pointer-events: none;
+  top: 0; left: 0; will-change: transform;
   max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 5px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
   background: var(--surface); color: var(--ink);

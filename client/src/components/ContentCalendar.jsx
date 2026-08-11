@@ -378,7 +378,9 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
       {/* The pill in flight — pinned to the pointer so the task's name stays
           visible even under a finger. */}
       {ghost && (
-        <div className="drag-ghost" style={{ left: ghost.x + 14, top: ghost.y + 12 }}>{ghost.title}</div>
+        // Moved by transform, not by left/top: the browser slides an already
+        // painted layer instead of re-laying-out the page on every frame.
+        <div className="drag-ghost" style={{ transform: `translate3d(${ghost.x + 14}px, ${ghost.y + 12}px, 0)` }}>{ghost.title}</div>
       )}
     </div>
   )

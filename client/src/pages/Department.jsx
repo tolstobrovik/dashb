@@ -185,7 +185,9 @@ export default function Department() {
     Promise.all([
       api.get(`/trackers?department=${key}`),
       api.get(`/trackers/history?department=${key}`),
-      api.get(`/content?department=${key}`),
+      // This is the one page with a kanban board, and a board card wears its
+      // thumbnail — so this is the one page that asks for them.
+      api.get(`/content?department=${key}&thumbs=1`),
       api.get('/statuses'),
     ])
       .then(([tr, hist, ct, st]) => {
@@ -205,7 +207,7 @@ export default function Department() {
     if (!dept || !hasAccess) return
     const refresh = () => {
       if (document.hidden || openItem || dragIdx !== null) return
-      api.poll(`/content?department=${key}`).then((f) => { if (f) setContent(f) }).catch(() => {})
+      api.poll(`/content?department=${key}&thumbs=1`).then((f) => { if (f) setContent(f) }).catch(() => {})
       api.poll(`/trackers?department=${key}`).then((f) => { if (f) setTrackers(f) }).catch(() => {})
     }
     const id = setInterval(refresh, 10000)

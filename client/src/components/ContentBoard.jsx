@@ -93,7 +93,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                       {(item.comment_count || 0) > 0 && (
                         <span className="chip chip-muted" data-tip="The task's thread"><MessageSquare size={10} /> {item.comment_count}</span>
                       )}
-                      {!!(item.has_photo || item.photo) && !item.photo_thumb && <span className="chip chip-muted"><ImageIcon size={10} /></span>}
+                      {!!(item.has_photo || item.has_thumb || item.photo) && !item.photo_thumb && <span className="chip chip-muted"><ImageIcon size={10} /></span>}
                       {others.map((c) => (
                         <span key={c} className="chip chip-muted">also {byKey[c]?.label || c}</span>
                       ))}

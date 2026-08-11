@@ -102,15 +102,22 @@ const cleanChannels = async (v) => {
 }
 
 // Lists never carry the full-size photo (they can be megabytes as data URLs
-// and the pages poll every few seconds) — only the small thumbnail and a
-// has_photo flag; the task modal fetches the original via GET /:id.
-const LIST_COLUMNS = `id, title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id,
+// and the pages poll every few seconds) — the task modal fetches the original
+// via GET /:id.
+// The THUMBNAIL is heavy too, and only one view draws it: the kanban board.
+// A photo is already-compressed bytes, so base64 of it survives gzip intact —
+// twenty photographed tasks put a third of a megabyte into every answer, on
+// every page, on every poll. So the list carries a flag by default and the
+// picture only where a picture is shown (?thumbs=1).
+const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id,
   operator_id, editor_id, designer_id,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, reference_text, reference_links, format, rubrika, script, release_date, release_time, description,
-  checklist, todo_sort, pinned, photo_thumb,
+  checklist, todo_sort, pinned, ${withThumbs ? 'photo_thumb,' : ''}
+  CASE WHEN photo_thumb IS NULL THEN 0 ELSE 1 END AS has_thumb,
   (SELECT COUNT(*) FROM comments WHERE comments.content_id = content.id) AS comment_count,
   CASE WHEN photo IS NULL THEN 0 ELSE 1 END AS has_photo, done_at, created_at`
+const LIST_COLUMNS = listColumns(true)
 
 // ---- the paper trail --------------------------------------------------------
 // One activity row per meaningful change — who, which field, from → to. People
@@ -273,8 +280,8 @@ async function guardShoot(req, res, { operatorId, date, start, end, excludeId })
 }
 
 router.get('/', wrap(async (req, res) => {
-  const { department, mine } = req.query
-  let rows = (await all(`SELECT ${LIST_COLUMNS} FROM content ORDER BY pinned DESC, todo_sort, created_at DESC`)).map(parse)
+  const { department, mine, thumbs } = req.query
+  let rows = (await all(`SELECT ${listColumns(thumbs === '1')} FROM content ORDER BY pinned DESC, todo_sort, created_at DESC`)).map(parse)
   if (req.user.role !== 'admin') rows = rows.filter((c) => canSee(req.user, c))
   if (department) rows = rows.filter((c) => c.channels.includes(department))
   if (mine === 'true') rows = rows.filter((c) => c.assignee_id === req.user.id)
