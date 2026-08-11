@@ -31,6 +31,18 @@ router.post('/webhook', wrap(async (req, res) => {
   } else if (chatId && /^\/stop\b/.test(text)) {
     await run('UPDATE users SET telegram_chat_id = NULL WHERE telegram_chat_id = ?', String(chatId))
     await tgApi('sendMessage', { chat_id: chatId, text: 'Disconnected. Profile → Telegram → Connect brings it back.' })
+  } else if (chatId && text) {
+    // Anything else — "/help", "привет", a forwarded photo caption — used to
+    // meet silence, which reads exactly like a broken bot. It answers instead,
+    // and says who it is: this is a one-way messenger for the dashboard, not
+    // a chat that takes commands.
+    const who = await get('SELECT name FROM users WHERE telegram_chat_id = ?', String(chatId))
+    await tgApi('sendMessage', {
+      chat_id: chatId,
+      text: who
+        ? `Hello, ${who.name}! I bring you the dashboard's notifications — new work assigned to you 📌, stage moves 🔔, comments 💬, change requests 🔧 and tomorrow's deadlines ⏰.\n\nI don't take commands here — do the work in the dashboard, and I'll keep you posted.\n/stop turns these messages off.`
+        : 'I bring Satashkent dashboard notifications to your Telegram.\n\nTo connect: open the dashboard → Profile → Telegram → Connect. That button brings you back here with the right code.',
+    })
   }
   res.json({ ok: true })
 }))

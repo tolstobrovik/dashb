@@ -96,8 +96,19 @@ export async function tgSendTo(userId, text) {
     const r = await tgApi('sendMessage', {
       chat_id: u.telegram_chat_id, text: tgClip(text), parse_mode: 'HTML', disable_web_page_preview: true,
     })
-    if (r && r.ok === false)
+    if (r && r.ok === false) {
+      // Blocking the bot, or deleting the chat, is a decision — not a hiccup.
+      // Telegram will refuse every future message the same way, so the link
+      // is dropped: the person stops being told they are connected when they
+      // are not, the admin panel tells the truth, and nobody keeps calling an
+      // API that has already said no. Profile → Connect brings it back.
+      if (r.error_code === 403 || /chat not found|user is deactivated|bot was blocked/i.test(r.description || '')) {
+        await run('UPDATE users SET telegram_chat_id = NULL WHERE id = ?', userId)
+        console.error(`telegram: ${u.telegram_chat_id} refuses messages (${r.description || r.error_code}) — link dropped`)
+        return
+      }
       await tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: tgClip(text), disable_web_page_preview: true })
+    }
   } catch (e) { console.error('telegram send failed:', e.message) }
 }
 // Where a message's task link should point: the remembered public address
