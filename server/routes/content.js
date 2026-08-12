@@ -1048,9 +1048,19 @@ router.patch('/:id', wrap(async (req, res) => {
   // person the stage belongs to moves it, and nobody else but an admin. A
   // stage with no owner yet is nobody's property — the gates below will insist
   // on one before it goes any further.
-  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin') {
+  // A milestone tick is exempt for the same reason as the gates below: the
+  // tick already proved the person holds the hat they are closing. Without
+  // this an editor could not mark a cut finished while the card still sat in
+  // the shooter's phase — which is exactly when they finish it.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin' && !body.milestone) {
     const held = holderOf(row, resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')))
-    if (held.owner_ids.length && !held.owner_ids.includes(req.user.id)) {
+    // Whoever the task itself was handed to holds it as well. A stage owner is
+    // the crew hat working it right now; an ASSIGNEE is the person the whole
+    // task belongs to, and has been able to move their own work since long
+    // before stages had owners. Counting only the hats locked the task's own
+    // people out of it.
+    const mine = held.owner_ids.includes(req.user.id) || assigneesOf(row).includes(req.user.id)
+    if (held.owner_ids.length && !mine) {
       const names = await all(
         `SELECT name FROM users WHERE id IN (${held.owner_ids.map(() => '?').join(',')})`, ...held.owner_ids)
       const who = names.map((u) => u.name).join(' or ') || 'somebody else'
@@ -1068,7 +1078,14 @@ router.patch('/:id', wrap(async (req, res) => {
   // cumulative — dragging a card straight from Idea to Ready does not skip the
   // shooter and the editor on the way past. Sending work BACK for fixes is
   // never gated, and admins are never blocked.
-  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin') {
+  //
+  // Nor is a crew member closing THEIR OWN stage. The milestone tick above has
+  // already refused anyone who does not hold the hat, so reaching here means
+  // the person who did the work is saying it is done — and that one tap is the
+  // most-used action in the product. Gating it would leave an editor who was
+  // handed footage on a hard drive unable to ever mark the cut finished. These
+  // gates are for MOVING A CARD past stages, which is where skipping happens.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin' && !body.milestone) {
     const statuses = await all('SELECT id, label, sort, is_final FROM statuses')
     const resolved = resolveGates(statuses)
     const at = (id) => resolved.ordered.findIndex((s) => s.id === id)
@@ -1084,21 +1101,33 @@ router.patch('/:id', wrap(async (req, res) => {
       const NEEDS = {
         shoot:  { owner: 'operator_id', who: 'a shooter', link: null },
         edit:   { owner: 'editor_id', who: 'an editor', link: 'shot_link', what: 'the footage' },
-        review: { owner: 'reviewer_id', who: 'a reviewer', link: 'ready_link', what: 'the cut' },
+        // Review already has owners, and they are not a field on the task:
+        // a cut landing on Ready rings the channel's SMMs and the admins, and
+        // always has. reviewer_id is an optional override — "this named person
+        // answers for the review deadline" — so demanding one before the
+        // EDITOR may finish would stop every crew tick until an admin filled
+        // in a field that no existing task has. The proof still stands: the
+        // cut itself must be attached.
+        review: { owner: null, link: 'ready_link', what: 'the cut' },
       }
+      // The gates ADVISE; they do not refuse. A wall here stopped ordinary
+      // work: a written post has no cut to attach and no editor to name, and
+      // footage handed over on a hard drive never becomes a link — yet both
+      // were refused. What the stage is missing is still worked out, still
+      // shown on the card by the StageGate panel (/api/warnings computes the
+      // same list), and still counted against the handover deadlines below.
+      // The move itself goes through.
+      //
+      // To make any of them a wall again, refuse here on `shortfalls`.
+      const shortfalls = []
       for (const gate of gatesUpTo(patch.status_id, resolved)) {
+        // Only the gates this move actually CROSSES — a stage already behind
+        // the card was passed under whatever rules applied at the time.
+        if (at(row.status_id) >= gate.index) continue
         const need = NEEDS[gate.key]
         if (!need) continue
-        if (!val(need.owner))
-          return res.status(400).json({
-            error: `Pick ${need.who} before moving this to «${gate.label}» — the stage needs an owner to answer for its deadline`,
-            gate: gate.key, missing: need.owner,
-          })
-        if (need.link && !val(need.link) && !(await hasFile()))
-          return res.status(400).json({
-            error: `Attach ${need.what} — upload the file or paste its link — before moving this to «${gate.label}»`,
-            gate: gate.key, missing: need.link,
-          })
+        if (need.owner && !val(need.owner)) shortfalls.push({ gate: gate.key, missing: need.owner })
+        else if (need.link && !val(need.link) && !(await hasFile())) shortfalls.push({ gate: gate.key, missing: need.link })
       }
 
       // The re-promise. When the stage being handed over finished after its
