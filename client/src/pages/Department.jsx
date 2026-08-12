@@ -15,6 +15,7 @@ import Meter from '../components/Meter.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentBoard from '../components/ContentBoard.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
+import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
 import CompareCard from '../components/CompareCard.jsx'
@@ -232,11 +233,30 @@ export default function Department() {
   const liveContent = useMemo(
     () => lensContent.filter((t) => !isDeletedLabel(statusesById[t.status_id]?.label)),
     [lensContent, statusesById])
+
+  // ---- the content workspace's own filters (person / type / stage) ----
+  // Remembered per channel, and applied to the board, both calendars, the
+  // unscheduled tray and a day's agenda at once. The dashboard's other
+  // sections keep showing everything — their controls aren't on screen.
+  const [filter, setFilterState] = useState(BLANK_FILTER)
+  useEffect(() => {
+    try { setFilterState({ ...BLANK_FILTER, ...JSON.parse(localStorage.getItem(`satashkent_cfilter_${key}`) || '{}') }) }
+    catch { setFilterState(BLANK_FILTER) }
+  }, [key])
+  const setFilter = (f) => { setFilterState(f); localStorage.setItem(`satashkent_cfilter_${key}`, JSON.stringify(f)) }
+  const filterOn = filterIsOn(filter)
+  const wsContent = useMemo(
+    () => (filterOn ? lensContent.filter((t) => matchesFilter(t, filter)) : lensContent),
+    [lensContent, filter, filterOn])
+  const wsLive = useMemo(
+    () => (filterOn ? liveContent.filter((t) => matchesFilter(t, filter)) : liveContent),
+    [liveContent, filter, filterOn])
+
   // The calendar's waiting room: open work that has no date on the current
   // calendar yet. Posts aren't filmed, so they never wait for a shoot day.
-  const unscheduled = useMemo(() => liveContent.filter((t) => !t.done_at &&
+  const unscheduled = useMemo(() => wsLive.filter((t) => !t.done_at &&
     (view === 'recording' ? (t.type !== 'post' && !t.recording_date) : !t.release_date)),
-  [liveContent, view])
+  [wsLive, view])
 
   // Campaigns + team: chips on kanban cards, the Campaigns board, head picker.
   const [campaigns, setCampaigns] = useState([])
@@ -615,10 +635,16 @@ export default function Department() {
         )}
       </div>
 
+      <ContentFilters
+        filter={filter} onChange={setFilter}
+        items={lensContent} shown={wsContent.length}
+        statuses={statuses} teamById={teamById}
+      />
+
       {selectedDate ? (
         <DayAgenda
           date={selectedDate}
-          items={liveContent}
+          items={wsLive}
           statusesById={statusesById}
           canEdit={manageContent}
           onOpen={setOpenItem}
@@ -629,11 +655,11 @@ export default function Department() {
           onBack={() => setSelectedDate(null)}
         />
       ) : view === 'board' ? (
-        <ContentBoard items={lensContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem}
+        <ContentBoard items={wsContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem}
           onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />
       ) : (
         <ContentCalendar
-          items={lensContent}
+          items={wsContent}
           trayItems={unscheduled}
           mode={view}
           canMove={moveTasks}
