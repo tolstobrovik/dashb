@@ -59,8 +59,24 @@ async function request(path, { method = 'GET', body } = {}) {
       },
       body: body ? JSON.stringify(body) : undefined,
     })
-    const data = await res.json().catch(() => ({}))
-    if (res.ok) return data
+    // A 2xx whose body does not parse is a FAILED request, not an empty
+    // answer. Reading it as {} was quietly catastrophic: a body cut short in
+    // transit became "here is your data", and a caller that expected a list
+    // stored an object, rendered `.map` on it, and took the whole app down —
+    // permanently, once that object reached the browser's cache. A short body
+    // deserves the same treatment as any other blip: try again, then say so.
+    const text = await res.text()
+    let data = {}
+    let readable = true
+    if (text) { try { data = JSON.parse(text) } catch { readable = false } }
+    if (res.ok && readable) return data
+    if (res.ok) {
+      if (attempt < RETRY_WAITS.length) {
+        await new Promise((r) => setTimeout(r, RETRY_WAITS[attempt]))
+        continue
+      }
+      throw Object.assign(new Error('The answer arrived incomplete — try again'), { status: res.status })
+    }
     if (res.status === 503 && data.retryable && attempt < RETRY_WAITS.length) {
       await new Promise((r) => setTimeout(r, RETRY_WAITS[attempt]))
       continue
@@ -141,8 +157,12 @@ async function conditionalGet(path) {
   if (res.status === 304) return null
   if (!res.ok) throw new Error(`Request failed (${res.status})`)
   const next = res.headers.get('ETag')
+  // A body that will not parse must not be remembered as this ETag's answer —
+  // otherwise the next poll gets a 304 and the page keeps the broken shape.
+  let body
+  try { body = JSON.parse(await res.text()) } catch { throw new Error('The answer arrived incomplete') }
   if (next) etags.set(path, next)
-  return res.json()
+  return body
 }
 async function poll(path) {
   const fresh = await conditionalGet(path)

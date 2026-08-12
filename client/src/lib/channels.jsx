@@ -8,11 +8,17 @@ const Ctx = createContext({ channels: [], visible: [], byKey: {}, reload: () => 
 export function ChannelsProvider({ children }) {
   const { user } = useAuth()
   // Boot from the cached list (instant sidebar + home redirect), then refresh.
-  const [channels, setChannels] = useState(() => cache.get('channels') || [])
+  // This provider wraps EVERY page, so anything it renders that is not a list
+  // is not one broken page — it is the whole dashboard, on every reload for as
+  // long as the cache holds it. It therefore trusts nothing: not the cache it
+  // wrote, and not the answer it is handed.
+  const asList = (v) => (Array.isArray(v) ? v : [])
+  const [channels, setChannels] = useState(() => asList(cache.get('channels')))
 
   const reload = useCallback(() => {
     if (!user) return
     api.get('/channels').then((list) => {
+      if (!Array.isArray(list)) return // keep the last good list rather than break
       setChannels(list)
       cache.set('channels', list)
     }).catch(() => {})
