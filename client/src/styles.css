@@ -2694,3 +2694,19 @@ button.cb-toggle:hover { color: var(--ink); }
 .blame-who { font-weight: 600; }
 .blame-split { color: var(--muted); }
 @media (max-width: 720px) { .blame-phases { grid-template-columns: 1fr; } }
+
+/* ---- shared review + the undo countdown -------------------------------- */
+.rev-picker { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rev-chip {
+  padding: 5px 11px; border-radius: 999px; font: inherit; font-size: 12.5px;
+  border: 1px solid var(--hairline-strong); background: var(--surface);
+  color: var(--ink-2); cursor: pointer;
+}
+.rev-chip:hover:not(:disabled) { border-color: var(--brand-300); color: var(--brand-600); }
+.rev-chip.on { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+.rev-chip:disabled { opacity: .55; cursor: default; }
+.toast-count {
+  display: inline-block; min-width: 15px; padding: 0 4px; margin-left: 4px;
+  border-radius: 999px; background: rgba(255, 255, 255, .18);
+  font-variant-numeric: tabular-nums; font-size: 11px;
+}

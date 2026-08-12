@@ -27,9 +27,23 @@ const FIELDS = {
     started: 'shot_at', delivered: 'edited_at', role: 'editor',
   },
   review: {
-    owner: 'reviewer_id', promised: 'release_date', revised: 'review_due_revised',
+    // Review can be shared. `reviewers` is the list; reviewer_id mirrors the
+    // first of them, and a missed review is charged to every name on it.
+    owner: 'reviewer_id', owners: 'reviewers', promised: 'release_date', revised: 'review_due_revised',
     started: 'edited_at', delivered: 'done_at', role: 'reviewer',
   },
+}
+
+// The people answering for a phase. A shared phase answers as a group.
+export function ownersOfPhase(task, key) {
+  const f = FIELDS[key]
+  if (f.owners) {
+    let list = []
+    try { list = JSON.parse(task[f.owners] || '[]') } catch { list = [] }
+    list = list.map(Number).filter(Boolean)
+    if (list.length) return [...new Set(list)]
+  }
+  return task[f.owner] ? [task[f.owner]] : []
 }
 
 export const PHASE_LABEL = { shoot: 'Shooting', edit: 'Editing', review: 'Review & publish' }
@@ -72,6 +86,20 @@ export function gatesUpTo(targetId, resolved) {
     .filter(Boolean)
 }
 
+// Whose hands the task is in RIGHT NOW, judged by the stage it sits in: before
+// the editing gate it belongs to the shooter, from there to review it belongs
+// to the editor, and past that to the reviewers. Handing work over hands over
+// the right to move it — the previous owner cannot drag it back out from under
+// the person now holding it.
+export function holderOf(task, resolved) {
+  const { gates, ordered } = resolved
+  const at = ordered.findIndex((s) => s.id === task.status_id)
+  if (at < 0) return { phase: null, owner_ids: [] }
+  const past = (g) => g && at >= g.index
+  const phase = past(gates.review) ? 'review' : past(gates.edit) ? 'edit' : 'shoot'
+  return { phase, owner_ids: ownersOfPhase(task, phase) }
+}
+
 // ---- the state of one phase ---------------------------------------------
 // ok       delivered on or before the promised day
 // late     delivered after it, or still undelivered with the day gone
@@ -91,9 +119,11 @@ export function phaseState(task, key, today = dayISO()) {
   const deliveredIso = task[f.delivered] || null
   const delivered = deliveredIso ? tashkentDay(deliveredIso) : null
 
+  const owner_ids = ownersOfPhase(task, key)
   const base = {
     phase: key, label: PHASE_LABEL[key], role: f.role,
-    owner_id: task[f.owner] || null,
+    owner_id: owner_ids[0] || null,
+    owner_ids,
     promised, revised, due,
     started, started_day: started ? tashkentDay(started) : null,
     delivered: deliveredIso, delivered_day: delivered,
@@ -123,26 +153,33 @@ export function phasesOf(task, today = dayISO()) {
 }
 
 // The warnings a task produces: late phases that have somebody to answer for.
-// A late phase nobody owns is still returned (owner_id null) so admins can see
-// unowned slippage, but it never lands in a person's account.
+// A shared phase produces one warning per owner — a review two people agreed
+// to own is late for both of them. A late phase nobody owns is still returned
+// (owner_id null) so admins can see unowned slippage, but it never lands in a
+// person's account.
 export function warningsOf(task, today = dayISO()) {
   return phasesOf(task, today)
     .filter((p) => p.state === 'late')
-    .map((p) => ({
-      content_id: task.id,
-      title: task.title,
-      channels: task.channels,
-      phase: p.phase,
-      phase_label: p.label,
-      role: p.role,
-      owner_id: p.owner_id,
-      due: p.due,
-      promised: p.promised,
-      revised: p.revised,
-      delivered: p.delivered,
-      delivered_day: p.delivered_day,
-      days_late: p.days_late,
-      // An undelivered late phase is still running — it gets worse each day.
-      open: !p.delivered,
-    }))
+    .flatMap((p) => {
+      const owners = p.owner_ids.length ? p.owner_ids : [null]
+      return owners.map((owner_id) => ({
+        content_id: task.id,
+        title: task.title,
+        channels: task.channels,
+        phase: p.phase,
+        phase_label: p.label,
+        role: p.role,
+        owner_id,
+        // Named so a shared miss reads as shared rather than personal.
+        shared_with: owners.filter((id) => id && id !== owner_id),
+        due: p.due,
+        promised: p.promised,
+        revised: p.revised,
+        delivered: p.delivered,
+        delivered_day: p.delivered_day,
+        days_late: p.days_late,
+        // An undelivered late phase is still running — it gets worse each day.
+        open: !p.delivered,
+      }))
+    })
 }

@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { createHmac } from 'crypto'
 import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, publicUser, dayISO } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
-import { resolveGates, gatesUpTo, phasesOf } from '../deadlines.js'
+import { resolveGates, gatesUpTo, phasesOf, holderOf } from '../deadlines.js'
 import { authRequired, canAccessDept, can, wrap, JWT_SECRET } from '../auth.js'
 import { tgMirror, tgOriginFrom, tgEsc, tgDate } from '../telegram.js'
 
@@ -195,6 +195,13 @@ const PLAIN_FIELDS = ['title', 'type', 'recording_date', 'recording_time', 'reco
   // always somebody moving their own goalposts after a late handover, so it
   // goes in the log by name.
   'edit_due_revised', 'review_due_revised']
+
+// Everything a stage move can rewrite — the snapshot restores exactly these.
+const UNDO_FIELDS = ['status_id', 'done_at', 'ready_at', 'shot_at', 'edited_at',
+  'edit_due_revised', 'review_due_revised', 'operator_id', 'editor_id', 'reviewer_id',
+  'reviewers', 'shot_link', 'ready_link']
+// How long a move stays regrettable.
+const UNDO_SECONDS = 10
 
 async function logPatch(user, row, patch) {
   const rows = []
@@ -625,6 +632,17 @@ router.post('/', wrap(async (req, res) => {
     }
   }
 
+  // Review can be shared from the start; a lone reviewer_id becomes a list of
+  // one, so nothing downstream has to care which way it was given.
+  const reviewerList = [...new Set((Array.isArray(req.body?.reviewer_ids) ? req.body.reviewer_ids : [])
+    .map(Number).filter(Boolean))]
+  for (const id of reviewerList) {
+    if (!(await userExists(id)))
+      return res.status(400).json({ error: 'That member is no longer on the team — refresh the page and pick again' })
+  }
+  if (reviewerList.length) crew.reviewer_id = reviewerList[0]
+  else if (crew.reviewer_id) reviewerList.push(crew.reviewer_id)
+
   // Double-booking / working-hours guard — warns before the shoot is saved.
   if (await guardShoot(req, res, {
     operatorId: crew.operator_id, date: recording_date || null,
@@ -634,13 +652,13 @@ router.post('/', wrap(async (req, res) => {
   const status = status_id || (await get('SELECT id FROM statuses ORDER BY sort, id'))?.id || null
   const maxSort = (await get('SELECT COALESCE(MAX(todo_sort), -1) AS m FROM content')).m
   const info = await run(`
-    INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id, reviewer_id,
+    INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id, reviewer_id, reviewers,
       recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, release_date, release_time, description, ready_link,
       shot_link, design_link, reference_text, reference_links, format, rubrika, script, photo, photo_thumb, checklist, todo_sort, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     String(title).trim(), JSON.stringify(channels), safeType, assignee, JSON.stringify(assigneeList), req.user.id, status, campaignId,
-    crew.operator_id, crew.editor_id, crew.designer_id, crew.reviewer_id,
+    crew.operator_id, crew.editor_id, crew.designer_id, crew.reviewer_id, JSON.stringify(reviewerList),
     recording_date || null, recording_time, recording_end, edit_ready_date || null, design_ready_date || null, release_date || null, release_time,
     description, cleanLink(req.body?.ready_link) || null,
     cleanLink(req.body?.shot_link) || null, cleanLink(req.body?.design_link) || null,
@@ -897,7 +915,25 @@ router.patch('/:id', wrap(async (req, res) => {
       if (next !== null && !(await userExists(next)))
         return res.status(400).json({ error: 'That member is no longer on the team — refresh the page and pick again' })
       patch[f] = next
+      // Setting the single reviewer replaces the whole list — the two must
+      // never disagree about who is on the hook.
+      if (f === 'reviewer_id') patch.reviewers = JSON.stringify(next ? [next] : [])
     }
+  }
+
+  // Review can be shared: the list is the truth, reviewer_id mirrors its head
+  // so everything that reads one name keeps working.
+  if (body.reviewer_ids !== undefined) {
+    if (!can(req.user, 'manage_content'))
+      return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
+    const list = [...new Set((Array.isArray(body.reviewer_ids) ? body.reviewer_ids : [])
+      .map(Number).filter(Boolean))]
+    for (const id of list) {
+      if (!(await userExists(id)))
+        return res.status(400).json({ error: 'That member is no longer on the team — refresh the page and pick again' })
+    }
+    patch.reviewers = JSON.stringify(list)
+    patch.reviewer_id = list[0] ?? null
   }
 
   // Retag to another campaign (or none) — an editing right.
@@ -1007,6 +1043,24 @@ router.patch('/:id', wrap(async (req, res) => {
     if (!allowed) return res.status(403).json({ error: 'Moving work out of this stage isn’t your step — see the stage rules in Admin' })
   }
 
+  // ---- the task belongs to whoever is holding it --------------------------
+  // Once work has been handed on, it is out of the previous owner's hands: the
+  // person the stage belongs to moves it, and nobody else but an admin. A
+  // stage with no owner yet is nobody's property — the gates below will insist
+  // on one before it goes any further.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin') {
+    const held = holderOf(row, resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')))
+    if (held.owner_ids.length && !held.owner_ids.includes(req.user.id)) {
+      const names = await all(
+        `SELECT name FROM users WHERE id IN (${held.owner_ids.map(() => '?').join(',')})`, ...held.owner_ids)
+      const who = names.map((u) => u.name).join(' or ') || 'somebody else'
+      return res.status(403).json({
+        error: `This is with ${who} now — only they (or an admin) can move it on`,
+        held_by: held.owner_ids, phase: held.phase,
+      })
+    }
+  }
+
   // ---- the handover gates -------------------------------------------------
   // Moving a card forward is a claim that the stage behind it is finished, so
   // each gate makes the claim provable before the move lands: the next owner
@@ -1092,6 +1146,21 @@ router.patch('/:id', wrap(async (req, res) => {
     const st = await get('SELECT label, is_final FROM statuses WHERE id = ?', nextStatus)
     if (patch.done_at || (st && (st.is_final || /ready|approv|posted|got/i.test(st.label))))
       patch.ready_at = new Date().toISOString()
+  }
+
+  // The ten-second regret. Before a stage move lands, photograph what the task
+  // was: everything the move is about to rewrite, plus the channels and type
+  // the plan counters were keyed on. One row per task — a second move makes
+  // the first unundoable, which is the honest behaviour.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id) {
+    const before = {}
+    for (const f of UNDO_FIELDS) before[f] = row[f] ?? null
+    before.channels = row.channels
+    before.type = row.type
+    await run(
+      `INSERT INTO undo_moves (content_id, user_id, before, created_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(content_id) DO UPDATE SET user_id = excluded.user_id, before = excluded.before, created_at = excluded.created_at`,
+      row.id, req.user.id, JSON.stringify(before), new Date().toISOString())
   }
 
   const keys = Object.keys(patch)
@@ -1199,6 +1268,61 @@ router.patch('/:id', wrap(async (req, res) => {
     for (const ch of newChannels) await bumpPlan(ch, newType, { current: -1 })
   }
 
+  res.json(await listRow(row.id))
+}))
+
+// ---- undoing the last move -------------------------------------------------
+// Ten seconds to take a move back. It restores the stage AND everything the
+// move stamped on the way — the handover clocks, the hats it forced you to
+// name, the deadline it made you re-promise — and walks the channel plan back
+// so the numbers say what they said before. The undo itself is logged: taking
+// a move back is a move, and the paper trail is the whole point of this.
+router.post('/:id/undo', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  // canSee reads channels as a list, and this row came straight off the table.
+  if (!canSee(req.user, { ...row, channels: JSON.parse(row.channels || '[]') }))
+    return res.status(403).json({ error: 'Not your channel' })
+
+  const snap = await get('SELECT * FROM undo_moves WHERE content_id = ?', row.id)
+  if (!snap) return res.status(404).json({ error: 'There is nothing to undo on this task' })
+
+  const age = (Date.now() - Date.parse(snap.created_at)) / 1000
+  if (age > UNDO_SECONDS) {
+    await run('DELETE FROM undo_moves WHERE content_id = ?', row.id)
+    return res.status(409).json({ error: 'Too late to undo that — the move is on the record now' })
+  }
+  // Your own regret, or an admin's. Undoing somebody else's move would be a
+  // way to move their work without it looking like a move.
+  if (snap.user_id !== req.user.id && req.user.role !== 'admin')
+    return res.status(403).json({ error: 'Only whoever made that move can take it back' })
+
+  let before
+  try { before = JSON.parse(snap.before) } catch { before = null }
+  if (!before) return res.status(409).json({ error: 'That move can no longer be read back' })
+
+  const keys = UNDO_FIELDS.filter((f) => f in before)
+  await run(`UPDATE content SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`,
+    ...keys.map((k) => before[k]), row.id)
+
+  // Walk the plan back: the same two questions the move itself asked, read in
+  // the other direction.
+  const channels = (() => { try { return JSON.parse(before.channels || '[]') } catch { return [] } })()
+  const type = before.type || row.type
+  const wasDead = await isDead(row.status_id)          // where the move left it
+  const backDead = await isDead(before.status_id)      // where it is going back to
+  if (wasDead !== backDead) await Promise.all(channels.map((ch) => bumpPlan(ch, type, { target: backDead ? -1 : +1 }, !backDead)))
+  const wasDone = !!row.done_at
+  const backDone = !!before.done_at
+  if (wasDone !== backDone) await Promise.all(channels.map((ch) => bumpPlan(ch, type, { current: backDone ? +1 : -1 }, backDone)))
+
+  const two = await all('SELECT id, label FROM statuses WHERE id IN (?, ?)', row.status_id ?? 0, before.status_id ?? 0)
+  const lab = (id) => two.find((s) => s.id === id)?.label || null
+  await run(...actRow(req.user, row.id, row.title, 'updated', 'stage undone',
+    lab(row.status_id), lab(before.status_id), new Date().toISOString()))
+
+  await run('DELETE FROM undo_moves WHERE content_id = ?', row.id)
+  if (row.campaign_id) await bumpProjectOfCampaign(row.campaign_id)
   res.json(await listRow(row.id))
 }))
 

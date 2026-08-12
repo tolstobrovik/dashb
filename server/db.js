@@ -816,6 +816,17 @@ export async function initSchema() {
     -- base64 data URL) precisely so no list, poll or task payload ever drags
     -- a 4 MB brief along — the modal reads names and sizes, and a document
     -- is fetched only when somebody opens it.
+    -- The ten-second regret. One row per task, overwritten by every move, so
+    -- only the LAST move is ever undoable. It holds what the task looked like
+    -- immediately before — the stage, the clocks, the hats, the promises — and
+    -- the plan counters are walked back from the difference when it is used.
+    CREATE TABLE IF NOT EXISTS undo_moves (
+      content_id INTEGER PRIMARY KEY,
+      user_id    INTEGER,
+      before     TEXT    NOT NULL,
+      created_at TEXT    NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id           ${ID},
       content_id   INTEGER NOT NULL,
@@ -889,6 +900,8 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edited_at TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_due_revised TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS review_due_revised TEXT')
+    await exec(`CREATE TABLE IF NOT EXISTS undo_moves (
+      content_id INTEGER PRIMARY KEY, user_id INTEGER, before TEXT NOT NULL, created_at TEXT NOT NULL)`)
   }
 
   await migrate()

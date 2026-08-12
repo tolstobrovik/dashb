@@ -18,7 +18,7 @@ router.use(authRequired)
 async function liveTasks() {
   const statuses = await all('SELECT id, label FROM statuses')
   const dead = new Set(statuses.filter((s) => isDeleted(s.label)).map((s) => s.id))
-  const rows = await all(`SELECT id, title, channels, status_id, operator_id, editor_id, reviewer_id,
+  const rows = await all(`SELECT id, title, channels, status_id, operator_id, editor_id, reviewer_id, reviewers,
     recording_date, edit_ready_date, release_date, edit_due_revised, review_due_revised,
     shot_at, edited_at, done_at FROM content`)
   return rows.filter((r) => !dead.has(r.status_id))
@@ -87,15 +87,17 @@ router.get('/report', wrap(async (req, res) => {
       const slot = byPhase[p.phase]
       if (p.state === 'none' || p.state === 'waiting' || p.state === 'pending') continue
       slot.judged++
+      // A shared phase is counted once for the pipeline, but against each of
+      // the people who agreed to own it.
       if (p.state === 'late') {
         slot.late++; slot.days_lost += p.days_late
-        bump(p.owner_id, p.phase, 'late'); bump(p.owner_id, p.phase, 'days_lost', p.days_late)
+        for (const id of p.owner_ids) { bump(id, p.phase, 'late'); bump(id, p.phase, 'days_lost', p.days_late) }
       } else if (p.state === 'excused') {
         slot.excused++
-        bump(p.owner_id, p.phase, 'excused')
+        for (const id of p.owner_ids) bump(id, p.phase, 'excused')
       } else {
         slot.on_time++
-        bump(p.owner_id, p.phase, 'on_time')
+        for (const id of p.owner_ids) bump(id, p.phase, 'on_time')
       }
     }
   }

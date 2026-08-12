@@ -350,14 +350,31 @@ export default function Department() {
     setContent((prev) => prev.filter((x) => x.id !== item.id))
     refreshTrackers() // deleting a task lowers the plan again
   }
+  // Taking a move back: the server keeps the previous shape of the task for
+  // ten seconds and walks the plan numbers back with it, so an accidental drag
+  // costs nothing. After that the move is on the record and stays there.
+  const undoMove = async (id) => {
+    try {
+      const c = await api.post(`/content/${id}/undo`)
+      setContent((prev) => prev.map((x) => (x.id === c.id ? c : x)).filter((x) => x.channels.includes(key)))
+      refreshTrackers()
+      toast('Move taken back')
+    } catch (e) { toast(e.message, 'err') }
+  }
+  const movedToast = (saved, statusId) =>
+    toast(`Moved to ${statusesById[statusId]?.label || 'the next stage'}`, 'ok',
+      { label: 'Undo', onClick: () => undoMove(saved?.id ?? null) })
+
   // A refused move is usually not an error but a question — "who is editing
   // this?", "where is the footage?". Those open the handover dialog instead of
   // an alert; anything else is still a plain failure.
   const moveStatus = (item, statusId) =>
-    updateContent(item, { status_id: statusId }).catch((e) => {
-      if (e.data?.gate && e.data?.missing) setGate({ item, statusId })
-      else alert(e.message)
-    })
+    updateContent(item, { status_id: statusId })
+      .then(() => movedToast(item, statusId))
+      .catch((e) => {
+        if (e.data?.gate && e.data?.missing) setGate({ item, statusId })
+        else alert(e.message)
+      })
   const moveDate = (item, field, iso) => updateContent(item, { [field]: iso }).catch((e) => alert(e.message))
   // The board's foot inputs: a title lands straight in that column.
   const quickAdd = async (title, statusId) => {
@@ -860,10 +877,11 @@ export default function Department() {
           team={team}
           onCancel={() => setGate(null)}
           onDone={(saved) => {
+            const to = gate.statusId
             setGate(null)
             setContent((prev) => prev.map((x) => (x.id === saved.id ? saved : x)).filter((x) => x.channels.includes(key)))
             refreshTrackers()
-            toast('Moved — the handover is on the record')
+            movedToast(saved, to)
           }}
         />
       )}

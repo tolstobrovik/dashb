@@ -96,7 +96,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     operator_id: item?.operator_id ?? null,
     editor_id: item?.editor_id ?? null,
     designer_id: item?.designer_id ?? null,
-    reviewer_id: item?.reviewer_id ?? null,
+    reviewer_ids: (() => {
+      try {
+        const l = Array.isArray(item?.reviewers) ? item.reviewers : JSON.parse(item?.reviewers || '[]')
+        return l.length ? l : (item?.reviewer_id ? [item.reviewer_id] : [])
+      } catch { return item?.reviewer_id ? [item.reviewer_id] : [] }
+    })(),
     ready_link: item?.ready_link || '',
     shot_link: item?.shot_link || '',
     design_link: item?.design_link || '',
@@ -494,7 +499,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         reference_text: form.reference_text || null, reference_links: form.reference_links,
         format: form.format || null, rubrika: form.rubrika.trim() || null, script: form.script.trim() || null,
         operator_id: form.operator_id, editor_id: form.editor_id, designer_id: form.designer_id,
-        reviewer_id: form.reviewer_id,
+        reviewer_ids: form.reviewer_ids,
         campaign_id: form.campaign_id,
         ...(user.role === 'admin' && form.assignee_ids ? { assignee_ids: form.assignee_ids } : {}),
       })
@@ -1038,12 +1043,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         <div className="crew-row">
           {(isDesign ? [
             { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs this post' },
-            { key: 'reviewer_id', label: 'Reviewer', role: 'reviewer', tip: 'Who signs it off — answers for the review deadline' },
           ] : [
             { key: 'operator_id', label: 'Operator', role: 'operator', tip: 'Who films / shoots this' },
             { key: 'editor_id', label: 'Editor', role: 'editor', tip: 'Who edits this' },
             { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs the artwork (thumbnail, cover…)' },
-            { key: 'reviewer_id', label: 'Reviewer', role: 'reviewer', tip: 'Who signs it off — answers for the review deadline' },
           ]).map((f) => {
             const holds = (u) => (u.crew_roles || []).includes(f.role)
             const bySort = (a, b) =>
@@ -1076,6 +1079,28 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       </div>
 
+      {/* Review can be shared — several names, all of them on the hook for the
+          same date. Kept apart from the single-hat crew pickers above. */}
+      <div className="cm-row">
+        <span className="cm-key">Review</span>
+        <div className="rev-picker">
+          {team.map((u) => {
+            const on = form.reviewer_ids.includes(u.id)
+            return (
+              <button key={u.id} type="button" disabled={detailsLocked}
+                className={'rev-chip' + (on ? ' on' : '')}
+                onClick={() => setForm({
+                  ...form,
+                  reviewer_ids: on ? form.reviewer_ids.filter((id) => id !== u.id) : [...form.reviewer_ids, u.id],
+                })}>
+                {u.name}
+              </button>
+            )
+          })}
+          {form.reviewer_ids.length === 0 && <span className="cm-hint">Nobody signs this off yet.</span>}
+        </div>
+      </div>
+
       {/* The three clocks. Read-only: each one is decided by what actually
           happened to the task, not by anything typed here. */}
       {!creating && phases.some((p) => p.state !== 'none') && (
@@ -1083,13 +1108,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           <span className="cm-key">Deadlines</span>
           <div className="phases">
             {phases.filter((p) => p.state !== 'none').map((p) => {
-              const who = team.find((u) => u.id === p.owner_id)
+              const who = (p.owner_ids || [p.owner_id]).filter(Boolean)
+                .map((id) => team.find((u) => u.id === id)?.name).filter(Boolean)
               return (
                 <div className="phase-row" key={p.phase}>
                   <span className="phase-name">
                     {p.label}
                     <span className="muted" style={{ fontWeight: 400 }}>
-                      {who ? who.name : 'nobody yet'}
+                      {who.length ? who.join(' · ') : 'nobody yet'}
                     </span>
                   </span>
                   <span className={`phase-state phase-${p.state}`}>{PHASE_WORDS[p.state] || p.state}</span>
