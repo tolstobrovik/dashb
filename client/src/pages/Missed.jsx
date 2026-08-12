@@ -51,6 +51,81 @@ const RANGES = [
   { key: 'custom', label: 'Custom…', days: null },
 ]
 
+/* Where the time goes: the whole point of the exercise, in one block.
+   The three phases carry their own clocks, so a week lost between the shoot
+   and the cut can finally be told apart from a week lost after it. "Excused"
+   is counted separately and never against the person — it is the handover
+   that arrived too late for anyone to have met the date. */
+const PHASE_TIP = {
+  shoot: 'From the shooting date to the moment the footage was handed to an editor',
+  edit: 'From that handover to the moment the cut was handed to review',
+  review: 'From that handover to publication',
+}
+function PipelineBlame() {
+  const [rep, setRep] = useState(null)
+  useEffect(() => {
+    let alive = true
+    api.get('/warnings/report').then((d) => { if (alive) setRep(d) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
+  if (!rep || !rep.phases?.some((p) => p.judged > 0)) return null
+
+  const worstDays = Math.max(1, ...rep.phases.map((p) => p.days_lost))
+  const guilty = rep.people.filter((p) => p.late > 0).slice(0, 8)
+  return (
+    <>
+      <div className="section-head" style={{ marginTop: 6 }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <BarChart3 size={16} /> Where the time goes
+        </h2>
+      </div>
+      <div className="card card-pad">
+        <div className="blame-phases">
+          {rep.phases.map((p) => (
+            <div className="blame-phase" key={p.phase} data-tip={PHASE_TIP[p.phase]}>
+              <div className="blame-head">
+                <span className="blame-name">{p.label}</span>
+                <span className="blame-days">{p.days_lost}d lost</span>
+              </div>
+              <div className="blame-bar">
+                <span style={{ width: `${Math.round((p.days_lost / worstDays) * 100)}%` }} />
+              </div>
+              <div className="blame-meta">
+                {p.late} late · {p.on_time} on time
+                {p.excused > 0 && <> · {p.excused} excused</>}
+                {p.judged > 0 && <> · {Math.round((p.on_time / p.judged) * 100)}% met</>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {rep.worst?.days_lost > 0 && (
+          <p className="blame-verdict">
+            Most time is lost in <b>{rep.worst.label}</b> — {rep.worst.days_lost} day
+            {rep.worst.days_lost === 1 ? '' : 's'} across {rep.worst.late} missed deadline
+            {rep.worst.late === 1 ? '' : 's'}.
+          </p>
+        )}
+
+        {guilty.length > 0 && (
+          <div className="blame-people">
+            {guilty.map((p) => (
+              <div className="blame-person" key={p.user_id}>
+                <span className="blame-who">{p.name || `#${p.user_id}`}</span>
+                <span className="blame-split">
+                  {Object.entries(p.phases).filter(([, v]) => v.late > 0)
+                    .map(([k, v]) => `${k} ×${v.late}`).join(' · ')}
+                </span>
+                <span className="blame-days">{p.days_lost}d</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
 /* Module-level row — poll ticks must not remount it. */
 function MissRow({ entry, today, byKey, usersById, isAdmin, onOpen, onMenu }) {
   const { t, kind } = entry
@@ -468,6 +543,8 @@ export default function Missed() {
           </div>
         )}
       </div>
+
+      {isAdmin && <PipelineBlame />}
 
       <div className="section-head" style={{ marginTop: 6 }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} /> Missed deadlines</h2>

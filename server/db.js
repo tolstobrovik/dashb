@@ -1022,12 +1022,16 @@ export async function getChannelKeys() {
 // earlier stages so behind-schedule work can still be pushed forward.
 // Rules only ever narrow: they never grant crew powers they don't have, and
 // the Published gate keeps its own key (review_publish).
+//
+// The operator also leaves Shot, because the handover out of Shot is the
+// shooter's own act: it is where they name the editor and hand over the
+// footage. That move is not a free pass — the gate makes them prove it.
 export const STAGE_ACTORS = ['operator', 'editor', 'designer', 'member']
 export function defaultMayLeave(actor, label) {
   const l = String(label || '').toLowerCase()
   if (/^deleted$/.test(l)) return actor === 'member'
   if (actor === 'member') return true
-  if (actor === 'operator') return /idea|to shoot/.test(l)
+  if (actor === 'operator') return /idea|to shoot|shot/.test(l)
   if (actor === 'editor' || actor === 'designer') return /idea|to shoot|shot|editing/.test(l)
   return false
 }

@@ -2669,3 +2669,28 @@ button.cb-toggle:hover { color: var(--ink); }
 .warn-sub { color: var(--muted); font-size: 12px; margin-top: 1px; }
 .warn-days { font-size: 12px; font-weight: 600; color: var(--critical); white-space: nowrap; }
 .warn-clean { display: flex; gap: 9px; align-items: center; color: var(--good-ink); }
+
+/* ---- where the time goes: phase blame ---------------------------------- */
+.blame-phases { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.blame-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.blame-name { font-weight: 600; font-size: 13.5px; }
+.blame-days { font-size: 12.5px; font-weight: 600; color: var(--critical); white-space: nowrap; }
+.blame-bar {
+  height: 7px; border-radius: 999px; background: var(--track);
+  margin: 7px 0 5px; overflow: hidden;
+}
+.blame-bar > span { display: block; height: 100%; background: var(--critical); border-radius: 999px; }
+.blame-meta { color: var(--muted); font-size: 12px; }
+.blame-verdict {
+  margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--hairline);
+  font-size: 13px; color: var(--ink-2);
+}
+.blame-people { display: grid; gap: 4px; margin-top: 12px; }
+.blame-person {
+  display: grid; grid-template-columns: minmax(90px, auto) 1fr auto; gap: 10px;
+  align-items: baseline; font-size: 12.5px; padding: 5px 0;
+  border-top: 1px solid var(--hairline);
+}
+.blame-who { font-weight: 600; }
+.blame-split { color: var(--muted); }
+@media (max-width: 720px) { .blame-phases { grid-template-columns: 1fr; } }
