@@ -13,7 +13,7 @@ export default function Modal({ title, onClose, children, footer, wide = false }
       <div className={`modal${wide ? ' modal-wide' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button className="icon-btn" onClick={onClose} data-tip="Close" data-tip-left="" aria-label="Close">
             <X size={18} />
           </button>
         </div>

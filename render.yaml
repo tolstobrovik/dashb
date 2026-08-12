@@ -1,5 +1,11 @@
-# Render Blueprint — deploys the whole dashboard as one web service.
+# Render Blueprint — deploys the dashboard as one web service plus a managed
+# Postgres database (connection injected automatically — nothing to configure).
 # In Render:  New +  →  Blueprint  →  pick this repo  →  Apply.
+databases:
+  - name: satashkent-db
+    plan: free # note: Render's free Postgres expires after 30 days — upgrade
+    #            the database (not the web service) to keep it long-term.
+
 services:
   - type: web
     name: satashkent
@@ -9,7 +15,12 @@ services:
     # --include=dev so Vite (a devDependency) is available to build the UI
     buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: satashkent-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true      # Render generates a strong secret for you
       - key: NODE_VERSION
