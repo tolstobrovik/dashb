@@ -798,6 +798,23 @@ export async function initSchema() {
       sort       INTEGER NOT NULL DEFAULT 0,
       created_at TEXT    NOT NULL
     );
+
+    -- The real paperwork a task carries: a ТЗ in Word, a reference deck as
+    -- PDF, a spreadsheet of slots. The BYTES live in their own table (as a
+    -- base64 data URL) precisely so no list, poll or task payload ever drags
+    -- a 4 MB brief along — the modal reads names and sizes, and a document
+    -- is fetched only when somebody opens it.
+    CREATE TABLE IF NOT EXISTS attachments (
+      id           ${ID},
+      content_id   INTEGER NOT NULL,
+      name         TEXT    NOT NULL,
+      mime         TEXT    NOT NULL DEFAULT '',
+      size         INTEGER NOT NULL DEFAULT 0, -- bytes of the original file
+      data         TEXT    NOT NULL,           -- data:<mime>;base64,…
+      uploaded_by  INTEGER,
+      uploader     TEXT    NOT NULL DEFAULT '',
+      created_at   TEXT    NOT NULL
+    );
   `)
 
   // Upgrades for existing Postgres databases (SQLite goes through migrate()).

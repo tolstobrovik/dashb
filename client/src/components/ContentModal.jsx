@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  FileText, Layers, Hash, CopyPlus, MessageSquare,
+  FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
@@ -12,6 +12,21 @@ import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
 import { activityLine } from '../lib/activity.js'
+
+// Documents a task can carry. The cap is deliberate and low: every byte is
+// stored, synced and paid for on the team's storage, so a 4 MB brief is a
+// brief, not a raw export.
+const DOC_MAX = 4 * 1024 * 1024
+const DOC_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.csv'
+const docSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+const docKind = (name) => {
+  const e = String(name || '').split('.').pop().toLowerCase()
+  if (e === 'pdf') return 'pdf'
+  if (e === 'doc' || e === 'docx' || e === 'rtf') return 'doc'
+  if (e === 'xls' || e === 'xlsx' || e === 'csv') return 'xls'
+  if (e === 'ppt' || e === 'pptx') return 'ppt'
+  return 'txt'
+}
 
 // Defined at module level — an inline component would remount its date/time
 // inputs on every keystroke elsewhere in the modal and drop their focus.
@@ -132,16 +147,66 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       setCmtDraft('')
     } catch (e) { setErr(e.message) } finally { setCmtBusy(false) }
   }
+  // The task's paperwork — a ТЗ in Word, a reference deck as PDF. Only names
+  // and sizes travel with the task; the bytes are fetched when one is opened.
+  const [docs, setDocs] = useState(() => item?.documents || [])
+  const [docBusy, setDocBusy] = useState(false)
   useEffect(() => {
     if (!item) return
     api.get(`/content/${item.id}`).then((full) => {
       setRevisions(full.revisions || [])
       setComments(full.comments || [])
       setActivity(full.activity || [])
+      setDocs(full.documents || [])
       setForm((f) => ({ ...f, photo: full.photo, photo_thumb: full.photo_thumb }))
       setInitialPhoto(full.photo)
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pickDoc = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // so the same file can be picked again after a failure
+    if (!file || !item) return
+    if (file.size > DOC_MAX) {
+      setErr(`“${file.name}” is ${(file.size / 1048576).toFixed(1)} MB — documents are capped at 4 MB`)
+      return
+    }
+    setDocBusy(true); setErr('')
+    try {
+      const data = await new Promise((resolve, reject) => {
+        const r = new FileReader()
+        r.onload = () => resolve(String(r.result))
+        r.onerror = () => reject(new Error('That file could not be read'))
+        r.readAsDataURL(file)
+      })
+      const doc = await api.post(`/content/${item.id}/files`, { name: file.name, data })
+      setDocs((prev) => [...prev, doc])
+      toast('Document attached — synced')
+    } catch (e2) { setErr(e2.message) } finally { setDocBusy(false) }
+  }
+  // Asking to open one gets a short-lived link back; the browser then fetches
+  // the bytes itself and saves them under the name the SERVER states. Doing it
+  // in JS instead would lose a Russian name — the browser drops non-ASCII from
+  // an <a download> attribute and the brief arrives as "download".
+  const openDoc = async (doc) => {
+    setErr('')
+    try {
+      const { url } = await api.get(`/content/files/${doc.id}`)
+      const a = document.createElement('a')
+      a.href = url
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } catch (e2) { setErr(e2.message) }
+  }
+  const removeDoc = async (doc) => {
+    if (!confirm(`Remove “${doc.name}” from this task?`)) return
+    try {
+      await api.del(`/content/files/${doc.id}`)
+      setDocs((prev) => prev.filter((d) => d.id !== doc.id))
+    } catch (e2) { setErr(e2.message) }
+  }
   // Extras stay hidden until asked for — the common case is a quick add.
   const [show, setShow] = useState(() => ({
     description: !!item?.description,
@@ -150,6 +215,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     reference: false, // empty reference/delivery chrome hides until asked for
     delivery: false,
     script: false,
+    docs: (item?.documents?.length || 0) > 0,
   }))
 
   const canEdit = can(user, 'manage_content')
@@ -595,6 +661,41 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      {/* Documents — the ТЗ as a Word file, the reference deck as a PDF, the
+          slot plan as a spreadsheet. Anyone who can open the task can read
+          them and add one; only whoever attached a document (or an admin)
+          takes it away. Names and sizes are all that travel with the task —
+          the bytes are fetched on the click that opens one. */}
+      {!creating && (docs.length > 0 || show.docs) && (
+        <div className="cm-row">
+          <span className="cm-key"><Paperclip size={13} style={{ verticalAlign: -2 }} /> Documents</span>
+          <div className="doc-block">
+            {docs.map((d) => (
+              <div key={d.id} className={`doc-row dk-${docKind(d.name)}`}>
+                <FileType2 size={15} className="doc-ico" />
+                <button type="button" className="doc-name" onClick={() => openDoc(d)}
+                  data-tip="Download this document">{d.name}</button>
+                <span className="doc-meta">
+                  {docSize(d.size)}
+                  {d.uploader && <span className="doc-who"> · {d.uploader.split(' ')[0]}</span>}
+                </span>
+                <button type="button" className="icon-btn doc-get" onClick={() => openDoc(d)} aria-label="Download"
+                  data-tip="Download"><Download size={14} /></button>
+                {(user.role === 'admin' || d.uploaded_by === user.id) && (
+                  <button type="button" className="icon-btn" onClick={() => removeDoc(d)} aria-label="Remove"
+                    data-tip="Remove this document" data-tip-left=""><X size={14} /></button>
+                )}
+              </div>
+            ))}
+            <label className={'doc-pick' + (docBusy ? ' busy' : '')}>
+              <Paperclip size={14} /> {docBusy ? 'Uploading…' : 'Attach a document'}
+              <input type="file" accept={DOC_ACCEPT} style={{ display: 'none' }} disabled={docBusy} onChange={pickDoc} />
+            </label>
+            <span className="doc-hint">Word, PDF, Excel, PowerPoint or text — up to 4 MB each.</span>
+          </div>
+        </div>
+      )}
+
       {/* The script — the words and shots the crew films by. Editors write it;
           the crew read it. Folds behind the extras row unless demanded. */}
       {fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
@@ -999,9 +1100,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       )}
 
       {/* Extras appear only when wanted (the photo lives in Reference now). */}
-      {!detailsLocked && (!show.description || !show.checklist || (!hasRef && !show.reference) || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
+      {!detailsLocked && (!show.description || !show.checklist || (!hasRef && !show.reference) || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !show.docs && docs.length === 0) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
         <div className="extra-btns">
           {!hasRef && !show.reference && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, reference: true })}><BookOpen size={14} /> Reference</button>}
+          {!creating && !show.docs && docs.length === 0 && (
+            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, docs: true })}><Paperclip size={14} /> Documents</button>
+          )}
           {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, script: true })}><FileText size={14} /> Script</button>}
           {!show.description && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, description: true })}><AlignLeft size={14} /> Description</button>}
           {!show.checklist && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, checklist: true })}><CheckSquare size={14} /> Checklist</button>}

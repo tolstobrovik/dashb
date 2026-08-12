@@ -20,6 +20,8 @@ export function activityLine(a) {
   if (f === 'done') return a.new_value === 'yes' ? 'marked it done' : 'reopened it'
   if (f === 'pinned') return a.new_value === 'yes' ? 'pinned it' : 'unpinned it'
   if (f === 'pravki') return `sent it back for pravki${a.new_value ? ` (${a.new_value})` : ''}`
+  // Paperwork reads as an act, not a field change: "attached ТЗ.docx".
+  if (f === 'document') return a.new_value ? `attached ${a.new_value}` : `removed ${a.old_value}`
   const w = WORDS[f] || f
   if (a.old_value == null && a.new_value == null) return `updated the ${w}`
   if (a.old_value == null) return `set the ${w} to ${a.new_value}`

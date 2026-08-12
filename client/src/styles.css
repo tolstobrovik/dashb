@@ -2565,3 +2565,45 @@ button.cb-toggle:hover { color: var(--ink); }
   .cf-sel.select { min-width: 0; flex: 1 1 92px; }
   .cf-count { flex-basis: 100%; }
 }
+
+/* ============ Round 52: the paperwork a task carries ============ */
+/* A ТЗ in Word, a reference deck as PDF. One line per document: what it is,
+   how big, who put it there, and the two things you can do with it. */
+.doc-block { display: flex; flex-direction: column; gap: 6px; }
+.doc-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 10px; border-radius: 9px;
+  border: 1px solid var(--hairline); background: var(--surface-2);
+}
+.doc-ico { flex: none; }
+.doc-name {
+  flex: 1; min-width: 0; text-align: left; cursor: pointer;
+  background: none; border: none; padding: 0; font: inherit;
+  font-size: 13px; font-weight: 650; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.doc-name:hover { text-decoration: underline; }
+.doc-meta { flex: none; font-size: 11.5px; color: var(--muted); font-weight: 500; }
+/* each kind of file wears its own quiet colour, so a deck is not a brief */
+.dk-pdf .doc-ico { color: #c0392b; }
+.dk-doc .doc-ico { color: #2b579a; }
+.dk-xls .doc-ico { color: #1d7044; }
+.dk-ppt .doc-ico { color: #c2500f; }
+.dk-txt .doc-ico { color: var(--muted); }
+.doc-pick {
+  display: inline-flex; align-items: center; gap: 7px; align-self: flex-start;
+  cursor: pointer; padding: 7px 12px; border-radius: 999px;
+  border: 1px dashed var(--hairline-strong); color: var(--ink-2);
+  font-size: 12.5px; font-weight: 650;
+}
+.doc-pick:hover { border-color: var(--brand-400); color: var(--brand-600); border-style: solid; }
+.doc-pick.busy { opacity: 0.6; cursor: progress; }
+.doc-hint { font-size: 11.5px; color: var(--muted); }
+/* On a phone the row keeps only what it needs: the name still downloads on a
+   tap, so the separate button and the uploader's name step aside rather than
+   push the modal wider than the screen. */
+@media (max-width: 640px) {
+  .doc-row { gap: 7px; padding: 6px 8px; }
+  .doc-get, .doc-who { display: none; }
+  .doc-meta { font-size: 11px; }
+}

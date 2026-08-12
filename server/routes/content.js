@@ -1,10 +1,65 @@
 import { Router } from 'express'
+import { createHmac } from 'crypto'
 import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, publicUser } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
-import { authRequired, canAccessDept, can, wrap } from '../auth.js'
+import { authRequired, canAccessDept, can, wrap, JWT_SECRET } from '../auth.js'
 import { tgMirror, tgOriginFrom, tgEsc, tgDate } from '../telegram.js'
 
 const router = Router()
+
+// ---- downloading a document under its own name -----------------------------
+// The browser refuses to name a saved file «ТЗ ролик.docx» when the name only
+// comes from an <a download> attribute — non-ASCII is dropped and the brief
+// lands as "download", with no extension for Windows to open it by. So the
+// SERVER names it, in a Content-Disposition header, which means the browser
+// has to reach the bytes by plain navigation — without an Authorization
+// header. A ticket stands in for it: a signed, single-file, two-minute
+// permission that any instance can verify without shared memory (Vercel runs
+// each request wherever it likes).
+const TICKET_LIFE = 120_000
+// A readable Latin spelling of a Cyrillic name, for the plain `filename=`
+// half of the header. Every current browser reads the UTF-8 half and saves
+// «ТЗ ролик.docx» exactly; anything that can't at least gets "TZ rolik.docx"
+// with its extension intact, instead of a nameless "download".
+const CYR = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'zh', з: 'z', и: 'i', й: 'y',
+  к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f',
+  х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+  ў: 'o', қ: 'q', ғ: 'g', ҳ: 'h',
+}
+const asciiName = (name) => {
+  const out = [...String(name)].map((c) => {
+    if (/[\x20-\x7e]/.test(c)) return /["\\]/.test(c) ? '' : c
+    const low = c.toLowerCase()
+    const t = CYR[low]
+    if (t === undefined) return '_'
+    return c === low ? t : t.charAt(0).toUpperCase() + t.slice(1)
+  }).join('').trim()
+  return (out.replace(/_+/g, '_') || 'document').slice(0, 100)
+}
+const sign = (id, exp) => createHmac('sha256', JWT_SECRET).update(`file:${id}:${exp}`).digest('hex').slice(0, 32)
+const ticketFor = (id) => { const exp = Date.now() + TICKET_LIFE; return `/api/content/files/${id}/raw?e=${exp}&k=${sign(id, exp)}` }
+
+// Registered BEFORE the guard below on purpose — the ticket is the credential.
+router.get('/files/:fileId/raw', wrap(async (req, res) => {
+  const { fileId } = req.params
+  const exp = Number(req.query.e || 0)
+  if (!(exp > Date.now()) || req.query.k !== sign(fileId, exp))
+    return res.status(403).json({ error: 'That download link has expired — open the task again' })
+  const doc = await get('SELECT * FROM attachments WHERE id = ?', fileId)
+  if (!doc) return res.status(404).json({ error: 'Not found' })
+  const body = Buffer.from(String(doc.data).split(',').pop(), 'base64')
+  // Two spellings of the name: a readable Latin fallback, and the real one,
+  // percent-encoded the way RFC 5987 asks.
+  const ascii = asciiName(doc.name)
+  res.setHeader('Content-Type', doc.mime || 'application/octet-stream')
+  res.setHeader('Content-Length', body.length)
+  res.setHeader('Cache-Control', 'private, no-store')
+  res.setHeader('Content-Disposition',
+    `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(doc.name)}`)
+  res.end(body)
+}))
+
 router.use(authRequired)
 
 const parse = (row) => row && {
@@ -347,6 +402,81 @@ router.get('/activity/all', wrap(async (req, res) => {
     'SELECT id, content_id, content_title, user_id, user_name, kind, field, old_value, new_value, created_at FROM activity ORDER BY id DESC LIMIT 150'))
 }))
 
+// ---- documents on a task: the ТЗ in Word, the reference deck as PDF -------
+// Anyone who can SEE the task can read and add its paperwork — the crew
+// included, since they are usually the ones who need the brief. Removing a
+// document is for the person who put it there (or an admin).
+const DOC_MAX = 4 * 1024 * 1024 // 4 MB of real file — every byte is stored, synced and paid for
+const DOC_TYPES = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  txt: 'text/plain',
+  rtf: 'application/rtf',
+  csv: 'text/csv',
+}
+const DOC_COLUMNS = 'id, content_id, name, mime, size, uploaded_by, uploader, created_at'
+const extOf = (name) => String(name || '').split('.').pop().toLowerCase()
+
+// The task a document hangs on, or null when the caller may not see it.
+const parentOf = async (user, contentId) => {
+  const row = parse(await get('SELECT * FROM content WHERE id = ?', contentId))
+  return row && canSee(user, row) ? row : null
+}
+
+router.get('/:id/files', wrap(async (req, res) => {
+  if (!(await parentOf(req.user, req.params.id))) return res.status(404).json({ error: 'Not found' })
+  res.json(await all(`SELECT ${DOC_COLUMNS} FROM attachments WHERE content_id = ? ORDER BY id`, req.params.id))
+}))
+
+router.post('/:id/files', wrap(async (req, res) => {
+  const row = await parentOf(req.user, req.params.id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const name = String(req.body?.name || '').trim().slice(0, 200)
+  const data = String(req.body?.data || '')
+  if (!name) return res.status(400).json({ error: 'The document needs a name' })
+  const ext = extOf(name)
+  if (!DOC_TYPES[ext])
+    return res.status(400).json({ error: `.${ext || '?'} isn’t a document — attach a PDF, Word, Excel, PowerPoint or text file` })
+  const b64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data
+  if (!b64) return res.status(400).json({ error: 'That file came through empty' })
+  const size = Math.floor(b64.replace(/=+$/, '').length * 3 / 4)
+  if (size > DOC_MAX)
+    return res.status(413).json({ error: `“${name}” is ${(size / 1048576).toFixed(1)} MB — documents are capped at 4 MB` })
+  const mime = DOC_TYPES[ext]
+  const now = new Date().toISOString()
+  const info = await run(
+    `INSERT INTO attachments (content_id, name, mime, size, data, uploaded_by, uploader, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    row.id, name, mime, size, `data:${mime};base64,${b64}`, req.user.id, req.user.name || '', now)
+  await run(...actRow(req.user, row.id, row.title, 'updated', 'document', null, name, now))
+  res.status(201).json(await get(`SELECT ${DOC_COLUMNS} FROM attachments WHERE id = ?`, info.lastInsertRowid))
+}))
+
+// Permission to fetch one document, for the next two minutes. This is the
+// route that checks WHO is asking; /raw above only checks the ticket.
+router.get('/files/:fileId', wrap(async (req, res) => {
+  const doc = await get(`SELECT ${DOC_COLUMNS} FROM attachments WHERE id = ?`, req.params.fileId)
+  if (!doc || !(await parentOf(req.user, doc.content_id))) return res.status(404).json({ error: 'Not found' })
+  res.json({ ...doc, url: ticketFor(doc.id) })
+}))
+
+router.delete('/files/:fileId', wrap(async (req, res) => {
+  const doc = await get(`SELECT ${DOC_COLUMNS} FROM attachments WHERE id = ?`, req.params.fileId)
+  if (!doc) return res.status(404).json({ error: 'Not found' })
+  const row = await parentOf(req.user, doc.content_id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  if (req.user.role !== 'admin' && doc.uploaded_by !== req.user.id)
+    return res.status(403).json({ error: 'Only the person who attached this (or an admin) can remove it' })
+  await run('DELETE FROM attachments WHERE id = ?', doc.id)
+  await run(...actRow(req.user, row.id, row.title, 'updated', 'document', doc.name, null, new Date().toISOString()))
+  res.json({ ok: true })
+}))
+
 // One task in full — including the original photo, its revision history,
 // the comment thread and its paper trail.
 router.get('/:id', wrap(async (req, res) => {
@@ -361,7 +491,9 @@ router.get('/:id', wrap(async (req, res) => {
   const activity = await all(
     'SELECT id, user_id, user_name, kind, field, old_value, new_value, created_at FROM activity WHERE content_id = ? ORDER BY id DESC LIMIT 80',
     row.id)
-  res.json({ ...row, revisions, comments, activity, has_photo: row.photo ? 1 : 0 })
+  // Names and sizes only — the bytes come one document at a time, on a click.
+  const documents = await all(`SELECT ${DOC_COLUMNS} FROM attachments WHERE content_id = ? ORDER BY id`, row.id)
+  res.json({ ...row, revisions, comments, activity, documents, has_photo: row.photo ? 1 : 0 })
 }))
 
 // One line into the task's thread. Anyone who can SEE the task may speak —
@@ -988,6 +1120,7 @@ router.delete('/:id', wrap(async (req, res) => {
   for (const ch of JSON.parse(row.channels || '[]'))
     await bumpPlan(ch, row.type, { target: -1, current: row.done_at ? -1 : 0 })
   await logEvent(req.user, row.id, row.title, 'deleted')
+  await run('DELETE FROM attachments WHERE content_id = ?', row.id) // its paperwork goes with it
   await run('DELETE FROM content WHERE id = ?', row.id)
   res.json({ ok: true })
 }))
