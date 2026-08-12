@@ -6,7 +6,7 @@ import { Router } from 'express'
 import { randomBytes } from 'crypto'
 import { all, get, run } from '../db.js'
 import { authRequired, wrap } from '../auth.js'
-import { tgEnabled, tgApi, tgBotUsername, tgWebhookSecret, tgSendTo, tgPublicUrl, tgRememberUrl, tgClip } from '../telegram.js'
+import { tgEnabled, tgApi, tgBotUsername, tgWebhookSecret, tgSendTo, tgPublicUrl, tgRememberUrl, tgClip, tgSendTemplate, tgAudience } from '../telegram.js'
 
 const router = Router()
 
@@ -120,6 +120,79 @@ router.post('/broadcast', wrap(async (req, res) => {
   await Promise.allSettled(linked.map((u) =>
     tgApi('sendMessage', { chat_id: u.telegram_chat_id, text: tgClip(`📢 ${req.user.name}: ${text}`), disable_web_page_preview: true })))
   res.json({ ok: true, sent: linked.length })
+}))
+
+// ---- the admin's ready-made nudges ----
+// Reminders worth repeating — "is the week planned?", "does every task carry
+// its brief?" — kept as templates so nobody rewrites them each Monday. Each
+// can be fired at anyone on demand, or left to arrive by itself on chosen
+// weekdays at a chosen hour.
+const adminOnly = (req, res) => {
+  if (req.user.role !== 'admin') { res.status(403).json({ error: 'Admins only' }); return true }
+  return false
+}
+const cleanTemplate = (b, old = {}) => ({
+  title: String(b.title ?? old.title ?? '').trim().slice(0, 120),
+  text: String(b.text ?? old.text ?? '').trim().slice(0, 3000),
+  audience: /^(linked|role:[\w-]+|channel:[\w-]+|users:[\d,]+)$/.test(String(b.audience ?? ''))
+    ? String(b.audience) : (old.audience || 'linked'),
+  days: JSON.stringify((Array.isArray(b.days) ? b.days : (() => { try { return JSON.parse(old.days || '[]') } catch { return [] } })())
+    .map(Number).filter((d) => d >= 0 && d <= 6)),
+  hour: Math.min(23, Math.max(0, Number(b.hour ?? old.hour ?? 9) || 0)),
+  enabled: (b.enabled === undefined ? (old.enabled ?? 1) : (b.enabled ? 1 : 0)),
+})
+
+router.get('/templates', wrap(async (req, res) => {
+  if (adminOnly(req, res)) return
+  const rows = await all('SELECT * FROM tg_templates ORDER BY sort, id')
+  res.json(rows.map((t) => ({ ...t, days: (() => { try { return JSON.parse(t.days || '[]') } catch { return [] } })(), enabled: !!t.enabled })))
+}))
+
+router.post('/templates', wrap(async (req, res) => {
+  if (adminOnly(req, res)) return
+  const b = req.body || {}
+  const t = cleanTemplate(b)
+  if (!t.title || !t.text) return res.status(400).json({ error: 'A reminder needs a name and something to say' })
+  const max = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM tg_templates')).m
+  const info = await run(`INSERT INTO tg_templates (title, text, audience, days, hour, enabled, sort, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, t.title, t.text, t.audience, t.days, t.hour, t.enabled, max + 1, new Date().toISOString())
+  res.status(201).json(await get('SELECT * FROM tg_templates WHERE id = ?', info.lastInsertRowid))
+}))
+
+router.patch('/templates/:id', wrap(async (req, res) => {
+  if (adminOnly(req, res)) return
+  const old = await get('SELECT * FROM tg_templates WHERE id = ?', req.params.id)
+  if (!old) return res.status(404).json({ error: 'Not found' })
+  const t = cleanTemplate(req.body || {}, old)
+  if (!t.title || !t.text) return res.status(400).json({ error: 'A reminder needs a name and something to say' })
+  await run('UPDATE tg_templates SET title = ?, text = ?, audience = ?, days = ?, hour = ?, enabled = ? WHERE id = ?',
+    t.title, t.text, t.audience, t.days, t.hour, t.enabled, old.id)
+  res.json(await get('SELECT * FROM tg_templates WHERE id = ?', old.id))
+}))
+
+router.delete('/templates/:id', wrap(async (req, res) => {
+  if (adminOnly(req, res)) return
+  await run('DELETE FROM tg_templates WHERE id = ?', req.params.id)
+  res.json({ ok: true })
+}))
+
+// Send it now — to the template's own audience, or to exactly the people
+// picked in the dialog.
+router.post('/templates/:id/send', wrap(async (req, res) => {
+  if (adminOnly(req, res)) return
+  if (!tgEnabled()) return res.status(503).json({ error: 'Set the bot token first' })
+  const tpl = await get('SELECT * FROM tg_templates WHERE id = ?', req.params.id)
+  if (!tpl) return res.status(404).json({ error: 'Not found' })
+  const picked = Array.isArray(req.body?.user_ids) ? req.body.user_ids.map(Number).filter(Boolean) : null
+  const sent = await tgSendTemplate(tpl, picked)
+  res.json({ ok: true, sent })
+}))
+
+// Who would hear this audience right now — so the dialog can say "12 people"
+// instead of leaving the admin to guess.
+router.get('/audience', wrap(async (req, res) => {
+  if (adminOnly(req, res)) return
+  res.json({ count: (await tgAudience(String(req.query.audience || 'linked'))).length })
 }))
 
 // A signed-in sanity check: send myself a test line through the bridge.

@@ -2498,3 +2498,39 @@ button.cb-toggle:hover { color: var(--ink); }
 .cb-link-src:hover { border-color: var(--ink-2); }
 .cb-link-mine { color: var(--brand-600); background: var(--brand-50); border: 1px solid transparent; }
 .cb-link-mine:hover { background: var(--brand-100); }
+
+/* ============ Round 48: the files, in reach and told apart ============ */
+/* Recording, Edit and Design each wear their own colour and stand well
+   apart — at a glance you know which file you are opening. */
+.file-links { display: flex; flex-wrap: wrap; gap: 12px; }
+.file-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 14px; border-radius: 10px; text-decoration: none;
+  font-size: 13px; font-weight: 650; letter-spacing: 0.1px;
+  border: 1px solid transparent; transition: transform 0.06s, box-shadow 0.14s, background 0.14s;
+}
+.file-link:hover { box-shadow: var(--shadow); }
+.file-link:active { transform: translateY(1px); }
+.file-link .fl-go { opacity: 0.55; }
+/* the operator's raw material — cool and calm, it is a source, not a result */
+.fl-shot { background: #eaf1fb; color: #1f4e87; border-color: #cfe0f5; }
+.fl-shot:hover { background: #dfeaf8; }
+/* the editor's finished cut — the brand, because it is the deliverable */
+.fl-edit { background: var(--brand-50); color: var(--brand-600); border-color: var(--brand-100); }
+.fl-edit:hover { background: var(--brand-100); }
+/* the designer's artwork — its own warm note */
+.fl-design { background: #f6eefb; color: #6b3a8c; border-color: #e6d6f2; }
+.fl-design:hover { background: #efe2f7; }
+[data-theme="dark"] .fl-shot { background: #16283f; color: #9ec4ef; border-color: #23425f; }
+[data-theme="dark"] .fl-shot:hover { background: #1b3149; }
+[data-theme="dark"] .fl-design { background: #2a1c35; color: #d3aeea; border-color: #3d2a4c; }
+[data-theme="dark"] .fl-design:hover { background: #33223f; }
+/* the editable delivery fields get room to breathe */
+.crew-do .ready-link-field + .ready-link-field { margin-top: 14px; }
+.ready-link-field .crew-label { margin-bottom: 5px; }
+/* the reminders list in Admin → Telegram */
+.rem-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
+.rem-row:last-child { border-bottom: none; }
+.rem-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.rem-title { font-size: 13.5px; }
+.rem-sub { font-size: 12px; color: var(--muted); }

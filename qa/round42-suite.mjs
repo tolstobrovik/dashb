@@ -91,11 +91,11 @@ const done = await req(`/content/${task.id}`, 'PATCH', { ready_link: 'https://dr
 ok('the editor delivers with one save', done.status === 200)
 sent = await sentList()
 const toAdmin = sent.find((s) => String(s.chat_id) === '120' && /✅/.test(s.text || ''))
-ok('the ADMIN hears the cut is ready — without being on the task', !!toAdmin && /is ready for review/.test(toAdmin.text))
-ok('…the message hands over the file', !!toAdmin && /Watch the cut/.test(toAdmin.text) && toAdmin.text.includes('https://drive.google.com/x42cut'))
+ok('the ADMIN hears the cut is ready — without being on the task', !!toAdmin && /Ready for your review/.test(toAdmin.text))
+ok('…the message hands over the file', !!toAdmin && /Watch it/.test(toAdmin.text) && toAdmin.text.includes('https://drive.google.com/x42cut'))
 ok('…and the task link', !!toAdmin && toAdmin.text.includes(`/todo?task=${task.id}`))
-ok('…names who finished it', !!toAdmin && /Finished by Rita Editor/.test(toAdmin.text))
-ok('the owner hears it too', sent.some((s) => String(s.chat_id) === '122' && /is ready for review/.test(s.text || '')))
+ok('…names who finished it', !!toAdmin && /finished by Rita Editor/.test(toAdmin.text))
+ok('the owner hears it too', sent.some((s) => String(s.chat_id) === '122' && /Ready for your review/.test(s.text || '')))
 ok('the editor never hears their own delivery', !sent.some((s) => String(s.chat_id) === '121' && /✅/.test(s.text || '')))
 const adminBell = (await req('/notifications')).data.events
 ok('the admin’s in-app bell rings too', adminBell.some((e) => e.kind === 'status' && /→ Ready/.test(e.text)))
@@ -105,10 +105,10 @@ await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: sid(/editing/i) })
 sent = await sentList()
 m = sent.find((s) => String(s.chat_id) === '121' && /🔔/.test(s.text || ''))
-ok('a working-stage move says who moved it', !!m && /Moved by Admin/.test(m.text) && /<b>Editing<\/b>/.test(m.text))
+ok('a working-stage move says who moved it', !!m && /by Admin/.test(m.text) && /moved to <b>Editing<\/b>/.test(m.text))
 await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: statuses.find((s) => s.is_final).id })
-ok('publishing celebrates', (await sentList()).some((s) => String(s.chat_id) === '121' && /🚀/.test(s.text || '') && /is out!/.test(s.text)))
+ok('publishing celebrates', (await sentList()).some((s) => String(s.chat_id) === '121' && /🚀/.test(s.text || '') && /It's out!/.test(s.text)))
 
 // ---- the comment and the Pravki read like messages ----
 await reset()
@@ -120,7 +120,7 @@ await req(`/content/${task.id}`, 'PATCH', { script: 'Сценарий: интр�
 await reset()
 await req(`/content/${task.id}/revisions`, 'POST', { note: 'сократи интро до 15 сек', target: 'editor' })
 m = (await sentList()).find((s) => String(s.chat_id) === '121' && /🔧/.test(s.text || ''))
-ok('a Pravki asks for changes by name', !!m && /changes requested/.test(m.text) && /Round 1/.test(m.text) && /сократи интро/.test(m.text))
+ok('a Pravki asks for changes by name', !!m && /One more pass/.test(m.text) && /round 1/.test(m.text) && /сократи интро/.test(m.text))
 
 // ---- the fixer's lane carries the ТЗ and the history ----
 const rev1 = (await req('/content/revisions/mine', 'GET', undefined, T1)).data[0]

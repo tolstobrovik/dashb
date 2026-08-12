@@ -218,13 +218,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Crew always see their stage's field; everyone else sees only links that
   // exist — three empty Drive inputs on every open were pure chrome. The
   // extras row reveals the empty ones when an editor wants to paste by hand.
-  const deliveryFields = [
-    !isDesign && { col: 'shot_link', label: 'Shot footage', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, mine: myHats.operator, present: !!item?.operator_id },
-    !isDesign && { col: 'ready_link', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, mine: myHats.editor, present: !!item?.editor_id },
-    { col: 'design_link', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, mine: myHats.designer, present: !!item?.designer_id },
-  ].filter(Boolean).filter((f) => (crewViewer
-    ? (f.mine || form[f.col] || f.present)
-    : (form[f.col] || (canEdit && show.delivery))))
+  // A link that EXISTS is always shown, whatever the task's type — a post
+  // that was filmed still has footage, and hiding it left admins hunting for
+  // a link they could see was there. The type only decides which EMPTY
+  // fields are worth offering.
+  const DELIVERY = [
+    { col: 'shot_link', label: 'Recording', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, kind: 'shot', mine: myHats.operator, present: !!item?.operator_id, offer: !isDesign },
+    { col: 'ready_link', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, kind: 'edit', mine: myHats.editor, present: !!item?.editor_id, offer: !isDesign },
+    { col: 'design_link', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, kind: 'design', mine: myHats.designer, present: !!item?.designer_id, offer: true },
+  ]
+  const deliveryFields = DELIVERY.filter((f) => (form[f.col] ? true : (crewViewer
+    ? (f.offer && (f.mine || f.present))
+    : (f.offer && canEdit && show.delivery))))
+  // The files themselves, one press away for anyone who can open the task.
+  const deliveryLinks = DELIVERY.filter((f) => form[f.col] && /^https?:\/\//i.test(form[f.col]))
   const hasRef = !!(form.reference_text || form.reference_links.length > 0 || form.photo || form.photo_thumb)
 
   // ---- Review / Pravki (SMM & admin, when a task is waiting at Ready) ----
@@ -684,6 +691,25 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* The crew's controls: they see the stage above (read-only), tick the
           one milestone that's theirs, and drop their stage's Google-Drive file.
           Anyone can open a link that's already there. */}
+      {/* The finished files, in reach of anyone who can open the task — an
+          admin should never have to hunt for a link that is plainly there. */}
+      {!creating && deliveryLinks.length > 0 && (
+        <div className="cm-row">
+          <span className="cm-key"><Link2 size={13} style={{ verticalAlign: -2 }} /> Files</span>
+          <div className="file-links">
+            {deliveryLinks.map((f) => {
+              const Icon = f.icon
+              return (
+                <a key={f.col} className={`file-link fl-${f.kind}`} href={form[f.col]} target="_blank" rel="noreferrer"
+                  data-tip={f.sub}>
+                  <Icon size={13} /> {f.label} <ExternalLink size={12} className="fl-go" />
+                </a>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {!creating && (deliveryFields.length > 0 || (crewViewer && (myHats.operator || myHats.editor || myHats.designer))) && (
         <div className="cm-row">
           <span className="cm-key">Your part</span>

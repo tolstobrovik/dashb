@@ -74,7 +74,7 @@ ok('…and the release day, human-sized', !!m && m.text.includes(`release ${huma
 await reset()
 await req(`/content/${task.id}/comments`, 'POST', { text: 'интро переснимаем завтра' })
 m = (await sentList()).find((s) => String(s.chat_id) === '900' && /💬/.test(s.text || ''))
-ok('a comment names the speaker and the task', !!m && /💬 Admin — on .*«x40: rich video»/.test(m.text))
+ok('a comment names the speaker and the task', !!m && /💬 Admin wrote on .*«x40: rich video»/.test(m.text))
 ok('…quotes the words on their own line', !!m && /\n“интро переснимаем завтра”/.test(m.text))
 ok('…and links the task', !!m && m.text.includes(`/todo?task=${task.id}`))
 

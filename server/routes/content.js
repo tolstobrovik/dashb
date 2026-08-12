@@ -197,7 +197,7 @@ async function notifyAssigned(req, contentId, title, roleById, extra = '') {
   // Every hand-off leaves at once — nobody's message waits in line behind
   // another person's Telegram round-trip.
   await Promise.allSettled(ids.map((id) =>
-    tgMirror([id], `📌 <b>«${tgEsc(title)}»</b> — you're the ${roleById.get(id)}\nAssigned by ${tgEsc(req.user.name)}${extra}`, contentId, tgOriginFrom(req))))
+    tgMirror([id], `📌 New work for you — you're the ${roleById.get(id)}\n<b>«${tgEsc(title)}»</b>${extra}\nFrom ${tgEsc(req.user.name)}. Have a look and plan it in 👇`, contentId, tgOriginFrom(req))))
 }
 // A person can wear two hats on one task — the message names both.
 const addRole = (map, id, role) => {
@@ -390,7 +390,7 @@ router.post('/:id/comments', wrap(async (req, res) => {
       id, 'comment', line, row.id, now,
     ]))
     // Telegram gets the roomier cut: who spoke, on what, the words, the link.
-    await tgMirror(people, `💬 ${tgEsc(req.user.name)} — on <b>«${tgEsc(row.title)}»</b>:\n“${tgEsc(preview)}”`, row.id, tgOriginFrom(req))
+    await tgMirror(people, `💬 ${tgEsc(req.user.name)} wrote on <b>«${tgEsc(row.title)}»</b>\n“${tgEsc(preview)}”\nAnswer where the task lives 👇`, row.id, tgOriginFrom(req))
   }
   res.status(201).json(await get('SELECT id, user_id, author, text, created_at FROM comments WHERE id = ?', info.lastInsertRowid))
 }))
@@ -571,7 +571,7 @@ router.post('/:id/revisions', wrap(async (req, res) => {
     const preview = note.length > 120 ? `${note.slice(0, 120)}…` : note
     await run('INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
       fixerId, 'pravki', `Pravki from ${req.user.name} on «${row.title}»: ${preview}`, row.id, new Date().toISOString())
-    await tgMirror([fixerId], `🔧 <b>«${tgEsc(row.title)}»</b> — changes requested\n${tgEsc(req.user.name)}: “${tgEsc(preview)}”\nRound ${round} — it's back with you`, row.id, tgOriginFrom(req))
+    await tgMirror([fixerId], `🔧 One more pass on <b>«${tgEsc(row.title)}»</b> (round ${round})\n${tgEsc(req.user.name)} asks: “${tgEsc(preview)}”\nIt's back with you — fix it and tick “Fixed” 👇`, row.id, tgOriginFrom(req))
   }
   res.status(201).json(await listRow(row.id))
 }))
@@ -930,14 +930,14 @@ router.patch('/:id', wrap(async (req, res) => {
       if (isReady) {
         const cut = (patch.ready_link !== undefined ? patch.ready_link : row.ready_link) ||
           (patch.design_link !== undefined ? patch.design_link : row.design_link)
-        const watch = cut && /^https?:\/\//i.test(cut) ? `\n▶️ <a href="${tgEsc(cut)}">Watch the cut</a>` : ''
-        tgLine = `✅ ${title} is ready for review\nFinished by ${who}${rel}${watch}`
+        const watch = cut && /^https?:\/\//i.test(cut) ? `\n▶️ <a href="${tgEsc(cut)}">Watch it</a>` : ''
+        tgLine = `✅ Ready for your review\n${title} — finished by ${who}${rel}${watch}\nWatch it and publish, or send notes back 👇`
       } else if (newSt.is_final) {
-        tgLine = `🚀 ${title} is out!\nPublished by ${who}`
+        tgLine = `🚀 It's out!\n${title} — published by ${who}. Nice work, team 👏`
       } else if (/^deleted$/i.test(newSt.label)) {
-        tgLine = `🗑 ${title} was taken off the plan\nby ${who}`
+        tgLine = `🗑 Taken off the plan\n${title} — by ${who}. Nothing more is owed on it.`
       } else {
-        tgLine = `🔔 ${title} → <b>${tgEsc(newSt.label)}</b>\nMoved by ${who}${rel}`
+        tgLine = `🔔 ${title} moved to <b>${tgEsc(newSt.label)}</b>\nby ${who}${rel}\nYour turn if it's your stage 👇`
       }
       await tgMirror(recipients, tgLine, row.id, tgOriginFrom(req))
     }

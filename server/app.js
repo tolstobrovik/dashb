@@ -29,7 +29,7 @@ import hiringRoutes from './routes/hiring.js'
 import candidateRoutes from './routes/candidates.js'
 import telegramRoutes from './routes/telegram.js'
 import { docsRouter, kpisRouter } from './routes/docs.js'
-import { tgDailyReminders } from './telegram.js'
+import { tgDailyReminders, tgRunSchedules } from './telegram.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -62,11 +62,27 @@ app.get('/api/cron/daily', wrap(async (req, res) => {
   // reminders pushed to every Telegram-linked member.
   let reminded = 0
   try { reminded = await tgDailyReminders() } catch (e) { console.error('telegram reminders failed:', e.message) }
+  // The admin's scheduled nudges get a nightly backstop here; in practice they
+  // leave earlier, the moment somebody opens the dashboard past their hour.
+  try { await tgRunSchedules() } catch (e) { console.error('telegram schedules failed:', e.message) }
   // In GitHub-storage mode, also compact the data branch to one commit.
   let squashed = false
   try { await squashData(); squashed = true } catch (e) { console.error('squash failed:', e.message) }
   res.json({ ok: true, day: dayISO(), snapped: trackers.length, reminded, squashed })
 }))
+// A Monday-morning nudge should not wait for midnight. The host's cron runs
+// once a night, so the schedules are also checked as the team works: at most
+// once every few minutes per instance, never awaited, never able to slow or
+// break the request that happened to wake it.
+let lastScheduleCheck = 0
+app.use((req, res, next) => {
+  if (Date.now() - lastScheduleCheck > 240000) {
+    lastScheduleCheck = Date.now()
+    tgRunSchedules().catch((e) => console.error('telegram schedules failed:', e.message))
+  }
+  next()
+})
+
 app.use('/api/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/channels', channelRoutes)

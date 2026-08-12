@@ -780,6 +780,24 @@ export async function initSchema() {
       new_value     TEXT,
       created_at    TEXT    NOT NULL
     );
+
+    -- The nudges an admin keeps ready: "did the week get planned?", "does
+    -- every task carry its brief?". Each one can be fired at anybody on
+    -- demand, or left to arrive by itself on chosen weekdays at a chosen
+    -- hour (Tashkent). last_sent holds the day it last went out, so a
+    -- schedule fires once a day however many times the hour is checked.
+    CREATE TABLE IF NOT EXISTS tg_templates (
+      id         ${ID},
+      title      TEXT    NOT NULL,
+      text       TEXT    NOT NULL,
+      audience   TEXT    NOT NULL DEFAULT 'linked', -- linked | role:<role> | channel:<key> | users:<id,id>
+      days       TEXT    NOT NULL DEFAULT '[]',     -- weekday numbers, 1 = Monday; empty = on demand only
+      hour       INTEGER NOT NULL DEFAULT 9,        -- Tashkent hour the schedule fires at
+      enabled    INTEGER NOT NULL DEFAULT 1,
+      last_sent  TEXT,                              -- Tashkent day it last went out
+      sort       INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT    NOT NULL
+    );
   `)
 
   // Upgrades for existing Postgres databases (SQLite goes through migrate()).
@@ -1334,6 +1352,37 @@ async function ensureAdminAccess() {
   await run("INSERT INTO meta (key, value) VALUES ('admin_reset_2026_07', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
 }
 
+// A starter set of nudges, written once so the admin has something to send
+// on the first day rather than a blank page. Each is disabled until somebody
+// turns it on, and every word is editable — these are a starting point, not
+// a policy. Added once; after that the list belongs to the admin.
+async function seedTemplatesOnce() {
+  if (await get("SELECT 1 AS x FROM meta WHERE key = 'tg_templates_seeded'")) return
+  const now = new Date().toISOString()
+  const rows = [
+    ['Is the week planned?',
+      'Доброе утро! 🌅 Загляните в свой день: у всех ли задач этой недели есть дата съёмки и дата выхода?\n\nПять минут сейчас — и неделя пойдёт спокойно.',
+      'linked', '[1]', 9],
+    ['Does every task carry its brief?',
+      'Привет! ✍️ Быстрая проверка: у каждой задачи есть описание и ТЗ?\n\nЧем понятнее задача, тем меньше правок потом — команда скажет спасибо.',
+      'linked', '[3]', 11],
+    ['Anything waiting on you?',
+      'Добрый день! 👀 Если на вас висят правки или незакрытые задачи — самое время их разобрать.\n\nОдна закрытая задача сегодня — это минус один аврал завтра.',
+      'linked', '[5]', 15],
+    ['How did the week go?',
+      'Пятница! 🎬 Отметьте выпущенное и перенесите то, что не успели.\n\nЧистая доска в пятницу — спокойный понедельник.',
+      'linked', '[5]', 17],
+    ['Shoot day tomorrow',
+      'Завтра съёмочный день 🎥 Проверьте: техника, локация, сценарий и время у всех совпадают?\n\nЛучше сверить сегодня, чем переснимать потом.',
+      'linked', '[]', 10],
+  ]
+  for (const [i, [title, text, audience, days, hour]] of rows.entries()) {
+    await run(`INSERT INTO tg_templates (title, text, audience, days, hour, enabled, sort, created_at)
+      VALUES (?, ?, ?, ?, ?, 0, ?, ?)`, title, text, audience, days, hour, i, now)
+  }
+  await run("INSERT INTO meta (key, value) VALUES ('tg_templates_seeded', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+}
+
 // Schema + seeds, exactly once per process — serverless handlers await this
 // before touching the database. A failed attempt (storage briefly down) is
 // not cached: the next request starts a fresh one instead of replaying the
@@ -1347,6 +1396,7 @@ export function initDb() {
     await migrateCampaignsToProjects()
     await ensureAdminAccess()
     await importJulyIgPlan()
+    await seedTemplatesOnce()
     // The Target team's dashboard leads with launch programs — once, and only
     // if the admin hasn't customized that channel's layout yet.
     if (!(await get("SELECT 1 AS x FROM meta WHERE key = 'target_programs_default'"))) {

@@ -132,6 +132,73 @@ export async function tgMirror(userIds, text, contentId = null, fallbackOrigin =
   await Promise.allSettled([...new Set(userIds)].map((id) => tgSendTo(id, line)))
 }
 
+// ---- the admin's own nudges -------------------------------------------------
+// Who a template speaks to. Everything resolves to plain user ids; whoever
+// hasn't connected Telegram simply hears nothing.
+export async function tgAudience(audience) {
+  const a = String(audience || 'linked')
+  if (a.startsWith('users:')) {
+    const ids = a.slice(6).split(',').map(Number).filter(Boolean)
+    return ids
+  }
+  if (a.startsWith('role:')) {
+    const role = a.slice(5)
+    return (await all('SELECT id FROM users WHERE role = ? AND telegram_chat_id IS NOT NULL', role)).map((u) => u.id)
+  }
+  if (a.startsWith('channel:')) {
+    const key = a.slice(8)
+    return (await all('SELECT id, departments FROM users WHERE telegram_chat_id IS NOT NULL'))
+      .filter((u) => { try { return JSON.parse(u.departments || '[]').includes(key) } catch { return false } })
+      .map((u) => u.id)
+  }
+  return (await all('SELECT id FROM users WHERE telegram_chat_id IS NOT NULL')).map((u) => u.id)
+}
+
+// Send one template. The words are the admin's, so they go out escaped —
+// nobody should have to think about angle brackets to write a reminder.
+export async function tgSendTemplate(tpl, userIds = null) {
+  const ids = userIds && userIds.length ? userIds : await tgAudience(tpl.audience)
+  if (!ids.length) return 0
+  const origin = await tgPublicUrl().catch(() => '')
+  const body = `<b>${tgEsc(tpl.title)}</b>\n${tgEsc(tpl.text)}` +
+    (origin ? `\n\n<a href="${origin}/brief">Open your day ↗</a>` : '')
+  await Promise.allSettled([...new Set(ids)].map((id) => tgSendTo(id, body)))
+  return new Set(ids).size
+}
+
+// The hour, and the weekday, as Tashkent sees them.
+const tashkentHour = () => Number(new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Tashkent', hour: '2-digit', hour12: false,
+}).format(new Date()))
+const tashkentWeekday = () => new Date(`${dayISO(0)}T12:00:00Z`).getUTCDay() // 0 = Sunday
+
+// Fire whatever is due. Each template claims its day in the same breath as
+// it is chosen, so a schedule goes out ONCE however many times this is
+// called — and it is called often, because the host's cron only runs nightly
+// and a Monday-morning nudge should not wait for midnight.
+export async function tgRunSchedules() {
+  if (!tgEnabled()) return 0
+  const today = dayISO(0)
+  const hour = tashkentHour()
+  const weekday = tashkentWeekday()
+  const due = (await all('SELECT * FROM tg_templates WHERE enabled = 1')).filter((t) => {
+    if (t.last_sent === today) return false
+    if (Number(t.hour) > hour) return false
+    let days = []
+    try { days = JSON.parse(t.days || '[]') } catch { days = [] }
+    return Array.isArray(days) && days.includes(weekday)
+  })
+  let sent = 0
+  for (const t of due) {
+    // claim first: two instances waking at the same minute must not both send
+    const claim = await run('UPDATE tg_templates SET last_sent = ? WHERE id = ? AND (last_sent IS NULL OR last_sent <> ?)',
+      today, t.id, today)
+    if (!claim?.changes) continue
+    try { sent += await tgSendTemplate(t) } catch (e) { console.error('template send failed:', e.message) }
+  }
+  return sent
+}
+
 // The nightly half of the bell, pushed instead of waited for: deadlines
 // standing exactly a day and exactly a week away (Tashkent days), per the hat
 // each linked member holds — the same rules the in-app reminders use.
@@ -177,7 +244,7 @@ export async function tgDailyReminders() {
         lines.push(`• «${tgEsc(t.title)}» — ${what}${origin ? ` · <a href="${origin}/todo?task=${t.id}">open ↗</a>` : ''}`)
     }
     if (lines.length) {
-      await tgSendTo(u.id, `⏰ Heads-up — your deadlines:\n${lines.join('\n')}`)
+      await tgSendTo(u.id, `⏰ A friendly heads-up on your deadlines\n${lines.join('\n')}\n\nNothing is late yet — a good moment to get ahead of it 💪`)
       sent++
     }
   }

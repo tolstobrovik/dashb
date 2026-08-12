@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
-  X, CheckSquare, Scissors, Video, History,
+  X, CheckSquare, Scissors, Video, History, Eye, EyeOff,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
@@ -158,7 +158,166 @@ function TelegramTab() {
               </button>
             </div>
           </div>
+
+          <Reminders members={st.members} />
         </>
+      )}
+    </>
+  )
+}
+
+/* ---- the reminders an admin keeps ready ----------------------------------
+   The nudges worth repeating — "is the week planned?", "does every task carry
+   its brief?" — written once and kept. Each can be fired at anybody on the
+   spot, or left to arrive by itself on chosen weekdays at a chosen hour. */
+const WEEK = [{ d: 1, l: 'Mon' }, { d: 2, l: 'Tue' }, { d: 3, l: 'Wed' }, { d: 4, l: 'Thu' }, { d: 5, l: 'Fri' }, { d: 6, l: 'Sat' }, { d: 0, l: 'Sun' }]
+const BLANK = { title: '', text: '', audience: 'linked', days: [], hour: 9, enabled: true }
+function Reminders({ members }) {
+  const [list, setList] = useState(null)
+  const [edit, setEdit] = useState(null)     // the template being written
+  const [picking, setPicking] = useState(null) // { tpl, ids }
+  const [busy, setBusy] = useState(false)
+  const load = () => api.get('/telegram/templates').then(setList).catch(() => setList([]))
+  useEffect(() => { load() }, [])
+  const linked = members.filter((m) => m.linked)
+
+  const save = async () => {
+    if (!edit.title.trim() || !edit.text.trim()) return
+    setBusy(true)
+    try {
+      if (edit.id) await api.patch(`/telegram/templates/${edit.id}`, edit)
+      else await api.post('/telegram/templates', edit)
+      setEdit(null); await load(); toast('Reminder saved — synced')
+    } catch (e) { alert(e.message) } finally { setBusy(false) }
+  }
+  const toggle = async (t) => {
+    try { await api.patch(`/telegram/templates/${t.id}`, { enabled: !t.enabled }); await load() } catch (e) { alert(e.message) }
+  }
+  const remove = async (t) => {
+    if (!confirm(`Delete the reminder “${t.title}”?`)) return
+    try { await api.del(`/telegram/templates/${t.id}`); await load() } catch (e) { alert(e.message) }
+  }
+  const sendNow = async (tpl, ids) => {
+    setBusy(true)
+    try {
+      const out = await api.post(`/telegram/templates/${tpl.id}/send`, ids ? { user_ids: ids } : {})
+      toast(out.sent ? `Sent to ${out.sent} ${out.sent === 1 ? 'person' : 'people'}` : 'Nobody in that audience is connected yet', out.sent ? 'ok' : 'err')
+      setPicking(null)
+    } catch (e) { alert(e.message) } finally { setBusy(false) }
+  }
+  const whoReads = (a) => (a === 'linked' ? 'everyone connected'
+    : a.startsWith('role:') ? `${a.slice(5)}s`
+      : a.startsWith('channel:') ? `the ${a.slice(8)} team` : 'chosen people')
+
+  if (!list) return null
+  return (
+    <>
+      <div className="section-head" style={{ marginTop: 18 }}>
+        <h2>Reminders</h2>
+        <span className="count">· send on the spot, or let them arrive on their own</span>
+        <span className="spacer" />
+        <button className="btn btn-sm" onClick={() => setEdit({ ...BLANK })}><Plus size={14} /> New reminder</button>
+      </div>
+      <div className="card" style={{ padding: '4px 14px' }}>
+        {list.length === 0 && <div className="stat-sub" style={{ padding: '10px 0' }}>No reminders yet.</div>}
+        {list.map((t) => (
+          <div key={t.id} className="rem-row">
+            <button className={'side-eye' + (t.enabled ? '' : ' off')} onClick={() => toggle(t)}
+              data-tip={t.enabled ? 'Scheduled — turn off' : 'Manual only — turn the schedule on'}
+              aria-label={t.enabled ? 'Disable schedule' : 'Enable schedule'}>
+              {t.enabled ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+            <span className="rem-main">
+              <b className="rem-title">{t.title}</b>
+              <span className="rem-sub">
+                {t.days.length > 0
+                  ? <>every {t.days.map((d) => WEEK.find((w) => w.d === d)?.l).join(', ')} at {String(t.hour).padStart(2, '0')}:00</>
+                  : <>on demand only</>}
+                {' · '}{whoReads(t.audience)}
+                {t.last_sent ? ` · last sent ${t.last_sent}` : ''}
+              </span>
+            </span>
+            <button className="btn btn-sm" onClick={() => setPicking({ tpl: t, ids: linked.map((m) => m.id) })}
+              disabled={busy || linked.length === 0}><Send size={13} /> Send</button>
+            <button className="btn btn-sm" onClick={() => setEdit({ ...t })}>Edit</button>
+            <button className="icon-btn" onClick={() => remove(t)} aria-label="Delete reminder"><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+
+      {edit && (
+        <Modal title={edit.id ? 'Edit reminder' : 'New reminder'} onClose={() => setEdit(null)}
+          footer={<>
+            <button className="btn" onClick={() => setEdit(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={save} disabled={busy || !edit.title.trim() || !edit.text.trim()}>Save</button>
+          </>}>
+          <div className="field"><label>Name — for you, not for them</label>
+            <input className="input" autoFocus value={edit.title} placeholder="e.g. Is the week planned?"
+              onChange={(e) => setEdit({ ...edit, title: e.target.value })} />
+          </div>
+          <div className="field"><label>The message</label>
+            <textarea className="input" rows={5} value={edit.text}
+              placeholder="Write it the way you would say it — warm, short, and ending in one clear action."
+              onChange={(e) => setEdit({ ...edit, text: e.target.value })} />
+          </div>
+          <div className="field"><label>Who hears it</label>
+            <select className="select" value={edit.audience} onChange={(e) => setEdit({ ...edit, audience: e.target.value })}>
+              <option value="linked">Everyone connected</option>
+              <option value="role:member">Members</option>
+              <option value="role:editor">Editors</option>
+              <option value="role:operator">Operators</option>
+              <option value="role:designer">Designers</option>
+              <option value="role:admin">Admins</option>
+            </select>
+          </div>
+          <div className="field"><label>When it arrives by itself</label>
+            <div className="pill-group" style={{ flexWrap: 'wrap' }}>
+              {WEEK.map((w) => (
+                <button key={w.d} type="button"
+                  className={'pill' + (edit.days.includes(w.d) ? ' active' : '')}
+                  onClick={() => setEdit({ ...edit, days: edit.days.includes(w.d) ? edit.days.filter((x) => x !== w.d) : [...edit.days, w.d] })}>
+                  {w.l}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <span className="stat-sub">at</span>
+              <select className="select" style={{ maxWidth: 110 }} value={edit.hour}
+                onChange={(e) => setEdit({ ...edit, hour: Number(e.target.value) })}>
+                {[...Array(24)].map((_, h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+              </select>
+              <span className="stat-sub">Tashkent{edit.days.length === 0 ? ' — pick days above, or leave it for hand-sending' : ''}</span>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {picking && (
+        <Modal title={`Send “${picking.tpl.title}”`} onClose={() => setPicking(null)}
+          footer={<>
+            <button className="btn" onClick={() => setPicking(null)}>Cancel</button>
+            <button className="btn btn-primary" disabled={busy || picking.ids.length === 0}
+              onClick={() => sendNow(picking.tpl, picking.ids)}>
+              <Send size={14} /> Send to {picking.ids.length}
+            </button>
+          </>}>
+          <div className="stat-sub" style={{ whiteSpace: 'pre-wrap', marginBottom: 10 }}>{picking.tpl.text}</div>
+          <div className="field"><label>Who gets it now</label>
+            <div className="checkbox-row">
+              {linked.map((m) => (
+                <label key={m.id} className={'checkbox-chip chip-sm' + (picking.ids.includes(m.id) ? ' on' : '')}>
+                  <input type="checkbox" checked={picking.ids.includes(m.id)}
+                    onChange={() => setPicking({
+                      ...picking,
+                      ids: picking.ids.includes(m.id) ? picking.ids.filter((x) => x !== m.id) : [...picking.ids, m.id],
+                    })} />
+                  {m.name}
+                </label>
+              ))}
+            </div>
+            {linked.length === 0 && <div className="stat-sub">Nobody has connected Telegram yet.</div>}
+          </div>
+        </Modal>
       )}
     </>
   )
