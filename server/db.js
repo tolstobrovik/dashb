@@ -43,6 +43,17 @@ const GH_DATA = GITHUB_DATA && {
 // the app says so plainly instead of arguing with GitHub about it.
 const GH_TOKEN_SET = !!GH_DATA?.token && !/^REPLACE_WITH/.test(GH_DATA.token)
 
+// The one true answer to "what is this deployment's storage credential?" —
+// resolved once, here, and exported so nothing has to work it out again.
+// The session secret is derived from it (auth.js), and deriving it a second
+// time from a DIFFERENT source is how a deployment ends up signing sessions
+// with a string that is published in the repository. Null when there is no
+// real credential at all: a placeholder never counts as one.
+export const storageSecret = () =>
+  process.env.DATABASE_URL || process.env.POSTGRES_URL ||
+  process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN ||
+  CONFIG_DATABASE_URL || (GH_TOKEN_SET ? GH_DATA.token : null) || null
+
 // GitHub-repo storage engages on serverless hosts (or when forced for tests)
 // whenever no real database URL is configured — the repo itself holds the data.
 const GH_MODE = !PG_URL && !TURSO_URL && !!GH_DATA?.token &&
