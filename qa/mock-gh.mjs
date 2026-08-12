@@ -18,6 +18,7 @@ let currentEtag = null // etag of the current contents state
 let calls = {}
 let outage = false
 let requireToken = null
+let rateLimit = { left: 0, status: 403, after: 1, words: true }
 const count = (k) => { calls[k] = (calls[k] || 0) + 1 }
 const bumpEtag = () => { currentEtag = `"etag-${++etagN}"` }
 bumpEtag()
@@ -42,6 +43,18 @@ const server = http.createServer((req, res) => {
     // Refuse every token but this one — an expired credential, the one storage
     // failure that never heals on its own.
     if (p === '/__require' && req.method === 'POST') { requireToken = body?.token || null; return send(200, { requireToken }) }
+    // Rate-limit the next N calls the way GitHub really does: a 403 (or 429)
+    // carrying Retry-After and an exhausted budget. `n: -1` never lets up.
+    if (p === '/__ratelimit' && req.method === 'POST') {
+      rateLimit = { left: body?.n ?? 0, status: body?.status || 403, after: body?.after ?? 1, words: body?.words !== false }
+      return send(200, { rateLimit })
+    }
+    if (rateLimit.left !== 0) {
+      if (rateLimit.left > 0) rateLimit.left--
+      count('ratelimited')
+      return send(rateLimit.status, { message: rateLimit.words ? 'You have exceeded a secondary rate limit' : 'Forbidden' },
+        { 'Retry-After': String(rateLimit.after), 'X-RateLimit-Remaining': '0' })
+    }
     if (outage) { count('outage-500'); return send(500, { message: 'Server Error (simulated outage)' }) }
     if (requireToken && !(req.headers.authorization || '').includes(requireToken)) {
       count('unauthorized-401')

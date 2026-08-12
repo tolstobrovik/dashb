@@ -14,12 +14,32 @@
 // fall back to one extra blob download).
 const API = process.env.GITHUB_API_BASE || 'https://api.github.com'
 
-// GitHub refusing the token looks the same as GitHub being down unless
-// somebody says otherwise — and these tokens expire, which is the one storage
-// failure that never heals by itself. So name it where anyone will read it.
-const authHint = (status) => (status === 401 || status === 403
-  ? ' — GitHub refused the storage token (expired, revoked or lacking Contents write). Issue a new one and set GITHUB_DATA_TOKEN in the deployment’s environment.'
-  : '')
+// GitHub says "403" for two completely different things: a credential it will
+// not accept, and a deployment it wants to slow down. Telling them apart is
+// the difference between "issue a new token" (an afternoon of work, and the
+// old token was fine) and "wait a moment" (which the app can do by itself).
+// A rate limit announces itself: Retry-After, an exhausted budget, or plain
+// words in the body.
+const isRateLimit = (res, bodyText = '') =>
+  (res.status === 403 || res.status === 429) && (
+    Number(res.headers.get('retry-after')) > 0 ||
+    res.headers.get('x-ratelimit-remaining') === '0' ||
+    /rate limit|secondary|abuse/i.test(bodyText))
+
+// Name the failure where anyone will read it — in the logs, in /api/health,
+// and in the 503 the browser shows. The wording is load-bearing: the
+// serverless entry marks a *token* refusal as NOT retryable (retrying cannot
+// help) while everything else, rate limits included, stays retryable.
+const hintFor = (res, bodyText = '') => {
+  if (isRateLimit(res, bodyText)) {
+    const after = Number(res.headers.get('retry-after')) || 0
+    return ` — GitHub is rate-limiting this deployment${after ? ` (asked to wait ${after}s)` : ''}. The token is fine; the dashboard is writing faster than GitHub allows. It backs off and retries by itself.`
+  }
+  if (res.status === 401 || res.status === 403)
+    return ' — GitHub refused the storage token (expired, revoked or lacking Contents write). Issue a new one and set GITHUB_DATA_TOKEN in the deployment’s environment.'
+  return ''
+}
+const authHint = (res) => (typeof res === 'number' ? '' : hintFor(res))
 
 export function createGhStore({ token, repo, branch, path }) {
   const headers = {
@@ -30,11 +50,18 @@ export function createGhStore({ token, repo, branch, path }) {
   let fileSha = null // blob sha of the database file at our last sync
   let etag = null    // ETag of the last contents download → free 304 checks
 
-  // A read that fails on a hiccup — a 5xx, a rate-limit pause, a dropped
-  // connection — is worth asking again before anyone hears about it. Only
-  // GETs retry: they change nothing, so a repeat is always safe. Writes keep
-  // their own compare-and-swap loop upstairs, where a repeat has meaning.
+  // A request that fails on a hiccup — a 5xx, a rate-limit pause, a dropped
+  // connection — is worth asking again before anyone hears about it.
+  //
+  // WRITES retry too, and that is safe here precisely because the upload is a
+  // compare-and-swap on the file's blob sha: if the first attempt actually
+  // landed and only its answer was lost, the repeat carries the now-stale sha
+  // and GitHub refuses it as a conflict, which the caller already knows how to
+  // handle (re-pull, replay the journal, push again). Not retrying was the
+  // gap: one rate-limited PUT lost the whole flush, and the team was told
+  // their token had died.
   const TRANSIENT = new Set([408, 429, 500, 502, 503, 504])
+  const worthRetrying = (res) => TRANSIENT.has(res.status) || isRateLimit(res)
   const gh = async (method, url, body, accept = 'application/vnd.github+json', extra) => {
     const send = () => fetch(`${API}${url}`, {
       method,
@@ -46,12 +73,11 @@ export function createGhStore({ token, repo, branch, path }) {
       },
       body: body ? JSON.stringify(body) : undefined,
     })
-    if (method !== 'GET') return send()
     let last = null
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await send()
-        if (!TRANSIENT.has(res.status) || attempt === 2) return res
+        if (!worthRetrying(res) || attempt === 2) return res
         last = res
         // GitHub says when to come back after a rate-limit pause; otherwise
         // wait a beat longer each time (with jitter, so instances don't
@@ -74,7 +100,7 @@ export function createGhStore({ token, repo, branch, path }) {
   async function branchHead() {
     const res = await gh('GET', `/repos/${repo}/git/ref/heads/${branch}`)
     if (res.status === 404) return null
-    if (!res.ok) throw new Error(`ref read failed (${res.status})${authHint(res.status)}`)
+    if (!res.ok) throw new Error(`ref read failed (${res.status})${authHint(res)}`)
     return (await readJson(res)).object?.sha || null
   }
 
@@ -90,7 +116,7 @@ export function createGhStore({ token, repo, branch, path }) {
         etag = null
         return { changed: false, bytes: null, exists: false }
       }
-      if (!res.ok) throw new Error(`data download failed (${res.status})${authHint(res.status)}`)
+      if (!res.ok) throw new Error(`data download failed (${res.status})${authHint(res)}`)
       const json = await readJson(res)
       const freshEtag = res.headers.get('etag')
       if (json.sha && json.sha === fileSha) {
@@ -106,7 +132,7 @@ export function createGhStore({ token, repo, branch, path }) {
         // Databases over 1 MB come back without inline content — fetch the
         // blob directly (works up to 100 MB).
         const raw = await gh('GET', `/repos/${repo}/git/blobs/${json.sha}`, null, 'application/vnd.github.raw+json')
-        if (!raw.ok) throw new Error(`blob download failed (${raw.status})${authHint(raw.status)}`)
+        if (!raw.ok) throw new Error(`blob download failed (${raw.status})${authHint(raw)}`)
         bytes = Buffer.from(await raw.arrayBuffer())
       }
       fileSha = json.sha
@@ -125,7 +151,10 @@ export function createGhStore({ token, repo, branch, path }) {
       }
       const res = await gh('PUT', `/repos/${repo}/contents/${path}`, body)
       if (res.status === 409 || res.status === 422) return 'conflict'
-      if (!res.ok) throw new Error(`data upload failed (${res.status})${authHint(res.status)}: ${JSON.stringify(await readJson(res)).slice(0, 200)}`)
+      if (!res.ok) {
+        const detail = JSON.stringify(await readJson(res)).slice(0, 200)
+        throw new Error(`data upload failed (${res.status})${hintFor(res, detail)}: ${detail}`)
+      }
       const out = await readJson(res)
       fileSha = out.content?.sha || fileSha
       return true
@@ -137,7 +166,7 @@ export function createGhStore({ token, repo, branch, path }) {
       const repoRes = await gh('GET', `/repos/${repo}`)
       const defaultBranch = (await readJson(repoRes)).default_branch || 'main'
       const mainRes = await gh('GET', `/repos/${repo}/git/ref/heads/${defaultBranch}`)
-      if (!mainRes.ok) throw new Error(`cannot read default branch (${mainRes.status})${authHint(mainRes.status)}`)
+      if (!mainRes.ok) throw new Error(`cannot read default branch (${mainRes.status})${authHint(mainRes)}`)
       const sha = (await readJson(mainRes)).object.sha
       const mk = await gh('POST', `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha })
       if (!mk.ok && mk.status !== 422) throw new Error(`cannot create data branch (${mk.status})`)
