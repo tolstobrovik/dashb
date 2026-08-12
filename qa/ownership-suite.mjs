@@ -167,5 +167,56 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   ok('you cannot undo somebody else’s move', un.status === 403, `${un.status}`)
 }
 
+// ---- the handover window asks the right people --------------------------
+{
+  // Two people who actually hold the editing hat, and one who does not.
+  const mkCrew = async (u, name, crew) => (await req('/users', 'POST', {
+    name, username: u + sfx, password: 'pw123456', role: 'crew', crew_roles: crew,
+    departments: ['instagram_main'], permissions: {},
+  })).data.id
+  const opA = await mkCrew('opA', 'Olim Operator', ['operator'])
+  const edA = await mkCrew('edA', 'Eldor Cutter', ['editor'])
+  const edB = await mkCrew('edB', 'Elyor Cutter', ['editor'])
+  ok('crew with declared hats exist', !!(opA && edA && edB))
+
+  const t = await newTask()
+  const { data: h } = await req(`/content/${t.id}/handover?to=${S['Editing']}`)
+  const byKey = Object.fromEntries((h.gates || []).map((g) => [g.key, g]))
+
+  ok('a move to Editing crosses two gates', (h.gates || []).length === 2,
+    (h.gates || []).map((g) => g.key).join(' → '))
+
+  const edNames = (byKey.edit?.candidates || []).map((c) => c.name)
+  ok('the editing gate offers only editors', edNames.includes('Eldor Cutter') && edNames.includes('Elyor Cutter')
+    && !edNames.includes('Olim Operator'), JSON.stringify(edNames))
+  ok('  everyone else is kept as a fallback, not shown first',
+    (byKey.edit?.others || []).some((c) => c.name === 'Olim Operator'), '')
+
+  const opNames = (byKey.shoot?.candidates || []).map((c) => c.name)
+  ok('the shooting gate offers only operators', opNames.includes('Olim Operator')
+    && !opNames.includes('Eldor Cutter'), JSON.stringify(opNames))
+
+  ok('the editing gate knows the footage is still missing', byKey.edit?.link_ok === false, String(byKey.edit?.link_ok))
+
+  // Review is the shared one, and asks the people who sign work off.
+  const { data: h2 } = await req(`/content/${t.id}/handover?to=${S['Ready']}`)
+  const rev = (h2.gates || []).find((g) => g.key === 'review')
+  ok('the review gate is a multi-pick', rev?.many === true, String(rev?.many))
+  ok('  and offers sign-off people, not the crew',
+    (rev?.candidates || []).every((c) => c.name !== 'Eldor Cutter'), JSON.stringify((rev?.candidates || []).map((c) => c.name)))
+
+  // Backwards asks for nothing.
+  const { data: back } = await req(`/content/${t.id}/handover?to=${S['Idea']}`)
+  ok('moving backwards hands nothing over', (back.gates || []).length === 0, JSON.stringify(back.gates))
+
+  // A gate already behind the task is not asked again.
+  await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'], operator_id: opA })
+  const { data: h3 } = await req(`/content/${t.id}/handover?to=${S['Editing']}`)
+  ok('a gate already passed is not asked twice', (h3.gates || []).length === 1
+    && h3.gates[0].key === 'edit', JSON.stringify((h3.gates || []).map((g) => g.key)))
+  ok('  and the editor already on the task comes pre-selected when there is one',
+    Array.isArray(h3.gates[0].current), JSON.stringify(h3.gates[0].current))
+}
+
 console.log(`\n${fails ? `✘ ${fails} FAILED` : '✔ ownership suite passed'}`)
 process.exit(fails ? 1 : 0)

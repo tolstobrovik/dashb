@@ -365,16 +365,21 @@ export default function Department() {
     toast(`Moved to ${statusesById[statusId]?.label || 'the next stage'}`, 'ok',
       { label: 'Undo', onClick: () => undoMove(saved?.id ?? null) })
 
-  // A refused move is usually not an error but a question — "who is editing
-  // this?", "where is the footage?". Those open the handover dialog instead of
-  // an alert; anything else is still a plain failure.
-  const moveStatus = (item, statusId) =>
-    updateContent(item, { status_id: statusId })
-      .then(() => movedToast(item, statusId))
-      .catch((e) => {
-        if (e.data?.gate && e.data?.missing) setGate({ item, statusId })
-        else alert(e.message)
-      })
+  // Moving work on is the moment you decide who is taking it, so the board
+  // asks the server what this move hands over before it moves anything. If it
+  // hands something over, the handover window opens; if it doesn't, the card
+  // just moves. A refusal we failed to predict still opens the window.
+  const moveStatus = async (item, statusId) => {
+    try {
+      const { gates } = await api.get(`/content/${item.id}/handover?to=${statusId}`)
+      if (gates?.length) { setGate({ item, statusId, gates }); return }
+      await updateContent(item, { status_id: statusId })
+      movedToast(item, statusId)
+    } catch (e) {
+      if (e.data?.gate && e.data?.missing) setGate({ item, statusId })
+      else alert(e.message)
+    }
+  }
   const moveDate = (item, field, iso) => updateContent(item, { [field]: iso }).catch((e) => alert(e.message))
   // The board's foot inputs: a title lands straight in that column.
   const quickAdd = async (title, statusId) => {
@@ -874,7 +879,7 @@ export default function Department() {
           item={gate.item}
           statusId={gate.statusId}
           statusLabel={statusesById[gate.statusId]?.label || ''}
-          team={team}
+          initialGates={gate.gates || null}
           onCancel={() => setGate(null)}
           onDone={(saved) => {
             const to = gate.statusId

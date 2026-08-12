@@ -1271,6 +1271,76 @@ router.patch('/:id', wrap(async (req, res) => {
   res.json(await listRow(row.id))
 }))
 
+// ---- what a move is going to ask for ---------------------------------------
+// The board asks this BEFORE it moves anything, so the handover window can
+// open on the move itself rather than after a refusal. It answers with the
+// gates the move crosses, who is eligible to take each one — the editing
+// stage offers editors, not the whole company — and whether the handover is
+// running late enough to need a fresh promise. The rules live here, once.
+router.get('/:id/handover', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  if (!canSee(req.user, { ...row, channels: JSON.parse(row.channels || '[]') }))
+    return res.status(403).json({ error: 'Not your channel' })
+
+  const to = Number(req.query.to)
+  const statuses = await all('SELECT id, label, sort, is_final FROM statuses')
+  const resolved = resolveGates(statuses)
+  const at = (id) => resolved.ordered.findIndex((s) => s.id === id)
+  const forward = at(to) > at(row.status_id) && at(to) >= 0
+  if (!forward) return res.json({ gates: [] })
+
+  const team = (await all('SELECT * FROM users')).map(publicUser)
+  // Who may wear each hat. The crew hats are declared on the person; review is
+  // a permission, because signing work off is an SMM's job, not a craft.
+  const eligible = (role) => (role === 'reviewer'
+    ? team.filter((u) => u.role === 'admin' || !!u.permissions?.review_publish)
+    : team.filter((u) => (u.crew_roles || []).includes(role)))
+
+  const NEEDS = {
+    shoot: { owner: 'operator_id', role: 'operator', label: 'shooter', link: null },
+    edit: { owner: 'editor_id', role: 'editor', label: 'editor', link: 'shot_link', what: 'the footage' },
+    review: { owner: 'reviewer_id', role: 'reviewer', label: 'reviewer', link: 'ready_link', what: 'the cut', many: true },
+  }
+  const hasFile = !!(await get('SELECT 1 AS x FROM attachments WHERE content_id = ?', row.id))
+  const today = dayISO()
+  const LATE = {
+    edit: { ran: 'recording_date', revise: 'edit_due_revised' },
+    review: { ran: 'edit_ready_date', revise: 'review_due_revised' },
+  }
+
+  const gates = []
+  for (const g of gatesUpTo(to, resolved)) {
+    if (at(row.status_id) >= g.index) continue     // already behind us
+    const need = NEEDS[g.key]
+    if (!need) continue
+    const short = eligible(need.role)
+    const late = LATE[g.key]
+    const ran = late ? row[late.ran] : null
+    gates.push({
+      key: g.key,
+      stage: g.label,
+      role: need.role,
+      what: need.label,
+      owner_field: need.owner,
+      many: !!need.many,
+      current: need.many
+        ? (() => { try { return JSON.parse(row.reviewers || '[]') } catch { return [] } })()
+        : (row[need.owner] ? [row[need.owner]] : []),
+      // Strictly the people who hold the hat, and everyone else as a fallback
+      // so an empty roster never becomes a dead end.
+      candidates: short.map((u) => ({ id: u.id, name: u.name, color: u.color, position: u.position })),
+      others: team.filter((u) => !short.some((s) => s.id === u.id))
+        .map((u) => ({ id: u.id, name: u.name, color: u.color, position: u.position })),
+      link_field: need.link,
+      link_ok: need.link ? (!!row[need.link] || hasFile) : true,
+      what_link: need.what || null,
+      late: late && ran && today > ran ? { was_due: ran, revise_field: late.revise, already: row[late.revise] || null } : null,
+    })
+  }
+  res.json({ gates, to, stage: resolved.ordered.find((s) => s.id === to)?.label || '' })
+}))
+
 // ---- undoing the last move -------------------------------------------------
 // Ten seconds to take a move back. It restores the stage AND everything the
 // move stamped on the way — the handover clocks, the hats it forced you to
