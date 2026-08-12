@@ -183,6 +183,14 @@ const dragPill = async (page, srcLoc, dstLocator) => {
   await page.mouse.down()
   await page.mouse.move(pb.x + 36, pb.y + 18, { steps: 3 })
   await page.waitForTimeout(250)
+  // Bring the destination fully on screen before aiming at it. A pointer
+  // cannot be moved past the bottom of the window, so a cell hanging below
+  // the fold would be aimed at through a clamped point — and the calendar's
+  // own edge auto-scroll would then move the grid out from under it. A real
+  // hand scrolls first; so does this. (Without it the test measures the page
+  // height, not the drag, and any row added above the calendar breaks it.)
+  await dstLocator.scrollIntoViewIfNeeded().catch(() => {})
+  await page.waitForTimeout(200)
   const tb = await dstLocator.boundingBox()
   if (!tb) { await page.mouse.up(); return false }
   await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, { steps: 8 })
