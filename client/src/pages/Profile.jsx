@@ -13,6 +13,58 @@ import { Moon } from 'lucide-react'
 // tellable apart at a glance.
 const SWATCHES = ['#a32234', '#2a78d6', '#1D9E75', '#BA7517', '#7b5ad6', '#0e8f8f', '#d6499b', '#5a6b7a']
 
+// The deadline record on your own account. There is no edit control here and
+// no delete: the list is recomputed from the tasks themselves every time it is
+// opened, so the only way to change it is to change what actually happened.
+// A warning that turns out to be somebody else's delay disappears on its own.
+function WarningRecord() {
+  const [state, setState] = useState(null)
+  useEffect(() => {
+    let alive = true
+    api.get('/warnings/me').then((d) => { if (alive) setState(d) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  if (!state) return null
+  const { warnings, open } = state
+  return (
+    <>
+      <div className="section-head" style={{ marginTop: 22 }}>
+        <h2><AlertCircle size={16} style={{ verticalAlign: -2 }} /> Missed deadlines</h2>
+      </div>
+      <div className="card card-pad">
+        {warnings.length === 0 ? (
+          <div className="warn-clean"><Check size={16} /> Nothing missed. Every deadline met so far.</div>
+        ) : (
+          <>
+            <p className="muted" style={{ marginTop: 0 }}>
+              {warnings.length} missed {warnings.length === 1 ? 'deadline' : 'deadlines'}
+              {open > 0 && <> · <b>{open}</b> still running</>}. Delays caused by someone
+              handing work over late are not counted here.
+            </p>
+            <div className="warn-list">
+              {warnings.map((w) => (
+                <div className="warn-row" key={`${w.content_id}-${w.phase}`}>
+                  <AlertCircle size={16} />
+                  <div>
+                    <div className="warn-title">{w.title}</div>
+                    <div className="warn-sub">
+                      {w.phase_label} · due {w.due}
+                      {w.revised && <> (re-promised from {w.promised})</>}
+                      {w.delivered_day ? <> · delivered {w.delivered_day}</> : <> · not delivered yet</>}
+                    </div>
+                  </div>
+                  <div className="warn-days">{w.days_late}d late</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
 // Everyone's own corner: photo, display name, accent color, password.
 export default function Profile() {
   const { user, setUser } = useAuth()
@@ -206,6 +258,8 @@ export default function Profile() {
           {saved && <span className="save-ok"><Check size={15} /> Saved</span>}
         </div>
       </div>
+
+      <WarningRecord />
 
       <div className="section-head" style={{ marginTop: 22 }}><h2><Clock size={16} style={{ verticalAlign: -2 }} /> Working schedule</h2></div>
       <div className="card card-pad">

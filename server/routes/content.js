@@ -1,7 +1,8 @@
 import { Router } from 'express'
 import { createHmac } from 'crypto'
-import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, publicUser } from '../db.js'
+import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, publicUser, dayISO } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
+import { resolveGates, gatesUpTo, phasesOf } from '../deadlines.js'
 import { authRequired, canAccessDept, can, wrap, JWT_SECRET } from '../auth.js'
 import { tgMirror, tgOriginFrom, tgEsc, tgDate } from '../telegram.js'
 
@@ -165,7 +166,8 @@ const cleanChannels = async (v) => {
 // every page, on every poll. So the list carries a flag by default and the
 // picture only where a picture is shown (?thumbs=1).
 const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id,
-  operator_id, editor_id, designer_id,
+  operator_id, editor_id, designer_id, reviewer_id, reviewers,
+  shot_at, edited_at, edit_due_revised, review_due_revised,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, reference_text, reference_links, format, rubrika, script, release_date, release_time, description,
   checklist, todo_sort, pinned, ${withThumbs ? 'photo_thumb,' : ''}
@@ -188,7 +190,11 @@ const logEvent = (user, id, title, kind) =>
 // Paragraph-sized fields land as a quiet "updated the …" — no quoting essays.
 const QUIET_FIELDS = ['description', 'script', 'reference_text', 'reference_links', 'photo', 'checklist']
 const PLAIN_FIELDS = ['title', 'type', 'recording_date', 'recording_time', 'recording_end', 'edit_ready_date',
-  'design_ready_date', 'release_date', 'release_time', 'format', 'rubrika', 'ready_link', 'shot_link', 'design_link']
+  'design_ready_date', 'release_date', 'release_time', 'format', 'rubrika', 'ready_link', 'shot_link', 'design_link',
+  // A re-promised deadline is the most disputable thing on the task: it is
+  // always somebody moving their own goalposts after a late handover, so it
+  // goes in the log by name.
+  'edit_due_revised', 'review_due_revised']
 
 async function logPatch(user, row, patch) {
   const rows = []
@@ -198,7 +204,7 @@ async function logPatch(user, row, patch) {
 
   // People fields → names, resolved in one query.
   const ids = new Set()
-  for (const f of ['operator_id', 'editor_id', 'designer_id'])
+  for (const f of ['operator_id', 'editor_id', 'designer_id', 'reviewer_id'])
     if (patch[f] !== undefined && patch[f] !== row[f]) { if (row[f]) ids.add(row[f]); if (patch[f]) ids.add(patch[f]) }
   let oldAss = null; let newAss = null
   if (patch.assignees !== undefined) {
@@ -210,7 +216,7 @@ async function logPatch(user, row, patch) {
     for (const u of await all(`SELECT id, name FROM users WHERE id IN (${[...ids].map(() => '?').join(',')})`, ...ids))
       names[u.id] = u.name
   const nameOf = (id) => (id ? names[id] || `#${id}` : null)
-  for (const f of ['operator_id', 'editor_id', 'designer_id'])
+  for (const f of ['operator_id', 'editor_id', 'designer_id', 'reviewer_id'])
     if (patch[f] !== undefined && patch[f] !== row[f]) push(f.replace('_id', ''), nameOf(row[f]), nameOf(patch[f]))
   if (oldAss) push('owners', oldAss.map(nameOf).join(', ') || null, newAss.map(nameOf).join(', ') || null)
 
@@ -493,7 +499,9 @@ router.get('/:id', wrap(async (req, res) => {
     row.id)
   // Names and sizes only — the bytes come one document at a time, on a click.
   const documents = await all(`SELECT ${DOC_COLUMNS} FROM attachments WHERE content_id = ? ORDER BY id`, row.id)
-  res.json({ ...row, revisions, comments, activity, documents, has_photo: row.photo ? 1 : 0 })
+  // The three accountable phases, derived fresh — the modal shows who owes
+  // what, by when, and whether the clock has already run out on them.
+  res.json({ ...row, revisions, comments, activity, documents, phases: phasesOf(row), has_photo: row.photo ? 1 : 0 })
 }))
 
 // One line into the task's thread. Anyone who can SEE the task may speak —
@@ -606,10 +614,10 @@ router.post('/', wrap(async (req, res) => {
       return res.status(400).json({ error: 'Campaign not found' })
   }
 
-  // The crew hats: who shoots it and who cuts it (videos), or who designs
-  // it (posts) — all real team members.
-  const crew = { operator_id: null, editor_id: null, designer_id: null }
-  for (const f of ['operator_id', 'editor_id', 'designer_id']) {
+  // The crew hats: who shoots it and who cuts it (videos), who designs it
+  // (posts), and who signs it off — all real team members.
+  const crew = { operator_id: null, editor_id: null, designer_id: null, reviewer_id: null }
+  for (const f of ['operator_id', 'editor_id', 'designer_id', 'reviewer_id']) {
     if (req.body?.[f] != null && req.body[f] !== '') {
       crew[f] = Number(req.body[f])
       if (!(await userExists(crew[f])))
@@ -626,13 +634,13 @@ router.post('/', wrap(async (req, res) => {
   const status = status_id || (await get('SELECT id FROM statuses ORDER BY sort, id'))?.id || null
   const maxSort = (await get('SELECT COALESCE(MAX(todo_sort), -1) AS m FROM content')).m
   const info = await run(`
-    INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id,
+    INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id, reviewer_id,
       recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, release_date, release_time, description, ready_link,
       shot_link, design_link, reference_text, reference_links, format, rubrika, script, photo, photo_thumb, checklist, todo_sort, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     String(title).trim(), JSON.stringify(channels), safeType, assignee, JSON.stringify(assigneeList), req.user.id, status, campaignId,
-    crew.operator_id, crew.editor_id, crew.designer_id,
+    crew.operator_id, crew.editor_id, crew.designer_id, crew.reviewer_id,
     recording_date || null, recording_time, recording_end, edit_ready_date || null, design_ready_date || null, release_date || null, release_time,
     description, cleanLink(req.body?.ready_link) || null,
     cleanLink(req.body?.shot_link) || null, cleanLink(req.body?.design_link) || null,
@@ -649,6 +657,7 @@ router.post('/', wrap(async (req, res) => {
   addRole(roles, crew.operator_id, 'operator')
   addRole(roles, crew.editor_id, 'editor')
   addRole(roles, crew.designer_id, 'designer')
+  addRole(roles, crew.reviewer_id, 'reviewer')
   await notifyAssigned(req, info.lastInsertRowid, String(title).trim(), roles, dateBit(recording_date, release_date))
   // A new task raises each channel's plan: 15/16 → 15/17.
   for (const ch of channels) await bumpPlan(ch, safeType, { target: +1 }, true)
@@ -858,8 +867,12 @@ router.patch('/:id', wrap(async (req, res) => {
     patch.channels = JSON.stringify(next)
   }
 
-  // Calendar drags send only a date → allowed with move_tasks too.
-  for (const f of ['recording_date', 'edit_ready_date', 'design_ready_date', 'release_date']) {
+  // Calendar drags send only a date → allowed with move_tasks too. The two
+  // revised dates are the re-promise made when a handover lands late; they
+  // ride the same right, because the person making the promise is the person
+  // moving the card.
+  for (const f of ['recording_date', 'edit_ready_date', 'design_ready_date', 'release_date',
+    'edit_due_revised', 'review_due_revised']) {
     if (body[f] !== undefined) {
       if (!can(req.user, 'manage_content') && !can(req.user, 'move_tasks'))
         return res.status(403).json({ error: 'You don’t have permission to move dates' })
@@ -876,7 +889,7 @@ router.patch('/:id', wrap(async (req, res) => {
 
   // Crew hats (operator / editor / designer) — an editing right, linked to
   // real members.
-  for (const f of ['operator_id', 'editor_id', 'designer_id']) {
+  for (const f of ['operator_id', 'editor_id', 'designer_id', 'reviewer_id']) {
     if (body[f] !== undefined) {
       if (!can(req.user, 'manage_content'))
         return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
@@ -992,6 +1005,84 @@ router.patch('/:id', wrap(async (req, res) => {
       if (await mayLeaveStage(k, row.status_id)) { allowed = true; break }
     }
     if (!allowed) return res.status(403).json({ error: 'Moving work out of this stage isn’t your step — see the stage rules in Admin' })
+  }
+
+  // ---- the handover gates -------------------------------------------------
+  // Moving a card forward is a claim that the stage behind it is finished, so
+  // each gate makes the claim provable before the move lands: the next owner
+  // is named, and the file that proves the work exists is attached. Gates are
+  // cumulative — dragging a card straight from Idea to Ready does not skip the
+  // shooter and the editor on the way past. Sending work BACK for fixes is
+  // never gated, and admins are never blocked.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin') {
+    const statuses = await all('SELECT id, label, sort, is_final FROM statuses')
+    const resolved = resolveGates(statuses)
+    const at = (id) => resolved.ordered.findIndex((s) => s.id === id)
+    const forward = at(patch.status_id) > at(row.status_id) && at(patch.status_id) >= 0
+
+    if (forward) {
+      const val = (f) => (patch[f] !== undefined ? patch[f] : row[f])
+      const hasFile = async () =>
+        !!(await get('SELECT 1 AS x FROM attachments WHERE content_id = ?', row.id))
+
+      // What each gate demands: the owner it hands the work to, and the
+      // delivery that proves the stage before it really happened.
+      const NEEDS = {
+        shoot:  { owner: 'operator_id', who: 'a shooter', link: null },
+        edit:   { owner: 'editor_id', who: 'an editor', link: 'shot_link', what: 'the footage' },
+        review: { owner: 'reviewer_id', who: 'a reviewer', link: 'ready_link', what: 'the cut' },
+      }
+      for (const gate of gatesUpTo(patch.status_id, resolved)) {
+        const need = NEEDS[gate.key]
+        if (!need) continue
+        if (!val(need.owner))
+          return res.status(400).json({
+            error: `Pick ${need.who} before moving this to «${gate.label}» — the stage needs an owner to answer for its deadline`,
+            gate: gate.key, missing: need.owner,
+          })
+        if (need.link && !val(need.link) && !(await hasFile()))
+          return res.status(400).json({
+            error: `Attach ${need.what} — upload the file or paste its link — before moving this to «${gate.label}»`,
+            gate: gate.key, missing: need.link,
+          })
+      }
+
+      // The re-promise. When the stage being handed over finished after its
+      // own deadline, the next owner cannot inherit a date that is already
+      // gone: the mover has to name a new one, and both dates stay on the
+      // task so the log shows what the delay cost.
+      const today = dayISO()
+      const LATE_HANDOVERS = [
+        { gate: 'edit', ran: 'recording_date', revise: 'edit_due_revised', next: 'editing' },
+        { gate: 'review', ran: 'edit_ready_date', revise: 'review_due_revised', next: 'review' },
+      ]
+      for (const h of LATE_HANDOVERS) {
+        const g = resolved.gates[h.gate]
+        if (!g || at(patch.status_id) < g.index) continue      // not crossing this gate
+        if (at(row.status_id) >= g.index) continue             // already past it
+        const ran = val(h.ran)
+        if (!ran || today <= ran) continue                     // the handover is on time
+        if (!val(h.revise))
+          return res.status(400).json({
+            error: `This is being handed over late — «${h.ran === 'recording_date' ? 'Shooting' : 'Editing'}» was due ${ran}. Set a new ${h.next} deadline before moving it, so the next person is judged on a date they can actually meet.`,
+            gate: h.gate, missing: h.revise, was_due: ran,
+          })
+      }
+    }
+  }
+
+  // The handover clocks. Crossing a gate stops the previous stage's clock for
+  // good — stamped once, never rewritten, so a card dragged back and forth
+  // keeps the moment the work actually arrived.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id) {
+    const statuses = await all('SELECT id, label, sort, is_final FROM statuses')
+    const resolved = resolveGates(statuses)
+    const at = (id) => resolved.ordered.findIndex((s) => s.id === id)
+    const target = at(patch.status_id)
+    for (const [gateKey, stamp] of [['edit', 'shot_at'], ['review', 'edited_at']]) {
+      const g = resolved.gates[gateKey]
+      if (g && target >= g.index && !row[stamp]) patch[stamp] = new Date().toISOString()
+    }
   }
 
   // The videographer's clock: the first time the cut reaches a ready-or-later

@@ -17,6 +17,7 @@ import ContentBoard from '../components/ContentBoard.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
 import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
 import ContentModal from '../components/ContentModal.jsx'
+import StageGate from '../components/StageGate.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
 import CompareCard from '../components/CompareCard.jsx'
 import Avatar from '../components/Avatar.jsx'
@@ -165,6 +166,7 @@ export default function Department() {
   const setView = (v) => { setViewState(v); localStorage.setItem('satashkent_dept_view', v) }
   const [selectedDate, setSelectedDate] = useState(null)
   const [openItem, setOpenItem] = useState(null) // content item or 'new'
+  const [gate, setGate] = useState(null)         // a move waiting on its handover details
   const [newDefaults, setNewDefaults] = useState({})
   const [fs, setFs] = useFullscreen() // the content workspace over the whole screen
   const [fsProg, setFsProg] = useFullscreen() // the programs timeline, same treatment
@@ -348,7 +350,14 @@ export default function Department() {
     setContent((prev) => prev.filter((x) => x.id !== item.id))
     refreshTrackers() // deleting a task lowers the plan again
   }
-  const moveStatus = (item, statusId) => updateContent(item, { status_id: statusId }).catch((e) => alert(e.message))
+  // A refused move is usually not an error but a question — "who is editing
+  // this?", "where is the footage?". Those open the handover dialog instead of
+  // an alert; anything else is still a plain failure.
+  const moveStatus = (item, statusId) =>
+    updateContent(item, { status_id: statusId }).catch((e) => {
+      if (e.data?.gate && e.data?.missing) setGate({ item, statusId })
+      else alert(e.message)
+    })
   const moveDate = (item, field, iso) => updateContent(item, { [field]: iso }).catch((e) => alert(e.message))
   // The board's foot inputs: a title lands straight in that column.
   const quickAdd = async (title, statusId) => {
@@ -839,6 +848,23 @@ export default function Department() {
           onCreate={createContent}
           onUpdate={updateContent}
           onDelete={deleteContent}
+        />
+      )}
+
+      {/* The handover gate: the move the server would not take on trust. */}
+      {gate && (
+        <StageGate
+          item={gate.item}
+          statusId={gate.statusId}
+          statusLabel={statusesById[gate.statusId]?.label || ''}
+          team={team}
+          onCancel={() => setGate(null)}
+          onDone={(saved) => {
+            setGate(null)
+            setContent((prev) => prev.map((x) => (x.id === saved.id ? saved : x)).filter((x) => x.channels.includes(key)))
+            refreshTrackers()
+            toast('Moved — the handover is on the record')
+          }}
         />
       )}
     </>

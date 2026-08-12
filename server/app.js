@@ -29,6 +29,7 @@ import hiringRoutes from './routes/hiring.js'
 import candidateRoutes from './routes/candidates.js'
 import telegramRoutes from './routes/telegram.js'
 import { docsRouter, kpisRouter } from './routes/docs.js'
+import warningRoutes from './routes/warnings.js'
 import { tgDailyReminders, tgRunSchedules } from './telegram.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -102,6 +103,7 @@ app.use('/api/candidates', candidateRoutes)
 app.use('/api/telegram', telegramRoutes)
 app.use('/api/docs', docsRouter)
 app.use('/api/kpis', kpisRouter)
+app.use('/api/warnings', warningRoutes)
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }))
 

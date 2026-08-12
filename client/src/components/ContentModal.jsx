@@ -16,6 +16,13 @@ import { activityLine } from '../lib/activity.js'
 // Documents a task can carry. The cap is deliberate and low: every byte is
 // stored, synced and paid for on the team's storage, so a 4 MB brief is a
 // brief, not a raw export.
+// How each phase state reads to the person looking at it. "Excused" is the
+// important one: it says the delay belongs upstream, not to this owner.
+const PHASE_WORDS = {
+  ok: 'on time', late: 'late', excused: 'excused — handed over late',
+  pending: 'in hand', waiting: 'not started',
+}
+
 const DOC_MAX = 4 * 1024 * 1024
 const DOC_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.csv'
 const docSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
@@ -89,6 +96,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     operator_id: item?.operator_id ?? null,
     editor_id: item?.editor_id ?? null,
     designer_id: item?.designer_id ?? null,
+    reviewer_id: item?.reviewer_id ?? null,
     ready_link: item?.ready_link || '',
     shot_link: item?.shot_link || '',
     design_link: item?.design_link || '',
@@ -151,12 +159,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // and sizes travel with the task; the bytes are fetched when one is opened.
   const [docs, setDocs] = useState(() => item?.documents || [])
   const [docBusy, setDocBusy] = useState(false)
+  // Who owes what, by when — derived by the server from the task's own clocks.
+  const [phases, setPhases] = useState(() => item?.phases || [])
   useEffect(() => {
     if (!item) return
     api.get(`/content/${item.id}`).then((full) => {
       setRevisions(full.revisions || [])
       setComments(full.comments || [])
       setActivity(full.activity || [])
+      setPhases(full.phases || [])
       setDocs(full.documents || [])
       setForm((f) => ({ ...f, photo: full.photo, photo_thumb: full.photo_thumb }))
       setInitialPhoto(full.photo)
@@ -483,6 +494,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         reference_text: form.reference_text || null, reference_links: form.reference_links,
         format: form.format || null, rubrika: form.rubrika.trim() || null, script: form.script.trim() || null,
         operator_id: form.operator_id, editor_id: form.editor_id, designer_id: form.designer_id,
+        reviewer_id: form.reviewer_id,
         campaign_id: form.campaign_id,
         ...(user.role === 'admin' && form.assignee_ids ? { assignee_ids: form.assignee_ids } : {}),
       })
@@ -1026,10 +1038,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         <div className="crew-row">
           {(isDesign ? [
             { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs this post' },
+            { key: 'reviewer_id', label: 'Reviewer', role: 'reviewer', tip: 'Who signs it off — answers for the review deadline' },
           ] : [
             { key: 'operator_id', label: 'Operator', role: 'operator', tip: 'Who films / shoots this' },
             { key: 'editor_id', label: 'Editor', role: 'editor', tip: 'Who edits this' },
             { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs the artwork (thumbnail, cover…)' },
+            { key: 'reviewer_id', label: 'Reviewer', role: 'reviewer', tip: 'Who signs it off — answers for the review deadline' },
           ]).map((f) => {
             const holds = (u) => (u.crew_roles || []).includes(f.role)
             const bySort = (a, b) =>
@@ -1061,6 +1075,37 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           })}
         </div>
       </div>
+
+      {/* The three clocks. Read-only: each one is decided by what actually
+          happened to the task, not by anything typed here. */}
+      {!creating && phases.some((p) => p.state !== 'none') && (
+        <div className="cm-row">
+          <span className="cm-key">Deadlines</span>
+          <div className="phases">
+            {phases.filter((p) => p.state !== 'none').map((p) => {
+              const who = team.find((u) => u.id === p.owner_id)
+              return (
+                <div className="phase-row" key={p.phase}>
+                  <span className="phase-name">
+                    {p.label}
+                    <span className="muted" style={{ fontWeight: 400 }}>
+                      {who ? who.name : 'nobody yet'}
+                    </span>
+                  </span>
+                  <span className={`phase-state phase-${p.state}`}>{PHASE_WORDS[p.state] || p.state}</span>
+                  <span className="phase-meta">
+                    due {p.revised ? <><s>{p.promised}</s> → <b>{p.revised}</b></> : <b>{p.due}</b>}
+                    {p.delivered_day
+                      ? <> · delivered {p.delivered_day}</>
+                      : p.started_day ? <> · in hand since {p.started_day}</> : null}
+                    {p.days_late > 0 && <> · <b>{p.days_late} day{p.days_late === 1 ? '' : 's'} late</b></>}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Campaign — one dropdown, so campaign progress follows the kanban */}
       <div className="cm-row">

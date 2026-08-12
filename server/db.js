@@ -565,6 +565,18 @@ export async function initSchema() {
       operator_id    INTEGER,
       editor_id      INTEGER,
       designer_id    INTEGER, -- posts are designed, not shot: one designer hat
+      reviewer_id    INTEGER, -- the review owner: answers for a late review
+      reviewers      TEXT    NOT NULL DEFAULT '[]', -- review can be shared; reviewer_id mirrors the first
+      -- The handover clocks. Each stage's owner is judged from the moment the
+      -- work actually reached them to the moment they passed it on, so a stage
+      -- that was handed over late never reads as its owner's fault.
+      shot_at        TEXT,   -- entered Editing: the shooter's part is done
+      edited_at      TEXT,   -- entered Ready: the editor's part is done
+      -- When a handover lands late the mover must re-promise the next stage's
+      -- date. The original stays untouched, so the pair shows what was planned
+      -- and what the delay forced.
+      edit_due_revised   TEXT,
+      review_due_revised TEXT,
       checklist      TEXT    NOT NULL DEFAULT '[]',
       todo_sort      INTEGER NOT NULL DEFAULT 0,
       pinned         INTEGER NOT NULL DEFAULT 0,
@@ -871,6 +883,12 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script TEXT')
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT')
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_code TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS reviewer_id INTEGER')
+    await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS reviewers TEXT NOT NULL DEFAULT '[]'")
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shot_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edited_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_due_revised TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS review_due_revised TEXT')
   }
 
   await migrate()
@@ -978,6 +996,16 @@ async function migrate() {
     if (!(await hasColumn('content', 'format'))) await exec('ALTER TABLE content ADD COLUMN format TEXT; ALTER TABLE content ADD COLUMN rubrika TEXT; ALTER TABLE content ADD COLUMN script TEXT;')
     if (!(await hasColumn('content', 'reference_text'))) await exec("ALTER TABLE content ADD COLUMN reference_text TEXT; ALTER TABLE content ADD COLUMN reference_links TEXT NOT NULL DEFAULT '[]';")
     if (!(await hasColumn('users', 'telegram_chat_id'))) await exec('ALTER TABLE users ADD COLUMN telegram_chat_id TEXT; ALTER TABLE users ADD COLUMN telegram_code TEXT;')
+    if (!(await hasColumn('content', 'reviewer_id'))) {
+      await exec(`
+        ALTER TABLE content ADD COLUMN reviewer_id INTEGER;
+        ALTER TABLE content ADD COLUMN reviewers TEXT NOT NULL DEFAULT '[]';
+        ALTER TABLE content ADD COLUMN shot_at TEXT;
+        ALTER TABLE content ADD COLUMN edited_at TEXT;
+        ALTER TABLE content ADD COLUMN edit_due_revised TEXT;
+        ALTER TABLE content ADD COLUMN review_due_revised TEXT;
+      `)
+    }
   } catch (e) {
     console.warn('Skipping legacy migrations:', e.message)
   }
