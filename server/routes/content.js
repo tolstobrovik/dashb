@@ -1130,30 +1130,22 @@ router.patch('/:id', wrap(async (req, res) => {
         else if (need.link && !val(need.link) && !(await hasFile())) shortfalls.push({ gate: gate.key, missing: need.link })
       }
 
-      // Walls where they fit. Filmed work has an editor and a file by
-      // definition: a reel cannot be cut by nobody, and footage that was
-      // actually shot has somewhere to live. Handing one of those to Editing
-      // without both is the case this was built to stop, so it is refused.
+      // No walls, for any type. A filmed reel really does have an editor and
+      // a file somewhere, and refusing the move until both are typed in is a
+      // fair thing to want — but it is not what this dashboard is for. The
+      // team plans here and works elsewhere: footage is handed over on a hard
+      // drive, an editor is agreed in a voice note, and the card catches up
+      // afterwards. Refusing the move does not create the missing editor; it
+      // just leaves the board lying about where the work is, which is worse
+      // than a card that moved with a gap on it.
       //
-      // Everything else stays advisory, and deliberately so — a written post
-      // has no footage to attach and never will, a story is shot and posted by
-      // one person, and review's owners are the channel's SMMs rather than a
-      // field on the task. Refusing those blocked work that was genuinely
-      // finished, which is worse than not asking.
-      const FILMED = ['reel', 'video']
-      const movedType = patch.type !== undefined ? patch.type : row.type
-      if (FILMED.includes(movedType)) {
-        const wall = shortfalls.find((s) => s.gate === 'edit')
-        if (wall) {
-          const label = resolved.gates.edit?.label || 'Editing'
-          return res.status(400).json({
-            error: wall.missing === 'editor_id'
-              ? `Pick an editor before handing this to «${label}» — a ${movedType} cannot be cut by nobody`
-              : `Attach the footage — upload the file or paste its link — before handing this to «${label}»`,
-            gate: wall.gate, missing: wall.missing,
-          })
-        }
-      }
+      // So the shortfall above is worked out for EVERY move, admins included,
+      // and shown on the card by the StageGate panel (/api/warnings computes
+      // the same list) and counted against the handover deadlines below. The
+      // move itself goes through.
+      //
+      // To make the editing gate a wall again, refuse here when `shortfalls`
+      // holds a gate: 'edit' entry.
 
       // The re-promise. When the stage being handed over finished after its
       // own deadline, the next owner cannot inherit a date that is already

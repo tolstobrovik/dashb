@@ -70,22 +70,28 @@ const newTask = async (over = {}) => {
   ok('→ To shoot passes once a shooter is named', r.status === 200, `${r.status} ${r.data.error || ''}`)
 }
 
-// ---- gate 2: walls for filmed work, advice for everything else ---------
-// A reel cannot be cut by nobody and footage that was shot has somewhere to
-// live, so handing one to Editing without both is refused. A written post has
-// neither and never will, so it is only advised — a wall there blocked work
-// that was genuinely finished.
+// ---- gate 2: advice for every type, filmed work included ---------------
+// A reel really does have an editor and a file somewhere, so asking for them
+// is fair — but refusing the move does not create the missing editor. The
+// team plans here and works elsewhere (footage on a drive, an editor agreed
+// in a voice note), so a refusal only leaves the board lying about where the
+// work is. The gap is worked out and shown; the move goes through.
 {
   const t = await newTask({ operator_id: shooter })   // a reel
   await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, shooterT)
 
+  // The card knows what the move is missing BEFORE it is made — this is the
+  // question the board asks to decide whether to open the handover panel.
+  const ask = await req(`/content/${t.id}/handover?to=${S['Editing']}`, 'GET', null, shooterT)
+  ok('the board is told the editing gate has a gap', (ask.data.gates || []).some((g) => g.key === 'edit'),
+    JSON.stringify(ask.data.gates || []).slice(0, 200))
+
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
-  ok('a REEL is refused Editing with no editor', r.status === 400, `${r.status}`)
-  ok('  refusal names the editor', r.data.missing === 'editor_id', String(r.data.missing))
+  ok('…and a REEL still moves to Editing with no editor named', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and it really moved', r.data.status_id === S['Editing'], String(r.data.status_id))
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'], editor_id: editor }, shooterT)
-  ok('a REEL is refused Editing with no footage', r.status === 400, `${r.status}`)
-  ok('  refusal names the footage', r.data.missing === 'shot_link', String(r.data.missing))
+  ok('naming the editor is accepted too', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
   r = await req(`/content/${t.id}`, 'PATCH', {
     status_id: S['Editing'], editor_id: editor, shot_link: 'https://drive.google.com/raw-1',
@@ -130,11 +136,14 @@ const newTask = async (over = {}) => {
   ok('a POST dragged Idea → Ready lands where it was dropped', r.status === 200, `${r.status} ${r.data.error || ''}`)
   ok('  and it really is there', r.data.status_id === S['Ready'], String(r.data.status_id))
 
-  // A reel cannot use the same drag to skip the editing handover.
+  // A reel dragged the same way lands the same way — and the stages it
+  // skipped still stamp their clocks, so the record shows the jump.
   const v = await newTask()
   r = await req(`/content/${v.id}`, 'PATCH', { status_id: S['Ready'] }, shooterT)
-  ok('a REEL cannot skip the editing gate by dragging past it', r.status === 400, `${r.status}`)
-  ok('  and it is the editing gate that stops it', r.data.gate === 'edit', String(r.data.gate))
+  ok('a REEL dragged Idea → Ready lands there too', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  const { data: jumped } = await req(`/content/${v.id}`)
+  ok('  and the gates it crossed still stamped their clocks',
+    !!jumped.shot_at && !!jumped.edited_at, `shot_at=${jumped.shot_at} edited_at=${jumped.edited_at}`)
 }
 
 // ---- going backwards is never gated ------------------------------------
