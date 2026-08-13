@@ -131,6 +131,7 @@ jobs:
           node qa/round40-suite.mjs
           node qa/round41-suite.mjs
           node qa/round47-suite.mjs
+          node qa/round64-suite.mjs
 
       - name: Server log on failure
         if: failure()

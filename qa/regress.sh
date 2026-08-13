@@ -51,6 +51,10 @@ fuser -k 9977/tcp 2>/dev/null; sleep 0.5
 # storage-suite brings its own mock (9989) and instances — outage survival
 fuser -k 9989/tcp 2>/dev/null; sleep 0.5
 if node storage-suite.mjs > $SP/out-storage-suite.log 2>&1; then echo "storage-suite PASS" >> $RES; else echo "storage-suite FAIL" >> $RES; fi
+# round64 brings its own server (4103) and Telegram mock (9986)
+fuser -k 4103/tcp 9986/tcp 2>/dev/null; sleep 0.5
+if node round64-suite.mjs > $SP/out-round64-suite.log 2>&1; then echo "round64-suite PASS" >> $RES; else echo "round64-suite FAIL" >> $RES; fi
+fuser -k 4103/tcp 9986/tcp 2>/dev/null; sleep 0.5
 fuser -k 9989/tcp 2>/dev/null; sleep 0.5
 
 # ---- pc-suite + journey on 4081 ----
