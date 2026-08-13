@@ -1067,8 +1067,10 @@ router.patch('/:id', wrap(async (req, res) => {
   // is named, and the file that proves the work exists is attached. Gates are
   // cumulative — dragging a card straight from Idea to Ready does not skip the
   // shooter and the editor on the way past. Sending work BACK for fixes is
-  // never gated, and admins are never blocked.
-  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin') {
+  // never gated. Admins are NOT exempt: they may move anything (the ownership
+  // lock lets them through), but "who is taking this, and where is the work"
+  // has to be answered by whoever moves it, or the record is worth nothing.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id) {
     const statuses = await all('SELECT id, label, sort, is_final FROM statuses')
     const resolved = resolveGates(statuses)
     const at = (id) => resolved.ordered.findIndex((s) => s.id === id)
@@ -1354,7 +1356,15 @@ router.post('/:id/undo', wrap(async (req, res) => {
   if (!canSee(req.user, { ...row, channels: JSON.parse(row.channels || '[]') }))
     return res.status(403).json({ error: 'Not your channel' })
 
-  const snap = await get('SELECT * FROM undo_moves WHERE content_id = ?', row.id)
+  // The move being taken back may have landed on ANOTHER serverless instance
+  // a second ago, and this instance's copy of the database can lag behind it.
+  // Saying "nothing to undo" from a stale copy would eat the very ten seconds
+  // this feature promises, so pull the freshest data once before believing it.
+  let snap = await get('SELECT * FROM undo_moves WHERE content_id = ?', row.id)
+  if (!snap) {
+    await resyncStorage().catch(() => {})
+    snap = await get('SELECT * FROM undo_moves WHERE content_id = ?', row.id)
+  }
   if (!snap) return res.status(404).json({ error: 'There is nothing to undo on this task' })
 
   const age = (Date.now() - Date.parse(snap.created_at)) / 1000

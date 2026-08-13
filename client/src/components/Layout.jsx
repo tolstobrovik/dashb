@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
+import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import QuickFind from './QuickFind.jsx'
 import NotificationsBell from './NotificationsBell.jsx'
@@ -43,6 +43,7 @@ export default function Layout() {
   else if (location.pathname.startsWith('/overview')) title = 'Overview'
   else if (location.pathname.startsWith('/brief')) title = 'My Day'
   else if (location.pathname.startsWith('/todo')) title = 'To-Do'
+  else if (location.pathname.startsWith('/missed-tasks')) title = 'Missed tasks'
   else if (location.pathname.startsWith('/missed')) title = 'Statistics'
   else if (location.pathname.startsWith('/crew')) title = 'Post Production'
   else if (location.pathname.startsWith('/team')) title = 'Team & hiring'
@@ -79,6 +80,9 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/missed" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <BarChart3 size={16} /> Statistics
+          </NavLink>
+          <NavLink to="/missed-tasks" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+            <AlertTriangle size={16} /> Missed tasks
           </NavLink>
           <NavLink to="/docs" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <ScrollText size={16} /> Docs & KPIs

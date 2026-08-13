@@ -2732,3 +2732,55 @@ button.cb-toggle:hover { color: var(--ink); }
 .gate-date .input { flex: 1; }
 .gate-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
 .gate-foot .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---- your stage, tinted ------------------------------------------------
+   The column your craft owns, so the board answers "where do I look?" before
+   you have read a single heading. Admins hold every hat, so they get none —
+   tinting all six would tint nothing. */
+.board-col.my-col {
+  box-shadow: inset 0 0 0 1.5px var(--brand-300);
+  background: color-mix(in srgb, var(--brand-500) 9%, transparent) !important;
+}
+.my-col-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--brand-600); background: var(--brand-50);
+  border-radius: 999px; padding: 2px 7px; margin-left: 2px;
+}
+/* ---- drilling into a person's record ---------------------------------- */
+button.blame-person { width: 100%; border: 0; border-top: 1px solid var(--hairline); background: none; font: inherit; text-align: left; cursor: pointer; }
+button.blame-person:hover { background: var(--surface-2); }
+.blame-caret { margin-left: 6px; }
+.blame-tasks { display: grid; gap: 3px; padding: 4px 0 8px 12px; }
+.blame-task { display: grid; grid-template-columns: minmax(120px, auto) 1fr auto; gap: 10px; align-items: baseline; font-size: 12px; }
+.blame-task-title { font-weight: 600; }
+
+/* ---- every miss, with a name on it ------------------------------------ */
+.mt-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mt-filters .select { min-width: 150px; }
+.mt-summary { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hairline); color: var(--ink-2); font-size: 13px; }
+.mt-row {
+  display: grid; grid-template-columns: 104px minmax(140px, 1.4fr) 130px auto 1fr auto;
+  gap: 10px; align-items: center; padding: 9px 2px; font-size: 13px;
+  border-bottom: 1px solid var(--hairline);
+}
+.mt-row:last-child { border-bottom: 0; }
+.mt-role {
+  display: inline-flex; align-items: center; gap: 5px; justify-content: center;
+  font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+}
+.rl-shoot  { background: #fff1e2; color: #9a4a12; }
+.rl-edit   { background: #fdecec; color: #a3213a; }
+.rl-review { background: #e7f0fd; color: #1a5ba6; }
+.mt-title { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mt-twice {
+  font-size: 10.5px; font-weight: 600; color: var(--warn-ink);
+  background: #fff4dd; border-radius: 999px; padding: 2px 7px;
+}
+.mt-who { color: var(--ink-2); }
+.mt-meta { display: flex; gap: 4px; flex-wrap: wrap; }
+.mt-when { color: var(--muted); font-size: 12px; text-align: right; }
+.mt-days { font-weight: 700; color: var(--critical); white-space: nowrap; }
+@media (max-width: 900px) {
+  .mt-row { grid-template-columns: 1fr auto; }
+  .mt-role, .mt-who, .mt-meta, .mt-when { grid-column: 1 / -1; text-align: left; }
+}

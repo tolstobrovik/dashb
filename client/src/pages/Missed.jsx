@@ -63,15 +63,19 @@ const PHASE_TIP = {
 }
 function PipelineBlame() {
   const [rep, setRep] = useState(null)
+  const [all, setAll] = useState(null)   // every warning on the team, admin-only
+  const [open, setOpen] = useState(null) // which person is expanded
   useEffect(() => {
     let alive = true
     api.get('/warnings/report').then((d) => { if (alive) setRep(d) }).catch(() => {})
+    api.get('/warnings').then((d) => { if (alive) setAll(d.warnings || []) }).catch(() => {})
     return () => { alive = false }
   }, [])
   if (!rep || !rep.phases?.some((p) => p.judged > 0)) return null
 
   const worstDays = Math.max(1, ...rep.phases.map((p) => p.days_lost))
-  const guilty = rep.people.filter((p) => p.late > 0).slice(0, 8)
+  const guilty = rep.people.filter((p) => p.late > 0)
+  const forPerson = (id) => (all || []).filter((w) => w.owner_id === id)
   return (
     <>
       <div className="section-head" style={{ marginTop: 6 }}>
@@ -107,18 +111,45 @@ function PipelineBlame() {
           </p>
         )}
 
+        {/* Every person's record, and — one click down — exactly which tasks
+            make it up. An accusation nobody can check is not worth making. */}
         {guilty.length > 0 && (
           <div className="blame-people">
-            {guilty.map((p) => (
-              <div className="blame-person" key={p.user_id}>
-                <span className="blame-who">{p.name || `#${p.user_id}`}</span>
-                <span className="blame-split">
-                  {Object.entries(p.phases).filter(([, v]) => v.late > 0)
-                    .map(([k, v]) => `${k} ×${v.late}`).join(' · ')}
-                </span>
-                <span className="blame-days">{p.days_lost}d</span>
-              </div>
-            ))}
+            {guilty.map((p) => {
+              const mine = forPerson(p.user_id)
+              const isOpen = open === p.user_id
+              return (
+                <div key={p.user_id}>
+                  <button type="button" className="blame-person"
+                    onClick={() => setOpen(isOpen ? null : p.user_id)}>
+                    <span className="blame-who">{p.name || `#${p.user_id}`}</span>
+                    <span className="blame-split">
+                      {Object.entries(p.phases).filter(([, v]) => v.late > 0)
+                        .map(([k, v]) => `${k} ×${v.late}`).join(' · ')}
+                      {mine.length > 0 && <span className="blame-caret">{isOpen ? '▾' : '▸'}</span>}
+                    </span>
+                    <span className="blame-days">{p.days_lost}d</span>
+                  </button>
+                  {isOpen && (
+                    <div className="blame-tasks">
+                      {mine.length === 0 && <div className="muted">No open items to show.</div>}
+                      {mine.map((w) => (
+                        <div className="blame-task" key={`${w.content_id}-${w.phase}`}>
+                          <span className="blame-task-title">{w.title}</span>
+                          <span className="muted">
+                            {w.phase_label} · due {w.due}
+                            {w.revised && <> (re-promised from {w.promised})</>}
+                            {w.delivered_day ? <> · delivered {w.delivered_day}</> : <> · not delivered</>}
+                            {w.shared_with?.length > 0 && <> · shared</>}
+                          </span>
+                          <span className="blame-days">{w.days_late}d</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

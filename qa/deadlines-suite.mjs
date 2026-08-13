@@ -157,22 +157,25 @@ const newTask = async (over = {}) => {
 
 // ---- the excuse: upstream ate the whole window --------------------------
 {
-  // Handed over today, but the editor's deadline was yesterday and nobody
-  // re-promised (an admin moved it, bypassing the gate).
-  const t = await newTask({ operator_id: shooter, editor_id: editor, recording_date: day(-3), edit_ready_date: day(-1) })
-  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'], shot_link: 'https://drive.google.com/raw-5' })
+  // The shoot is not late, so the gate does not demand a new promise — but the
+  // editing deadline was set BEFORE the shooting one and has already gone. The
+  // editor inherits a date that was dead on arrival, through nobody's fault of
+  // their own, and must not be charged for it.
+  const t = await newTask({ operator_id: shooter, editor_id: editor, recording_date: day(1), edit_ready_date: day(-1) })
+  const r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'], shot_link: 'https://drive.google.com/raw-5' })
+  ok('an on-time handover needs no re-promise', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
   const { data: full } = await req(`/content/${t.id}`)
   const edit = (full.phases || []).find((p) => p.phase === 'edit')
   ok('editor is EXCUSED when the work arrived after their own deadline', edit?.state === 'excused', String(edit?.state))
   const shoot = (full.phases || []).find((p) => p.phase === 'shoot')
-  ok('the shooter still carries it', shoot?.state === 'late', String(shoot?.state))
+  ok('the shooter, who delivered inside their own date, is clean', shoot?.state === 'ok', String(shoot?.state))
 }
 
 // ---- the account record -------------------------------------------------
 {
   const { data: mine } = await req('/warnings/me', 'GET', null, shooterT)
-  ok('a worker sees their own warnings', mine.count >= 2, `${mine.count} warnings`)
+  ok('a worker sees their own warnings', mine.count >= 1, `${mine.count} warnings`)
   ok('  each names the task and the phase', mine.warnings.every((w) => w.title && w.phase), '')
   ok('  each says how late', mine.warnings.every((w) => typeof w.days_late === 'number'), '')
 
