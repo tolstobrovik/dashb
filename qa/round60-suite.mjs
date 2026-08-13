@@ -147,8 +147,7 @@ await page.waitForTimeout(500)
 // clicking the day itself still gives the day
 const cell = page.locator(`.cal-day[data-drop="${day(2)}"]`).first()
 await cell.scrollIntoViewIfNeeded()
-const box = await cell.boundingBox()
-await page.mouse.click(box.x + box.width - 12, box.y + box.height - 10) // empty corner of the cell
+await cell.locator('.cal-daynum').click()   // the date itself is never a task
 await page.waitForTimeout(900)
 ok('clicking the empty part of a day still opens the day', (await page.locator('.planner').count()) > 0)
 
