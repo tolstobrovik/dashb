@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle } from 'lucide-react'
+import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import QuickFind from './QuickFind.jsx'
 import NotificationsBell from './NotificationsBell.jsx'
@@ -11,6 +11,24 @@ import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAutoUpdate } from '../lib/useAutoUpdate.js'
 import { iconFor } from '../lib/constants.js'
+
+// Signed in with a password that is printed in this repository. The source is
+// readable and the dashboard sits on a public URL, so this is the shortest way
+// in for anyone who finds it. It follows you across every page — not a toast
+// that scrolls away — and it takes one click to fix.
+function WeakPasswordBanner({ user }) {
+  if (!user?.weak_password) return null
+  return (
+    <div className="weak-pw" role="alert">
+      <ShieldAlert size={16} />
+      <span>
+        <b>Your password is the one this app ships with.</b> Anyone who finds the
+        dashboard can sign in as {user.name}.
+      </span>
+      <NavLink to="/profile" className="weak-pw-go">Change it</NavLink>
+    </div>
+  )
+}
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -96,6 +114,7 @@ export default function Layout() {
           <button className="icon-btn" onClick={logout} data-tip="Sign out" data-tip-left="" aria-label="Sign out"><LogOut size={17} /></button>
         </header>
         <main className="content">
+          <WeakPasswordBanner user={user} />
           <Outlet />
         </main>
         {finding && <QuickFind onClose={() => setFinding(false)} />}
@@ -131,6 +150,7 @@ export default function Layout() {
           <NotificationsBell user={user} />
         </header>
         <main className="content">
+          <WeakPasswordBanner user={user} />
           <Outlet />
         </main>
         {finding && <QuickFind onClose={() => setFinding(false)} />}

@@ -355,6 +355,14 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                             style={st ? { background: st.color, color: onColor(st.color), borderLeftColor: st.color } : undefined}
                             onPointerDown={(e) => startDrag(e, it)}
                             onContextMenu={(e) => { if (dragId === it.id) e.preventDefault() }}
+                            // Clicking a TASK opens that task. Only clicking
+                            // the empty part of a day opens the day. Without
+                            // this the click fell through to the cell and you
+                            // got a day summary you then had to read to find
+                            // the thing you had already pointed at. A click
+                            // that ends a drag is swallowed higher up, so
+                            // dropping a pill still never opens anything.
+                            onClick={(e) => { e.stopPropagation(); if (onOpenItem) onOpenItem(it); else onDayClick(iso) }}
                             title={`${it.title} · ${typeInfo(it.type).label}${st ? ` · ${st.label}` : ''}`}
                           >
                             <TIcon size={10} style={{ flexShrink: 0 }} />

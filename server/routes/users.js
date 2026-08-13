@@ -150,6 +150,7 @@ router.patch('/me', wrap(async (req, res) => {
       return res.status(403).json({ error: 'Current password is incorrect' })
     if (String(b.new_password).length < 4) return res.status(400).json({ error: 'New password is too short (min 4 characters)' })
     patch.password_hash = bcrypt.hashSync(String(b.new_password), 10)
+    patch.weak_password = 0 // they picked their own — the warning goes away
   }
   // Everyone keeps their own phone and working schedule up to date.
   const schedErr = scheduleFields(b, patch, { own: true })

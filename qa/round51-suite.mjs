@@ -141,11 +141,19 @@ await sel(0).selectOption(String(anvar.id))
 await page.waitForTimeout(300)
 const dayCell = page.locator(`.cal-day[data-drop="${day(1)}"]`).first()
 if (await dayCell.count()) {
-  await dayCell.click()
-  await page.waitForTimeout(400)
-  const agenda = (await page.locator('.tcard-title, .ag-title, .ov-title').allTextContents()).filter((t) => t.startsWith('f51'))
+  // The EMPTY part of the cell. Clicking its centre would land on a task pill,
+  // and a click on a task opens that task rather than the day — which is the
+  // point of the rule, not a fault in it.
+  await dayCell.scrollIntoViewIfNeeded()
+  await dayCell.locator('.cal-daynum').click()   // the date itself is never a task
+  await page.waitForTimeout(600)
+  // .agenda-title is what the day view actually renders. The old selector
+    // list matched nothing, so `every()` on an empty array passed the pin
+    // without ever looking at the day — the `length > 0` below is what makes
+    // this assertion mean something.
+  const agenda = (await page.locator('.agenda-title').allTextContents()).filter((t) => t.startsWith('f51'))
   ok('a day’s agenda shows only the filtered person’s work',
-    agenda.every((t) => t === 'f51: anvar shoots'), agenda.join(' / '))
+    agenda.length > 0 && agenda.every((t) => t === 'f51: anvar shoots'), agenda.join(' / '))
   await page.locator('.pill', { hasText: 'Board' }).click()
   await page.waitForTimeout(300)
 } else ok('a day’s agenda shows only the filtered person’s work', false, 'day cell not found')

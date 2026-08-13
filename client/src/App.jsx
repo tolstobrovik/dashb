@@ -15,6 +15,7 @@ const Todo = lazy(() => import('./pages/Todo.jsx'))
 const Brief = lazy(() => import('./pages/Brief.jsx'))
 const Missed = lazy(() => import('./pages/Missed.jsx'))
 const MissedTasks = lazy(() => import('./pages/MissedTasks.jsx'))
+const Schedule = lazy(() => import('./pages/Schedule.jsx'))
 const Unassigned = lazy(() => import('./pages/Unassigned.jsx'))
 const Crew = lazy(() => import('./pages/Crew.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
@@ -69,6 +70,8 @@ export default function App() {
           <Route path="/dept/:key" element={<Department />} />
           <Route path="/brief" element={<Brief />} />
           <Route path="/todo" element={<Todo />} />
+          <Route path="/releases" element={<Schedule mode="release" />} />
+          <Route path="/recordings" element={<Schedule mode="recording" />} />
           <Route path="/missed" element={<Missed />} />
           <Route path="/missed-tasks" element={<MissedTasks />} />
           <Route

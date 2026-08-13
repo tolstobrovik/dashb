@@ -58,25 +58,33 @@ const newTask = async (over = {}) => {
 // ---- gate 1: naming the shooter ----------------------------------------
 {
   const t = await newTask()
+  // The gates ADVISE rather than refuse (the owner's call: ordinary work was
+  // being blocked — a written post has no cut, and footage handed over on a
+  // drive never becomes a link). What a stage is missing is still worked out
+  // and still shown on the card; the move itself is accepted.
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, shooterT)
-  ok('→ To shoot is refused with no shooter', r.status === 400, `${r.status} ${r.data.error || ''}`)
-  ok('  refusal names the missing field', r.data.missing === 'operator_id', String(r.data.missing))
+  ok('→ To shoot is accepted even with no shooter named', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and the card really moved', r.data.status_id === S['To shoot'], String(r.data.status_id))
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'], operator_id: shooter }, shooterT)
   ok('→ To shoot passes once a shooter is named', r.status === 200, `${r.status} ${r.data.error || ''}`)
 }
 
-// ---- gate 2: the editor and the footage --------------------------------
+// ---- gate 2: walls for filmed work, advice for everything else ---------
+// A reel cannot be cut by nobody and footage that was shot has somewhere to
+// live, so handing one to Editing without both is refused. A written post has
+// neither and never will, so it is only advised — a wall there blocked work
+// that was genuinely finished.
 {
-  const t = await newTask({ operator_id: shooter })
+  const t = await newTask({ operator_id: shooter })   // a reel
   await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, shooterT)
 
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
-  ok('→ Editing is refused with no editor', r.status === 400, `${r.status}`)
+  ok('a REEL is refused Editing with no editor', r.status === 400, `${r.status}`)
   ok('  refusal names the editor', r.data.missing === 'editor_id', String(r.data.missing))
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'], editor_id: editor }, shooterT)
-  ok('→ Editing is refused with an editor but no footage', r.status === 400, `${r.status}`)
+  ok('a REEL is refused Editing with no footage', r.status === 400, `${r.status}`)
   ok('  refusal names the footage', r.data.missing === 'shot_link', String(r.data.missing))
 
   r = await req(`/content/${t.id}`, 'PATCH', {
@@ -89,17 +97,22 @@ const newTask = async (over = {}) => {
   ok('editor recorded as owner', full.editor_id === editor)
 }
 
+// A written post carries none of that and must not be stopped for it.
+{
+  const t = await newTask({ type: 'post', operator_id: shooter })
+  const r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
+  ok('a POST moves on with no editor and nothing attached', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and the clock still stamps', !!(await req(`/content/${t.id}`)).data.shot_at)
+}
+
 // ---- gate 3: the reviewer and the cut ----------------------------------
 {
   const t = await newTask({ operator_id: shooter, editor_id: editor, shot_link: 'https://drive.google.com/raw-2' })
   await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
 
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Ready'] }, editorT)
-  ok('→ Ready is refused with no reviewer', r.status === 400, `${r.status}`)
-  ok('  refusal names the reviewer', r.data.missing === 'reviewer_id', String(r.data.missing))
-
-  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Ready'], reviewer_id: reviewer }, editorT)
-  ok('→ Ready is refused without the cut', r.status === 400, `${r.status}`)
+  ok('→ Ready is accepted with no reviewer named', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  the edit clock still stamps', !!(await req(`/content/${t.id}`)).data.edited_at)
 
   r = await req(`/content/${t.id}`, 'PATCH', {
     status_id: S['Ready'], reviewer_id: reviewer, ready_link: 'https://drive.google.com/cut-1',
@@ -111,10 +124,17 @@ const newTask = async (over = {}) => {
 
 // ---- gates are cumulative: no jumping the queue -------------------------
 {
-  const t = await newTask()
-  const r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Ready'] }, shooterT)
-  ok('Idea → Ready in one drag is refused', r.status === 400, `${r.status}`)
-  ok('  and it stops at the FIRST unmet gate', r.data.gate === 'shoot', String(r.data.gate))
+  // A post sails past — nothing it crosses is a wall for its type.
+  const p = await newTask({ type: 'post' })
+  let r = await req(`/content/${p.id}`, 'PATCH', { status_id: S['Ready'] }, shooterT)
+  ok('a POST dragged Idea → Ready lands where it was dropped', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and it really is there', r.data.status_id === S['Ready'], String(r.data.status_id))
+
+  // A reel cannot use the same drag to skip the editing handover.
+  const v = await newTask()
+  r = await req(`/content/${v.id}`, 'PATCH', { status_id: S['Ready'] }, shooterT)
+  ok('a REEL cannot skip the editing gate by dragging past it', r.status === 400, `${r.status}`)
+  ok('  and it is the editing gate that stops it', r.data.gate === 'edit', String(r.data.gate))
 }
 
 // ---- going backwards is never gated ------------------------------------
@@ -132,9 +152,10 @@ const newTask = async (over = {}) => {
   await req(`/content/${t.id}`, 'PATCH', { shot_link: 'https://drive.google.com/raw-4' })
 
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
-  ok('a late handover is refused without a new deadline', r.status === 400, `${r.status}`)
-  ok('  refusal asks for the revised date', r.data.missing === 'edit_due_revised', String(r.data.missing))
-  ok('  refusal states what was missed', r.data.was_due === day(-2), String(r.data.was_due))
+  ok('a late handover goes through without anyone being stopped', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and the new deadline writes itself — today, when the work arrived',
+    r.data.edit_due_revised === day(0), String(r.data.edit_due_revised))
+  ok('  with the missed date untouched beside it', r.data.edit_ready_date === day(-1), String(r.data.edit_ready_date))
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'], edit_due_revised: day(3) }, shooterT)
   ok('the move lands once a new deadline is set', r.status === 200, `${r.status} ${r.data.error || ''}`)
