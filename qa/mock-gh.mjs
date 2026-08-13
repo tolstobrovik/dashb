@@ -19,6 +19,7 @@ let calls = {}
 let outage = false
 let requireToken = null
 let rateLimit = { left: 0, status: 403, after: 1, words: true }
+let slowPut = 0  // ms to hold a contents PUT open, so a write can land mid-upload
 const count = (k) => { calls[k] = (calls[k] || 0) + 1 }
 const bumpEtag = () => { currentEtag = `"etag-${++etagN}"` }
 bumpEtag()
@@ -45,6 +46,9 @@ const server = http.createServer((req, res) => {
     if (p === '/__require' && req.method === 'POST') { requireToken = body?.token || null; return send(200, { requireToken }) }
     // Rate-limit the next N calls the way GitHub really does: a 403 (or 429)
     // carrying Retry-After and an exhausted budget. `n: -1` never lets up.
+    // Hold uploads open for a while — long enough for another write to land
+    // while one is in the air, which is where concurrency bugs live.
+    if (p === '/__slow' && req.method === 'POST') { slowPut = Number(body?.ms || 0); return send(200, { slowPut }) }
     if (p === '/__ratelimit' && req.method === 'POST') {
       rateLimit = { left: body?.n ?? 0, status: body?.status || 403, after: body?.after ?? 1, words: body?.words !== false }
       return send(200, { rateLimit })
@@ -130,10 +134,14 @@ const server = http.createServer((req, res) => {
       if (file && body.sha !== file.blobSha) return send(409, { message: 'sha mismatch' })
       if (!file && body.sha) return send(422, { message: 'sha provided but file does not exist' })
       const bytes = Buffer.from(body.content, 'base64')
-      file = { bytes, blobSha: sha1(bytes) }
-      branches[branch].head = `commit-${++commitN}`
-      bumpEtag()
-      return send(body.sha ? 200 : 201, { content: { sha: file.blobSha }, commit: { sha: branches[branch].head } })
+      const land = () => {
+        file = { bytes, blobSha: sha1(bytes) }
+        branches[branch].head = `commit-${++commitN}`
+        bumpEtag()
+        send(body.sha ? 200 : 201, { content: { sha: file.blobSha }, commit: { sha: branches[branch].head } })
+      }
+      if (slowPut > 0) { setTimeout(land, slowPut); return }
+      return land()
     }
 
     send(404, { message: `unhandled ${req.method} ${p}` })

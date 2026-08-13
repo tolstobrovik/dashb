@@ -266,8 +266,7 @@ async function createGithubBackend() {
     client = openClient()
   }
 
-  const flush = async () => {
-    if (!dirty) return
+  const pushOnce = async () => {
     // Idempotent statements (schema init on a warm database, same-value
     // updates) leave the file byte-identical — skip the round-trip entirely.
     if (hashOf(readFileSync(file)) === cleanHash) {
@@ -281,10 +280,19 @@ async function createGithubBackend() {
         const bytes = readFileSync(file)
         const result = await store.push(bytes)
         if (result === true) {
-          journal = []
-          dirty = false
-          flushError = null
           cleanHash = hashOf(bytes)
+          flushError = null
+          // Only the bytes we actually UPLOADED are safely stored. Writes that
+          // landed while the upload was in the air are not in them, and
+          // calling the file clean here used to lose exactly those: the
+          // journal was emptied, dirty went false, and nothing pushed again
+          // until the next unrelated write happened along. On a serverless
+          // host, where the machine can be reclaimed between requests, that
+          // is a task typed and gone.
+          if (hashOf(readFileSync(file)) === cleanHash) {
+            journal = []
+            dirty = false
+          }
           // Compact the data branch periodically even if the nightly cron
           // never fires — one commit per ~100 keeps the repo small forever.
           if (++flushes % 100 === 0) await store.squash(readFileSync(file)).catch(() => {})
@@ -299,6 +307,26 @@ async function createGithubBackend() {
     }
     flushError = 'conflict retries exhausted'
     console.error('GitHub data flush failed: conflict retries exhausted')
+  }
+
+  // One upload at a time. Two overlapping requests each used to push the whole
+  // database: the second lost the compare-and-swap, downloaded the fresh copy,
+  // replayed and pushed again — three round trips of a megabyte-odd for one
+  // change. Several people working at once turned that into the traffic that
+  // gets a deployment throttled. Callers now JOIN the flush already running,
+  // and only start another if their own write is still unsaved when it ends.
+  let inFlight = null
+  const flush = async () => {
+    for (let i = 0; i < 4 && dirty; i++) {
+      if (!inFlight) break
+      const running = inFlight
+      await running.catch(() => { /* the joiner reads flushError, not the throw */ })
+      if (!dirty) return          // the flush we waited on carried our write
+      if (inFlight === running) break // nobody queued behind it — our turn
+    }
+    if (!dirty) return
+    inFlight = pushOnce()
+    try { await inFlight } finally { inFlight = null }
   }
 
   return {
