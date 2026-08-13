@@ -9,6 +9,7 @@ import CampaignForm from '../components/CampaignForm.jsx'
 import CampaignGantt from '../components/CampaignGantt.jsx'
 import { HealthPill, StatusBadge, CampaignRow, PC, PhotoField } from '../components/ProjectBits.jsx'
 import { dateLabel, todayISO } from '../lib/constants.js'
+import { loadFailed } from '../lib/toast.js'
 
 const CAMP_FILTERS = [
   { key: 'all', label: 'All' },
@@ -150,7 +151,7 @@ export default function Projects() {
   const load = () => Promise.all([
     api.get('/projects'), api.get('/campaigns'), api.get('/users'), api.get('/projects/metrics'),
   ]).then(([ps, cs, us, ms]) => { setProjects(ps); setCamps(cs); setTeam(us); setMetrics(ms) })
-  useEffect(() => { load().finally(() => setLoading(false)) }, [])
+  useEffect(() => { load().catch(loadFailed).finally(() => setLoading(false)) }, [])
 
   // Live refresh, same rhythm as the rest of the app.
   useEffect(() => {

@@ -58,10 +58,25 @@ await req(`/users/${jas.id}`, { method: 'DELETE', token: T })
 console.log(bugs === 0 ? '\nJourney clean.' : `\n${bugs} PROBLEMS FOUND`)
 process.exit(bugs === 0 ? 0 : 1)
 EOF
-cd $SP && fuser -k 4081/tcp 2>/dev/null; sleep 0.3; rm -rf /tmp/regpc /tmp/pctest2
+cd $SP && fuser -k 4081/tcp 2>/dev/null; sleep 1; rm -rf /tmp/regpc
 PORT=4081 DATA_DIR=/tmp/regpc node $ROOT/server/index.js > rpc.log 2>&1 &
-sleep 2
-node journey.mjs 2>&1 | tail -2
-fuser -k 4081/tcp 2>/dev/null; sleep 0.3
-PORT=4081 DATA_DIR=/tmp/pctest2 node $ROOT/server/index.js > rpc2.log 2>&1 &
-sleep 2 && node pc-suite.mjs 2>&1 | tail -2; fuser -k 4081/tcp 2>/dev/null
+# Wait for the server to actually answer rather than sleeping a guessed
+# interval: a flat `sleep 2` lost the race on a loaded sandbox and the whole
+# journey died on ECONNREFUSED — which, before the exit code was read, was
+# indistinguishable from a clean pass.
+for i in $(seq 1 40); do curl -s http://localhost:4081/api/health >/dev/null 2>&1 && break; sleep 0.5; done
+# The whole output, and the REAL exit code.
+#
+# This used to be `node journey.mjs 2>&1 | tail -2`, and the gate decided
+# pass/fail by grepping the log for "BUG". journey.mjs prints "✘ BUG ..." per
+# failure and then a summary line — so `tail -2` kept exactly the blank line
+# and "N PROBLEMS FOUND", and neither contains the word being grepped for. A
+# failing journey could not produce a failing gate entry: measured with two
+# deliberate regressions, it still reported PASS. The suite's own exit code is
+# the thing that cannot be fooled, so that is what the gate reads now.
+#
+# pc-suite.mjs used to be run again down here and its result thrown away;
+# pc-suite.sh runs it properly against its own server, so this no longer does.
+node journey.mjs 2>&1; EX=$?
+fuser -k 4081/tcp 2>/dev/null
+exit $EX

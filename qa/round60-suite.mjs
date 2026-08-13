@@ -55,13 +55,34 @@ await page.goto(BASE + '/login')
 await page.fill('input[name="username"], input[autocomplete="username"]', 'admin')
 await page.fill('input[type="password"]', 'admin123')
 await page.click('button[type="submit"]')
-await page.waitForURL(/\/(?!login)/, { timeout: 20000 })
+await page.waitForFunction(() => !location.pathname.startsWith("/login"), null, { timeout: 25000 })
 
-const rowTitles = async () => (await page.locator('.sch-title').allTextContents()).filter((t) => t.includes(tag))
+// Since round 63 these pages are calendars. Work is on screen in one of three
+// places — a pill on its day, a chip in the late strip, a chip in the tray —
+// and "is this task on the page" means any of them.
+const rowTitles = async () => (await page.locator('.rel-ev, .late-chip, .cal-tray-chip').allTextContents())
+  .filter((t) => t.includes(tag))
 const openPage = async (path) => {
   await page.goto(BASE + path)
-  await page.waitForSelector('.sch-row, .empty', { timeout: 25000 })
-  await page.waitForTimeout(700)
+  await page.waitForSelector('.cal, .empty', { timeout: 25000 })
+  await page.waitForTimeout(800)
+  await ensureVisible()
+}
+// The grid draws six weeks from the Monday on or before the 1st. These
+// fixtures sit within four days of today, which falls off the end of that span
+// in the last week of a month — so step the calendar forward when it does,
+// exactly as a person would, rather than asserting on days not being drawn.
+const monthSpanTo = async () => page.evaluate(() => {
+  const cells = [...document.querySelectorAll('.cal-day[data-drop]')]
+  return cells.length ? cells[cells.length - 1].getAttribute('data-drop') : null
+})
+const ensureVisible = async () => {
+  if (await page.locator('.cal').count() === 0) return
+  const last = await monthSpanTo()
+  if (last && day(4) > last) {
+    await page.locator('.cal-head .icon-btn').nth(1).click()   // next month
+    await page.waitForTimeout(700)
+  }
 }
 
 // ---- both pages reachable from the sidebar ----
@@ -80,12 +101,14 @@ ok('Releases shows work from BOTH channels without choosing one',
 ok('…including a post, which is released like anything else',
   list.some((t) => t.includes('a post is never filmed')), list.join(' / '))
 ok('…and it does NOT list shoots', !list.some((t) => t.includes('shoot on')), list.join(' / '))
-ok('…overdue work is called out at the top',
-  (await page.locator('.sch-late-head').count()) === 1 &&
-  (await page.locator('.sch-late-head + .card .sch-title').allTextContents()).some((t) => t.includes('release overdue')))
-ok('…the days are grouped, each with its own card', (await page.locator('.sch-day').count()) >= 2)
-ok('…and a time shows where one was set',
-  (await page.locator('.sch-when').allTextContents()).some((t) => t.includes('18:00')))
+// Overdue work must stay in front of you wherever the calendar is parked —
+// it is the only part of a schedule that needs deciding about today.
+ok('…overdue work is called out above the grid',
+  (await page.locator('.sch-late').count()) === 1 &&
+  (await page.locator('.sch-late .late-chip').allTextContents()).some((t) => t.includes('release overdue')))
+ok('…the month is drawn as a grid of days', (await page.locator('.cal-day').count()) === 42)
+ok('…and a time shows on the pill where one was set',
+  (await page.locator('.rel-ev').allTextContents()).some((t) => t.includes('18:00')))
 await page.screenshot({ path: SP + 'r60-releases.png' })
 
 // ---- Recordings: the other half ----
@@ -102,9 +125,15 @@ await page.locator('.section-head .cf-sel').first().selectOption('youtube')
 await page.waitForTimeout(600)
 list = await rowTitles()
 ok('one channel can be picked out', list.every((t) => t.includes('YouTube')) && list.length > 0, list.join(' / '))
+// every() over an empty array is true, so the count is asserted as well — a
+// reload that showed NOTHING used to pass this line without a complaint.
 ok('…and it survives a reload, being in the address', (await (async () => {
-  await page.reload(); await page.waitForTimeout(1200)
-  return (await rowTitles()).every((t) => t.includes('YouTube'))
+  await page.reload()
+  await page.waitForSelector('.cal, .empty', { timeout: 25000 })
+  await page.waitForTimeout(900)
+  await ensureVisible()
+  const after = await rowTitles()
+  return after.length > 0 && after.every((t) => t.includes('YouTube'))
 })()))
 await page.locator('.section-head .cf-sel').first().selectOption('')
 await page.waitForTimeout(500)
@@ -116,9 +145,9 @@ await page.waitForTimeout(400)
 
 // ---- a row opens its task ----
 await openPage('/releases')
-await page.locator('.sch-title', { hasText: `${tag} release on IG` }).click()
+await page.locator('.rel-ev', { hasText: `${tag} release on IG` }).first().click()
 await page.waitForTimeout(900)
-ok('clicking a row opens that task', (await page.locator('.modal').count()) > 0)
+ok('clicking a task on the calendar opens that task', (await page.locator('.modal').count()) > 0)
 ok('…and it is the one that was clicked',
   (await page.locator('.modal input').first().inputValue()).includes('release on IG'))
 await page.keyboard.press('Escape')

@@ -90,7 +90,7 @@ const openApp = async (ctx) => {
   await page.fill('input[autocomplete="username"], input[name="username"]', 'admin')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button[type="submit"]')
-  await page.waitForURL(/\/(?!login)/, { timeout: 20000 })
+  await page.waitForFunction(() => !location.pathname.startsWith("/login"), null, { timeout: 25000 })
   await page.waitForTimeout(1200)
   return { page, errs }
 }

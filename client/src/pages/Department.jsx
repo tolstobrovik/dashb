@@ -6,7 +6,7 @@ import {
   SlidersHorizontal, Settings, Megaphone, CalendarClock, CheckCircle2, ArrowUp, ArrowDown, Rocket,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
-import { toast } from '../lib/toast.js'
+import { toast, loadFailed } from '../lib/toast.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
@@ -201,6 +201,7 @@ export default function Department() {
           content: ct.map(({ photo_thumb: _t, ...rest }) => rest),
         })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [key, deptReady, hasAccess])
 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clapperboard, Send, Plus } from 'lucide-react'
 import { WEEKDAYS, MONTHS, localISO, todayISO, addDaysISO, typeInfo, onColor, statusIcon, isDeletedLabel } from '../lib/constants.js'
 
@@ -28,7 +28,7 @@ const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US'
 //  - Week: seven tall columns with rich cards (type, stage, time) — the
 //    day-to-day working view. Cards drag between days in both scales;
 //    click a card to open it, a day to plan it, + to add straight there.
-export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [] }) {
+export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [], onRange }) {
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
   const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()))
@@ -205,6 +205,16 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
   const title = scale === 'week'
     ? `${fmtShort(wkDays[0])} – ${fmtShort(wkDays[6])}, ${wkDays[6].slice(0, 4)}`
     : `${MONTHS[cursor.m]} ${cursor.y}`
+
+  // Tell the page above which span is on screen. Only the calendar knows where
+  // it is parked, and the schedule pages promise their export carries exactly
+  // what is shown — a promise they cannot keep without this. Held in a ref so
+  // an inline arrow from the parent can't re-fire the effect every render.
+  const spanFrom = scale === 'week' ? wkDays[0] : localISO(weeks[0][0])
+  const spanTo = scale === 'week' ? wkDays[6] : localISO(weeks[5][6])
+  const rangeRef = useRef(onRange)
+  rangeRef.current = onRange
+  useEffect(() => { rangeRef.current?.(spanFrom, spanTo) }, [spanFrom, spanTo])
 
   return (
     <div className="card cal">

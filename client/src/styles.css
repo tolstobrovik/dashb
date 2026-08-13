@@ -1162,6 +1162,18 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .rel-ev { min-width: 0; }
 .rel-ev .ev-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 
+/* The head shares the grid's 660px so the two scroll sideways together on a
+   desktop. On a phone that pushed Today and the Month/Week switch off the
+   right edge — controls you reach for BEFORE you have scrolled anywhere. Below
+   the grid's own width the head stops being part of that scroller and wraps
+   instead: every control stays on screen, and the grid keeps scrolling under
+   it. Applies to the channel calendars too, which had the same edge. */
+@media (max-width: 700px) {
+  .cal-head { min-width: 0; flex-wrap: wrap; row-gap: 8px; }
+  .cal-head h3 { min-width: 0; flex: 1 1 auto; text-align: left; }
+  .cal-scale { margin-left: 0; }
+}
+
 /* ---- Personal tasks (To-Do) ---- */
 .chip-personal { background: #0e8a6d; color: #fff; }
 .personal-hint {
@@ -2816,57 +2828,26 @@ button.blame-person:hover { background: var(--surface-2); }
 [data-theme="dark"] .weak-pw { background: #3a1e1c; color: #f3b5ae; border-color: #5a2b27; }
 @media (max-width: 640px) { .weak-pw-go { margin-left: 0; } }
 
-/* ============ Round 60: every channel's schedule on one page ============ */
-/* One row per piece of work, one card per day. Dense enough to plan a month
-   from, quiet enough to read down. */
-.sch-day { padding-top: 6px; padding-bottom: 6px; }
-.sch-row {
-  display: flex; align-items: center; gap: 4px; width: 100%;
-  border-radius: 8px; border-bottom: 1px solid var(--hairline);
-}
-.sch-open {
-  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
-  padding: 8px 6px; border: none; background: none; cursor: pointer;
-  text-align: left; font-family: inherit;
-}
-.sch-row:last-child { border-bottom: none; }
-.sch-row:hover { background: var(--surface-2); }
-.sch-row.done .sch-title { color: var(--muted); text-decoration: line-through; }
-.sch-when {
-  flex: none; width: 76px; font-size: 12px; font-weight: 700; color: var(--muted);
-  display: inline-flex; align-items: center; gap: 4px;
-}
-.sch-when.late { color: var(--bad, #c0392b); }
-.sch-title { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--ink); }
-.sch-tags { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; flex: none; max-width: 62%; }
-.sch-today { color: var(--brand-600); }
-.sch-late-head { color: var(--bad, #c0392b); display: flex; align-items: center; gap: 6px; }
-
-/* ---- Round 61: read it by person, move a day, take it away as a file ---- */
-/* The head carries more than it used to (grouping, channel, window, export),
-   so it wraps instead of squeezing the selects to nothing on a narrow screen. */
+/* ====== Rounds 60-63: every channel's schedule, as a calendar ====== */
+/* The head carries a channel and an export, so it wraps rather than squeezing
+   the selects to nothing on a narrow screen. The grid itself is the shared
+   .cal component — these pages add only what a cross-channel schedule needs
+   that a single channel's does not. */
 .sch-head { flex-wrap: wrap; }
-.sch-group .pill { display: inline-flex; align-items: center; gap: 5px; }
-.sch-phead { text-transform: none; letter-spacing: 0; font-size: 12.5px; }
-.sch-nobody { color: var(--muted); }
-/* The day a row sits on, editable in place — quiet until you go near it, so a
-   long list still reads as a list rather than a form. */
-.sch-date {
-  flex: none; width: 122px; font-family: inherit; font-size: 12px; font-weight: 600;
-  color: var(--muted); background: transparent; cursor: pointer;
-  border: 1px solid transparent; border-radius: 7px; padding: 4px 5px;
-}
-.sch-row:hover .sch-date { border-color: var(--hairline); }
-.sch-date:hover, .sch-date:focus { color: var(--ink-2); background: var(--surface); border-color: var(--hairline-strong); outline: none; }
-.sch-date::-webkit-calendar-picker-indicator { opacity: 0.45; cursor: pointer; }
-.sch-date:hover::-webkit-calendar-picker-indicator { opacity: 0.9; }
-[data-theme="dark"] .sch-date::-webkit-calendar-picker-indicator { filter: invert(1); }
+
+/* Late work rides ABOVE the grid, wherever you have navigated to. A calendar
+   parked on this month would otherwise leave last month's overdue work behind
+   it — and overdue work is the only part of a schedule that needs deciding
+   about today. Same shape as the calendar's unscheduled tray on purpose: both
+   are "work that is not where it should be, pick it up from here". */
+.sch-late { border-color: var(--bad, #c0392b); border-style: solid; background: color-mix(in srgb, var(--bad, #c0392b) 6%, var(--surface-2)); }
+.sch-late .cal-tray-label { color: var(--bad, #c0392b); display: inline-flex; align-items: center; gap: 5px; }
+.late-chip { cursor: pointer; border-left-color: var(--bad, #c0392b); }
+.late-chip:hover { border-color: var(--bad, #c0392b); }
+.late-when { font-size: 11px; font-weight: 800; color: var(--bad, #c0392b); flex-shrink: 0; }
+
 @media (max-width: 640px) {
-  .sch-open { flex-wrap: wrap; gap: 6px; }
-  .sch-when { width: auto; }
-  .sch-title { flex: 1 1 100%; order: -1; }
-  .sch-tags { max-width: 100%; justify-content: flex-start; }
-  .sch-date { width: 108px; }
   .sch-head .stat-sub { flex: 1 1 100%; }
   .sch-head .spacer { display: none; }
+  .sch-late { margin-left: 0; margin-right: 0; }
 }

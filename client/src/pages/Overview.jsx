@@ -4,6 +4,7 @@ import { CalendarClock, Check, AlertCircle, Megaphone, Rows3, UserX, ArrowRight 
 import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, isIdeaLabel, tashkentDay } from '../lib/constants.js'
+import { loadFailed } from '../lib/toast.js'
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PC, daysUntil } from '../components/ProjectBits.jsx'
@@ -67,6 +68,7 @@ export default function Overview() {
           camps: cs.map(({ photo_thumb: _p, ...rest }) => rest),
         })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [])
 

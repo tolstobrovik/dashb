@@ -69,12 +69,40 @@ const signIn = async (pg, u, pw) => {
   await pg.waitForFunction(() => !location.pathname.startsWith('/login'), null, { timeout: 25000 })
 }
 await signIn(page, 'admin', 'admin123')
+// The grid draws six weeks from the Monday on or before the 1st. These
+// fixtures sit within five days of today, which falls off the end of that span
+// in the last week of a month — so step forward when it does, exactly as a
+// person would, rather than asserting on days not being drawn.
+const ensureVisible = async (pg) => {
+  if (await pg.locator('.cal').count() === 0) return
+  const cells = await pg.locator('.cal-day[data-drop]').all()
+  if (!cells.length) return
+  const last = await cells[cells.length - 1].getAttribute('data-drop')
+  if (last && day(5) > last) {
+    await pg.locator('.cal-head .icon-btn').nth(1).click()
+    await pg.waitForTimeout(700)
+  }
+}
 const openPage = async (pg, path) => {
   await pg.goto(BASE + path)
-  await pg.waitForSelector('.sch-row, .empty', { timeout: 25000 })
-  await pg.waitForTimeout(700)
+  await pg.waitForSelector('.cal, .empty', { timeout: 25000 })
+  await pg.waitForTimeout(800)
+  await ensureVisible(pg)
 }
-const mine = async (pg = page) => (await pg.locator('.sch-title').allTextContents()).filter((t) => t.includes(tag))
+// Work is on screen as a pill on its day or a chip in the late strip.
+const mine = async (pg = page) => (await pg.locator('.rel-ev, .late-chip').allTextContents())
+  .filter((t) => t.includes(tag))
+// The grid's own pointer drag: press the pill, slide to the target day, drop.
+const dragTo = async (pill, iso, pg = page) => {
+  const from = await pill.boundingBox()
+  const cell = await pg.locator(`[data-drop="${iso}"]`).boundingBox()
+  await pg.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  await pg.mouse.down()
+  await pg.mouse.move(cell.x + cell.width / 2, cell.y + cell.height - 8, { steps: 12 })
+  await pg.mouse.up()
+  await pg.waitForTimeout(1400)
+}
+const spanHas = async (iso, pg = page) => await pg.locator(`[data-drop="${iso}"]`).count() > 0
 
 // ============================ Mine ============================
 await openPage(page, '/releases')
@@ -133,52 +161,59 @@ await page.waitForTimeout(400)
 
 // ========================= taking a day back =========================
 await openPage(page, '/releases')
-const row = () => page.locator('.sch-row').filter({ hasText: `${tag} zarina owns this` }).first()
-await row().locator('.sch-date').fill(day(12))
-await page.waitForTimeout(1500)
-ok('the day moved', (await api(`/content/${hers.id}`, 'GET', null, T)).data.release_date === day(12))
+const pill = () => page.locator('.rel-ev').filter({ hasText: `${tag} zarina owns this` }).first()
+const moved = (await spanHas(day(6))) ? day(6) : day(-1)
+await dragTo(pill(), moved)
+ok('the day moved', (await api(`/content/${hers.id}`, 'GET', null, T)).data.release_date === moved,
+  String((await api(`/content/${hers.id}`, 'GET', null, T)).data.release_date))
 const undo = page.locator('.toast-act', { hasText: 'Undo' })
 ok('…and the confirmation carries the way back', await undo.count() === 1)
 await undo.click()
 await page.waitForTimeout(1600)
 ok('Undo puts the day back on the server',
   (await api(`/content/${hers.id}`, 'GET', null, T)).data.release_date === day(3))
-ok('…and the row goes back with it, with no reload',
-  await row().locator('.sch-date').inputValue() === day(3))
-ok('…and it says where it landed',
-  (await page.locator('.toast').allTextContents()).some((t) => /back to/.test(t)),
+ok('…and the pill goes back with it, with no reload',
+  await page.locator(`[data-drop="${day(3)}"] .rel-ev`)
+    .filter({ hasText: `${tag} zarina owns this` }).count() === 1)
+// Not merely that it says "back to" — WHICH day it names. The undo toast
+// once named the day the task had just left, which is the one thing the
+// message exists to tell you, and a bare /back to/ check sailed past it.
+ok('…and it names the day it went BACK to, not the one it left',
+  (await page.locator('.toast').allTextContents())
+    .some((t) => new RegExp(`back to .*\\b${Number(day(3).slice(8))}\\b`).test(t)),
   (await page.locator('.toast').allTextContents()).join(' | '))
 
 // ===================== the page as you left it =====================
 ok('a plain visit drags no parameters behind it', new URL(page.url()).search === '', page.url())
 await page.locator('.section-head .cf-sel').first().selectOption('youtube')
-await page.waitForTimeout(400)
-await page.locator('.section-head .cf-sel').nth(1).selectOption('90')
-await page.waitForTimeout(400)
-await page.locator('.pill', { hasText: 'By person' }).click()
-await page.waitForTimeout(600)
+await page.waitForTimeout(500)
 await page.goto(BASE + '/brief')
 await page.waitForTimeout(900)
 await page.goto(BASE + '/releases')
-await page.waitForSelector('.sch-row, .empty', { timeout: 25000 })
+await page.waitForSelector('.cal, .empty', { timeout: 25000 })
 await page.waitForTimeout(900)
 const back = new URL(page.url()).searchParams
 ok('coming back finds the channel you were on', back.get('channel') === 'youtube', page.url())
-ok('…the window you had opened', back.get('window') === '90')
-ok('…and the way you were reading it', back.get('group') === 'person')
+// The window and the grouping went with the list — a calendar navigates by
+// month, and which month you were parked on is deliberately not remembered: a
+// schedule opens on the month you are living in, every time.
+ok('…and it opens on this month rather than where you had scrolled to',
+  (await page.locator('.cal-head h3').innerText()).includes(
+    new Date(`${today}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })),
+  await page.locator('.cal-head h3').innerText())
 ok('the OTHER page is remembered separately', await (async () => {
   await page.goto(BASE + '/recordings')
-  await page.waitForSelector('.sch-row, .empty', { timeout: 25000 })
+  await page.waitForSelector('.cal, .empty', { timeout: 25000 })
   await page.waitForTimeout(800)
   return new URL(page.url()).search === ''
 })(), page.url())
 // A link somebody sent shows what they meant.
 await page.goto(BASE + '/releases?channel=instagram_main')
-await page.waitForSelector('.sch-row, .empty', { timeout: 25000 })
+await page.waitForSelector('.cal, .empty', { timeout: 25000 })
 await page.waitForTimeout(900)
 const linked = new URL(page.url()).searchParams
 ok('a link that says something wins over what you last looked at',
-  linked.get('channel') === 'instagram_main' && !linked.get('window'), page.url())
+  linked.get('channel') === 'instagram_main', page.url())
 
 // ==================== the new pages are findable ====================
 await page.goto(BASE + '/brief')

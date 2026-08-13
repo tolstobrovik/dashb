@@ -7,7 +7,7 @@ import { todayISO, addDaysISO, dateLabel, typeInfo, tashkentDay, isDeletedLabel 
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
-import { toast } from '../lib/toast.js'
+import { toast, loadFailed } from '../lib/toast.js'
 
 // Missed deadlines — two clocks per task, each unforgiving:
 //   release    — the channel's deadline (release_date, resolved by done)
@@ -242,6 +242,7 @@ export default function Missed() {
         setContent(ct); setUsers(us); setStatuses(st)
         cache.set(`missed:${user.id}`, { content: ct.map(({ photo_thumb: _t, ...r }) => r), users: us, statuses: st })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [user.id])
   useEffect(() => {
