@@ -14,6 +14,16 @@ on:
     branches: ['**']
   pull_request:
 
+# A push to a branch with an open pull request fires BOTH triggers, so every
+# push was running this job twice over the same commit — two identical answers
+# for double the runner time. Sharing one group across both events means the
+# second cancels the first and one run survives to report. It also drops a
+# superseded run when two pushes land close together, which is the same idea:
+# the only answer worth waiting for is the one about the newest commit.
+concurrency:
+  group: checks-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   suites:
     runs-on: ubuntu-latest
@@ -61,6 +71,58 @@ jobs:
           node qa/round54-suite.mjs
           node qa/round57-suite.mjs
           node qa/round58-suite.mjs
+
+      # The write path — the half that actually broke in production, when
+      # GitHub's rate limiting was read as a dead credential and writes stopped.
+      # These bring their own server and their own mock, so they only need the
+      # checkout's path. They are the slow ones (outage survival means waiting
+      # through real backoff), which is what takes this job from about one
+      # minute to about three. Worth it: a regression here costs people's work.
+      - name: Write-path suites
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: |
+          node qa/round55-suite.mjs
+          node qa/storage-suite.mjs
+
+      # The GitHub storage driver, against a mock that answers like the real
+      # API — including the 500s and the rate-limit replies. Each suite gets a
+      # freshly restarted mock, the same way qa/regress.sh runs them.
+      - name: Storage driver suites
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: |
+          # `if ! node …` and not `node …; ok=$?`: these blocks run under
+          # bash -e, where a failing command aborts the step immediately —
+          # before the exit code is captured, so the mock would never be
+          # stopped and its log never printed. The step would still go red,
+          # but red with nothing to read is half a signal.
+          for s in gh-suite gh500-suite; do
+            MOCK_PORT=9977 node qa/mock-gh.mjs > "${{ runner.temp }}/mock-$s.log" 2>&1 &
+            mock=$!
+            for i in $(seq 1 20); do
+              curl -s http://localhost:9977 >/dev/null 2>&1 && break
+              sleep 0.5
+            done
+            ok=0
+            if ! node "qa/$s.mjs"; then ok=1; fi
+            kill $mock 2>/dev/null || true
+            wait $mock 2>/dev/null || true
+            if [ $ok -ne 0 ]; then
+              echo "--- mock-gh log for $s ---"
+              cat "${{ runner.temp }}/mock-$s.log" || true
+              exit 1
+            fi
+          done
+
+      # The Telegram bridge: these boot their own API and their own bot mock.
+      - name: Notification suites
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: |
+          node qa/round40-suite.mjs
+          node qa/round41-suite.mjs
+          node qa/round47-suite.mjs
 
       - name: Server log on failure
         if: failure()

@@ -9,5 +9,12 @@ data/*.db-shm
 .DS_Store
 .vercel/
 
-# Scratch databases the suites create beside themselves when run in place.
-qa/r5*-*/
+# Scratch data directories the suites create beside themselves when run in
+# place — which is what CI does, and what anyone without the original
+# sandbox does. They are per-run and must never be offered up as changes.
+#
+# Every directory, not a prefix list: the suites use twenty different ones
+# (r54a-, r57-, tg38-, walk-, d52-, x53-, smoke-, f51- …) and `qa/r5*-*/`
+# caught seven of them. qa/ holds only files, so any directory appearing
+# there is scratch by definition — including whatever the next suite invents.
+qa/*/
