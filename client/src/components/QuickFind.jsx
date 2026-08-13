@@ -33,6 +33,8 @@ export default function QuickFind({ onClose }) {
     isAdmin && { label: 'Overview', to: '/overview' },
     { label: 'My Day', to: '/brief' },
     { label: 'To-Do', to: '/todo' },
+    { label: 'Releases', to: '/releases' },
+    { label: 'Recordings', to: '/recordings' },
     { label: 'Statistics', to: '/missed' },
     isAdmin && { label: 'Unassigned', to: '/unassigned' },
     { label: 'Docs & KPIs', to: '/docs' },
