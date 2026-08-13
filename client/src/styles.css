@@ -2732,3 +2732,23 @@ button.cb-toggle:hover { color: var(--ink); }
 .gate-date .input { flex: 1; }
 .gate-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
 .gate-foot .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ============ Round 58: the password nobody changed ============ */
+/* Loud enough to act on, quiet enough to work under. Follows every page
+   until the account picks its own password. */
+.weak-pw {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 14px; padding: 10px 14px; border-radius: 10px;
+  background: var(--bad-50, #fdeceb); color: var(--bad-ink, #96231c);
+  border: 1px solid var(--bad-100, #f6cfcb); font-size: 13px;
+}
+.weak-pw b { font-weight: 700; }
+.weak-pw svg { flex: none; }
+.weak-pw-go {
+  margin-left: auto; flex: none; text-decoration: none; font-weight: 700;
+  padding: 5px 12px; border-radius: 999px;
+  background: var(--bad, #c0392b); color: #fff;
+}
+.weak-pw-go:hover { filter: brightness(1.08); }
+[data-theme="dark"] .weak-pw { background: #3a1e1c; color: #f3b5ae; border-color: #5a2b27; }
+@media (max-width: 640px) { .weak-pw-go { margin-left: 0; } }

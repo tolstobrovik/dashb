@@ -522,6 +522,11 @@ export async function initSchema() {
       work_end      TEXT,
       work_days     TEXT,
       telegram_chat_id TEXT,
+      -- Set when someone signs in with a password that is published in this
+      -- repository (the documented first-boot one). Cleared the moment they
+      -- pick their own. A public repo plus a public URL makes this the
+      -- shortest path into the dashboard, so it is worth saying out loud.
+      weak_password INTEGER NOT NULL DEFAULT 0,
       telegram_code    TEXT,
       created_at    TEXT    NOT NULL
     );
@@ -932,6 +937,7 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS rubrika TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script TEXT')
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT')
+    await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS weak_password INTEGER NOT NULL DEFAULT 0')
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_code TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS reviewer_id INTEGER')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS reviewers TEXT NOT NULL DEFAULT '[]'")
@@ -1048,6 +1054,7 @@ async function migrate() {
     if (!(await hasColumn('content', 'format'))) await exec('ALTER TABLE content ADD COLUMN format TEXT; ALTER TABLE content ADD COLUMN rubrika TEXT; ALTER TABLE content ADD COLUMN script TEXT;')
     if (!(await hasColumn('content', 'reference_text'))) await exec("ALTER TABLE content ADD COLUMN reference_text TEXT; ALTER TABLE content ADD COLUMN reference_links TEXT NOT NULL DEFAULT '[]';")
     if (!(await hasColumn('users', 'telegram_chat_id'))) await exec('ALTER TABLE users ADD COLUMN telegram_chat_id TEXT; ALTER TABLE users ADD COLUMN telegram_code TEXT;')
+    if (!(await hasColumn('users', 'weak_password'))) await exec('ALTER TABLE users ADD COLUMN weak_password INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'reviewer_id'))) {
       await exec(`
         ALTER TABLE content ADD COLUMN reviewer_id INTEGER;
@@ -1565,6 +1572,7 @@ export function publicUser(row) {
     id: row.id,
     name: row.name,
     username: row.username,
+    weak_password: row.weak_password ? 1 : 0,
     email: row.email,
     role: row.role,
     crew_roles: crewRolesOf(row),

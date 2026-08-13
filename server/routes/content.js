@@ -1145,11 +1145,13 @@ router.patch('/:id', wrap(async (req, res) => {
         if (at(row.status_id) >= g.index) continue             // already past it
         const ran = val(h.ran)
         if (!ran || today <= ran) continue                     // the handover is on time
-        if (!val(h.revise))
-          return res.status(400).json({
-            error: `This is being handed over late — «${h.ran === 'recording_date' ? 'Shooting' : 'Editing'}» was due ${ran}. Set a new ${h.next} deadline before moving it, so the next person is judged on a date they can actually meet.`,
-            gate: h.gate, missing: h.revise, was_due: ran,
-          })
+        // Late, and nobody named a new date. Rather than stand in the way,
+        // the re-promise writes itself: the work reached the next person
+        // TODAY, so today is the honest start of their clock. The original
+        // deadline is untouched beside it, and the change goes into the paper
+        // trail like any other — so the pair still shows what the delay cost,
+        // which was the whole point. Naming a date by hand still wins.
+        if (!val(h.revise)) patch[h.revise] = today
       }
     }
   }

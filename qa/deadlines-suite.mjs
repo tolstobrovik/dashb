@@ -129,9 +129,10 @@ const newTask = async (over = {}) => {
   await req(`/content/${t.id}`, 'PATCH', { shot_link: 'https://drive.google.com/raw-4' })
 
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
-  ok('a late handover is refused without a new deadline', r.status === 400, `${r.status}`)
-  ok('  refusal asks for the revised date', r.data.missing === 'edit_due_revised', String(r.data.missing))
-  ok('  refusal states what was missed', r.data.was_due === day(-2), String(r.data.was_due))
+  ok('a late handover goes through without anyone being stopped', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and the new deadline writes itself — today, when the work arrived',
+    r.data.edit_due_revised === day(0), String(r.data.edit_due_revised))
+  ok('  with the missed date untouched beside it', r.data.edit_ready_date === day(-1), String(r.data.edit_ready_date))
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'], edit_due_revised: day(3) }, shooterT)
   ok('the move lands once a new deadline is set', r.status === 200, `${r.status} ${r.data.error || ''}`)
