@@ -2758,9 +2758,13 @@ button.cb-toggle:hover { color: var(--ink); }
    from, quiet enough to read down. */
 .sch-day { padding-top: 6px; padding-bottom: 6px; }
 .sch-row {
-  display: flex; align-items: center; gap: 10px; width: 100%;
+  display: flex; align-items: center; gap: 4px; width: 100%;
+  border-radius: 8px; border-bottom: 1px solid var(--hairline);
+}
+.sch-open {
+  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
   padding: 8px 6px; border: none; background: none; cursor: pointer;
-  text-align: left; border-radius: 8px; border-bottom: 1px solid var(--hairline);
+  text-align: left; font-family: inherit;
 }
 .sch-row:last-child { border-bottom: none; }
 .sch-row:hover { background: var(--surface-2); }
@@ -2774,9 +2778,32 @@ button.cb-toggle:hover { color: var(--ink); }
 .sch-tags { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; flex: none; max-width: 62%; }
 .sch-today { color: var(--brand-600); }
 .sch-late-head { color: var(--bad, #c0392b); display: flex; align-items: center; gap: 6px; }
+
+/* ---- Round 61: read it by person, move a day, take it away as a file ---- */
+/* The head carries more than it used to (grouping, channel, window, export),
+   so it wraps instead of squeezing the selects to nothing on a narrow screen. */
+.sch-head { flex-wrap: wrap; }
+.sch-group .pill { display: inline-flex; align-items: center; gap: 5px; }
+.sch-phead { text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+.sch-nobody { color: var(--muted); }
+/* The day a row sits on, editable in place — quiet until you go near it, so a
+   long list still reads as a list rather than a form. */
+.sch-date {
+  flex: none; width: 122px; font-family: inherit; font-size: 12px; font-weight: 600;
+  color: var(--muted); background: transparent; cursor: pointer;
+  border: 1px solid transparent; border-radius: 7px; padding: 4px 5px;
+}
+.sch-row:hover .sch-date { border-color: var(--hairline); }
+.sch-date:hover, .sch-date:focus { color: var(--ink-2); background: var(--surface); border-color: var(--hairline-strong); outline: none; }
+.sch-date::-webkit-calendar-picker-indicator { opacity: 0.45; cursor: pointer; }
+.sch-date:hover::-webkit-calendar-picker-indicator { opacity: 0.9; }
+[data-theme="dark"] .sch-date::-webkit-calendar-picker-indicator { filter: invert(1); }
 @media (max-width: 640px) {
-  .sch-row { flex-wrap: wrap; gap: 6px; }
+  .sch-open { flex-wrap: wrap; gap: 6px; }
   .sch-when { width: auto; }
   .sch-title { flex: 1 1 100%; order: -1; }
   .sch-tags { max-width: 100%; justify-content: flex-start; }
+  .sch-date { width: 108px; }
+  .sch-head .stat-sub { flex: 1 1 100%; }
+  .sch-head .spacer { display: none; }
 }
