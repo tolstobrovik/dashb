@@ -2560,6 +2560,17 @@ button.cb-toggle:hover { color: var(--ink); }
   font-size: 12px; font-weight: 650;
 }
 .cf-clear:hover { border-color: var(--ink-2); color: var(--ink); }
+/* One switch for the choice people make most often. It sets the same person
+   filter the menu does, so it lights up when the menu happens to land on you. */
+.cf-mine {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; cursor: pointer;
+  border: 1px solid var(--hairline-strong); background: var(--surface);
+  color: var(--ink-2); border-radius: 999px; padding: 4px 11px;
+  font-size: 12px; font-weight: 650; font-family: inherit;
+}
+.cf-mine:hover { border-color: var(--ink-2); color: var(--ink); }
+.cf-mine.active { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+.cf-mine.active:hover { filter: brightness(1.06); color: #fff; }
 @media (max-width: 640px) {
   .cf-bar { gap: 6px; padding: 6px 8px; }
   .cf-sel.select { min-width: 0; flex: 1 1 92px; }

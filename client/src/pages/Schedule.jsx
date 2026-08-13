@@ -169,6 +169,20 @@ export default function Schedule({ mode }) {
     setParams(next, { replace: true })
   }
 
+  // Come back to the page the way you left it. The address still wins: a link
+  // somebody sent shows what THEY meant, not what you last looked at — so the
+  // remembered view is only consulted when the address says nothing.
+  const viewKey = `satashkent_schedview_${mode}`
+  useEffect(() => {
+    if (params.get('channel') || params.get('window') || params.get('group')) return
+    let saved = null
+    try { saved = JSON.parse(localStorage.getItem(viewKey) || 'null') } catch { saved = null }
+    if (!saved || typeof saved !== 'object') return
+    const next = new URLSearchParams()
+    for (const k of ['channel', 'window', 'group']) if (saved[k]) next.set(k, String(saved[k]))
+    if ([...next.keys()].length) setParams(next, { replace: true })
+  }, [viewKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const today = todayISO()
   // Killed work leaves the schedule — it is not going out and not being shot.
   const alive = useMemo(
@@ -202,6 +216,16 @@ export default function Schedule({ mode }) {
   // them. A person's card carries their late work too, so nobody has to read
   // two places to know what they are behind on.
   const group = params.get('group') === 'person' ? 'person' : 'day'
+  // Only what differs from the plain view is worth remembering — otherwise
+  // every visit would drag a tail of default parameters behind it.
+  useEffect(() => {
+    const view = {}
+    if (channel) view.channel = channel
+    if (win !== '30') view.window = win
+    if (group === 'person') view.group = group
+    localStorage.setItem(viewKey, JSON.stringify(view))
+  }, [viewKey, channel, win, group])
+
   const sections = useMemo(() => {
     if (group === 'person') {
       const buckets = new Map()
@@ -241,21 +265,27 @@ export default function Schedule({ mode }) {
   }
 
   // Moving one day should cost one gesture. The row jumps immediately and
-  // goes back where it was if the server refuses.
+  // goes back where it was if the server refuses. A date field is easy to
+  // mis-tap, so the confirmation carries the way back — the server's own
+  // ten-second undo only photographs stage moves, and this is the client
+  // putting a date it already knows straight back.
   const canMove = can(user, 'move_tasks')
-  const reschedule = async (t, iso) => {
+  const setDay = async (t, iso, back) => {
     if (!iso || iso === t[M.dateField]) return
     const before = t[M.dateField]
     setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, [M.dateField]: iso } : x)))
     try {
       const c = await api.patch(`/content/${t.id}`, { [M.dateField]: iso })
       setItems((prev) => prev.map((x) => (x.id === t.id ? c : x)))
-      toast(`${t.title} → ${dateLabel(iso)}`)
+      if (back) toast(`${t.title} · back to ${dateLabel(iso)}`)
+      else toast(`${t.title} → ${dateLabel(iso)}`, 'ok',
+        { label: 'Undo', onClick: () => setDay({ ...t, [M.dateField]: iso }, before, true) })
     } catch (e) {
       setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, [M.dateField]: before } : x)))
       toast(e.message, 'err')
     }
   }
+  const reschedule = (t, iso) => setDay(t, iso, false)
 
   // What you can see is what you get: the export carries the rows the filters
   // left standing, late work included, and nothing else.
