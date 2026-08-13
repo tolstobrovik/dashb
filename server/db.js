@@ -188,9 +188,17 @@ async function createGithubBackend() {
   }
 
   const replayJournal = async () => {
+    // Each statement stands alone. One that will not apply — a row the pulled
+    // copy already contains, a constraint the fresh data now makes true — must
+    // not take the writes behind it down with it: the loop used to throw, the
+    // caller swallowed it, and everything after the bad entry was simply gone.
     for (const entry of journal) {
-      if (entry.exec) await client.executeMultiple(entry.exec)
-      else await client.execute({ sql: entry.sql, args: entry.args })
+      try {
+        if (entry.exec) await client.executeMultiple(entry.exec)
+        else await client.execute({ sql: entry.sql, args: entry.args })
+      } catch (e) {
+        console.error('journal replay skipped a statement:', e.message)
+      }
     }
   }
 
@@ -277,22 +285,24 @@ async function createGithubBackend() {
     }
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        // Everything journaled up to here is inside the bytes we are about to
+        // send. Anything appended while the upload is in the air is not, and
+        // has to survive it.
+        const sentUpTo = journal.length
         const bytes = readFileSync(file)
         const result = await store.push(bytes)
         if (result === true) {
           cleanHash = hashOf(bytes)
           flushError = null
-          // Only the bytes we actually UPLOADED are safely stored. Writes that
-          // landed while the upload was in the air are not in them, and
-          // calling the file clean here used to lose exactly those: the
-          // journal was emptied, dirty went false, and nothing pushed again
-          // until the next unrelated write happened along. On a serverless
-          // host, where the machine can be reclaimed between requests, that
-          // is a task typed and gone.
-          if (hashOf(readFileSync(file)) === cleanHash) {
-            journal = []
-            dirty = false
-          }
+          // Only the bytes actually UPLOADED are safely stored. Writes that
+          // landed mid-upload are not in them, and calling the file clean here
+          // used to lose exactly those. But the statements that DID go up must
+          // still leave the journal: a later sync replays whatever is left on
+          // top of a freshly pulled copy, and replaying a row that is already
+          // in it collides — which used to abandon the rest of the replay and
+          // lose the writes behind it.
+          journal = journal.slice(sentUpTo)
+          dirty = journal.length > 0 || hashOf(readFileSync(file)) !== cleanHash
           // Compact the data branch periodically even if the nightly cron
           // never fires — one commit per ~100 keeps the repo small forever.
           if (++flushes % 100 === 0) await store.squash(readFileSync(file)).catch(() => {})
