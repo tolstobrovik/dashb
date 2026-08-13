@@ -9,19 +9,27 @@
 # browser suites still live in qa/regress.sh for the full gate.
 name: checks
 
+# Every push, on every branch — which already covers pull requests, because a
+# check run attaches to the commit and a pull request shows the checks for its
+# head commit. Listing `pull_request` as well fired both triggers for a branch
+# with a PR open and ran the whole job twice over the same commit.
+#
+# A concurrency group cannot fix that on its own: for a push the group resolves
+# to refs/heads/<branch> and for a pull_request to <branch>, so the two runs
+# never share a group and neither cancels the other. Dropping the second
+# trigger is what actually stops the duplicate. The group still earns its keep
+# for successive pushes to the same branch — the only answer worth waiting for
+# is the one about the newest commit.
+#
+# The trade: a pull request reopened with no new push does not re-run by
+# itself, and this does not test the branch merged into main. Both are fine
+# here — nobody works from a fork, and qa/regress.sh is the full gate.
 on:
   push:
     branches: ['**']
-  pull_request:
 
-# A push to a branch with an open pull request fires BOTH triggers, so every
-# push was running this job twice over the same commit — two identical answers
-# for double the runner time. Sharing one group across both events means the
-# second cancels the first and one run survives to report. It also drops a
-# superseded run when two pushes land close together, which is the same idea:
-# the only answer worth waiting for is the one about the newest commit.
 concurrency:
-  group: checks-${{ github.head_ref || github.ref }}
+  group: checks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
