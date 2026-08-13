@@ -1,8 +1,14 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Drives the storage layer the way the SERVERLESS entry does: a write, then a
 // flush, per "request" — several at once. The long-running server flushes on a
 // timer instead, which is why this needs its own driver to be honest about
 // what it proves.
-import { initDb, run, flushPending } from '/home/user/dashb/server/db.js'
+// A computed path cannot be a static import specifier — this one is resolved
+// at run time, which is the whole point of DASHB_ROOT.
+const { initDb, run, flushPending } = await import(ROOT + '/server/db.js')
 
 const N = Number(process.env.R57_N || 8)
 await initDb()

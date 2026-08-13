@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 42: (1) the calendar moves by POINTER — a plain mouse drag on the
 // month grid reschedules a pill, dropping it on the tray unschedules it, the
 // week view drags too, and the click that ends a drag never opens the day
@@ -27,7 +31,7 @@ const stop = () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { 
 process.on('exit', stop)
 
 boot([SP + 'mock-tg.mjs'], { MOCK_PORT: '9986' })
-boot(['/home/user/dashb/server/index.js'], {
+boot([ROOT + '/server/index.js'], {
   DATA_DIR: SP + 'tg42-' + Date.now(), PORT: '4100',
   TELEGRAM_BOT_TOKEN: TOKEN, TELEGRAM_API_BASE: MOCK,
 })

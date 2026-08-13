@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 57: the storage layer under a team, not one person.
 //
 // Every change uploads the WHOLE database file. That is the deal this storage
@@ -42,7 +46,7 @@ const up = async (url) => {
 }
 await up(MOCK + '/__calls')
 
-procs.push(spawn(process.execPath, ['/home/user/dashb/server/index.js'], {
+procs.push(spawn(process.execPath, [ROOT + '/server/index.js'], {
   env: {
     ...process.env,
     DATA_DIR: SP + 'r57-' + Date.now(), PORT: '4115',
@@ -142,7 +146,7 @@ ok('…and the storage settles clean afterwards',
 
 // The proof: pull the file GitHub actually holds, through a fresh instance
 // that has never seen this data, and look for the task inside it.
-procs.push(spawn(process.execPath, ['/home/user/dashb/server/index.js'], {
+procs.push(spawn(process.execPath, [ROOT + '/server/index.js'], {
   env: {
     ...process.env,
     DATA_DIR: SP + 'r57b-' + Date.now(), PORT: '4116',

@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Every page, as every kind of account, on desktop and on a phone — watching
 // for the things a suite of assertions never sees: a page that throws, a page
 // that renders nothing, a layout that scrolls sideways, a request that 500s
@@ -10,7 +14,7 @@ import { chromium } from 'playwright'
 const SP = new URL('.', import.meta.url).pathname
 const BASE = 'http://localhost:4111'
 const B = BASE + '/api'
-const p = spawn(process.execPath, ['/home/user/dashb/server/index.js'],
+const p = spawn(process.execPath, [ROOT + '/server/index.js'],
   { env: { ...process.env, DATA_DIR: SP + 'walk-' + Date.now(), PORT: '4111' }, stdio: 'ignore' })
 process.on('exit', () => { try { p.kill('SIGKILL') } catch { /* gone */ } })
 for (let i = 0; i < 60; i++) {

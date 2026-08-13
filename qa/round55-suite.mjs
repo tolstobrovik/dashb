@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 55: "slow down" is not "your token is dead".
 //
 // GitHub answers 403 for two unrelated things — a credential it refuses, and
@@ -36,7 +40,7 @@ const up = async (url) => {
 }
 await up(MOCK + '/__calls')
 
-procs.push(spawn(process.execPath, ['/home/user/dashb/server/index.js'], {
+procs.push(spawn(process.execPath, [ROOT + '/server/index.js'], {
   env: {
     ...process.env,
     DATA_DIR: SP + 'r55-' + Date.now(), PORT: '4112',

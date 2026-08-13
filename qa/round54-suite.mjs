@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 54: the session secret follows the REAL credential.
 //
 // Sessions are signed with a secret derived from the deployment's storage
@@ -37,7 +41,7 @@ const secretFrom = (s) => createHash('sha256').update(`satashkent:${s}`).digest(
 let fails = 0
 const ok = (n, c, x = '') => { if (!c) fails++; console.log(`${c ? '✔' : '✘ FAIL'} ${n}${x ? ` — ${x}` : ''}`) }
 const procs = []
-const boot = (env) => { const p = spawn(process.execPath, ['/home/user/dashb/server/index.js'], { env: { ...process.env, ...env }, stdio: 'ignore' }); procs.push(p); return p }
+const boot = (env) => { const p = spawn(process.execPath, [ROOT + '/server/index.js'], { env: { ...process.env, ...env }, stdio: 'ignore' }); procs.push(p); return p }
 const stop = () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } } }
 process.on('exit', stop)
 

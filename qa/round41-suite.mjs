@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 41: handed work rings its person. Creating a task with hats notifies
 // every hat-holder (owner/operator/editor/designer, both channels — bell and
 // Telegram) with the hat named and the date worth knowing; adding a hat later
@@ -22,7 +26,7 @@ const stop = () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { 
 process.on('exit', stop)
 
 boot([SP + 'mock-tg.mjs'], { MOCK_PORT: '9985' })
-boot(['/home/user/dashb/server/index.js'], {
+boot([ROOT + '/server/index.js'], {
   DATA_DIR: SP + 'tg41-' + Date.now(), PORT: '4099',
   TELEGRAM_BOT_TOKEN: TOKEN, TELEGRAM_API_BASE: MOCK,
 })

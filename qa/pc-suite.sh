@@ -1,3 +1,4 @@
+ROOT="${DASHB_ROOT:-/home/user/dashb}"
 cd /tmp/claude-0/-home-user-dashb/e1e8e6e3-0252-58c0-8ecc-a3edec104fdd/scratchpad && cat > pc-suite.mjs <<'EOF'
 const BASE = 'http://localhost:4081/api'
 const req = async (p, m = 'GET', b, t) => {
@@ -87,5 +88,5 @@ console.log(fails === 0 ? '\nServer model clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails === 0 ? 0 : 1)
 EOF
 fuser -k 4081/tcp 2>/dev/null; sleep 0.3; rm -rf /tmp/pctest
-PORT=4081 DATA_DIR=/tmp/pctest node /home/user/dashb/server/index.js > pc.log 2>&1 &
+PORT=4081 DATA_DIR=/tmp/pctest node $ROOT/server/index.js > pc.log 2>&1 &
 sleep 2 && node pc-suite.mjs; EX=$?; fuser -k 4081/tcp 2>/dev/null; exit $EX

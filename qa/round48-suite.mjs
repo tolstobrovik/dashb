@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 48: the reminders an admin keeps ready. Nudges worth repeating —
 // "is the week planned?", "does every task carry its brief?" — written once,
 // fired at anybody on the spot, or left to arrive by themselves on chosen
@@ -23,7 +27,7 @@ const boot = (args, env) => { const p = spawn(process.execPath, args, { env: { .
 process.on('exit', () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } } })
 
 boot([SP + 'mock-tg.mjs'], { MOCK_PORT: '9996' })
-boot(['/home/user/dashb/server/index.js'], {
+boot([ROOT + '/server/index.js'], {
   DATA_DIR: SP + 'tg48-' + Date.now(), PORT: '4104',
   TELEGRAM_BOT_TOKEN: TOKEN, TELEGRAM_API_BASE: MOCK,
 })

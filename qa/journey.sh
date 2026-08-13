@@ -1,4 +1,5 @@
-SP=/tmp/claude-0/-home-user-dashb/e1e8e6e3-0252-58c0-8ecc-a3edec104fdd/scratchpad
+ROOT="${DASHB_ROOT:-/home/user/dashb}"
+SP=${SP:-/tmp/claude-0/-home-user-dashb/e1e8e6e3-0252-58c0-8ecc-a3edec104fdd/scratchpad}
 cat > $SP/journey.mjs <<'EOF'
 const BASE = 'http://localhost:4081/api'
 let bugs = 0
@@ -58,9 +59,9 @@ console.log(bugs === 0 ? '\nJourney clean.' : `\n${bugs} PROBLEMS FOUND`)
 process.exit(bugs === 0 ? 0 : 1)
 EOF
 cd $SP && fuser -k 4081/tcp 2>/dev/null; sleep 0.3; rm -rf /tmp/regpc /tmp/pctest2
-PORT=4081 DATA_DIR=/tmp/regpc node /home/user/dashb/server/index.js > rpc.log 2>&1 &
+PORT=4081 DATA_DIR=/tmp/regpc node $ROOT/server/index.js > rpc.log 2>&1 &
 sleep 2
 node journey.mjs 2>&1 | tail -2
 fuser -k 4081/tcp 2>/dev/null; sleep 0.3
-PORT=4081 DATA_DIR=/tmp/pctest2 node /home/user/dashb/server/index.js > rpc2.log 2>&1 &
+PORT=4081 DATA_DIR=/tmp/pctest2 node $ROOT/server/index.js > rpc2.log 2>&1 &
 sleep 2 && node pc-suite.mjs 2>&1 | tail -2; fuser -k 4081/tcp 2>/dev/null

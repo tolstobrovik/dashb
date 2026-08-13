@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 53: a short answer must not brick the dashboard.
 //
 // The bug this pins: the client read ANY 2xx body it could not parse as `{}`
@@ -26,7 +30,7 @@ const procs = []
 const stop = () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } } }
 process.on('exit', stop)
 
-procs.push(spawn(process.execPath, ['/home/user/dashb/server/index.js'],
+procs.push(spawn(process.execPath, [ROOT + '/server/index.js'],
   { env: { ...process.env, DATA_DIR: SP + 'x53-' + Date.now(), PORT: '4103' }, stdio: 'ignore' }))
 const up = async (url) => {
   for (let i = 0; i < 60; i++) {

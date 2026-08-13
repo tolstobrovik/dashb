@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // The production "Request failed (500)" hunt, proven fixed:
 //  1. a GitHub outage DURING requests must not fail them (serve local copy)
 //  2. an outage AT COLD START must not poison the instance — it answers 503
@@ -6,7 +10,7 @@
 import { execSync, spawn } from 'child_process'
 
 const MOCK = 'http://localhost:9977'
-const REPO = '/home/user/dashb'
+const REPO = ROOT
 let fails = 0
 const ok = (name, cond, extra = '') => {
   if (!cond) fails++

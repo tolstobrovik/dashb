@@ -10,9 +10,10 @@ RES=$SP/regress-results.txt
 : > $RES
 
 # ---- main 4090 stack on a fresh seeded DB ----
+ROOT="${DASHB_ROOT:-/home/user/dashb}"
 fuser -k 4090/tcp 2>/dev/null; sleep 0.5
 rm -f $SP/uxdata/dashboard.db
-DATA_DIR=$SP/uxdata PORT=4090 node /home/user/dashb/server/index.js > $SP/api4090.log 2>&1 &
+DATA_DIR=$SP/uxdata PORT=4090 node $ROOT/server/index.js > $SP/api4090.log 2>&1 &
 for i in $(seq 1 30); do curl -s http://localhost:4090/api/health >/dev/null 2>&1 && break; sleep 0.5; done
 node seed.mjs > $SP/seed-run.log 2>&1 && echo "seed OK" >> $RES || echo "seed FAIL" >> $RES
 
@@ -29,7 +30,7 @@ fuser -k 4090/tcp 2>/dev/null; sleep 0.5
 # ---- rp-suite on 4085 (fresh data dir every run — it seeds exact fixtures) ----
 fuser -k 4085/tcp 2>/dev/null; sleep 0.5
 rm -f $SP/rpdata/dashboard.db
-DATA_DIR=$SP/rpdata PORT=4085 node /home/user/dashb/server/index.js > $SP/rp-api.log 2>&1 &
+DATA_DIR=$SP/rpdata PORT=4085 node $ROOT/server/index.js > $SP/rp-api.log 2>&1 &
 for i in $(seq 1 30); do curl -s http://localhost:4085/api/health >/dev/null 2>&1 && break; sleep 0.5; done
 if node rp-suite.mjs > $SP/out-rp-suite.log 2>&1; then echo "rp-suite PASS" >> $RES; else echo "rp-suite FAIL" >> $RES; fi
 fuser -k 4085/tcp 2>/dev/null

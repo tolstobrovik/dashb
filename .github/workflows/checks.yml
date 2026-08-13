@@ -1,0 +1,67 @@
+# The gate that catches two people editing the same rule from opposite ends.
+#
+# Two of us worked this branch on the same day from different machines: one
+# turned the handover gates into walls, the other into advice, and neither
+# found out until somebody read the diff by hand hours later. A red X on the
+# push that caused it is worth more than any amount of care afterwards.
+#
+# API-only suites, no browser driver, so this stays under a minute. The
+# browser suites still live in qa/regress.sh for the full gate.
+name: checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build the client
+        run: npm run build
+
+      - name: Start the API on a scratch database
+        env:
+          DATA_DIR: ${{ runner.temp }}/data
+          PORT: '4090'
+        run: |
+          mkdir -p "$DATA_DIR"
+          node server/index.js > "${{ runner.temp }}/api.log" 2>&1 &
+          for i in $(seq 1 40); do
+            curl -sf http://localhost:4090/api/health >/dev/null && break
+            sleep 0.5
+          done
+          curl -sf http://localhost:4090/api/health || { cat "${{ runner.temp }}/api.log"; exit 1; }
+
+      # The suites that need a live server on :4090.
+      - name: Pipeline suites
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: |
+          node qa/deadlines-suite.mjs
+          node qa/ownership-suite.mjs
+
+      # These boot their own instances, so they need the checkout's path.
+      - name: Storage and session suites
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: |
+          node qa/round54-suite.mjs
+          node qa/round57-suite.mjs
+          node qa/round58-suite.mjs
+
+      - name: Server log on failure
+        if: failure()
+        run: cat "${{ runner.temp }}/api.log" || true
