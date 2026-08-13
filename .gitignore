@@ -8,3 +8,6 @@ data/*.db-shm
 .env
 .DS_Store
 .vercel/
+
+# Scratch databases the suites create beside themselves when run in place.
+qa/r5*-*/
