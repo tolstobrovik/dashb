@@ -161,3 +161,24 @@ export function initials(name = '') {
     .map((w) => w[0]?.toUpperCase() || '')
     .join('')
 }
+
+// ---- what counts as an answer ----------------------------------------------
+// The form asks these BEFORE the save so the message lands next to the field
+// rather than arriving as a refusal. The server applies the same rules and is
+// the one that decides — these mirror `hasSubstance` / `hasLink` in
+// server/routes/content.js, and if the two ever drift the worst case is a
+// server error the form did not predict, never a placeholder getting through.
+const PLACEHOLDER = /^(?:n\/?a|na|none|null|nil|no|nope|tbd|todo|test|тз|нет|нету|н\/?д|тбд|тест|пусто)$/i
+// A required field is answered, not merely filled: ".", "...", "—" and "N/A"
+// are all the same gesture. Strip punctuation and symbols, then see whether
+// anything was written — Unicode-aware, so Cyrillic counts as letters.
+export const hasSubstance = (v) => {
+  const s = String(v ?? '').trim()
+  if (!s || PLACEHOLDER.test(s)) return false
+  return s.replace(/[\s\p{P}\p{S}]/gu, '').length >= 2
+}
+// A reference POINTS somewhere. Words alone are a note, so text standing on
+// its own has to carry a link; a photo or an attached document is a reference
+// in its own right and is never asked for one.
+const LINK_RE = /(?:https?:\/\/|www\.)\S{3,}|\b[\w-]+\.(?:com|ru|uz|org|net|io|me|tv|app|dev|ai|co|uk|kz)\b\S*/i
+export const hasLink = (v) => LINK_RE.test(String(v ?? ''))

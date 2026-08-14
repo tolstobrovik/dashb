@@ -5,7 +5,7 @@ import {
   FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
-import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
+import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor, hasSubstance, hasLink } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { api } from '../lib/api.js'
@@ -255,6 +255,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Does a brief field apply to this task's type — and is it demanded?
   const fOn = (k) => { const r = fieldRules?.[k]; return !!r && r.state !== 'off' && r.types.includes(form.type) }
   const fReq = (k) => { const r = fieldRules?.[k]; return !!r && r.state === 'required' && r.types.includes(form.type) }
+  // Does this type of task need somebody holding the camera? The admin's crew
+  // rule (Admin → Pipeline) decides, and /fields serves it beside the brief
+  // rules — so a text post is never asked, and a type added there starts being
+  // asked with nothing further to wire up.
+  const needsOperator = !!fieldRules?.crew?.operator?.includes(form.type)
   // Crew accounts work to the shoot and maker deadlines — the release date is
   // the channel's business and is not shown to them at all. They also can't
   // move the stage freely: they see it, and mark their one milestone.
@@ -416,6 +421,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     // The admin's required brief fields gate the save — with the section
     // opened so the cursor lands where the answer goes.
     if (creating || canEdit) {
+      // A shoot needs somebody holding the camera, and it needs them from the
+      // start — the day it was booked for passes whether or not anyone turns
+      // up. Which types need one is the admin's crew rule, the same one the
+      // gap counts read. Editing and design are named later and stay advisory.
+      if (needsOperator && !form.operator_id) {
+        setErr('Pick who is filming this — a shoot nobody is holding is nobody’s job')
+        return
+      }
       const missing = [
         ['format', 'Format', form.format],
         ['rubrika', 'Rubrika', form.rubrika],
@@ -427,6 +440,35 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         setShow((s) => ({ ...s, script: true, reference: true, description: true }))
         setErr(`«${missing[1]}» is required for this type of task`)
         return
+      }
+      // Filled is not answered. A demanded field holding "." or "N/A" is
+      // caught here so the message arrives beside the field, rather than as a
+      // refusal after the save has apparently been accepted.
+      const thin = [
+        ['format', 'Format', form.format],
+        ['rubrika', 'Rubrika', form.rubrika],
+        ['script', 'Script', form.script.trim()],
+        ['description', 'Description', form.description.trim()],
+      ].find(([k, , v]) => fReq(k) && v && !hasSubstance(v))
+      if (thin) {
+        setShow((s) => ({ ...s, script: true, description: true }))
+        setErr(`«${thin[1]}» needs a real answer — “${thin[2]}” is a placeholder, not a brief`)
+        return
+      }
+      // A reference points somewhere. Text on its own has to carry a link;
+      // links, a photo or an attached document already do.
+      const refCarried = form.reference_links.length > 0 || !!form.photo
+      if (form.reference_text && !refCarried) {
+        if (!hasSubstance(form.reference_text)) {
+          setShow((s) => ({ ...s, reference: true }))
+          setErr(`«Reference» needs a real answer — “${form.reference_text.trim()}” is a placeholder, not a reference`)
+          return
+        }
+        if (!hasLink(form.reference_text)) {
+          setShow((s) => ({ ...s, reference: true }))
+          setErr('«Reference» has to point somewhere — paste a link, or attach the photo or document it refers to')
+          return
+        }
       }
     }
     setBusy(true)
@@ -1055,13 +1097,22 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             // one-time editor, a content head doing the filming.
             const specialists = team.filter(holds).sort(bySort)
             const everyoneElse = team.filter((u) => !holds(u)).sort(bySort)
+            // The operator is the one hat this type of task cannot go without.
+            // The others are named later, often after the footage exists, so
+            // they stay optional — and say so, rather than looking the same.
+            const mustHave = f.key === 'operator_id' && needsOperator
             return (
-              <label key={f.key} className="crew-field">
-                <span className="crew-label">{f.label} <span className="crew-opt">optional</span></span>
+              <label key={f.key} className={'crew-field' + (mustHave && !form[f.key] ? ' crew-missing' : '')}>
+                <span className="crew-label">
+                  {f.label}{' '}
+                  {mustHave
+                    ? <span className="crew-req">required</span>
+                    : <span className="crew-opt">optional</span>}
+                </span>
                 <select className="select" disabled={detailsLocked} value={form[f.key] ?? ''}
-                  data-tip={f.tip}
+                  data-tip={mustHave ? 'Who films this — a shoot needs an operator' : f.tip}
                   onChange={(e) => setForm({ ...form, [f.key]: e.target.value === '' ? null : Number(e.target.value) })}>
-                  <option value="">— nobody —</option>
+                  <option value="">{mustHave ? '— pick who films it —' : '— nobody —'}</option>
                   {specialists.length > 0 && (
                     <optgroup label={`${f.label}s`}>
                       {specialists.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { createHmac } from 'crypto'
-import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, publicUser, dayISO } from '../db.js'
+import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { resolveGates, gatesUpTo, phasesOf, holderOf } from '../deadlines.js'
 import { authRequired, canAccessDept, can, wrap, JWT_SECRET } from '../auth.js'
@@ -549,15 +549,48 @@ const cleanTime = (v) => (v && /^\d{2}:\d{2}/.test(String(v)) ? String(v).slice(
 // form). A required field blocks creating a task of a scoped type without
 // it — and blocks clearing it later.
 const FIELD_LABELS = { format: 'Format', rubrika: 'Rubrika', script: 'Script', reference: 'Reference', description: 'Description' }
-const requiredMissing = (rules, type, values) => {
-  for (const k of Object.keys(FIELD_LABELS)) {
+const cleanShort = (v) => (v ? String(v).trim().slice(0, 120) : null) || null
+const cleanScript = (v) => (v ? String(v).trim().slice(0, 20000) : null) || null
+
+// A required field is ANSWERED, not merely filled. Below is what people type
+// to get past one without answering it. A brief that reads "." is worse than
+// an empty brief: the empty one still looks like a question waiting for an
+// answer, while the dot looks like it was dealt with.
+const PLACEHOLDER = /^(?:n\/?a|na|none|null|nil|no|nope|tbd|todo|test|тз|нет|нету|н\/?д|тбд|тест|пусто)$/i
+const hasSubstance = (v) => {
+  const s = String(v ?? '').trim()
+  if (!s || PLACEHOLDER.test(s)) return false
+  // ".", "...", ". . ." and "---" are one gesture. Strip punctuation, spaces
+  // and symbols, then see whether anything was actually written. Unicode-aware
+  // so Cyrillic counts as letters rather than being stripped with the dashes.
+  return s.replace(/[\s\p{P}\p{S}]/gu, '').length >= 2
+}
+// A reference POINTS somewhere. Words on their own are a note, so a text-only
+// reference has to carry a link. A photo or an attached document is a
+// reference in its own right and is never asked for one.
+const LINK_RE = /(?:https?:\/\/|www\.)\S{3,}|\b[\w-]+\.(?:com|ru|uz|org|net|io|me|tv|app|dev|ai|co|uk|kz)\b\S*/i
+const hasLink = (v) => LINK_RE.test(String(v ?? ''))
+// Junk in an OPTIONAL field is not worth an error — but it is not worth
+// storing either, because it reaches the card and reads as content. It comes
+// to rest as empty, which is what it means.
+const orBlank = (v) => (hasSubstance(v) ? v : null)
+
+// The first unmet demand among the admin's required brief fields, as the
+// sentence to show. Presence, substance and (for a reference) direction are
+// three different failures and get three different sentences — "required"
+// alone would send somebody back to a field they had already filled in.
+const clip = (s) => { const t = String(s ?? '').trim(); return t.length > 40 ? `${t.slice(0, 40)}…` : t }
+const requiredProblem = (rules, type, checks) => {
+  for (const [k, label] of Object.entries(FIELD_LABELS)) {
     const r = rules[k]
-    if (r?.state === 'required' && r.types.includes(type) && !values[k]) return FIELD_LABELS[k]
+    if (r?.state !== 'required' || !r.types.includes(type)) continue
+    const c = checks[k] || {}
+    if (!c.present) return `«${label}» is required for this type of task`
+    if (c.thin) return `«${label}» needs a real answer — “${clip(c.raw)}” is a placeholder, not a brief`
+    if (c.linkless) return `«${label}» has to point somewhere — paste a link, or attach the photo or document it refers to`
   }
   return null
 }
-const cleanShort = (v) => (v ? String(v).trim().slice(0, 120) : null) || null
-const cleanScript = (v) => (v ? String(v).trim().slice(0, 20000) : null) || null
 
 router.post('/', wrap(async (req, res) => {
   const {
@@ -584,12 +617,43 @@ router.post('/', wrap(async (req, res) => {
   const rubrika = cleanShort(req.body?.rubrika)
   const script = cleanScript(req.body?.script)
   const fieldRules = await getTaskFields()
-  const missing = requiredMissing(fieldRules, safeType, {
-    format, rubrika, script,
-    reference: !!(reference_text || referenceLinks.length > 0 || photo),
-    description: !!(description && String(description).trim()),
+  // A reference can arrive as a link, a photo or an attached document; only
+  // the text-only case has to prove that it points somewhere.
+  const refCarried = referenceLinks.length > 0 || !!photo
+  const problem = requiredProblem(fieldRules, safeType, {
+    format: { present: !!format, thin: !hasSubstance(format), raw: format },
+    rubrika: { present: !!rubrika, thin: !hasSubstance(rubrika), raw: rubrika },
+    script: { present: !!script, thin: !hasSubstance(script), raw: script },
+    description: {
+      present: !!(description && String(description).trim()),
+      thin: !hasSubstance(description), raw: description,
+    },
+    reference: {
+      present: !!(reference_text || refCarried),
+      thin: !refCarried && !hasSubstance(reference_text), raw: reference_text,
+      linkless: !refCarried && hasSubstance(reference_text) && !hasLink(reference_text),
+    },
   })
-  if (missing) return res.status(400).json({ error: `«${missing}» is required for this type of task` })
+  if (problem) return res.status(400).json({ error: problem })
+
+  // The two rules that hold whether or not the admin demanded the field,
+  // because they are about what the words ARE, not about whether they were
+  // required: a reference that is only prose points nowhere, and a reference
+  // of "." is not one. Text standing ALONE carries the rule — links, a photo
+  // or an attached document already point somewhere.
+  if (reference_text && !refCarried) {
+    if (!hasSubstance(reference_text))
+      return res.status(400).json({ error: `«Reference» needs a real answer — “${clip(reference_text)}” is a placeholder, not a reference` })
+    if (!hasLink(reference_text))
+      return res.status(400).json({ error: '«Reference» has to point somewhere — paste a link, or attach the photo or document it refers to' })
+  }
+  // Junk in a field nobody demanded is not worth an error, but it is not worth
+  // storing either — it reaches the card and reads as content. It comes to
+  // rest as empty, which is what it means.
+  const briefText = {
+    format: orBlank(format), rubrika: orBlank(rubrika), script: orBlank(script),
+  }
+  const cleanDescription = hasSubstance(description) ? description : ''
 
   // Admins may assign the task to any number of people (or leave it
   // unassigned for the whole channel); everyone else creates for themselves.
@@ -632,6 +696,43 @@ router.post('/', wrap(async (req, res) => {
     }
   }
 
+  // A shoot needs somebody holding the camera, and it needs them from the
+  // start: an unowned shoot is the one thing on this board that cannot be
+  // picked up later by whoever is free, because the day it was booked for
+  // passes whether or not anyone turns up.
+  //
+  // WHICH types need one is the admin's existing crew rule (Admin → Pipeline),
+  // the same rule the Unassigned and Overview gap counts already read — so a
+  // text post is never asked for an operator, and a type added there starts
+  // being demanded here too, with nothing further to configure.
+  //
+  // Editing and design stay advisory on purpose. They are named later, often
+  // after the footage exists, and demanding them at creation would only teach
+  // people to put any name in the box.
+  const crewNeeds = await getCrewNeeds()
+  const isFilmed = crewNeeds.operator.includes(safeType)
+  if (isFilmed && !crew.operator_id)
+    return res.status(400).json({ error: 'Pick who is filming this — a shoot nobody is holding is nobody’s job' })
+
+  // Filmed work is booked, not sketched: a shoot day, a day the cut is due and
+  // a release day, all three, before it exists. They are the promises the
+  // whole board is built to measure, and a promise made later is a promise
+  // made after somebody has already missed it.
+  //
+  // Only filmed work. A post or a story can still be jotted down with nothing
+  // but a title, so the Idea stage and the quick-add box keep working — the
+  // list is the admin's crew rule again, which is this board's definition of
+  // "this is a shoot".
+  if (isFilmed) {
+    const missingDate = [
+      ['recording_date', recording_date, 'the shoot day'],
+      ['edit_ready_date', edit_ready_date, 'the day the cut is due'],
+      ['release_date', release_date, 'the release day'],
+    ].find(([, v]) => !v)
+    if (missingDate)
+      return res.status(400).json({ error: `Filmed work is booked with all three dates — ${missingDate[2]} is missing` })
+  }
+
   // Review can be shared from the start; a lone reviewer_id becomes a list of
   // one, so nothing downstream has to care which way it was given.
   const reviewerList = [...new Set((Array.isArray(req.body?.reviewer_ids) ? req.body.reviewer_ids : [])
@@ -660,10 +761,10 @@ router.post('/', wrap(async (req, res) => {
     String(title).trim(), JSON.stringify(channels), safeType, assignee, JSON.stringify(assigneeList), req.user.id, status, campaignId,
     crew.operator_id, crew.editor_id, crew.designer_id, crew.reviewer_id, JSON.stringify(reviewerList),
     recording_date || null, recording_time, recording_end, edit_ready_date || null, design_ready_date || null, release_date || null, release_time,
-    description, cleanLink(req.body?.ready_link) || null,
+    cleanDescription, cleanLink(req.body?.ready_link) || null,
     cleanLink(req.body?.shot_link) || null, cleanLink(req.body?.design_link) || null,
     reference_text ? String(reference_text).slice(0, 4000) : null, JSON.stringify(referenceLinks),
-    format, rubrika, script,
+    briefText.format, briefText.rubrika, briefText.script,
     photo || null, photo_thumb || null, JSON.stringify(Array.isArray(checklist) ? checklist : []),
     maxSort + 1, new Date().toISOString(),
   )
@@ -845,7 +946,22 @@ router.patch('/:id', wrap(async (req, res) => {
   // of the brief, so editing it needs manage_content. Crew see it, never set it.
   if (body.reference_text !== undefined) {
     if (!can(req.user, 'manage_content')) return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
-    patch.reference_text = body.reference_text ? String(body.reference_text).slice(0, 4000) : null
+    const next = body.reference_text ? String(body.reference_text).slice(0, 4000) : null
+    // The same rule the creation form applies: a task edited into a
+    // placeholder is exactly as unhelpful as one created that way. Only text
+    // standing ALONE has to carry a link — links, a photo or an attached
+    // document already point somewhere, so text beside them is a caption.
+    const links = body.reference_links !== undefined
+      ? cleanLinks(body.reference_links)
+      : (() => { try { return JSON.parse(row.reference_links || '[]') } catch { return [] } })()
+    const carried = links.length > 0 || !!(body.photo !== undefined ? body.photo : row.photo)
+    if (next && !carried) {
+      if (!hasSubstance(next))
+        return res.status(400).json({ error: `«Reference» needs a real answer — “${clip(next)}” is a placeholder, not a reference` })
+      if (!hasLink(next))
+        return res.status(400).json({ error: '«Reference» has to point somewhere — paste a link, or attach the photo or document it refers to' })
+    }
+    patch.reference_text = next
   }
   if (body.reference_links !== undefined) {
     if (!can(req.user, 'manage_content')) return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
@@ -862,8 +978,19 @@ router.patch('/:id', wrap(async (req, res) => {
       if (body[f] === undefined) continue
       const v = f === 'script' ? cleanScript(body[f]) : cleanShort(body[f])
       const r = fieldRules[f]
-      if (!v && row[f] && r?.state === 'required' && r.types.includes(nextType))
+      const demanded = r?.state === 'required' && r.types.includes(nextType)
+      if (!v && row[f] && demanded)
         return res.status(400).json({ error: `«${FIELD_LABELS[f]}» is required for this type of task — it can’t be cleared` })
+      // Emptying a demanded field is refused above; filling it with a dot is
+      // the same act wearing a disguise, so it is refused too. Where the field
+      // is NOT demanded, a placeholder simply comes to rest as empty rather
+      // than reaching the card and reading as content.
+      if (v && !hasSubstance(v)) {
+        if (demanded)
+          return res.status(400).json({ error: `«${FIELD_LABELS[f]}» needs a real answer — “${clip(v)}” is a placeholder, not a brief` })
+        patch[f] = null
+        continue
+      }
       patch[f] = v
     }
   }
@@ -875,6 +1002,42 @@ router.patch('/:id', wrap(async (req, res) => {
     return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
   for (const f of detailFields) if (body[f] !== undefined) patch[f] = body[f]
   if (patch.type !== undefined && !CONTENT_TYPES.includes(patch.type)) patch.type = 'post'
+
+  // The description, held to the same standard on edit as on creation: a
+  // demanded one may not become a placeholder, and an optional one comes to
+  // rest as empty rather than putting "." on the card.
+  if (patch.description !== undefined) {
+    const nType = patch.type !== undefined ? patch.type : row.type
+    const dr = (await getTaskFields()).description
+    const demanded = dr?.state === 'required' && dr.types.includes(nType)
+    const d = String(patch.description ?? '').trim()
+    if (d && !hasSubstance(d)) {
+      if (demanded)
+        return res.status(400).json({ error: `«Description» needs a real answer — “${clip(d)}” is a placeholder, not a brief` })
+      patch.description = ''
+    }
+    if (!d && demanded && row.description)
+      return res.status(400).json({ error: '«Description» is required for this type of task — it can’t be cleared' })
+  }
+
+  // The shoot keeps its operator. Creation demands one for the types the
+  // admin's crew rule covers; without this, the demand lasts exactly until
+  // somebody opens the task and clears the field, or retypes a post as a video
+  // after the fact. Same rule, applied to the result of the edit.
+  //
+  // Only when the edit TOUCHES the operator or the type, though. Tasks made
+  // before this rule have no operator and are allowed to keep existing: a
+  // guard on every patch would make each of them unmovable, so dragging one to
+  // another day would fail for a reason that has nothing to do with the drag.
+  // The demand lands when somebody edits the thing the demand is about.
+  if (body.operator_id !== undefined || body.type !== undefined) {
+    const nType = patch.type !== undefined ? patch.type : row.type
+    const nOperator = body.operator_id !== undefined
+      ? (body.operator_id === null || body.operator_id === '' ? null : Number(body.operator_id))
+      : row.operator_id
+    if ((await getCrewNeeds()).operator.includes(nType) && !nOperator)
+      return res.status(400).json({ error: 'Pick who is filming this — a shoot nobody is holding is nobody’s job' })
+  }
   for (const f of ['recording_time', 'recording_end', 'release_time'])
     if (patch[f] !== undefined) patch[f] = cleanTime(patch[f])
 
@@ -889,12 +1052,27 @@ router.patch('/:id', wrap(async (req, res) => {
   // revised dates are the re-promise made when a handover lands late; they
   // ride the same right, because the person making the promise is the person
   // moving the card.
-  for (const f of ['recording_date', 'edit_ready_date', 'design_ready_date', 'release_date',
-    'edit_due_revised', 'review_due_revised']) {
+  //
+  // But a deadline that ALREADY HAS a day is a promise, and a promise the
+  // person who made it can quietly move is not one. Changing a date that is
+  // set is the admin's alone; filling one that is empty still belongs to
+  // whoever may move tasks, so unscheduled work can still be scheduled and an
+  // idea can still be given its first day. Clearing counts as changing.
+  //
+  // The two *_revised dates are exempt: they exist precisely to record a
+  // re-promise when a handover lands late, and are already written beside the
+  // original rather than over it.
+  const LOCKED_DATES = ['recording_date', 'edit_ready_date', 'design_ready_date', 'release_date']
+  for (const f of [...LOCKED_DATES, 'edit_due_revised', 'review_due_revised']) {
     if (body[f] !== undefined) {
       if (!can(req.user, 'manage_content') && !can(req.user, 'move_tasks'))
         return res.status(403).json({ error: 'You don’t have permission to move dates' })
-      patch[f] = body[f] || null
+      const next = body[f] || null
+      if (LOCKED_DATES.includes(f) && row[f] && String(next ?? '') !== String(row[f]) && req.user.role !== 'admin')
+        return res.status(403).json({
+          error: 'That day is already promised — only an admin can move it. Ask one, or say what happened in the task.',
+        })
+      patch[f] = next
     }
   }
 

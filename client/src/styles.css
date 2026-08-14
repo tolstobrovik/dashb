@@ -2851,3 +2851,13 @@ button.blame-person:hover { background: var(--surface-2); }
   .sch-head .spacer { display: none; }
   .sch-late { margin-left: 0; margin-right: 0; }
 }
+
+/* ---- Round 65: the one crew hat a shoot cannot go without ---- */
+/* "optional" is set beside every other hat, so "required" has to read as a
+   different word rather than a differently-worded one. The field itself is
+   outlined only while it is still empty — a demand, not a permanent alarm. */
+.crew-req {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--bad, #c0392b);
+}
+.crew-missing .select { border-color: var(--bad, #c0392b); }
