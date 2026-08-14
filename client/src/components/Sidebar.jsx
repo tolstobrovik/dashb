@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import {
   Shield, LogOut, ListChecks, Briefcase, LayoutDashboard, Sun, BarChart3, UserX, Clapperboard, UsersRound, ScrollText, Send,
-  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown,
+  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, AlertTriangle,
 } from 'lucide-react'
 import { LogoLockup } from './Logo.jsx'
 import Avatar from './Avatar.jsx'
@@ -62,6 +62,7 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       { key: 'releases', to: '/releases', label: 'Releases', icon: Send },
       { key: 'recordings', to: '/recordings', label: 'Recordings', icon: Clapperboard },
       { key: 'missed', to: '/missed', label: 'Statistics', icon: BarChart3 },
+      { key: 'missed-tasks', to: '/missed-tasks', label: 'Missed tasks', icon: AlertTriangle },
       isAdmin && { key: 'unassigned', to: '/unassigned', label: 'Unassigned', icon: UserX },
       { key: 'docs', to: '/docs', label: 'Docs & KPIs', icon: ScrollText },
       isAdmin && { key: 'projects', to: '/projects', label: 'Projects', icon: Briefcase },
