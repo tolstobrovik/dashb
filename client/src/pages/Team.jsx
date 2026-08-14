@@ -11,7 +11,7 @@ import Modal from '../components/Modal.jsx'
 import { playDone } from '../lib/sound.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import RolePicker from '../components/RolePicker.jsx'
-import { toast } from '../lib/toast.js'
+import { toast, loadFailed } from '../lib/toast.js'
 
 // The team in one place: who we have, how to reach them, when they work and
 // what they answer for — plus the hiring board for the roles we still need.
@@ -282,6 +282,7 @@ export default function Team() {
         setUsers(us); setNeeds(hs); setCands(cs)
         cache.set('team', { users: us, needs: hs, cands: cs })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [])
 

@@ -188,9 +188,17 @@ async function createGithubBackend() {
   }
 
   const replayJournal = async () => {
+    // Each statement stands alone. One that will not apply — a row the pulled
+    // copy already contains, a constraint the fresh data now makes true — must
+    // not take the writes behind it down with it: the loop used to throw, the
+    // caller swallowed it, and everything after the bad entry was simply gone.
     for (const entry of journal) {
-      if (entry.exec) await client.executeMultiple(entry.exec)
-      else await client.execute({ sql: entry.sql, args: entry.args })
+      try {
+        if (entry.exec) await client.executeMultiple(entry.exec)
+        else await client.execute({ sql: entry.sql, args: entry.args })
+      } catch (e) {
+        console.error('journal replay skipped a statement:', e.message)
+      }
     }
   }
 
@@ -266,8 +274,7 @@ async function createGithubBackend() {
     client = openClient()
   }
 
-  const flush = async () => {
-    if (!dirty) return
+  const pushOnce = async () => {
     // Idempotent statements (schema init on a warm database, same-value
     // updates) leave the file byte-identical — skip the round-trip entirely.
     if (hashOf(readFileSync(file)) === cleanHash) {
@@ -278,13 +285,24 @@ async function createGithubBackend() {
     }
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        // Everything journaled up to here is inside the bytes we are about to
+        // send. Anything appended while the upload is in the air is not, and
+        // has to survive it.
+        const sentUpTo = journal.length
         const bytes = readFileSync(file)
         const result = await store.push(bytes)
         if (result === true) {
-          journal = []
-          dirty = false
-          flushError = null
           cleanHash = hashOf(bytes)
+          flushError = null
+          // Only the bytes actually UPLOADED are safely stored. Writes that
+          // landed mid-upload are not in them, and calling the file clean here
+          // used to lose exactly those. But the statements that DID go up must
+          // still leave the journal: a later sync replays whatever is left on
+          // top of a freshly pulled copy, and replaying a row that is already
+          // in it collides — which used to abandon the rest of the replay and
+          // lose the writes behind it.
+          journal = journal.slice(sentUpTo)
+          dirty = journal.length > 0 || hashOf(readFileSync(file)) !== cleanHash
           // Compact the data branch periodically even if the nightly cron
           // never fires — one commit per ~100 keeps the repo small forever.
           if (++flushes % 100 === 0) await store.squash(readFileSync(file)).catch(() => {})
@@ -299,6 +317,26 @@ async function createGithubBackend() {
     }
     flushError = 'conflict retries exhausted'
     console.error('GitHub data flush failed: conflict retries exhausted')
+  }
+
+  // One upload at a time. Two overlapping requests each used to push the whole
+  // database: the second lost the compare-and-swap, downloaded the fresh copy,
+  // replayed and pushed again — three round trips of a megabyte-odd for one
+  // change. Several people working at once turned that into the traffic that
+  // gets a deployment throttled. Callers now JOIN the flush already running,
+  // and only start another if their own write is still unsaved when it ends.
+  let inFlight = null
+  const flush = async () => {
+    for (let i = 0; i < 4 && dirty; i++) {
+      if (!inFlight) break
+      const running = inFlight
+      await running.catch(() => { /* the joiner reads flushError, not the throw */ })
+      if (!dirty) return          // the flush we waited on carried our write
+      if (inFlight === running) break // nobody queued behind it — our turn
+    }
+    if (!dirty) return
+    inFlight = pushOnce()
+    try { await inFlight } finally { inFlight = null }
   }
 
   return {
@@ -494,6 +532,11 @@ export async function initSchema() {
       work_end      TEXT,
       work_days     TEXT,
       telegram_chat_id TEXT,
+      -- Set when someone signs in with a password that is published in this
+      -- repository (the documented first-boot one). Cleared the moment they
+      -- pick their own. A public repo plus a public URL makes this the
+      -- shortest path into the dashboard, so it is worth saying out loud.
+      weak_password INTEGER NOT NULL DEFAULT 0,
       telegram_code    TEXT,
       created_at    TEXT    NOT NULL
     );
@@ -904,6 +947,7 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS rubrika TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script TEXT')
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT')
+    await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS weak_password INTEGER NOT NULL DEFAULT 0')
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_code TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS reviewer_id INTEGER')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS reviewers TEXT NOT NULL DEFAULT '[]'")
@@ -1020,6 +1064,7 @@ async function migrate() {
     if (!(await hasColumn('content', 'format'))) await exec('ALTER TABLE content ADD COLUMN format TEXT; ALTER TABLE content ADD COLUMN rubrika TEXT; ALTER TABLE content ADD COLUMN script TEXT;')
     if (!(await hasColumn('content', 'reference_text'))) await exec("ALTER TABLE content ADD COLUMN reference_text TEXT; ALTER TABLE content ADD COLUMN reference_links TEXT NOT NULL DEFAULT '[]';")
     if (!(await hasColumn('users', 'telegram_chat_id'))) await exec('ALTER TABLE users ADD COLUMN telegram_chat_id TEXT; ALTER TABLE users ADD COLUMN telegram_code TEXT;')
+    if (!(await hasColumn('users', 'weak_password'))) await exec('ALTER TABLE users ADD COLUMN weak_password INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'reviewer_id'))) {
       await exec(`
         ALTER TABLE content ADD COLUMN reviewer_id INTEGER;
@@ -1537,6 +1582,7 @@ export function publicUser(row) {
     id: row.id,
     name: row.name,
     username: row.username,
+    weak_password: row.weak_password ? 1 : 0,
     email: row.email,
     role: row.role,
     crew_roles: crewRolesOf(row),

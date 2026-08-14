@@ -4,6 +4,7 @@ import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, isIdeaLabel } from '../lib/constants.js'
+import { loadFailed } from '../lib/toast.js'
 import ContentModal from '../components/ContentModal.jsx'
 
 // The planning gaps, on one page: every live task that nobody owns yet —
@@ -126,6 +127,7 @@ export default function Unassigned() {
         setContent(ct); setUsers(us); setStatuses(st)
         cache.set(`unassigned:${user.id}`, { content: ct.map(({ photo_thumb: _t, ...r }) => r), users: us, statuses: st })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
     // the admin's crew rules — which hats a task of each type must carry
     api.cached('/fields').then((f) => setCrew(f.crew || null)).catch(() => {})

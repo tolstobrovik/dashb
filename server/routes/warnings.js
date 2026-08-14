@@ -18,7 +18,7 @@ router.use(authRequired)
 async function liveTasks() {
   const statuses = await all('SELECT id, label FROM statuses')
   const dead = new Set(statuses.filter((s) => isDeleted(s.label)).map((s) => s.id))
-  const rows = await all(`SELECT id, title, channels, status_id, operator_id, editor_id, reviewer_id, reviewers,
+  const rows = await all(`SELECT id, title, type, channels, status_id, operator_id, editor_id, reviewer_id, reviewers,
     recording_date, edit_ready_date, release_date, edit_due_revised, review_due_revised,
     shot_at, edited_at, done_at FROM content`)
   return rows.filter((r) => !dead.has(r.status_id))
@@ -54,7 +54,9 @@ router.get('/', wrap(async (req, res) => {
     .filter((w) => (only ? w.owner_id === only : true))
     .map(withChannels)
     .sort((a, b) => b.days_late - a.days_late)
-  res.json({ count: list.length, warnings: list })
+  const team = (await all('SELECT * FROM users')).map(publicUser)
+    .map((u) => ({ id: u.id, name: u.name, color: u.color }))
+  res.json({ count: list.length, warnings: list, team })
 }))
 
 // GET /api/warnings/report — the question the board is actually asked:

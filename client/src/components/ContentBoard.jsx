@@ -5,9 +5,12 @@ import { useChannels } from '../lib/channels.jsx'
 
 // Simple kanban: one column per pipeline stage, drag a card to move it.
 // Dragging into the final stage completes the task and fills its plan.
+// The stage that belongs to YOUR craft is tinted and labelled — an operator
+// walks in and sees the shooting column, an editor the editing one, without
+// reading six headings first.
 // With onQuickAdd, every working column grows a foot input: type a title,
 // Enter — the task lands in that stage without a modal round-trip.
-export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, onQuickAdd, campaignsById = {}, teamById = {} }) {
+export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, onQuickAdd, campaignsById = {}, teamById = {}, myStages = [] }) {
   const { byKey } = useChannels()
   // Ref = source of truth for the drop (a fast drop must never read a stale
   // state value); state only drives the dimmed styling.
@@ -38,7 +41,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
         return (
           <div
             key={s.id}
-            className={`board-col${overCol === s.id ? ' over' : ''}${isDeletedLabel(s.label) ? ' dead-col' : ''}`}
+            className={`board-col${overCol === s.id ? ' over' : ''}${isDeletedLabel(s.label) ? ' dead-col' : ''}${myStages.includes(s.id) ? ' my-col' : ''}`}
             style={{ borderTop: `3px solid ${s.color}`, background: `color-mix(in srgb, ${s.color} 6%, transparent)` }}
             onDragOver={(e) => { if (canMove) { e.preventDefault(); setOverCol(s.id) } }}
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol((c) => (c === s.id ? null : c)) }}
@@ -47,6 +50,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
             <div className="board-col-head">
               <span className="status-dot" style={{ background: s.color }} />
               {s.label}
+              {myStages.includes(s.id) && <span className="my-col-tag">yours</span>}
               <span className="count">{list.length}</span>
             </div>
             <div className="board-col-body">

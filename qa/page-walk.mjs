@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Every page, as every kind of account, on desktop and on a phone — watching
 // for the things a suite of assertions never sees: a page that throws, a page
 // that renders nothing, a layout that scrolls sideways, a request that 500s
@@ -10,7 +14,7 @@ import { chromium } from 'playwright'
 const SP = new URL('.', import.meta.url).pathname
 const BASE = 'http://localhost:4111'
 const B = BASE + '/api'
-const p = spawn(process.execPath, ['/home/user/dashb/server/index.js'],
+const p = spawn(process.execPath, [ROOT + '/server/index.js'],
   { env: { ...process.env, DATA_DIR: SP + 'walk-' + Date.now(), PORT: '4111' }, stdio: 'ignore' })
 process.on('exit', () => { try { p.kill('SIGKILL') } catch { /* gone */ } })
 for (let i = 0; i < 60; i++) {
@@ -84,11 +88,19 @@ for (const [vpName, vp] of [['desktop', { width: 1440, height: 900 }], ['phone',
     await page.fill('input[autocomplete="username"], input[name="username"]', u)
     await page.fill('input[type="password"]', pw)
     await page.click('button[type="submit"]')
-    await page.waitForURL(/\/(?!login)/, { timeout: 20000 })
+    await page.waitForFunction(() => !location.pathname.startsWith("/login"), null, { timeout: 25000 })
     for (const [name, path] of PAGES) {
       seen.length = 0
       await page.goto(BASE + path)
-      await page.waitForTimeout(1400)
+      // Wait for the app's OWN loading state to clear, rather than sleeping a
+      // fixed interval and hoping. Every page here is code-split, so a cold
+      // chunk on a slow sandbox used to overrun a flat 1.4s wait and get
+      // reported as a hang — a different page each run, none of them actually
+      // broken. The deadline below is what now separates "slow" from "stuck",
+      // and the spinner check further down still catches a genuine hang.
+      await page.waitForFunction(() => !document.querySelector('.app-loading'), null, { timeout: 12000 })
+        .catch(() => { /* still spinning — reported as a problem below */ })
+      await page.waitForTimeout(350)   // let the first paint after loading settle
       visits++
       const state = await page.evaluate(() => ({
         text: (document.querySelector('.app-main, main, #root')?.innerText || '').trim().length,

@@ -6,7 +6,7 @@ import {
   SlidersHorizontal, Settings, Megaphone, CalendarClock, CheckCircle2, ArrowUp, ArrowDown, Rocket,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
-import { toast } from '../lib/toast.js'
+import { toast, loadFailed } from '../lib/toast.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
@@ -201,6 +201,7 @@ export default function Department() {
           content: ct.map(({ photo_thumb: _t, ...rest }) => rest),
         })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [key, deptReady, hasAccess])
 
@@ -219,6 +220,22 @@ export default function Department() {
   }, [key, dept, hasAccess, openItem, dragIdx])
 
   const statusesById = useMemo(() => Object.fromEntries(statuses.map((s) => [s.id, s])), [statuses])
+
+  // Which column is MINE. Crew hats are declared on the person; review is a
+  // permission, because signing work off is an SMM's job rather than a craft.
+  // Admins hold every hat, so tinting all six would tint nothing — they get
+  // none. Matched on the stage's own label, the way the stage rules are.
+  const myStages = useMemo(() => {
+    if (user.role === 'admin') return []
+    const hats = user.crew_roles || []
+    const want = []
+    if (hats.includes('operator')) want.push(/to\s*shoot|shooting|s[yj]omka/i, /^shot$/i)
+    if (hats.includes('editor')) want.push(/editing|montaj/i)
+    if (hats.includes('designer')) want.push(/editing|montaj/i)
+    if (user.permissions?.review_publish) want.push(/^ready$|review|tayyor/i)
+    if (!want.length) return []
+    return statuses.filter((s) => want.some((re) => re.test(String(s.label || '')))).map((s) => s.id)
+  }, [statuses, user])
   // ---- the Target platform lens (All / Instagram / Telegram) ----
   const hasLens = key === 'target'
   const [lens, setLensState] = useState('all')
@@ -686,7 +703,7 @@ export default function Department() {
           onBack={() => setSelectedDate(null)}
         />
       ) : view === 'board' ? (
-        <ContentBoard items={wsContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem}
+        <ContentBoard items={wsContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} myStages={myStages}
           onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />
       ) : (
         <ContentCalendar

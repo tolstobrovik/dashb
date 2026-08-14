@@ -11,7 +11,7 @@ import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel, can, tashkentDay } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
-import { toast } from '../lib/toast.js'
+import { toast, loadFailed } from '../lib/toast.js'
 import { playDone } from '../lib/sound.js'
 
 // My Day — the deadline-first landing page, in two shapes:
@@ -444,6 +444,7 @@ export default function Brief() {
           content: ct.map(({ photo_thumb: _t, ...rest }) => rest), statuses: st, personal: ps, pravki: pv,
         })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [user.id])
 

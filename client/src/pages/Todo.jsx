@@ -6,7 +6,7 @@ import {
 import { useLocation } from 'react-router-dom'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { getPicks, bumpPick } from '../lib/picks.js'
-import { toast } from '../lib/toast.js'
+import { toast, loadFailed } from '../lib/toast.js'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -284,6 +284,7 @@ export default function Todo() {
           team: us.map(({ avatar: _a, ...rest }) => rest),
         })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [])
 

@@ -53,17 +53,20 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   const review = (full.phases || []).find((p) => p.phase === 'review')
   ok('  the review phase names both owners', review?.owner_ids?.length === 2, JSON.stringify(review?.owner_ids))
 
-  // A missed review is charged to each of them. The cut reaches review today,
-  // so the reviewers only really own the date once it has been re-promised —
-  // otherwise they are excused, which is the rule working, not a miss.
-  const late = await newTask({ reviewer_ids: [rev1, rev2], release_date: day(-3), edit_ready_date: day(-5) })
-  await req(`/content/${late.id}`, 'PATCH', { editor_id: editor, shot_link: 'https://drive.google.com/a', status_id: S['Editing'] })
-  await req(`/content/${late.id}`, 'PATCH', { ready_link: 'https://drive.google.com/b', status_id: S['Ready'] })
-  // Without a re-promise the delay is upstream and neither reviewer carries it.
-  const excused = await req('/warnings/me', 'GET', null, rev1T)
-  ok('an un-repromised late handover excuses BOTH reviewers', excused.data.count === 0, `${excused.data.count}`)
-  // Re-promised to a date that has itself now gone: now it is theirs.
-  await req(`/content/${late.id}`, 'PATCH', { review_due_revised: day(-1) })
+  // A missed review is charged to each of them. The cut only reaches review
+  // today, so the gate makes whoever hands it over re-promise a date — and
+  // that date, not the dead original, is what the reviewers answer for. Here
+  // it is set to yesterday, so it has gone too.
+  const late = await newTask({
+    operator_id: shooter, editor_id: editor, reviewer_ids: [rev1, rev2],
+    release_date: day(-3), edit_ready_date: day(-5), shot_link: 'https://drive.google.com/a',
+  })
+  await req(`/content/${late.id}`, 'PATCH', { status_id: S['Editing'] })
+  const handover = await req(`/content/${late.id}`, 'PATCH', {
+    ready_link: 'https://drive.google.com/b', review_due_revised: day(-1), status_id: S['Ready'],
+  })
+  ok('a late handover into review lands once re-promised', handover.status === 200,
+    `${handover.status} ${handover.data.error || ''}`)
   const one = await req('/warnings/me', 'GET', null, rev1T)
   const two = await req('/warnings/me', 'GET', null, rev2T)
   ok('both reviewers carry the missed review', one.data.count >= 1 && two.data.count >= 1,
@@ -131,7 +134,10 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
 
 // ---- the statistics are walked back too ---------------------------------
 {
-  const t = await newTask({ operator_id: shooter, editor_id: editor, reviewer_ids: [rev1] })
+  const t = await newTask({
+    operator_id: shooter, editor_id: editor, reviewer_ids: [rev1],
+    shot_link: 'https://drive.google.com/raw-p', ready_link: 'https://drive.google.com/cut-p',
+  })
   const cur = async () => {
     const { data } = await req('/trackers?department=instagram_main')
     return (data.find?.((x) => x.content_type === 'reel') || {}).current ?? 0

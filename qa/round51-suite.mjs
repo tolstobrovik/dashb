@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 51: the content workspace can be narrowed. A filter row above the
 // board and the calendars picks a PERSON (assigned, filming, editing or
 // designing — all four count), a TYPE and a STAGE; whatever is chosen holds
@@ -18,7 +22,7 @@ const boot = (args, env) => { const p = spawn(process.execPath, args, { env: { .
 const stop = () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } } }
 process.on('exit', stop)
 
-boot(['/home/user/dashb/server/index.js'], { DATA_DIR: SP + 'f51-' + Date.now(), PORT: '4101' })
+boot([ROOT + '/server/index.js'], { DATA_DIR: SP + 'f51-' + Date.now(), PORT: '4101' })
 const up = async (url) => {
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(url)).ok) return true } catch { /* not yet */ }
@@ -79,7 +83,7 @@ await page.goto(BASE + '/login')
 await page.fill('input[autocomplete="username"], input[name="username"]', 'admin')
 await page.fill('input[type="password"]', 'admin123')
 await page.click('button[type="submit"]')
-await page.waitForURL(/\/(?!login)/, { timeout: 20000 })
+await page.waitForFunction(() => !location.pathname.startsWith("/login"), null, { timeout: 25000 })
 await page.goto(`${BASE}/dept/${chKey}`)
 await page.waitForSelector('.cf-bar', { timeout: 20000 })
 
@@ -141,11 +145,19 @@ await sel(0).selectOption(String(anvar.id))
 await page.waitForTimeout(300)
 const dayCell = page.locator(`.cal-day[data-drop="${day(1)}"]`).first()
 if (await dayCell.count()) {
-  await dayCell.click()
-  await page.waitForTimeout(400)
-  const agenda = (await page.locator('.tcard-title, .ag-title, .ov-title').allTextContents()).filter((t) => t.startsWith('f51'))
+  // The EMPTY part of the cell. Clicking its centre would land on a task pill,
+  // and a click on a task opens that task rather than the day — which is the
+  // point of the rule, not a fault in it.
+  await dayCell.scrollIntoViewIfNeeded()
+  await dayCell.locator('.cal-daynum').click()   // the date itself is never a task
+  await page.waitForTimeout(600)
+  // .agenda-title is what the day view actually renders. The old selector
+    // list matched nothing, so `every()` on an empty array passed the pin
+    // without ever looking at the day — the `length > 0` below is what makes
+    // this assertion mean something.
+  const agenda = (await page.locator('.agenda-title').allTextContents()).filter((t) => t.startsWith('f51'))
   ok('a day’s agenda shows only the filtered person’s work',
-    agenda.every((t) => t === 'f51: anvar shoots'), agenda.join(' / '))
+    agenda.length > 0 && agenda.every((t) => t === 'f51: anvar shoots'), agenda.join(' / '))
   await page.locator('.pill', { hasText: 'Board' }).click()
   await page.waitForTimeout(300)
 } else ok('a day’s agenda shows only the filtered person’s work', false, 'day cell not found')
@@ -189,7 +201,7 @@ await mp.goto(BASE + '/login')
 await mp.fill('input[autocomplete="username"], input[name="username"]', 'admin')
 await mp.fill('input[type="password"]', 'admin123')
 await mp.click('button[type="submit"]')
-await mp.waitForURL(/\/(?!login)/, { timeout: 20000 })
+await mp.waitForFunction(() => !location.pathname.startsWith("/login"), null, { timeout: 25000 })
 await mp.goto(`${BASE}/dept/${chKey}`)
 await mp.waitForSelector('.cf-bar', { timeout: 20000 })
 await mp.locator('.cf-sel').nth(1).selectOption('video')

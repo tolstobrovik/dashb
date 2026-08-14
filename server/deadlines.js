@@ -166,6 +166,7 @@ export function warningsOf(task, today = dayISO()) {
         content_id: task.id,
         title: task.title,
         channels: task.channels,
+        type: task.type,
         phase: p.phase,
         phase_label: p.label,
         role: p.role,

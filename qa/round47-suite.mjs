@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 47: the bot audited end to end. Two faults it turned up, now pinned:
 // the bot met every message but /start and /stop with SILENCE, which reads
 // exactly like a bot that has died; and a member who blocked it stayed
@@ -21,7 +25,7 @@ const boot = (args, env) => { const p = spawn(process.execPath, args, { env: { .
 process.on('exit', () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } } })
 
 boot([SP + 'mock-tg.mjs'], { MOCK_PORT: '9994' })
-boot(['/home/user/dashb/server/index.js'], {
+boot([ROOT + '/server/index.js'], {
   DATA_DIR: SP + 'tg47-' + Date.now(), PORT: '4102',
   TELEGRAM_BOT_TOKEN: TOKEN, TELEGRAM_API_BASE: MOCK,
 })

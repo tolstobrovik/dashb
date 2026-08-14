@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Login hardening + admin recovery, driven for real across server restarts.
 import { spawn } from 'child_process'
 import { chromium } from 'playwright'
@@ -9,7 +13,7 @@ const ok = (n, c, x = '') => { if (!c) fails++; console.log(`${c ? '✔' : '✘ 
 
 let proc = null
 const start = async () => {
-  proc = spawn('node', ['/home/user/dashb/server/index.js'], { env: { ...process.env, STORAGE: 'file', DATA_DIR: DATA, PORT: String(PORT) }, stdio: 'ignore' })
+  proc = spawn('node', [ROOT + '/server/index.js'], { env: { ...process.env, STORAGE: 'file', DATA_DIR: DATA, PORT: String(PORT) }, stdio: 'ignore' })
   for (let i = 0; i < 40; i++) {
     try { const r = await fetch(BASE + '/api/health'); if (r.ok) return } catch { /* boot */ }
     await new Promise((r) => setTimeout(r, 300))

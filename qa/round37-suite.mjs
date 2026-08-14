@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 37: the Telegram bridge. Self-contained — boots its own server (4093)
 // against a mock Telegram API (9979) with a test token, then pins the whole
 // journey: status → link deep-link → webhook /start (secret-checked) → the
@@ -28,7 +32,7 @@ const stop = () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { 
 process.on('exit', stop)
 
 boot([SP + 'mock-tg.mjs'], { MOCK_PORT: '9979' })
-boot(['/home/user/dashb/server/index.js'], {
+boot([ROOT + '/server/index.js'], {
   DATA_DIR: SP + 'tgdata-' + Date.now(), PORT: '4093',
   TELEGRAM_BOT_TOKEN: TOKEN, TELEGRAM_API_BASE: MOCK,
 })

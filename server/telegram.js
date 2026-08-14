@@ -205,6 +205,8 @@ export async function tgRunSchedules() {
 // The day is claimed in meta before anything goes out, so a retried cron, a
 // second server instance or a curious visitor on the cron URL can never make
 // the team's phones ring twice.
+// How many overdue items are named before the rest become a count.
+const LATE_SHOWN = 6
 export async function tgDailyReminders() {
   if (!tgEnabled()) return 0
   const today = dayISO(0)
@@ -222,29 +224,59 @@ export async function tgDailyReminders() {
   const rows = await all(`SELECT id, title, assignee_id, assignees, operator_id, editor_id, designer_id,
     recording_date, edit_ready_date, design_ready_date, release_date, status_id FROM content WHERE done_at IS NULL`)
   const origin = await tgPublicUrl().catch(() => '')
+  const link = (t) => (origin ? ` · <a href="${origin}/todo?task=${t.id}">open ↗</a>` : '')
+  const daysAgo = (iso) =>
+    Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${iso}T12:00:00Z`)) / 86400000)
   let sent = 0
   for (const u of linked) {
-    const buckets = { [tomorrow]: [], [week]: [] }
-    const push = (t, date, what) => { if (buckets[date]) buckets[date].push({ t, what }) }
+    // TODAY was missing: a deadline you were handed this morning, or one moved
+    // onto today, was never mentioned at all — yesterday's digest is the only
+    // place it had ever appeared. LATE was missing too, which mattered more:
+    // the message ended with "Nothing is late yet" no matter how much was, so
+    // the one line people would actually act on was the one line that lied.
+    const soon = { [today]: [], [tomorrow]: [], [week]: [] }
+    const late = []
+    const push = (t, date, what) => {
+      if (!date) return
+      if (soon[date]) soon[date].push({ t, what })
+      else if (date < today) late.push({ t, what, date })
+    }
     for (const t of rows) {
       if (dead.has(t.status_id)) continue
       let assignees = []
       try { assignees = JSON.parse(t.assignees || '[]') } catch { assignees = [] }
       const owns = assignees.includes(u.id) || t.assignee_id === u.id
+      // Plain nouns, because each one has to read in both directions now:
+      // "— the cut" ahead of time, "— the cut, 3 days late" after.
       if ((owns || t.operator_id === u.id) && t.recording_date) push(t, t.recording_date, 'the shoot')
-      if (t.editor_id === u.id && t.edit_ready_date) push(t, t.edit_ready_date, 'the cut is due')
-      if (t.designer_id === u.id && t.design_ready_date) push(t, t.design_ready_date, 'the artwork is due')
+      if (t.editor_id === u.id && t.edit_ready_date) push(t, t.edit_ready_date, 'the cut')
+      if (t.designer_id === u.id && t.design_ready_date) push(t, t.design_ready_date, 'the artwork')
       if (owns && t.release_date) push(t, t.release_date, 'the release')
     }
     const lines = []
-    for (const [label, list] of [['Tomorrow', buckets[tomorrow]], ['In a week', buckets[week]]]) {
+    for (const [label, list] of [['Today', soon[today]], ['Tomorrow', soon[tomorrow]], ['In a week', soon[week]]]) {
       if (!list.length) continue
       lines.push(`<b>${label}</b>`)
-      for (const { t, what } of list)
-        lines.push(`• «${tgEsc(t.title)}» — ${what}${origin ? ` · <a href="${origin}/todo?task=${t.id}">open ↗</a>` : ''}`)
+      for (const { t, what } of list) lines.push(`• «${tgEsc(t.title)}» — ${what}${link(t)}`)
+    }
+    if (late.length) {
+      // Oldest first — the thing that has been waiting longest is the thing
+      // most likely to have been forgotten. Long lists are capped rather than
+      // sent whole: a wall of overdue work is read as noise and scrolled past,
+      // which is the same as not sending it.
+      late.sort((a, b) => a.date.localeCompare(b.date))
+      lines.push('<b>Late</b>')
+      for (const { t, what, date } of late.slice(0, LATE_SHOWN)) {
+        const d = daysAgo(date)
+        lines.push(`• «${tgEsc(t.title)}» — ${what}, ${d === 1 ? 'a day' : `${d} days`} late${link(t)}`)
+      }
+      if (late.length > LATE_SHOWN) lines.push(`…and ${late.length - LATE_SHOWN} more`)
     }
     if (lines.length) {
-      await tgSendTo(u.id, `⏰ A friendly heads-up on your deadlines\n${lines.join('\n')}\n\nNothing is late yet — a good moment to get ahead of it 💪`)
+      const head = late.length ? 'Your deadlines — and what has slipped' : 'A friendly heads-up on your deadlines'
+      // The cheerful sign-off is a claim, so it is only made when it is true.
+      const close = late.length ? '' : '\n\nNothing is late — a good moment to get ahead of it 💪'
+      await tgSendTo(u.id, `⏰ ${head}\n${lines.join('\n')}${close}`)
       sent++
     }
   }

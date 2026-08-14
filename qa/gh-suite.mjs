@@ -1,10 +1,14 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // GitHub-storage test suite against the mock GitHub API. Verifies the
 // optimized driver end-to-end: cold-start call count, ETag 304 polling,
 // no-op flush skipping, two-instance conflict healing, and squash.
 import { execSync, spawn } from 'child_process'
 
 const MOCK = 'http://localhost:9977'
-const REPO = process.env.REPO_DIR || '/home/user/dashb'
+const REPO = process.env.REPO_DIR || ROOT
 let fails = 0
 const ok = (name, cond, extra = '') => {
   if (!cond) fails++

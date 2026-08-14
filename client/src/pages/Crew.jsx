@@ -10,7 +10,7 @@ import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
-import { toast } from '../lib/toast.js'
+import { toast, loadFailed } from '../lib/toast.js'
 
 // Post Production — the admin's view of everyone who MAKES the content, in
 // two sub-pages:
@@ -181,6 +181,7 @@ export default function Crew() {
         setContent(ct); setUsers(us); setStatuses(st)
         cache.set('crew', { content: ct.map(({ photo_thumb: _t, ...r }) => r), users: us, statuses: st })
       })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [])
   useEffect(() => {

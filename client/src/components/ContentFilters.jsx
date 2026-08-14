@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { Filter, X } from 'lucide-react'
+import { Filter, X, UserRound } from 'lucide-react'
 import { CONTENT_TYPES } from '../lib/constants.js'
+import { useAuth } from '../lib/auth.jsx'
 
 // Narrowing the content workspace: who it belongs to, what kind of thing it
 // is, which stage it sits at. One row of plain selects above the board and
@@ -34,6 +35,7 @@ export function matchesFilter(t, f) {
 export const filterIsOn = (f) => !!(f.person || f.type || f.stage)
 
 export default function ContentFilters({ filter, onChange, items, shown, statuses, teamById }) {
+  const { user } = useAuth()
   // Only offer people who actually appear on this channel's work — an empty
   // menu of forty names helps nobody.
   const people = useMemo(() => {
@@ -56,10 +58,19 @@ export default function ContentFilters({ filter, onChange, items, shown, statuse
 
   const on = filterIsOn(filter)
   const set = (patch) => onChange({ ...filter, ...patch })
+  // "Only mine" is the choice people make most, and finding your own name in
+  // a menu of forty is the slowest way to make it. One switch, and it is the
+  // same person filter underneath — so it clears with everything else.
+  const onlyMine = String(filter.person) === String(user.id)
 
   return (
     <div className={'cf-bar' + (on ? ' on' : '')}>
       <Filter size={13} className="cf-icon" />
+      <button className={'cf-mine' + (onlyMine ? ' active' : '')}
+        onClick={() => set({ person: onlyMine ? '' : String(user.id) })}
+        data-tip={onlyMine ? 'Show everyone’s work again' : 'Only the work you are on'}>
+        <UserRound size={12} /> Mine
+      </button>
       <select className="select cf-sel" value={filter.person} onChange={(e) => set({ person: e.target.value })}
         data-tip="Only work this person is on — assigned, filming, editing or designing">
         <option value="">Anyone</option>

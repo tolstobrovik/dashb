@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // A wide, shallow sweep: every read endpoint, as every kind of account.
 // It is not looking for wrong answers — the suites do that — it is looking
 // for endpoints that BREAK (5xx), leak (a member reading admin data), or
@@ -9,7 +13,7 @@ import { spawn } from 'child_process'
 const SP = new URL('.', import.meta.url).pathname
 const BASE = 'http://localhost:4110'
 const B = BASE + '/api'
-const p = spawn(process.execPath, ['/home/user/dashb/server/index.js'],
+const p = spawn(process.execPath, [ROOT + '/server/index.js'],
   { env: { ...process.env, DATA_DIR: SP + 'smoke-' + Date.now(), PORT: '4110' }, stdio: 'ignore' })
 process.on('exit', () => { try { p.kill('SIGKILL') } catch { /* gone */ } })
 for (let i = 0; i < 60; i++) {

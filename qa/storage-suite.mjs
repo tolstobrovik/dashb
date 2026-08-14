@@ -1,3 +1,7 @@
+// Where the app lives. Defaults to the sandbox path these suites were
+// written in, so nothing changes there; set DASHB_ROOT to run them on a
+// laptop or in CI, where the checkout is somewhere else entirely.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Storage resilience: what the team sees when GitHub — the durable store —
 // stumbles. A WARM instance always rode a blip out on its local copy; a
 // process that happened to be starting answered every request "The data store
@@ -9,7 +13,7 @@
 import { execSync, spawn } from 'child_process'
 
 const MOCK = 'http://localhost:9989'
-const REPO = process.env.REPO_DIR || '/home/user/dashb'
+const REPO = process.env.REPO_DIR || ROOT
 const SP = new URL('.', import.meta.url).pathname
 let fails = 0
 const ok = (n, c, x = '') => { if (!c) fails++; console.log(`${c ? '✔' : '✘ FAIL'} ${n}${x ? ` — ${x}` : ''}`) }

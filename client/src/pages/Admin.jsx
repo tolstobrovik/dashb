@@ -5,7 +5,7 @@ import {
   X, CheckSquare, Scissors, Video, History, Eye, EyeOff,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
-import { toast } from '../lib/toast.js'
+import { toast, loadFailed } from '../lib/toast.js'
 import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
 import { CHANNEL_ICONS, iconFor, PERMISSIONS, CONTENT_TYPES, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor, tashkentDay } from '../lib/constants.js'
@@ -434,6 +434,7 @@ function TasksTab() {
   useEffect(() => {
     Promise.all([api.get('/content'), api.get('/statuses'), api.get('/users')])
       .then(([ct, st, us]) => { setItems(ct); setStatuses(st); setUsers(us) })
+      .catch(loadFailed)
       .finally(() => setLoading(false))
   }, [])
 
