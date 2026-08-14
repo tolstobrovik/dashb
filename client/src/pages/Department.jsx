@@ -397,6 +397,25 @@ export default function Department() {
       else alert(e.message)
     }
   }
+  // The task modal changes stages too — its chips at the top of the panel —
+  // and that route used to hand work on without ever asking who was taking it.
+  // A question the board asks and the panel does not is not a question anyone
+  // has to answer. Anything that carries a stage change now goes past the same
+  // handover window; everything else saves straight through.
+  const updateFromModal = async (item, payload) => {
+    const next = payload.status_id
+    if (!item || next === undefined || next === item.status_id) return updateContent(item, payload)
+    const { status_id, ...rest } = payload
+    if (Object.keys(rest).length) await updateContent(item, rest)   // the edits land either way
+    const fresh = { ...item, ...rest }
+    try {
+      const { gates } = await api.get(`/content/${item.id}/handover?to=${next}`)
+      if (gates?.length) { setGate({ item: fresh, statusId: next, gates }); return }
+    } catch { /* fall through and just move it */ }
+    await updateContent(fresh, { status_id: next })
+    movedToast(fresh, next)
+  }
+
   const moveDate = (item, field, iso) => updateContent(item, { [field]: iso }).catch((e) => alert(e.message))
   // The board's foot inputs: a title lands straight in that column.
   const quickAdd = async (title, statusId) => {
@@ -885,7 +904,7 @@ export default function Department() {
           defaults={newDefaults}
           onClose={() => setOpenItem(null)}
           onCreate={createContent}
-          onUpdate={updateContent}
+          onUpdate={updateFromModal}
           onDelete={deleteContent}
         />
       )}
