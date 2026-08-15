@@ -2861,3 +2861,52 @@ button.blame-person:hover { background: var(--surface-2); }
   color: var(--bad, #c0392b);
 }
 .crew-missing .select { border-color: var(--bad, #c0392b); }
+
+/* ============ Round 66: the project list, read at a glance ============ */
+/* One card per project instead of a seven-column table. The question people
+   arrive with is "which of these needs me, and who is on it" — that answer
+   fits on two lines, and a row of seven cells does not give it any faster. */
+.proj-list { display: flex; flex-direction: column; gap: 8px; }
+.proj-card {
+  display: flex; flex-direction: column; gap: 7px; width: 100%;
+  padding: 13px 15px; text-align: left; font-family: inherit; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-left: 3px solid var(--hairline-strong);
+  border-radius: var(--radius-sm); transition: border-color 0.12s, background 0.12s;
+}
+.proj-card:hover { background: var(--surface-2); border-color: var(--brand-300); }
+/* The state is carried by the card's own edge, so the eye finds the row that
+   needs attention before it reads a single word. */
+.proj-card.health-red { border-left-color: #A32D2D; }
+.proj-card.health-amber { border-left-color: #BA7517; }
+.proj-card.health-green { border-left-color: #1D9E75; }
+.proj-card.health-done { border-left-color: var(--hairline-strong); }
+.proj-card.health-idle { border-left-color: var(--hairline-strong); }
+.proj-card.health-done .proj-name { color: var(--ink-2); }
+
+.proj-main { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.proj-name { font-size: 14.5px; font-weight: 800; color: var(--ink); }
+
+/* The state in words, with the reason beside it rather than under a hover —
+   the reason IS the column; a colour alone just asks a second question. */
+.pc-health { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.pc-health-why { font-size: 12px; color: var(--muted); }
+.pc-badge-done, .pc-badge-idle { background: var(--surface-2) !important; color: var(--muted) !important; }
+
+.proj-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
+.proj-who { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.proj-dot { color: var(--hairline-strong); }
+.proj-due.late { color: var(--bad, #c0392b); font-weight: 700; }
+.proj-camps { color: var(--muted); }
+
+.proj-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.proj-bar-track { flex: 1; max-width: 260px; height: 6px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+/* A filled bar reads as filled: the old one drew a pale fill on a pale track,
+   so a finished project looked untouched next to the words "100%". */
+.proj-bar-fill { display: block; height: 100%; border-radius: 4px; background: var(--brand-500); }
+.health-done .proj-bar-fill { background: #1D9E75; }
+
+@media (max-width: 640px) {
+  .proj-bar-track { max-width: none; }
+  .proj-meta { gap: 5px; }
+}

@@ -4,6 +4,7 @@ import { Plus, Trash2, Briefcase, Megaphone, KanbanSquare, GanttChartSquare } fr
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
+import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import CampaignForm from '../components/CampaignForm.jsx'
 import CampaignGantt from '../components/CampaignGantt.jsx'
@@ -141,7 +142,6 @@ export default function Projects() {
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
-  const [projSort, setProjSort] = useState('health')   // health | deadline | activity | name
   const [campSort, setCampSort] = useState('start')    // start | end | daysleft
   const [projectModal, setProjectModal] = useState(null) // null | 'new' | project
   const [campModal, setCampModal] = useState(null)       // null | 'new' | campaign
@@ -173,15 +173,14 @@ export default function Projects() {
     return list
   }, [camps, filter, campSort])
 
-  const HEALTH_RANK = { red: 0, amber: 1, green: 2 }
-  const sortedProjects = useMemo(() => {
-    const list = [...projects]
-    if (projSort === 'deadline') list.sort((a, b) => (a.deadline ? (b.deadline ? a.deadline.localeCompare(b.deadline) : -1) : 1))
-    else if (projSort === 'activity') list.sort((a, b) => (b.last_activity || '').localeCompare(a.last_activity || ''))
-    else if (projSort === 'name') list.sort((a, b) => a.name.localeCompare(b.name))
-    else list.sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health] || a.name.localeCompare(b.name))
-    return list
-  }, [projects, projSort])
+  // One order, and it is the useful one: what needs a person is at the top,
+  // then the soonest deadline. Four sort buttons over a handful of projects
+  // asked people to choose an ordering before they had read anything.
+  const HEALTH_RANK = { red: 0, amber: 1, green: 2, idle: 3, done: 4 }
+  const sortedProjects = useMemo(() => [...projects].sort((a, b) =>
+    HEALTH_RANK[a.health] - HEALTH_RANK[b.health]
+    || (a.deadline ? (b.deadline ? a.deadline.localeCompare(b.deadline) : -1) : 1)
+    || a.name.localeCompare(b.name)), [projects])
 
   const replaceCamp = (saved) => setCamps((prev) => {
     const has = prev.some((c) => c.id === saved.id)
@@ -235,51 +234,64 @@ export default function Projects() {
 
       {view === 'projects' && (
         <>
-          <div className="pill-group" style={{ marginBottom: 10 }}>
-            <span className="stat-sub" style={{ alignSelf: 'center', fontWeight: 700 }}>Sort:</span>
-            <button className={'pill' + (projSort === 'health' ? ' active' : '')} onClick={() => setProjSort('health')} data-tip="Red first — what needs attention">Health</button>
-            <button className={'pill' + (projSort === 'deadline' ? ' active' : '')} onClick={() => setProjSort('deadline')} data-tip="Closest deadline on top">Deadline ↑</button>
-            <button className={'pill' + (projSort === 'activity' ? ' active' : '')} onClick={() => setProjSort('activity')} data-tip="Most recently active first">Activity</button>
-            <button className={'pill' + (projSort === 'name' ? ' active' : '')} onClick={() => setProjSort('name')} data-tip="Alphabetical">Name</button>
-          </div>
-          <div className="card table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr><th>Project</th><th>Owner</th><th>Live campaigns</th><th>Progress</th><th>Deadline</th><th>Last activity</th><th>Health</th></tr>
-              </thead>
-              <tbody>
-                {sortedProjects.map((p) => {
-                  const overdueDl = p.deadline && p.deadline < todayISO() && p.actual < p.target
-                  return (
-                    <tr key={p.id} className="row-click" onClick={() => navigate(`/projects/${p.id}`)}>
-                      <td style={{ fontWeight: 700 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {p.photo_thumb && <img className="pc-thumb" src={p.photo_thumb} alt="" />}
-                          {p.name}
+          {/* One card per project instead of seven columns. A table asks you to
+              read across a row and hold six values in your head; the question
+              people actually arrive with is "which of these needs me, and who
+              is on it", and that answer fits on two lines. The order already
+              answers the first half — what needs a person is at the top — so
+              the four sort buttons went with the columns. */}
+          <div className="proj-list">
+            {sortedProjects.map((p) => {
+              const late = p.deadline && p.deadline < todayISO()
+              const steps = p.progress?.steps_total > 0
+              return (
+                <button key={p.id} className={`proj-card health-${p.health}`} onClick={() => navigate(`/projects/${p.id}`)}>
+                  <span className="proj-main">
+                    {p.photo_thumb && <img className="pc-thumb" src={p.photo_thumb} alt="" />}
+                    <span className="proj-name">{p.name}</span>
+                    <HealthPill health={p.health} reason={p.health_reason} withReason />
+                  </span>
+                  <span className="proj-meta">
+                    {/* Who to ask, first — it is the thing you came for. */}
+                    {/* Only when there IS one: with no owner the pill beside
+                        the name already says so, and saying it twice on one
+                        card reads as two different problems. */}
+                    {p.owner_name && (
+                      <>
+                        <span className="proj-who">
+                          <Avatar name={p.owner_name} color={p.owner_color} size={20} /> {p.owner_name}
                         </span>
-                      </td>
-                      <td>{p.owner_name || <span className="pc-red">—</span>}</td>
-                      <td style={p.live_campaigns === 0 ? { color: PC.red, fontWeight: 700 } : undefined}>{p.live_campaigns}</td>
-                      <td>
-                        {p.progress?.steps_total > 0 ? (
-                          <span className="proj-progress" data-tip={`${p.progress.checklist_done}/${p.progress.checklist_total} checklist · ${p.progress.campaigns_done}/${p.progress.campaigns_total} campaigns done`}>
-                            <span className="pace-track" style={{ height: 8, width: 90 }}>
-                              <span className="pace-fill" style={{ width: `${p.progress.pct}%`, background: p.progress.pct >= 100 ? PC.green : PC.blue }} />
-                            </span>
-                            <b>{p.progress.pct}%</b>
-                          </span>
-                        ) : <span className="stat-sub">no steps yet</span>}
-                      </td>
-                      <td className={'pc-when' + (overdueDl ? ' late' : '')}>{p.deadline ? dateLabel(p.deadline) : '—'}</td>
-                      <td className="pc-when">{p.last_activity ? dateLabel(p.last_activity.slice(0, 10)) : '—'}</td>
-                      <td><HealthPill health={p.health} reason={p.health_reason} /></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {projects.length === 0 && <div className="empty">No projects yet{isAdmin ? ' — create the first one.' : '.'}</div>}
+                        <span className="proj-dot">·</span>
+                      </>
+                    )}
+                    <span className={'proj-due' + (late ? ' late' : '')}>
+                      {p.deadline ? `${late ? 'was due' : 'due'} ${dateLabel(p.deadline)}` : 'no deadline'}
+                    </span>
+                    <span className="proj-dot">·</span>
+                    <span className="proj-camps">
+                      {p.progress?.campaigns_total
+                        ? `${p.live_campaigns} of ${p.progress.campaigns_total} campaigns live`
+                        : 'no campaigns yet'}
+                    </span>
+                  </span>
+                  {steps && p.progress.pct > 0 && (
+                    <span className="proj-bar" data-tip={`${p.progress.steps_done} of ${p.progress.steps_total} steps done`}>
+                      <span className="proj-bar-track">
+                        <span className="proj-bar-fill" style={{ width: `${p.progress.pct}%` }} />
+                      </span>
+                      <b>{p.progress.pct}%</b>
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
+          {projects.length === 0 && (
+            <div className="card card-pad empty">
+              <Briefcase size={28} />
+              <div>No projects yet{isAdmin ? ' — create the first one.' : '.'}</div>
+            </div>
+          )}
         </>
       )}
 

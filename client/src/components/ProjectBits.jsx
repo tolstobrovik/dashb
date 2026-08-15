@@ -76,11 +76,25 @@ export function StatusBadge({ status }) {
   )
 }
 
-export function HealthPill({ health, reason }) {
+// A colour on its own makes you hover to find out what is wrong, and a word
+// like "red" only names the colour again. The state is said in words, and the
+// reason stands next to it — that sentence is the entire point of the column.
+const HEALTH_WORD = {
+  red: 'Needs you', amber: 'Slipping', green: 'On track', done: 'Done', idle: 'Not started',
+}
+export function HealthPill({ health, reason, withReason = false }) {
+  const word = HEALTH_WORD[health] || health
+  const pill = (
+    <span className={`pc-badge pc-badge-${health}`} style={{ background: PC[health] || PC.red }}
+      {...(reason && !withReason ? { 'data-tip': reason, 'data-tip-left': '' } : {})}>
+      {word}
+    </span>
+  )
+  if (!withReason) return pill
   return (
-    <span className="pc-badge" style={{ background: PC[health] || PC.red }}
-      {...(reason ? { 'data-tip': reason, 'data-tip-left': '' } : {})}>
-      {health}
+    <span className="pc-health">
+      {pill}
+      {reason && <span className="pc-health-why">{reason}</span>}
     </span>
   )
 }
