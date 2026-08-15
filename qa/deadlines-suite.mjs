@@ -49,7 +49,7 @@ const newTask = async (over = {}) => {
   const { data } = await req('/content', 'POST', { title: 'Gate test ' + Math.random().toString(36).slice(2, 7),
     channels: ['instagram_main'], type: 'reel', status_id: S['Idea'],
     recording_date: day(2), edit_ready_date: day(4), release_date: day(6),
-    operator_id: 1, ...over, })
+    operator_id: shooter, ...over, })
   return data
 }
 
