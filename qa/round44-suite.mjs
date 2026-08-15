@@ -25,9 +25,9 @@ const day = (n) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' 
 
 // three reels with people-gaps: far ahead (+10), shoot tomorrow (release +10),
 // and dateless — plus one task fully staffed far ahead (never shows anywhere)
-const far = (await req('/content', 'POST', { title: 'x44: far ahead reel', channels: ['youtube'], type: 'reel', release_date: day(10), status_id: sid(/to shoot/i) })).data
-await req('/content', 'POST', { title: 'x44: shooting tomorrow', channels: ['youtube'], type: 'reel', recording_date: day(1), release_date: day(10), status_id: sid(/to shoot/i) })
-await req('/content', 'POST', { title: 'x44: dateless reel', channels: ['youtube'], type: 'reel', status_id: sid(/to shoot/i) })
+const far = (await req('/content', 'POST', { title: 'x44: far ahead reel', channels: ['youtube'], type: 'reel', release_date: day(10), status_id: sid(/to shoot/i), operator_id: 1, recording_date: day(10), edit_ready_date: day(10) })).data
+await req('/content', 'POST', { title: 'x44: shooting tomorrow', channels: ['youtube'], type: 'reel', recording_date: day(1), release_date: day(10), status_id: sid(/to shoot/i), operator_id: 1, edit_ready_date: day(1) })
+await req('/content', 'POST', { title: 'x44: dateless reel', channels: ['youtube'], type: 'reel', status_id: sid(/to shoot/i), operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1500, height: 1000 } })).newPage()
@@ -58,8 +58,8 @@ await p.waitForTimeout(400)
 // that already slipped keeps it on the page — and the date cell shows THE
 // date that pulled it in (its kind's icon, marked late), never a far-off
 // release that would make the row look like it sneaked in early.
-await req('/content', 'POST', { title: 'x44: cut due tomorrow', channels: ['youtube'], type: 'reel', edit_ready_date: day(1), release_date: day(10), status_id: sid(/editing/i) })
-await req('/content', 'POST', { title: 'x44: shot slipped', channels: ['youtube'], type: 'reel', recording_date: day(-2), release_date: day(6), status_id: sid(/to shoot/i) })
+await req('/content', 'POST', { title: 'x44: cut due tomorrow', channels: ['youtube'], type: 'reel', edit_ready_date: day(1), release_date: day(10), status_id: sid(/editing/i), operator_id: 1, recording_date: day(1) })
+await req('/content', 'POST', { title: 'x44: shot slipped', channels: ['youtube'], type: 'reel', recording_date: day(-2), release_date: day(6), status_id: sid(/to shoot/i), operator_id: 1, edit_ready_date: day(-2) })
 await p.reload(); await p.waitForTimeout(1400)
 ok('a cut deadline pulls the task in — release still far', (await p.locator('text=x44: cut due tomorrow').count()) === 1)
 const slipped = p.locator('.ov-row', { hasText: 'x44: shot slipped' })

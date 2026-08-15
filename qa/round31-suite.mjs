@@ -27,7 +27,7 @@ const delSt = statuses.find((s) => /^deleted$/i.test(s.label))
 const shotSt = statuses.find((s) => /^shot$/i.test(s.label))
 
 // ---- 1) the API: events + computed reminders ----
-const moving = (await req('/content', 'POST', { title: 'x31: moving video', channels: ['instagram_main'], type: 'video', editor_id: jas.id })).data
+const moving = (await req('/content', 'POST', { title: 'x31: moving video', channels: ['instagram_main'], type: 'video', editor_id: jas.id, operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 await req(`/content/${moving.id}`, 'PATCH', { status_id: shotSt.id })
 await req('/content', 'POST', { title: 'x31: due tomorrow', channels: ['instagram_main'], type: 'post', assignee_ids: [jas.id], release_date: iso(1) })
 await req('/content', 'POST', { title: 'x31: due in a week', channels: ['instagram_main'], type: 'post', assignee_ids: [jas.id], release_date: iso(7) })
@@ -59,7 +59,7 @@ await p.keyboard.press('Escape')
 await p.close()
 
 // ---- 3) killed work stays on the calendar, labeled ----
-const dead = (await req('/content', 'POST', { title: 'x31: killed reel', channels: ['instagram_main'], type: 'reel', release_date: iso(2) })).data
+const dead = (await req('/content', 'POST', { title: 'x31: killed reel', channels: ['instagram_main'], type: 'reel', release_date: iso(2), operator_id: 1, recording_date: iso(2), edit_ready_date: iso(2) })).data
 await req(`/content/${dead.id}`, 'PATCH', { status_id: delSt.id })
 const a = await (await browser.newContext({ viewport: { width: 1500, height: 950 } })).newPage()
 a.on('pageerror', (e) => { fails++; console.log('ADMIN PAGE ERROR', e.message) })

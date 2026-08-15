@@ -22,11 +22,11 @@ for (const c of (await req('/content')).data.filter((c) => /r6:/.test(c.title)))
   await req(`/content/${c.id}`, 'DELETE')
 const op = (await req('/users', 'POST', { name: 'Round Six Operator', username: 'r6op', password: 'r1234', role: 'operator' })).data
 const relTask = (await req('/content', 'POST', { title: 'r6: release tomorrow', channels: ['instagram_main'], type: 'post', release_date: add(1) })).data
-const shootTask = (await req('/content', 'POST', { title: 'r6: shoot in two days', channels: ['instagram_main'], type: 'video', operator_id: op.id, recording_date: add(2), recording_time: '10:00', recording_end: '11:00', edit_ready_date: add(4) })).data
+const shootTask = (await req('/content', 'POST', { title: 'r6: shoot in two days', channels: ['instagram_main'], type: 'video', operator_id: op.id, recording_date: add(2), recording_time: '10:00', recording_end: '11:00', edit_ready_date: add(4), release_date: add(2) })).data
 // legacy pick: a member as operator, set via the API (still allowed there)
 const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
-const legacy = (await req('/content', 'POST', { title: 'r6: legacy member crew', channels: ['instagram_main'], type: 'video', operator_id: jas.id })).data
+const legacy = (await req('/content', 'POST', { title: 'r6: legacy member crew', channels: ['instagram_main'], type: 'video', operator_id: jas.id, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 ok('fixtures in place', [op, relTask, shootTask, legacy].every((x) => x?.id))
 
 // ============ the UI ============

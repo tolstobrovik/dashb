@@ -26,10 +26,10 @@ const shotSt = statuses.find((s) => /^shot$/i.test(s.label))
 const readySt = statuses.find((s) => /^ready$/i.test(s.label))
 
 // operator: a shoot TODAY + a shoot that's OVERDUE (haunting)
-const shootToday = (await req('/content', 'POST', { title: 'r16: shoot today', channels: ['youtube'], type: 'video', operator_id: op.id, recording_date: today, recording_time: '14:00' })).data
-const shootLate = (await req('/content', 'POST', { title: 'r16: shoot overdue', channels: ['youtube'], type: 'video', operator_id: op.id, recording_date: add(-2), recording_time: '10:00' })).data
+const shootToday = (await req('/content', 'POST', { title: 'r16: shoot today', channels: ['youtube'], type: 'video', operator_id: op.id, recording_date: today, recording_time: '14:00', edit_ready_date: today, release_date: today })).data
+const shootLate = (await req('/content', 'POST', { title: 'r16: shoot overdue', channels: ['youtube'], type: 'video', operator_id: op.id, recording_date: add(-2), recording_time: '10:00', edit_ready_date: add(-2), release_date: add(-2) })).data
 // editor: a cut due today
-const cutToday = (await req('/content', 'POST', { title: 'r16: cut today', channels: ['youtube'], type: 'video', editor_id: ed.id, edit_ready_date: today })).data
+const cutToday = (await req('/content', 'POST', { title: 'r16: cut today', channels: ['youtube'], type: 'video', editor_id: ed.id, edit_ready_date: today, operator_id: 1, recording_date: today, release_date: today })).data
 ok('fixtures in place', !!shootToday.id && !!shootLate.id && !!cutToday.id)
 
 // ============ server: the milestone contract ============

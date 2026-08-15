@@ -28,10 +28,8 @@ const readySt = statuses.find((s) => /^ready$/i.test(s.label))
 ok('the Deleted stage exists (seed/migration)', !!delSt && delSt.is_final === 0)
 
 // t1: shot yesterday, edit due today — the piece that will be killed
-const t1 = (await req('/content', 'POST', {
-  title: 'r17: killed launch video', channels: ['youtube'], type: 'video',
-  operator_id: op.id, editor_id: ed.id, recording_date: add(-1), edit_ready_date: today, status_id: readySt.id,
-})).data
+const t1 = (await req('/content', 'POST', { title: 'r17: killed launch video', channels: ['youtube'], type: 'video',
+  operator_id: op.id, editor_id: ed.id, recording_date: add(-1), edit_ready_date: today, status_id: readySt.id, release_date: add(-1) })).data
 ok('fixture in place', !!t1.id)
 
 // ---- the plan walks back when a piece is killed, and returns on restore ----

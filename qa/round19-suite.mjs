@@ -58,7 +58,7 @@ await ctx.close()
 // ---- 2) instant crew milestone (one tap, no Save) ----
 const op = (await req('/users', 'POST', { name: 'Odil Operator', username: 'x19op', password: 'o1234', role: 'operator' })).data
 const fmtT = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
-const t1 = (await req('/content', 'POST', { title: 'x19: tick shoot', channels: ['youtube'], type: 'video', operator_id: op.id, recording_date: fmtT, recording_time: '16:00' })).data
+const t1 = (await req('/content', 'POST', { title: 'x19: tick shoot', channels: ['youtube'], type: 'video', operator_id: op.id, recording_date: fmtT, recording_time: '16:00', edit_ready_date: fmtT, release_date: fmtT })).data
 const c = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage()
 c.on('pageerror', (e) => { fails++; console.log('CREW PAGE ERROR', e.message) })
 await c.goto(BASE + '/login')

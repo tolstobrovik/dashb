@@ -21,7 +21,7 @@ const cru = (await req('/users', 'POST', { name: 'Rustam Crewman', username: 'r1
 const users = (await req('/users')).data
 const mir = users.find((u) => u.username === 'mir')
 ok('fixtures ready', !!cru.id && !!mir)
-const vid = (await req('/content', 'POST', { title: 'r12: member shoots this', channels: ['youtube'], type: 'video', operator_id: mir.id })).data
+const vid = (await req('/content', 'POST', { title: 'r12: member shoots this', channels: ['youtube'], type: 'video', operator_id: mir.id, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 ok('member holds an operator hat on a live task', vid.operator_id === mir.id)
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

@@ -46,12 +46,10 @@ const editorT = await login('edit' + suffix, 'pw123456')
 ok('crew accounts created', !!(shooter && editor && reviewer && shooterT))
 
 const newTask = async (over = {}) => {
-  const { data } = await req('/content', 'POST', {
-    title: 'Gate test ' + Math.random().toString(36).slice(2, 7),
+  const { data } = await req('/content', 'POST', { title: 'Gate test ' + Math.random().toString(36).slice(2, 7),
     channels: ['instagram_main'], type: 'reel', status_id: S['Idea'],
     recording_date: day(2), edit_ready_date: day(4), release_date: day(6),
-    ...over,
-  })
+    operator_id: 1, ...over, })
   return data
 }
 

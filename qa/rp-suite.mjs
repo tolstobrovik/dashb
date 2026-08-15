@@ -23,7 +23,7 @@ for (const t of [d1, d2, d3]) await req(`/content/${t.id}`, 'PATCH', { done: tru
 await mk('IG open', 'instagram_main', 'post', { release_date: today })
 await mk('IG overdue', 'instagram_main', 'post', { release_date: '2026-07-10' })
 
-const vid = await req('/content', 'POST', { title: 'Крю видео', channels: ['youtube'], type: 'video', operator_id: mir.id, editor_id: jas.id })
+const vid = await req('/content', 'POST', { title: 'Крю видео', channels: ['youtube'], type: 'video', operator_id: mir.id, editor_id: jas.id, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })
 ok('video stores operator + editor', vid.status === 201 && vid.data.operator_id === mir.id && vid.data.editor_id === jas.id)
 const patched = await req(`/content/${vid.data.id}`, 'PATCH', { operator_id: jas.id })
 ok('crew reassignable', patched.data.operator_id === jas.id)

@@ -79,7 +79,7 @@ ok('…and the bot said hello', (await sentList()).some((s) => s.method === 'sen
 // ---- the mirrored bell ----
 const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
 const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
-const task = (await req('/content', 'POST', { title: 'x37: bridge video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shootId })).data
+const task = (await req('/content', 'POST', { title: 'x37: bridge video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shootId, operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 await fetch(MOCK + '/__reset', { method: 'POST' })
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 let sent = await sentList()

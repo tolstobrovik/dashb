@@ -46,7 +46,7 @@ const outsider = (await req('/users', 'POST', { name: 'D52 Outsider', username: 
 const CT = await login('d52ed', 'probe123')
 const OT = await login('d52out', 'probe123')
 
-const task = (await req('/content', 'POST', { title: 'd52: the briefed one', channels: [chKey], type: 'video', editor_id: crew.id })).data
+const task = (await req('/content', 'POST', { title: 'd52: the briefed one', channels: [chKey], type: 'video', editor_id: crew.id, operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 const bare = (await req('/content', 'POST', { title: 'd52: no paperwork', channels: [chKey], type: 'post' })).data
 ok('two fixtures exist', !!task?.id && !!bare?.id)
 

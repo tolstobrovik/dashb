@@ -66,10 +66,8 @@ for (const [tok, chat] of [[T1, 111], [T2, 222]]) {
 const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
 await reset()
-const task = (await req('/content', 'POST', {
-  title: 'x41: handed video', channels: [chKey], type: 'video',
-  assignee_ids: [m1.id], editor_id: m2.id, status_id: shootId, recording_date: tomorrow,
-})).data
+const task = (await req('/content', 'POST', { title: 'x41: handed video', channels: [chKey], type: 'video',
+  assignee_ids: [m1.id], editor_id: m2.id, status_id: shootId, recording_date: tomorrow, operator_id: 1, edit_ready_date: tomorrow, release_date: tomorrow })).data
 let sent = await sentList()
 const to1 = sent.find((s) => String(s.chat_id) === '111' && /📌/.test(s.text || ''))
 const to2 = sent.find((s) => String(s.chat_id) === '222' && /📌/.test(s.text || ''))

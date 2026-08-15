@@ -19,7 +19,7 @@ await cleanup()
 const statuses = (await req('/statuses')).data
 const shootId = statuses.find((s) => /to shoot/i.test(s.label)).id
 // an idea with every gap in the book (default status = the Idea stage)
-const idea = (await req('/content', 'POST', { title: 'x35: idea video', channels: ['youtube'], type: 'video' })).data
+const idea = (await req('/content', 'POST', { title: 'x35: idea video', channels: ['youtube'], type: 'video', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1500, height: 950 } })).newPage()

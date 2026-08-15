@@ -22,9 +22,9 @@ const cleanup = async () => {
 await cleanup()
 const opA = (await req('/users', 'POST', { name: 'Otabek Operator', username: 'x28opa', password: 'o1234', role: 'crew', crew_roles: ['operator', 'editor'] })).data
 const edB = (await req('/users', 'POST', { name: 'Bekzod Editor', username: 'x28edb', password: 'b1234', role: 'crew', crew_roles: ['editor'] })).data
-const shoot = (await req('/content', 'POST', { title: 'x28: campus shoot', channels: ['youtube'], type: 'video', operator_id: opA.id, recording_date: iso(1), recording_time: '10:00', recording_end: '12:00' })).data
-const cut = (await req('/content', 'POST', { title: 'x28: promo cut', channels: ['youtube'], type: 'video', editor_id: opA.id, edit_ready_date: iso(2) })).data
-const late = (await req('/content', 'POST', { title: 'x28: forgotten cut', channels: ['youtube'], type: 'video', editor_id: edB.id, edit_ready_date: iso(-3) })).data
+const shoot = (await req('/content', 'POST', { title: 'x28: campus shoot', channels: ['youtube'], type: 'video', operator_id: opA.id, recording_date: iso(1), recording_time: '10:00', recording_end: '12:00', edit_ready_date: iso(1), release_date: iso(1) })).data
+const cut = (await req('/content', 'POST', { title: 'x28: promo cut', channels: ['youtube'], type: 'video', editor_id: opA.id, edit_ready_date: iso(2), operator_id: 1, recording_date: iso(2), release_date: iso(2) })).data
+const late = (await req('/content', 'POST', { title: 'x28: forgotten cut', channels: ['youtube'], type: 'video', editor_id: edB.id, edit_ready_date: iso(-3), operator_id: 1, recording_date: iso(-3), release_date: iso(-3) })).data
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1600, height: 950 } })).newPage()

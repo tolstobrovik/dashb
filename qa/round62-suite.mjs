@@ -45,9 +45,7 @@ const admin = (await api('/auth/me', 'GET', null, T)).data.user  // /auth/me ans
 const zarina = (await api('/users', 'POST', {
   name: `${tag} Zarina`, username: `${tag}zar`, password: 'probe123', role: 'member', departments: ['instagram_main'],
 }, T)).data
-const mk = (over) => api('/content', 'POST', {
-  channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), assignee_ids: [], ...over,
-}, T).then((r) => r.data)
+const mk = (over) => api('/content', 'POST', { channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), assignee_ids: [], operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07', ...over, }, T).then((r) => r.data)
 
 // One the admin owns, one he only edits (a different seat, still his work),
 // and one that is Zarina's alone.

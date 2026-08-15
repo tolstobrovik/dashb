@@ -23,7 +23,7 @@ await cleanup()
 const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
 const ed = (await req('/users', 'POST', { name: 'Erkin Editor', username: 'x33ed', password: 'e1234', role: 'editor' })).data
-const t1 = (await req('/content', 'POST', { title: 'x33: talked video', channels: ['instagram_main'], type: 'video', assignee_ids: [jas.id], editor_id: ed.id })).data
+const t1 = (await req('/content', 'POST', { title: 'x33: talked video', channels: ['instagram_main'], type: 'video', assignee_ids: [jas.id], editor_id: ed.id, operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 
 // ---- 1) the API: speak, hear, no echo ----
 const edT = await login('x33ed', 'e1234')
@@ -40,7 +40,7 @@ ok('an empty line is refused', (await req(`/content/${t1.id}/comments`, 'POST', 
 // ---- 2) the run-sheet + the thread in the modal ----
 const statuses = (await req('/statuses')).data
 const readyId = statuses.find((s) => /^ready$/i.test(s.label)).id
-await req('/content', 'POST', { title: 'x33: evening reel', channels: ['instagram_main'], type: 'reel', status_id: readyId, release_date: iso(0), release_time: '20:00', ready_link: 'https://drive.google.com/finished-cut' })
+await req('/content', 'POST', { title: 'x33: evening reel', channels: ['instagram_main'], type: 'reel', status_id: readyId, release_date: iso(0), release_time: '20:00', ready_link: 'https://drive.google.com/finished-cut', operator_id: 1, recording_date: iso(0), edit_ready_date: iso(0) })
 await req('/content', 'POST', { title: 'x33: morning post', channels: ['instagram_main'], type: 'post', status_id: readyId, release_date: iso(0), release_time: '09:00' })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

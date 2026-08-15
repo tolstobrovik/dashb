@@ -20,9 +20,9 @@ const cleanup = async () => {
 await cleanup()
 const statuses = (await req('/statuses')).data
 const finalId = statuses.find((s) => s.is_final).id
-const pubT = (await req('/content', 'POST', { title: 'x23: went live', channels: ['instagram_main'], type: 'reel' })).data
+const pubT = (await req('/content', 'POST', { title: 'x23: went live', channels: ['instagram_main'], type: 'reel', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 await req(`/content/${pubT.id}`, 'PATCH', { status_id: finalId })
-await req('/content', 'POST', { title: 'x23: bare task', channels: ['instagram_main'], type: 'reel' })
+await req('/content', 'POST', { title: 'x23: bare task', channels: ['instagram_main'], type: 'reel', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()

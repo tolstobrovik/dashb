@@ -22,7 +22,7 @@ const jas = users.find((u) => u.username === 'jas')
 const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + d * 864e5))
 // seeds start in To shoot: since round 35, Idea-stage tasks sit out the gap views
 const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
-await req('/content', 'POST', { title: 'x25: gap video', channels: ['youtube'], type: 'video', status_id: shootId })
+await req('/content', 'POST', { title: 'x25: gap video', channels: ['youtube'], type: 'video', status_id: shootId, operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })
 await req('/content', 'POST', { title: 'x25: late post', channels: ['instagram_main'], type: 'post', assignees: [jas.id], designer_id: jas.id, release_date: iso(-1), status_id: shootId })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

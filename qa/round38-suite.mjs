@@ -73,7 +73,7 @@ ok('the panel shows where the webhook points', adm.webhook?.url === 'https://das
   && adm.public_url === 'https://dash.example.com')
 const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
 const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
-const task = (await req('/content', 'POST', { title: 'x38: linked video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shootId })).data
+const task = (await req('/content', 'POST', { title: 'x38: linked video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shootId, operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 await fetch(MOCK + '/__reset', { method: 'POST' })
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 ok('the bell now carries a task link', (await sentList()).some((s) =>

@@ -33,9 +33,9 @@ const cru = (await req('/users', 'POST', { name: 'Ravil Crewman', username: 'r15
 const users = (await req('/users')).data
 const mir = users.find((u) => u.username === 'mir')
 
-const shoot = (await req('/content', 'POST', { title: 'r15: campus shoot', channels: ['youtube'], type: 'video', operator_id: cru.id, recording_date: today, recording_time: '21:00', recording_end: '22:00' })).data
-const cut = (await req('/content', 'POST', { title: 'r15: campus cut', channels: ['youtube'], type: 'video', editor_id: cru.id, edit_ready_date: today })).data
-await req('/content', 'POST', { title: 'r15: release only', channels: ['youtube'], type: 'video', editor_id: cru.id, release_date: add(2) })
+const shoot = (await req('/content', 'POST', { title: 'r15: campus shoot', channels: ['youtube'], type: 'video', operator_id: cru.id, recording_date: today, recording_time: '21:00', recording_end: '22:00', edit_ready_date: today, release_date: today })).data
+const cut = (await req('/content', 'POST', { title: 'r15: campus cut', channels: ['youtube'], type: 'video', editor_id: cru.id, edit_ready_date: today, operator_id: 1, recording_date: today, release_date: today })).data
+await req('/content', 'POST', { title: 'r15: release only', channels: ['youtube'], type: 'video', editor_id: cru.id, release_date: add(2), operator_id: 1, recording_date: add(2), edit_ready_date: add(2) })
 ok('crew fixtures in place', !!shoot.id && !!cut.id)
 
 const doneT = (await req('/content', 'POST', { title: 'r15: shipped today', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id] })).data

@@ -30,18 +30,14 @@ ok('capabilities re-selectable — down to designer only', chg.role === 'designe
 await req(`/users/${mix.id}`, 'PATCH', { crew_roles: ['editor', 'designer'] })
 ok('crew accounts must keep at least one capability', (await req(`/users/${mix.id}`, 'PATCH', { role: 'crew', crew_roles: [] })).status === 400)
 
-const vid = await req('/content', 'POST', {
-  title: 'r14: launch video', channels: ['youtube'], type: 'video',
+const vid = await req('/content', 'POST', { title: 'r14: launch video', channels: ['youtube'], type: 'video',
   operator_id: op14.id, editor_id: mix.id, designer_id: mix.id,
   edit_ready_date: yesterday, design_ready_date: yesterday, release_date: today,
-  assignee_ids: [],
-})
+  assignee_ids: [], recording_date: yesterday })
 ok('a video carries an editor deadline AND a designer deadline', vid.status === 201
   && vid.data.edit_ready_date === yesterday && vid.data.design_ready_date === yesterday)
-const wk = await req('/content', 'POST', {
-  title: 'r14: campus shoot', channels: ['instagram_main'], type: 'video',
-  operator_id: op14.id, recording_date: add(1), recording_time: '10:00', recording_end: '11:00',
-})
+const wk = await req('/content', 'POST', { title: 'r14: campus shoot', channels: ['instagram_main'], type: 'video',
+  operator_id: op14.id, recording_date: add(1), recording_time: '10:00', recording_end: '11:00', edit_ready_date: add(1), release_date: add(1) })
 ok('in-week shoot fixture created', wk.status === 201)
 
 const users = (await req('/users')).data

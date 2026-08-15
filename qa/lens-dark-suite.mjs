@@ -93,7 +93,7 @@ ok('sidebar toggle flips back to light', await page.evaluate(() => document.docu
 const cctx = await browser.newContext({ viewport: { width: 1440, height: 950 } })
 const cp = await cctx.newPage()
 const edu = (await req('/users', 'POST', { name: 'Nodir Crew', username: 'nod', password: 'n1234', role: 'crew' })).data
-await req('/content', 'POST', { title: 'Edit: lens demo film', channels: ['youtube'], type: 'video', editor_id: edu.id, recording_date: add(-2), release_date: add(2) })
+await req('/content', 'POST', { title: 'Edit: lens demo film', channels: ['youtube'], type: 'video', editor_id: edu.id, recording_date: add(-2), release_date: add(2), operator_id: 1, edit_ready_date: add(-2) })
 await cp.goto(BASE + '/login')
 await cp.fill('input[name="username"]', 'nod')
 await cp.fill('input[name="password"]', 'n1234')

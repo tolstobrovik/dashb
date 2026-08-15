@@ -38,14 +38,14 @@ const kam = (await req('/users', 'POST', { name: 'Kamron Aliyev', username: 'kam
 const statuses = (await req('/statuses')).data
 const sid = (l) => statuses.find((s) => s.label.toLowerCase() === l)?.id
 // missed the edit deadline, still not ready
-const lateEdit = (await req('/content', 'POST', { title: 'r5: montage overdue', channels: ['youtube'], type: 'video', editor_id: kam.id, edit_ready_date: add(-2), release_date: add(3) })).data
+const lateEdit = (await req('/content', 'POST', { title: 'r5: montage overdue', channels: ['youtube'], type: 'video', editor_id: kam.id, edit_ready_date: add(-2), release_date: add(3), operator_id: 1, recording_date: add(-2) })).data
 ok('edit_ready_date stored', lateEdit.edit_ready_date === add(-2) && lateEdit.release_date === add(3))
 // was late but IS ready now (ready_at stamps when the stage reaches ready)
-const readyLate = (await req('/content', 'POST', { title: 'r5: promo ready late', channels: ['instagram_main'], type: 'video', editor_id: kam.id, edit_ready_date: add(-4), release_date: add(5) })).data
+const readyLate = (await req('/content', 'POST', { title: 'r5: promo ready late', channels: ['instagram_main'], type: 'video', editor_id: kam.id, edit_ready_date: add(-4), release_date: add(5), operator_id: 1, recording_date: add(-4) })).data
 const stamped = (await req(`/content/${readyLate.id}`, 'PATCH', { status_id: sid('ready') })).data
 ok('reaching the Ready stage stamps ready_at', !!stamped.ready_at, stamped.ready_at)
 // edit deadline in the future — clean
-const cleanEdit = (await req('/content', 'POST', { title: 'r5: cut on schedule', channels: ['youtube'], type: 'video', editor_id: kam.id, edit_ready_date: add(2), release_date: add(6) })).data
+const cleanEdit = (await req('/content', 'POST', { title: 'r5: cut on schedule', channels: ['youtube'], type: 'video', editor_id: kam.id, edit_ready_date: add(2), release_date: add(6), operator_id: 1, recording_date: add(2) })).data
 // release missed too, by the head (assignee admin)
 const relMiss = (await req('/content', 'POST', { title: 'r5: release overdue post', channels: ['instagram_main'], type: 'post', release_date: add(-1) })).data
 ok('fixtures in place', [lateEdit, readyLate, cleanEdit, relMiss].every((c) => c?.id))
@@ -91,7 +91,7 @@ await page.keyboard.press('Escape')
 await page.waitForTimeout(300)
 
 // ---- crew page: shoot vs edit, unmistakable ----
-const shootFx = (await req('/content', 'POST', { title: 'r5: campus shoot', channels: ['youtube'], type: 'video', operator_id: kam.id, recording_date: today, recording_time: '11:00', recording_end: '12:30' })).data
+const shootFx = (await req('/content', 'POST', { title: 'r5: campus shoot', channels: ['youtube'], type: 'video', operator_id: kam.id, recording_date: today, recording_time: '11:00', recording_end: '12:30', edit_ready_date: today, release_date: today })).data
 await page.goto(BASE + '/crew')
 await page.waitForSelector('.crew-card, .crew-tt', { timeout: 10000 })
 await page.locator('.pill', { hasText: 'Timetable' }).click()

@@ -77,10 +77,8 @@ ok('…without being told to reconnect — they already are', !/Connect/.test(s[
 // ---- a member who blocked the bot ----
 const sts = (await req('/statuses')).data
 const stage = (re) => sts.find((x) => re.test(x.label)).id
-const task = (await req('/content', 'POST', {
-  title: 'x47: blocked-chat clip', channels: [chKey], type: 'video',
-  assignee_ids: [m1.id], editor_id: m2.id, status_id: stage(/to shoot/i),
-})).data
+const task = (await req('/content', 'POST', { title: 'x47: blocked-chat clip', channels: [chKey], type: 'video',
+  assignee_ids: [m1.id], editor_id: m2.id, status_id: stage(/to shoot/i), operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
 await block(['702'])
 await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: stage(/editing/i) })
