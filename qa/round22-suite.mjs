@@ -16,7 +16,7 @@ const req = async (p, m = 'GET', b, t = T) => {
 for (const c of (await req('/content')).data.filter((c) => /x22:/.test(c.title))) await req(`/content/${c.id}`, 'DELETE')
 const statuses = (await req('/statuses')).data
 const sid = (l) => statuses.find((s) => s.label.toLowerCase() === l).id
-const rq = (await req('/content', 'POST', { title: 'x22: awaiting review', channels: ['instagram_main'], type: 'reel', status_id: sid('ready'), operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
+const rq = (await req('/content', 'POST', { title: 'x22: awaiting review', channels: ['instagram_main'], type: 'reel', status_id: sid('ready') })).data
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 // ---- 1) jas (SMM): review queue + one-tap publish ----
@@ -56,7 +56,7 @@ ok('a page result navigates', p.url().includes('/missed'))
 await p.close()
 
 // ---- 3) tray: tap-Today schedules; drag a pill back to unschedule ----
-const t2 = (await req('/content', 'POST', { title: 'x22: dateless', channels: ['youtube'], type: 'video', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
+const t2 = (await req('/content', 'POST', { title: 'x22: dateless', channels: ['youtube'], type: 'video' })).data
 const a = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
 a.on('pageerror', (e) => { fails++; console.log('ADMIN PAGE ERROR', e.message) })
 await a.goto(BASE + '/login')

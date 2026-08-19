@@ -31,7 +31,7 @@ ok('operator created', op.role === 'operator')
 // tasks: one theirs, one foreign
 const statuses = (await req('/statuses')).data
 const sid = (l) => statuses.find((s) => s.label.toLowerCase() === l)?.id
-const vid = (await req('/content', 'POST', { title: 'Edit: campus film', channels: ['youtube'], type: 'video', editor_id: ed.id, operator_id: op.id, recording_date: '2026-07-14', release_date: '2026-07-18', status_id: sid('shot'), edit_ready_date: '2026-07-14' })).data
+const vid = (await req('/content', 'POST', { title: 'Edit: campus film', channels: ['youtube'], type: 'video', editor_id: ed.id, operator_id: op.id, recording_date: '2026-07-14', release_date: '2026-07-18', status_id: sid('shot') })).data
 const foreign = (await req('/content', 'POST', { title: 'Foreign post', channels: ['telegram_main'], type: 'post' })).data
 
 const ET = await login('tim', 't1234')
@@ -40,7 +40,7 @@ ok('editor sees only their videos', mine.some((c) => c.id === vid.id) && !mine.s
 ok('editor sees the whole team for names', (await req('/users', 'GET', null, ET)).data.length >= 5)
 ok('editor cannot set a raw stage', (await req(`/content/${vid.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)
 // milestone verified on a throwaway so vid stays pristine (unstamped) for the UI below
-const mp = (await req('/content', 'POST', { title: 'Edit: milestone probe', channels: ['youtube'], type: 'video', editor_id: ed.id, status_id: sid('shot'), operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
+const mp = (await req('/content', 'POST', { title: 'Edit: milestone probe', channels: ['youtube'], type: 'video', editor_id: ed.id, status_id: sid('shot') })).data
 ok('editor ticks "edited" → the cut lands on Ready', (await req(`/content/${mp.id}`, 'PATCH', { milestone: 'edited' }, ET)).data.status_id === sid('ready'))
 await req(`/content/${mp.id}`, 'DELETE')
 ok('editor cannot touch a foreign task', (await req(`/content/${foreign.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)

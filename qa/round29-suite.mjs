@@ -19,7 +19,7 @@ const cleanup = async () => {
   for (const u of (await req('/users')).data.filter((u) => u.username === 'x29ed')) await req(`/users/${u.id}`, 'DELETE')
 }
 await cleanup()
-const src = (await req('/content', 'POST', { title: 'x29: rubric video', channels: ['youtube'], type: 'video', format: 'Vlog', rubrika: 'Campus life', script: 'Scene one.', release_date: iso(2), recording_date: iso(1), operator_id: 1, edit_ready_date: iso(1) })).data
+const src = (await req('/content', 'POST', { title: 'x29: rubric video', channels: ['youtube'], type: 'video', format: 'Vlog', rubrika: 'Campus life', script: 'Scene one.', release_date: iso(2), recording_date: iso(1) })).data
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 }, permissions: ['clipboard-read', 'clipboard-write'] })
@@ -45,7 +45,7 @@ ok('…dates and completion cleared', copy?.release_date == null && copy?.record
 
 // ---- 3) Undo on a timetable drag ----
 const ed = (await req('/users', 'POST', { name: 'Umid Editor', username: 'x29ed', password: 'u1234', role: 'crew', crew_roles: ['editor'] })).data
-const cut = (await req('/content', 'POST', { title: 'x29: cut', channels: ['youtube'], type: 'video', editor_id: ed.id, edit_ready_date: iso(1), operator_id: 1, recording_date: iso(1), release_date: iso(1) })).data
+const cut = (await req('/content', 'POST', { title: 'x29: cut', channels: ['youtube'], type: 'video', editor_id: ed.id, edit_ready_date: iso(1) })).data
 await p.goto(BASE + '/crew'); await p.waitForTimeout(900)
 await p.locator('.pill', { hasText: 'Timetable' }).click()
 await p.waitForSelector('.crew-tt', { timeout: 8000 })

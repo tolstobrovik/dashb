@@ -62,8 +62,10 @@ await hook({ message: { chat: { id: 900 }, text: `/start ${link.code}` } })
 const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
 const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
-const task = (await req('/content', 'POST', { title: 'x40: rich video', channels: [chKey], type: 'video',
-  assignee_ids: [member.id], status_id: shootId, release_date: tomorrow, operator_id: 1, recording_date: tomorrow, edit_ready_date: tomorrow })).data
+const task = (await req('/content', 'POST', {
+  title: 'x40: rich video', channels: [chKey], type: 'video',
+  assignee_ids: [member.id], status_id: shootId, release_date: tomorrow,
+})).data
 await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 let m = (await sentList()).find((s) => String(s.chat_id) === '900' && /🔔/.test(s.text || ''))

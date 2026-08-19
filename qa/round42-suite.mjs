@@ -78,8 +78,10 @@ const statuses = (await req('/statuses')).data
 const sid = (re) => statuses.find((s) => re.test(s.label)).id
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
 await reset()
-const task = (await req('/content', 'POST', { title: 'x42 <b>&clip', channels: [chKey], type: 'video',
-  assignee_ids: [m2.id], editor_id: m1.id, status_id: sid(/to shoot/i), recording_date: tomorrow, operator_id: 1, edit_ready_date: tomorrow, release_date: tomorrow })).data
+const task = (await req('/content', 'POST', {
+  title: 'x42 <b>&clip', channels: [chKey], type: 'video',
+  assignee_ids: [m2.id], editor_id: m1.id, status_id: sid(/to shoot/i), recording_date: tomorrow,
+})).data
 let sent = await sentList()
 let m = sent.find((s) => String(s.chat_id) === '121' && /📌/.test(s.text || ''))
 ok('messages go out as Telegram-HTML', !!m && m.parse_mode === 'HTML')
@@ -157,7 +159,7 @@ await cleanup()
 const mst = (await mreq('/statuses')).data
 const msid = (re) => mst.find((s) => re.test(s.label)).id
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
-const drag1 = (await mreq('/content', 'POST', { title: 'x42ui drag video', channels: ['youtube'], type: 'video', status_id: msid(/editing/i), release_date: today, operator_id: 1, recording_date: today, edit_ready_date: today })).data
+const drag1 = (await mreq('/content', 'POST', { title: 'x42ui drag video', channels: ['youtube'], type: 'video', status_id: msid(/editing/i), release_date: today })).data
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 1000 } })
@@ -225,8 +227,10 @@ ok('…across the week columns', after.release_date === targetIso, `got ${after.
 await p.screenshot({ path: SP + 'r42-week-drag.png' })
 
 // ---- the reviewer's queue hands over the file ----
-const review = (await mreq('/content', 'POST', { title: 'x42ui review me', channels: ['youtube'], type: 'video',
-  status_id: msid(/^ready$/i), ready_link: 'https://drive.google.com/x42uicut', release_date: today, operator_id: 1, recording_date: today, edit_ready_date: today })).data
+const review = (await mreq('/content', 'POST', {
+  title: 'x42ui review me', channels: ['youtube'], type: 'video',
+  status_id: msid(/^ready$/i), ready_link: 'https://drive.google.com/x42uicut', release_date: today,
+})).data
 await p.goto(MAIN + '/brief'); await p.waitForTimeout(1400)
 const rqRow = p.locator('.rq-row', { hasText: 'x42ui review me' })
 ok('the review row shows a watch-the-cut button', (await rqRow.locator('a.rq-open').count()) === 1 &&
@@ -238,9 +242,11 @@ await p.close()
 
 // ---- the fixer's Pravki card: ТЗ, current file, earlier rounds ----
 const fixer = (await mreq('/users', 'POST', { name: 'X42 Fixer', username: 'x42fix', password: 'probe123', role: 'member', departments: ['youtube'] })).data
-const fixTask = (await mreq('/content', 'POST', { title: 'x42ui fix clip', channels: ['youtube'], type: 'video', editor_id: fixer.id,
+const fixTask = (await mreq('/content', 'POST', {
+  title: 'x42ui fix clip', channels: ['youtube'], type: 'video', editor_id: fixer.id,
   status_id: msid(/^ready$/i), ready_link: 'https://drive.google.com/x42old',
-  script: 'ТЗ: тайминг интро 0:15, титры в конце', format: 'Talking head', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
+  script: 'ТЗ: тайминг интро 0:15, титры в конце', format: 'Talking head',
+})).data
 await mreq(`/content/${fixTask.id}/revisions`, 'POST', { note: 'пересобери титры', target: 'editor' })
 const FT = { t: await M.login('x42fix', 'probe123') }
 const freq = M.req(FT)

@@ -23,8 +23,10 @@ const sid = (re) => statuses.find((s) => re.test(s.label))?.id
 const iso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
 
 // ---- 1) the paper trail, API side ----
-const hist = (await req('/content', 'POST', { title: 'x36: history video', channels: ['youtube'], type: 'video',
-  status_id: sid(/to shoot/i), recording_date: iso, recording_time: '10:00', operator_id: 1, edit_ready_date: iso, release_date: iso })).data
+const hist = (await req('/content', 'POST', {
+  title: 'x36: history video', channels: ['youtube'], type: 'video',
+  status_id: sid(/to shoot/i), recording_date: iso, recording_time: '10:00',
+})).data
 await req(`/content/${hist.id}`, 'PATCH', { recording_time: '11:00' })
 await req(`/content/${hist.id}`, 'PATCH', { status_id: sid(/editing/i) })
 const full = (await req(`/content/${hist.id}`)).data

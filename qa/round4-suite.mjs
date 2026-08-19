@@ -48,9 +48,9 @@ ok('PATCH edits the criteria', (await req(`/projects/${proj.id}`, 'PATCH', { suc
 
 // ============ crew fixtures for the views ============
 const rav = (await req('/users', 'POST', { name: 'Zafar Toshpulatov', username: 'zar', password: 'z1234', role: 'crew', work_start: '09:00', work_end: '18:00', work_days: [0, 1, 2, 3, 4, 5, 6] })).data
-const s1 = (await req('/content', 'POST', { title: 'r4: shoot lab tour', channels: ['youtube'], type: 'video', operator_id: rav.id, recording_date: today, recording_time: '10:00', recording_end: '12:00', edit_ready_date: today, release_date: today })).data
-const s2 = (await req('/content', 'POST', { title: 'r4: shoot open day', channels: ['instagram_main'], type: 'video', operator_id: rav.id, recording_date: add(2), recording_time: '14:00', recording_end: '15:30', edit_ready_date: add(2), release_date: add(2) })).data
-const e1 = (await req('/content', 'POST', { title: 'r4: cut promo', channels: ['target'], type: 'video', editor_id: rav.id, release_date: add(1), operator_id: 1, recording_date: add(1), edit_ready_date: add(1) })).data
+const s1 = (await req('/content', 'POST', { title: 'r4: shoot lab tour', channels: ['youtube'], type: 'video', operator_id: rav.id, recording_date: today, recording_time: '10:00', recording_end: '12:00' })).data
+const s2 = (await req('/content', 'POST', { title: 'r4: shoot open day', channels: ['instagram_main'], type: 'video', operator_id: rav.id, recording_date: add(2), recording_time: '14:00', recording_end: '15:30' })).data
+const e1 = (await req('/content', 'POST', { title: 'r4: cut promo', channels: ['target'], type: 'video', editor_id: rav.id, release_date: add(1) })).data
 ok('crew fixtures in place', [s1, s2, e1].every((c) => c?.id))
 
 // ============ the UI ============

@@ -86,7 +86,9 @@ for (const [u, chat] of [[behind, 641], [clear, 642], [buried, 643]]) {
   await hook({ message: { chat: { id: chat }, text: `/start ${l.code}` } })
 }
 
-const mk = (over) => req('/content', 'POST', { channels: [chKey], type: 'video', status_id: shootId, operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07', ...over, }).then((r) => r.data)
+const mk = (over) => req('/content', 'POST', {
+  channels: [chKey], type: 'video', status_id: shootId, ...over,
+}).then((r) => r.data)
 
 // ---- what each person is carrying ----
 await mk({ title: 'x64 shoot today', assignee_ids: [behind.id], recording_date: today })

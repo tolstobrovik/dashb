@@ -66,7 +66,9 @@ const mkUser = async (name, username, role) => (await api('/users', 'POST', {
 }, T)).data
 const anvar = await mkUser(`${tag} Anvar`, `${tag}anvar`, 'operator')
 const dilnoza = await mkUser(`${tag} Dilnoza`, `${tag}dil`, 'editor')
-const mk = (over) => api('/content', 'POST', { channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), assignee_ids: [], operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07', ...over, }, T).then((r) => r.data)
+const mk = (over) => api('/content', 'POST', {
+  channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), assignee_ids: [], ...over,
+}, T).then((r) => r.data)
 
 const late = await mk({ title: `${tag} overdue release`, release_date: day(-3), operator_id: anvar.id })
 const soon = await mk({ title: `${tag} shared job`, release_date: day(2), release_time: '18:00', recording_date: day(1), operator_id: anvar.id, editor_id: dilnoza.id })

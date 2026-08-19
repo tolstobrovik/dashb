@@ -22,7 +22,7 @@ const sid = (l) => statuses.find((s) => s.label.toLowerCase() === l).id
 // ---- stage rules: defaults, tightening, admin bypass, reset ----
 const op = (await req('/users', 'POST', { name: 'Otash Operator', username: 'r21op', password: 'o1234', role: 'operator' })).data
 const tOp = await login('r21op', 'o1234')
-const t1 = (await req('/content', 'POST', { title: 'r21: chain video', channels: ['youtube'], type: 'video', operator_id: op.id, status_id: sid('to shoot'), recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
+const t1 = (await req('/content', 'POST', { title: 'r21: chain video', channels: ['youtube'], type: 'video', operator_id: op.id, status_id: sid('to shoot') })).data
 ok('default: operator ticks shot from To shoot', (await req(`/content/${t1.id}`, 'PATCH', { milestone: 'shot' }, tOp)).status === 200)
 await req(`/content/${t1.id}`, 'PATCH', { status_id: sid('to shoot') })
 const rules = (await req('/statuses/rules')).data
@@ -44,7 +44,7 @@ await req('/statuses/rules', 'POST', {})
 ok('reset: the operator’s tick works again', (await req(`/content/${t1.id}`, 'PATCH', { milestone: 'shot' }, tOp)).status === 200)
 
 // ---- the unscheduled tray ----
-const t3 = (await req('/content', 'POST', { title: 'r21: dateless clip', channels: ['youtube'], type: 'video', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
+const t3 = (await req('/content', 'POST', { title: 'r21: dateless clip', channels: ['youtube'], type: 'video' })).data
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })

@@ -16,7 +16,7 @@ for (const c of (await req('/content')).data.filter((c) => /r10:/.test(c.title))
   await req(`/content/${c.id}`, 'DELETE')
 for (const u of (await req('/users')).data.filter((x) => x.username === 'r10cru'))
   await req(`/users/${u.id}`, 'DELETE')
-const t1 = (await req('/content', 'POST', { title: 'r10: crew pick probe', channels: ['instagram_main'], type: 'video', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).data
+const t1 = (await req('/content', 'POST', { title: 'r10: crew pick probe', channels: ['instagram_main'], type: 'video' })).data
 ok('fixture in place', !!t1.id)
 // Both hats in one person: an editor & operator account (multi-select roles).
 const cru = (await req('/users', 'POST', { name: 'Rustam Multihat', username: 'r10cru', password: 'r1234', role: 'crew', crew_roles: ['editor', 'operator'] })).data

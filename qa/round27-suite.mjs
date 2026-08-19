@@ -42,20 +42,20 @@ await req('/fields', 'POST', {
   script: { state: 'required', types: ['video'] },
   rubrika: { state: 'optional', types: ['post', 'reel', 'story', 'video', 'other'], options: ['SU events', 'Book Hype'] },
 })
-const noScript = await req('/content', 'POST', { title: 'x27: scriptless video', channels: ['youtube'], type: 'video', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })
+const noScript = await req('/content', 'POST', { title: 'x27: scriptless video', channels: ['youtube'], type: 'video' })
 ok('a required Script blocks creating the video', noScript.status === 400 && /Script/.test(noScript.data.error))
-const withAll = await req('/content', 'POST', { title: 'x27: proper video', channels: ['youtube'], type: 'video',
+const withAll = await req('/content', 'POST', {
+  title: 'x27: proper video', channels: ['youtube'], type: 'video',
   script: 'INT. CAMPUS — DAY. The dean waves.', format: 'Talking head', rubrika: 'SU events',
-    editor_id: jas.id, // a member takes a one-time editor duty
-    operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07',
-  })
+  editor_id: jas.id, // a member takes a one-time editor duty
+})
 ok('with the script it lands, brief stored', withAll.status === 201
   && withAll.data.script?.includes('dean') && withAll.data.format === 'Talking head' && withAll.data.rubrika === 'SU events')
 ok('a member can hold the editor hat', withAll.data.editor_id === jas.id)
 ok('…and clearing the required script is refused',
   (await req(`/content/${withAll.data.id}`, 'PATCH', { script: '' })).status === 400)
 ok('a reel is not gated — the rule is scoped to videos',
-  (await req('/content', 'POST', { title: 'x27: free reel', channels: ['instagram_main'], type: 'reel', operator_id: 1, recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07' })).status === 201)
+  (await req('/content', 'POST', { title: 'x27: free reel', channels: ['instagram_main'], type: 'reel' })).status === 201)
 
 // ---- 2) the modal: brief fields, the required star, the client gate ----
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

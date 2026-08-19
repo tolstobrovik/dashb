@@ -73,9 +73,11 @@ await p.close()
 
 // ---- post-prod: the files told apart ----
 const ed = (await req('/users', 'POST', { name: 'X43 Editor', username: 'x43ed', password: 'probe123', role: 'editor', departments: ['youtube'] })).data
-const vid = (await req('/content', 'POST', { title: 'x43: cut me', channels: ['youtube'], type: 'video', editor_id: ed.id,
+const vid = (await req('/content', 'POST', {
+  title: 'x43: cut me', channels: ['youtube'], type: 'video', editor_id: ed.id,
   edit_ready_date: today, status_id: sid(/editing/i),
-  shot_link: 'https://drive.google.com/x43raw', ready_link: 'https://drive.google.com/x43cut', operator_id: 1, recording_date: today, release_date: today })).data
+  shot_link: 'https://drive.google.com/x43raw', ready_link: 'https://drive.google.com/x43cut',
+})).data
 const p2 = await (await browser.newContext({ viewport: { width: 1500, height: 1000 } })).newPage()
 p2.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
 await p2.goto(BASE + '/login')
