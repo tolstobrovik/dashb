@@ -26,6 +26,7 @@ const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // first names in Cyrillic and nobody types an @handle they have to look up.
 // Self-contained: 4107.
 import { spawn } from 'child_process'
+import { DatabaseSync } from 'node:sqlite'
 import { readText, isSentence, hasLink, isBareLink, hasSubstance } from '../server/text.js'
 
 const SP = new URL('.', import.meta.url).pathname
@@ -37,7 +38,8 @@ const procs = []
 const boot = (a, e) => { const p = spawn(process.execPath, a, { env: { ...process.env, ...e }, stdio: 'ignore' }); procs.push(p); return p }
 const stop = () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } } }
 process.on('exit', stop)
-boot([ROOT + '/server/index.js'], { DATA_DIR: SP + 'r68-' + Date.now(), PORT: '4107' })
+const DATA_DIR = SP + 'r68-' + Date.now()
+boot([ROOT + '/server/index.js'], { DATA_DIR, PORT: '4107' })
 for (let i = 0; i < 60; i++) {
   try { if ((await fetch(B + '/health')).ok) break } catch { /* not yet */ }
   await new Promise((r) => setTimeout(r, 500))
@@ -51,6 +53,18 @@ const req = async (p, m = 'GET', b, tok = T) => {
 }
 const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
 const ch = (await req('/channels')).data[0].key
+
+// Reading the database itself, for the one question the API cannot answer
+// honestly: whether a row is GONE, or merely unreachable because the thing
+// that pointed at it was deleted. Those look identical from outside and are
+// very different on disk — one of them is a blob that never goes away.
+const openDb = () => new DatabaseSync(`${DATA_DIR}/dashboard.db`, { readOnly: true })
+const rowsLeft = (table, contentId) => {
+  const db = openDb()
+  try {
+    return db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE content_id = ?`).get(contentId).n
+  } finally { db.close() }
+}
 
 // ===================== the reader, on its own =====================
 // A URL is not a sentence however many slashes it has.
@@ -275,6 +289,49 @@ ok('a script somebody edited AWAY is free for another task to use', r.status ===
   `${r.status} ${r.data.error || ''}`)
 r = await mk({ title: 'r68 takes the new words', type: 'post', script: 'Совершенно другой сюжет, снятый во дворе' })
 ok('…and the words it edited TO are the ones now taken', r.status === 400, `${r.status} ${r.data.error || ''}`)
+
+// ===================== nothing outlives its task =====================
+// A voice note and a Pravki screenshot are base64 blobs — the heaviest rows
+// in the database — and they were surviving the task they belonged to with
+// nothing left to reach them by. Deleting a task takes everything it was
+// carrying; the paper trail is the deliberate exception, because it is
+// written to still read like a sentence once the task is gone.
+{
+  const doomed = (await mk({ title: 'r68 about to be deleted', type: 'post', script: 'A script that will not outlive its task' })).data
+  const c = await req(`/content/${doomed.id}/comments`, 'POST', { text: 'said on a task that is about to go', voice: CLIP, voice_secs: 4 })
+  const vid = c.data.voice_id
+  ok('the doomed task has a clip on it', !!vid, JSON.stringify(c.data))
+  ok('…and the clip plays while the task lives', (await req(`/content/voice/${vid}`)).status === 200)
+
+  // Somebody else is told about it, so the bell has a line pointing at a task
+  // that is about to stop existing.
+  await req(`/content/${doomed.id}/comments`, 'POST', { text: '@Dilnoza look at this one before it goes' })
+  ok('the bell carries a line for the doomed task',
+    (await bell(smmT)).some((n) => n.content_id === doomed.id))
+
+  const gone = await req(`/content/${doomed.id}`, 'DELETE')
+  ok('the task is deleted', gone.status === 200, `${gone.status} ${gone.data.error || ''}`)
+
+  // Asking the API whether the clip is reachable proves nothing: the 404 comes
+  // from the deleted PARENT, and would arrive just the same with the clip row
+  // sitting in the database for ever. So the database is asked directly.
+  ok('the clip row is really gone, not merely unreachable', rowsLeft('voice_notes', doomed.id) === 0,
+    `${rowsLeft('voice_notes', doomed.id)} left`)
+  for (const t of ['comments', 'attachments', 'revisions', 'date_requests', 'undo_moves']) {
+    ok(`…and so is its ${t.replace('_', ' ')}`, rowsLeft(t, doomed.id) === 0, `${rowsLeft(t, doomed.id)} left`)
+  }
+  ok('…and no bell line still points at a task nobody can open',
+    !(await bell(smmT)).some((n) => n.content_id === doomed.id))
+  // The paper trail is the deliberate exception: it is written to still read
+  // like a sentence once the task is gone.
+  ok('…but the paper trail stays, which is the point of it',
+    rowsLeft('activity', doomed.id) > 0, `${rowsLeft('activity', doomed.id)} rows`)
+
+  // The script it held is free again — the fingerprint went with the row.
+  const reuse = await mk({ title: 'r68 takes the dead task’s words', type: 'post', script: 'A script that will not outlive its task' })
+  ok('…and the words it held are free for another task', reuse.status === 201,
+    `${reuse.status} ${reuse.data.error || ''}`)
+}
 
 stop()
 console.log(fails === 0 ? '\nRound-68 suite clean.' : `\n${fails} PROBLEMS`)

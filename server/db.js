@@ -1252,6 +1252,22 @@ export async function getTaskFields() {
 // a text-only post stops demanding a designer nobody ever planned to assign.
 // Stored in meta 'crew_needs'; missing keys fall back to these defaults,
 // which reproduce the pre-tuning behavior exactly.
+// Everything a task carries that is meaningless without it. Deleting a task
+// used to take only its attachments, which left the heaviest rows in the
+// database — a voice note and a Pravki screenshot are base64 blobs — alive
+// with nothing left to reach them by. Named in ONE place because a task can
+// be deleted directly or swept up when its last channel goes, and the two
+// paths drifting apart is how the leak started.
+//
+// `activity` is the deliberate exception: it writes down names and titles at
+// the moment of the change so the log still reads like a sentence afterwards.
+export const TASK_CHILD_TABLES = [
+  'attachments', 'voice_notes', 'comments', 'revisions', 'date_requests', 'undo_moves',
+  'notifications',   // a bell line pointing at a task nobody can open is a dead end
+]
+export const taskChildDeletes = (id) =>
+  TASK_CHILD_TABLES.map((t) => [`DELETE FROM ${t} WHERE content_id = ?`, id])
+
 export const CREW_NEED_KEYS = ['operator', 'editor', 'designer']
 export const DEFAULT_CREW_NEEDS = {
   operator: ['reel', 'video'],

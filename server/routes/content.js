@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { createHmac } from 'crypto'
-import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO } from '../db.js'
+import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO, taskChildDeletes } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { resolveGates, gatesUpTo, phasesOf, holderOf } from '../deadlines.js'
 import { readText, hasSubstance, hasLink, isSentence, clip, scriptKey, MIN_SENTENCE_WORDS } from '../text.js'
@@ -1920,7 +1920,15 @@ router.delete('/:id', wrap(async (req, res) => {
   for (const ch of JSON.parse(row.channels || '[]'))
     await bumpPlan(ch, row.type, { target: -1, current: row.done_at ? -1 : 0 })
   await logEvent(req.user, row.id, row.title, 'deleted')
-  await run('DELETE FROM attachments WHERE content_id = ?', row.id) // its paperwork goes with it
+  // Everything the task was carrying goes with it. This used to take only the
+  // attachments, which left the heaviest rows in the database behind for good:
+  // a voice note and a Pravki screenshot are base64 blobs, and they were
+  // surviving the task they belonged to with nothing left to reach them by.
+  //
+  // The paper trail is the deliberate exception. Activity rows write down
+  // names and titles at the moment of the change precisely so the log still
+  // reads like a sentence after the task is gone.
+  await batch(taskChildDeletes(row.id))
   await run('DELETE FROM content WHERE id = ?', row.id)
   res.json({ ok: true })
 }))

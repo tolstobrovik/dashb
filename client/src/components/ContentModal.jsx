@@ -552,7 +552,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
     return canvas.toDataURL('image/jpeg', quality)
   }
-  const takePhoto = (file) => {
+  const takePhoto = (file, how = 'pasted') => {
     if (!file) return
     if (file.size > 15 * 1024 * 1024) { setErr('Image is too large — keep it under 15 MB'); return }
     const url = URL.createObjectURL(file)
@@ -561,13 +561,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       try {
         setForm((f) => ({ ...f, photo: scaleImage(img, 1600, 0.85), photo_thumb: scaleImage(img, 320, 0.75) }))
         setErr('')
-        toast('Screenshot pasted in')
+        toast(how === 'pasted' ? 'Screenshot pasted in' : 'Photo attached')
       } catch { setErr('Could not read that image') } finally { URL.revokeObjectURL(url) }
     }
     img.onerror = () => { setErr('Could not read that image'); URL.revokeObjectURL(url) }
     img.src = url
   }
-  const pickPhoto = (e) => takePhoto(e.target.files?.[0])
+  const pickPhoto = (e) => takePhoto(e.target.files?.[0], 'picked')
   // A reference is almost always a screenshot that is already on the
   // clipboard — Ctrl+V drops it straight in, so nobody has to save it to disk
   // first just to pick it back out of a file dialog. Anywhere in the task

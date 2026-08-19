@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, batch } from '../db.js'
+import { all, get, run, batch, taskChildDeletes } from '../db.js'
 import { authRequired, adminOnly, can, wrap } from '../auth.js'
 
 const router = Router()
@@ -93,9 +93,14 @@ router.delete('/:id', adminOnly, wrap(async (req, res) => {
     const chs = JSON.parse(c.channels || '[]')
     if (!chs.includes(row.key)) continue
     const left = chs.filter((k) => k !== row.key)
-    stmts.push(left.length
-      ? ['UPDATE content SET channels = ? WHERE id = ?', JSON.stringify(left), c.id]
-      : ['DELETE FROM content WHERE id = ?', c.id])
+    if (left.length) {
+      stmts.push(['UPDATE content SET channels = ? WHERE id = ?', JSON.stringify(left), c.id])
+    } else {
+      // The task had nowhere else to live, so it goes — and everything it was
+      // carrying goes with it, the same way a task deleted by hand does.
+      stmts.push(...taskChildDeletes(c.id))
+      stmts.push(['DELETE FROM content WHERE id = ?', c.id])
+    }
   }
   for (const u of await all('SELECT id, departments FROM users')) {
     const depts = JSON.parse(u.departments || '[]')
