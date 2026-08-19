@@ -38,7 +38,11 @@ const doneOn = await req(`/content/${p1.data.id}`, 'PATCH', { done: true }, tokD
 ok('…but not posts they are not the designer of', doneOn.status === 403)
 const p3 = await req('/content', 'POST', { title: 'r11: crew right probe', channels: ['instagram_main'], type: 'post', designer_id: dez.id })
 const readySt11 = (await req('/statuses')).data.find((s) => /^ready$/i.test(s.label))
-const p3done = await req(`/content/${p3.data.id}`, 'PATCH', { milestone: 'designed' }, tokD)
+// The artwork rides along with the tick since round 69 — a stage that says
+// finished with nothing attached is one the reviewer has to chase.
+const p3bare = await req(`/content/${p3.data.id}`, 'PATCH', { milestone: 'designed' }, tokD)
+ok('the tick without the artwork is refused', p3bare.status === 400, `${p3bare.status} ${p3bare.data.error || ''}`)
+const p3done = await req(`/content/${p3.data.id}`, 'PATCH', { milestone: 'designed', design_link: 'https://drive.google.com/r11-art' }, tokD)
 ok('the designer marks their post designed → Ready (crew tick)', p3done.status === 200 && p3done.data.status_id === readySt11.id)
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

@@ -41,7 +41,11 @@ ok('editor sees the whole team for names', (await req('/users', 'GET', null, ET)
 ok('editor cannot set a raw stage', (await req(`/content/${vid.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)
 // milestone verified on a throwaway so vid stays pristine (unstamped) for the UI below
 const mp = (await req('/content', 'POST', { title: 'Edit: milestone probe', channels: ['youtube'], type: 'video', editor_id: ed.id, status_id: sid('shot') })).data
-ok('editor ticks "edited" → the cut lands on Ready', (await req(`/content/${mp.id}`, 'PATCH', { milestone: 'edited' }, ET)).data.status_id === sid('ready'))
+// The cut rides along with the tick since round 69: saying a stage is
+// finished is a claim, and for a stage that produces a file the claim is
+// checkable, so it is checked.
+ok('editor ticks "edited" → the cut lands on Ready', (await req(`/content/${mp.id}`, 'PATCH', { milestone: 'edited', ready_link: 'https://drive.google.com/role-cut' }, ET)).data.status_id === sid('ready'))
+ok('…and the tick without the cut is refused', (await req(`/content/${(await req('/content', 'POST', { title: 'Edit: no cut', channels: ['youtube'], type: 'video', editor_id: ed.id, status_id: sid('shot') })).data.id}`, 'PATCH', { milestone: 'edited' }, ET)).status === 400)
 await req(`/content/${mp.id}`, 'DELETE')
 ok('editor cannot touch a foreign task', (await req(`/content/${foreign.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)
 ok('editor cannot rewrite details', (await req(`/content/${vid.id}`, 'PATCH', { title: 'renamed' }, ET)).status === 403)
