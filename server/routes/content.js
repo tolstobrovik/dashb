@@ -508,7 +508,8 @@ router.get('/:id', wrap(async (req, res) => {
   const documents = await all(`SELECT ${DOC_COLUMNS} FROM attachments WHERE content_id = ? ORDER BY id`, row.id)
   // The three accountable phases, derived fresh — the modal shows who owes
   // what, by when, and whether the clock has already run out on them.
-  res.json({ ...row, revisions, comments, activity, documents, phases: phasesOf(row), has_photo: row.photo ? 1 : 0 })
+  const date_requests = await openRequestsFor(row.id)
+  res.json({ ...row, revisions, comments, activity, documents, date_requests, phases: phasesOf(row), has_photo: row.photo ? 1 : 0 })
 }))
 
 // One line into the task's thread. Anyone who can SEE the task may speak —
@@ -919,6 +920,105 @@ router.post('/revisions/:rid/resolve', wrap(async (req, res) => {
   res.json({ ok: true, task: await listRow(row.id) })
 }))
 
+// ---- moving a promised day -------------------------------------------------
+// A deadline with a date on it is a promise, and only an admin moves one.
+// Everyone else ASKS — which day, to which day, and why — and the ask is the
+// record. The date moves on an admin's yes and not a moment before, so the
+// reason a deadline slipped is written down at the time instead of being
+// remembered differently by two people a fortnight later.
+const DATE_LABELS = {
+  recording_date: 'the shoot day', edit_ready_date: 'the day the cut is due',
+  design_ready_date: 'the day the artwork is due', release_date: 'the release day',
+}
+const openRequestsFor = (contentId) => all(
+  `SELECT id, field, from_date, to_date, reason, state, asked_by, asked_name, created_at,
+          decided_by, decided_name, decided_at, decided_note
+   FROM date_requests WHERE content_id = ? ORDER BY id DESC`, contentId)
+
+router.post('/:id/date-requests', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  if (!canTouch(req.user, row)) return res.status(403).json({ error: 'Not your channel' })
+  if (!can(req.user, 'manage_content') && !can(req.user, 'move_tasks'))
+    return res.status(403).json({ error: 'You don’t have permission to move dates' })
+  const field = String(req.body?.field || '')
+  if (!DATE_LABELS[field]) return res.status(400).json({ error: 'That is not a deadline' })
+  if (!row[field]) return res.status(400).json({ error: 'That day is not set yet — you can simply fill it in' })
+  const to = req.body?.to_date ? String(req.body.to_date).slice(0, 10) : null
+  if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return res.status(400).json({ error: 'Give the new day as a date' })
+  if (String(to ?? '') === String(row[field]))
+    return res.status(400).json({ error: 'That is the day it already has' })
+  // The reason is the whole point of asking, so it has to BE one. A dot or an
+  // "N/A" here would leave the record saying a date moved for no reason.
+  const reason = String(req.body?.reason ?? '').trim().slice(0, 2000)
+  if (!hasSubstance(reason) || reason.split(/\s+/).filter(Boolean).length < 3)
+    return res.status(400).json({ error: 'Say what happened — a day moves on a reason, and “—” is not one' })
+  // One open ask per deadline: a second is the same conversation, not a new one.
+  const already = await get(
+    "SELECT id FROM date_requests WHERE content_id = ? AND field = ? AND state = 'open'", row.id, field)
+  if (already) return res.status(409).json({ error: 'That day already has a request waiting on an admin' })
+
+  const now = new Date().toISOString()
+  const info = await run(`
+    INSERT INTO date_requests (content_id, field, from_date, to_date, reason, state, asked_by, asked_name, created_at)
+    VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?)
+  `, row.id, field, row[field], to, reason, req.user.id, req.user.name || '', now)
+
+  // Every admin hears it, because any of them can answer it.
+  const admins = (await all("SELECT id FROM users WHERE role = 'admin'")).map((u) => u.id)
+    .filter((id) => id !== req.user.id)
+  if (admins.length) {
+    const line = `${req.user.name} asks to move ${DATE_LABELS[field]} on «${row.title}» — ${row[field]} → ${to || 'cleared'}`
+    await batch(admins.map((id) => [
+      'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      id, 'date_request', line, row.id, now,
+    ]))
+    await tgMirror(admins, `📅 <b>${tgEsc(req.user.name)}</b> asks to move ${tgEsc(DATE_LABELS[field])} on <b>«${tgEsc(row.title)}»</b>\n${tgEsc(row[field])} → ${tgEsc(to || 'cleared')}\n“${tgEsc(reason.slice(0, 200))}”\nSay yes or no on the task 👇`, row.id, tgOriginFrom(req))
+  }
+  await run(...actRow(req.user, row.id, row.title, 'updated', 'date_request', row[field], to, now))
+  res.status(201).json(await get('SELECT * FROM date_requests WHERE id = ?', info.lastInsertRowid))
+}))
+
+// The admin's answer. Yes moves the day; no leaves it exactly where it was.
+// Either way the asker hears back, because an unanswered ask is worse than a
+// refusal — it leaves somebody planning around a date nobody has agreed to.
+router.post('/date-requests/:rid/decide', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only an admin answers a date request' })
+  const dr = await get('SELECT * FROM date_requests WHERE id = ?', req.params.rid)
+  if (!dr) return res.status(404).json({ error: 'Not found' })
+  if (dr.state !== 'open') return res.status(409).json({ error: 'That request has already been answered' })
+  const row = await get('SELECT * FROM content WHERE id = ?', dr.content_id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const approve = !!req.body?.approve
+  const note = String(req.body?.note ?? '').trim().slice(0, 2000)
+  const now = new Date().toISOString()
+
+  // The day may have moved under the request while it waited. Approving then
+  // would apply an answer to a question nobody asked, so it is refused and the
+  // asker can ask again against what the task actually says now.
+  if (approve && String(row[dr.field] ?? '') !== String(dr.from_date ?? '')) {
+    await run("UPDATE date_requests SET state = 'stale', decided_by = ?, decided_name = ?, decided_at = ?, decided_note = ? WHERE id = ?",
+      req.user.id, req.user.name || '', now, 'the day changed while this was waiting', dr.id)
+    return res.status(409).json({ error: 'That day has changed since the request was made — ask again against the day it has now' })
+  }
+  if (approve) {
+    await run(`UPDATE content SET ${dr.field} = ? WHERE id = ?`, dr.to_date || null, row.id)
+    await logPatch(req.user, row, { [dr.field]: dr.to_date || null })
+  }
+  await run("UPDATE date_requests SET state = ?, decided_by = ?, decided_name = ?, decided_at = ?, decided_note = ? WHERE id = ?",
+    approve ? 'approved' : 'declined', req.user.id, req.user.name || '', now, note, dr.id)
+
+  if (dr.asked_by && dr.asked_by !== req.user.id) {
+    const line = approve
+      ? `${req.user.name} moved ${DATE_LABELS[dr.field]} on «${row.title}» to ${dr.to_date || 'nothing'} — as you asked`
+      : `${req.user.name} kept ${DATE_LABELS[dr.field]} on «${row.title}» at ${dr.from_date}${note ? ` — ${note}` : ''}`
+    await run('INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      dr.asked_by, 'date_request', line, row.id, now)
+    await tgMirror([dr.asked_by], `${approve ? '✅' : '🚫'} ${tgEsc(line)}`, row.id, tgOriginFrom(req))
+  }
+  res.json({ ok: true, request: await get('SELECT * FROM date_requests WHERE id = ?', dr.id), task: await listRow(row.id) })
+}))
+
 router.patch('/:id', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
@@ -1131,7 +1231,10 @@ router.patch('/:id', wrap(async (req, res) => {
       const next = body[f] || null
       if (LOCKED_DATES.includes(f) && row[f] && String(next ?? '') !== String(row[f]) && req.user.role !== 'admin')
         return res.status(403).json({
-          error: 'That day is already promised — only an admin can move it. Ask one, or say what happened in the task.',
+          error: `That day is already promised — ask an admin to move it, and say what happened.`,
+          // What the form needs to offer the ask instead of just refusing:
+          // which deadline, the day it holds, and the day that was wanted.
+          ask_to_move: { field: f, from: row[f], to: next },
         })
       patch[f] = next
     }

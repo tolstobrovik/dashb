@@ -790,6 +790,29 @@ export async function initSchema() {
       updated_at TEXT    NOT NULL
     );
 
+    -- Moving a promised day. A deadline that has a date is a promise, and a
+    -- promise the person who made it can quietly move is not one — so only an
+    -- admin moves a date that is already set. Everyone else ASKS, in writing,
+    -- and the ask is the record: which day, to which day, and why. An admin
+    -- answers it; the date moves on their yes, not before, and the whole
+    -- exchange stays on the task so the reason is never just remembered.
+    CREATE TABLE IF NOT EXISTS date_requests (
+      id           ${ID},
+      content_id   INTEGER NOT NULL,
+      field        TEXT    NOT NULL,          -- recording_date | edit_ready_date | design_ready_date | release_date
+      from_date    TEXT,                      -- the promised day, as it stood when asked
+      to_date      TEXT,                      -- the day being asked for (null = clear it)
+      reason       TEXT    NOT NULL DEFAULT '',
+      state        TEXT    NOT NULL DEFAULT 'open',  -- open | approved | declined | stale
+      asked_by     INTEGER,
+      asked_name   TEXT    NOT NULL DEFAULT '',
+      created_at   TEXT    NOT NULL,
+      decided_by   INTEGER,
+      decided_name TEXT    NOT NULL DEFAULT '',
+      decided_at   TEXT,
+      decided_note TEXT    NOT NULL DEFAULT ''
+    );
+
     -- Pravki (revisions): when the SMM reviews a Ready task and asks for
     -- changes, one row records the round, who asked, which crew stage it went
     -- back to, and the change note. Plain history — no escalation logic.

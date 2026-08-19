@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2,
+  FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor, hasSubstance, hasLink, hasRealScript } from '../lib/constants.js'
@@ -35,14 +35,34 @@ const docKind = (name) => {
   return 'txt'
 }
 
+// Which deadlines are promises. Once one of these holds a day, only an admin
+// moves it — everyone else asks, in writing. Naming them here keeps the form's
+// warning and the server's refusal talking about the same four fields.
+const PROMISED = {
+  recording_date: 'the shoot day', edit_ready_date: 'the day the cut is due',
+  design_ready_date: 'the day the artwork is due', release_date: 'the release day',
+}
+
 // Defined at module level — an inline component would remount its date/time
 // inputs on every keystroke elsewhere in the modal and drop their focus.
-function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, disabled }) {
+function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, disabled, locked, onAskMove, confirmSet, bad }) {
+  // A day that is already promised is read-only here: the picker would let
+  // somebody change it and only find out on save that they could not, having
+  // already lost the day they were looking at.
+  const promised = locked && !!form[dateKey]
+  const setDate = (v) => {
+    // Promising a day is the moment worth pausing on — afterwards it takes an
+    // admin to undo. So the form says so once, plainly, before it happens
+    // rather than after.
+    if (v && !form[dateKey] && PROMISED[dateKey] && !confirmSet(dateKey, v)) return
+    setForm({ ...form, [dateKey]: v })
+  }
   return (
-    <div className="drow">
+    <div className={'drow' + (promised ? ' drow-locked' : '') + (bad ? ' field-bad' : '')} data-field={dateKey}>
       <span className="drow-label"><Icon size={14} /> {label}</span>
-      <input className="input" type="date" disabled={disabled} value={form[dateKey]}
-        onChange={(e) => setForm({ ...form, [dateKey]: e.target.value })} />
+      <input className="input" type="date" disabled={disabled || promised} value={form[dateKey]}
+        data-tip={promised ? 'This day is promised — ask an admin to move it' : undefined}
+        onChange={(e) => setDate(e.target.value)} />
       {timeKey && <input className="input" type="time" disabled={disabled} value={form[timeKey]}
         data-tip={endKey ? 'From' : undefined}
         onChange={(e) => setForm({ ...form, [timeKey]: e.target.value })} />}
@@ -53,14 +73,23 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
             onChange={(e) => setForm({ ...form, [endKey]: e.target.value })} />
         </>
       )}
-      {!disabled && (
+      {!disabled && !promised && (
         <span className="drow-quick">
-          <button type="button" className="qbtn" onClick={() => setForm({ ...form, [dateKey]: todayISO() })}>Today</button>
-          <button type="button" className="qbtn" onClick={() => setForm({ ...form, [dateKey]: addDaysISO(todayISO(), 1) })}>Tomorrow</button>
+          <button type="button" className="qbtn" onClick={() => setDate(todayISO())}>Today</button>
+          <button type="button" className="qbtn" onClick={() => setDate(addDaysISO(todayISO(), 1))}>Tomorrow</button>
           {form[dateKey] && (
             <button type="button" className="qbtn" data-tip="Clear this date" aria-label="Clear date"
               onClick={() => setForm({ ...form, [dateKey]: '', ...(timeKey ? { [timeKey]: '' } : {}), ...(endKey ? { [endKey]: '' } : {}) })}>✕</button>
           )}
+        </span>
+      )}
+      {promised && (
+        // Its own line across the row: the grid's last column is a narrow
+        // slot for quick buttons, and a sentence wrapped into it a word at a
+        // time is how "Ask to move" became four lines tall.
+        <span className="drow-ask">
+          <button type="button" className="qbtn qbtn-ask" onClick={() => onAskMove(dateKey)}>Ask to move</button>
+          <span className="drow-promised">This day is promised — only an admin moves it, and only on a reason.</span>
         </span>
       )}
     </div>
@@ -74,6 +103,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const { visible, byKey, reload } = useChannels()
   const creating = !item
   const [err, setErr] = useState('')
+  // Which field the refusal is ABOUT. A red banner at the top of a long form
+  // tells you something is wrong; it does not tell you where, and the answer
+  // is usually three screens down. Naming the field lets the form ring it and
+  // scroll to it, so "«Script» needs a real answer" lands next to the script.
+  const [badField, setBadField] = useState('')
+  const refuse = (field, message) => { setBadField(field); setErr(message) }
   const [busy, setBusy] = useState(false)
   const [subText, setSubText] = useState('')
   const [form, setForm] = useState(() => ({
@@ -174,6 +209,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       setActivity(full.activity || [])
       setPhases(full.phases || [])
       setDocs(full.documents || [])
+      setDateReqs(full.date_requests || [])
       setForm((f) => ({ ...f, photo: full.photo, photo_thumb: full.photo_thumb }))
       setInitialPhoto(full.photo)
     }).catch(() => {})
@@ -352,6 +388,59 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     item?.designer_id && { key: 'designer', label: 'Designer' },
   ].filter(Boolean)
   if (pravkiTargets.length === 0) pravkiTargets.push({ key: 'editor', label: 'Editor' })
+  // ---- promised days: asking, and answering ----
+  // Every ask ever made on this task, newest first — open ones waiting on an
+  // admin, and answered ones kept as the record of why a day moved.
+  const [dateReqs, setDateReqs] = useState(() => item?.date_requests || [])
+  const [asking, setAsking] = useState(null)  // null | { field, to, reason }
+  const isAdmin = user.role === 'admin'
+  // Promised days are the admin's to move. For everyone else the picker is
+  // read-only and the ask is the way through.
+  const datesLocked = !isAdmin
+  const confirmSet = (field, day) => window.confirm(
+    `Promise ${PROMISED[field]} for ${day}?\n\n`
+    + 'Everything on the board measures itself against this day, so once it is '
+    + 'set only an admin can move it — and only when somebody says why.\n\n'
+    + 'Set it?')
+  const askToMove = (field) => {
+    setErr('')
+    setAsking({ field, to: form[field] || '', reason: '' })
+  }
+  const sendAsk = async () => {
+    if (!asking || busy) return
+    setBusy(true); setErr('')
+    try {
+      const made = await api.post(`/content/${item.id}/date-requests`, {
+        field: asking.field, to_date: asking.to || null, reason: asking.reason.trim(),
+      })
+      setDateReqs((prev) => [made, ...prev])
+      setAsking(null)
+      toast('Asked — the admins have it')
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const decide = async (reqId, approve) => {
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      const out = await api.post(`/content/date-requests/${reqId}/decide`, { approve })
+      setDateReqs((prev) => prev.map((r) => (r.id === reqId ? out.request : r)))
+      if (approve && out.task) setForm((f) => ({ ...f, [out.request.field]: out.task[out.request.field] || '' }))
+      toast(approve ? 'Moved — everyone on the task hears it' : 'Kept where it was — they hear why')
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  // Take the person to the field the refusal is about. The show-flags are set
+  // in the same breath, so the section is open by the time this runs.
+  useEffect(() => {
+    if (!badField) return
+    const el = document.querySelector(`[data-field="${badField}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const focusable = el.querySelector('input, textarea, select')
+      if (focusable) focusable.focus({ preventScroll: true })
+    }
+  }, [badField])
+
   const [pravki, setPravki] = useState(null) // null | { note, target, photo, photo_thumb }
   // The screenshot that shows what is wrong, pasted into the note itself.
   const pravkiPaste = (e) => {
@@ -495,16 +584,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         const refReady = form.reference_links.length > 0 || !!form.photo || docs.length > 0
           || !!form.shot_link || hasLink(form.reference_text) || hasRealScript(form.script)
         const gap = [
-          [!form.operator_id, 'Pick who is filming this — a shoot nobody is holding is nobody’s job'],
-          [!form.recording_date, 'Filmed work is booked with all three dates — the shoot day is missing'],
-          [!form.edit_ready_date, 'Filmed work is booked with all three dates — the day the cut is due is missing'],
-          [!form.release_date, 'Filmed work is booked with all three dates — the release day is missing'],
-          [!refReady, 'Booking the shoot needs a brief ready — paste a reference link or TZ, or attach the photo it refers to'],
+          [!form.operator_id, 'Pick who is filming this — a shoot nobody is holding is nobody’s job', 'operator_id'],
+          [!form.recording_date, 'Filmed work is booked with all three dates — the shoot day is missing', 'recording_date'],
+          [!form.edit_ready_date, 'Filmed work is booked with all three dates — the day the cut is due is missing', 'edit_ready_date'],
+          [!form.release_date, 'Filmed work is booked with all three dates — the release day is missing', 'release_date'],
+          [!refReady, 'Booking the shoot needs a brief ready — paste a reference link or TZ, or attach the photo it refers to', 'reference'],
         ].find(([bad]) => bad)
-        if (gap) { setShow((s) => ({ ...s, reference: true, script: true })); setErr(gap[1]); return }
+        if (gap) { setShow((s) => ({ ...s, reference: true, script: true })); refuse(gap[2], gap[1]); return }
       }
       if (needsEditor && !form.editor_id) {
-        setErr('Name who cuts this — footage with no editor waiting is footage nobody is cutting')
+        refuse('editor_id', 'Name who cuts this — footage with no editor waiting is footage nobody is cutting')
         return
       }
       const missing = [
@@ -516,7 +605,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       ].find(([k, , v]) => fReq(k) && !v)
       if (missing) {
         setShow((s) => ({ ...s, script: true, reference: true, description: true }))
-        setErr(`«${missing[1]}» is required for this type of task`)
+        refuse(missing[0], `«${missing[1]}» is required for this type of task`)
         return
       }
       // Filled is not answered. A demanded field holding "." or "N/A" is
@@ -530,7 +619,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       ].find(([k, , v, real]) => fReq(k) && v && !real(v))
       if (thin) {
         setShow((s) => ({ ...s, script: true, description: true }))
-        setErr(`«${thin[1]}» needs a real answer — “${thin[2]}” is a placeholder, not a brief`)
+        refuse(thin[0], `«${thin[1]}» needs a real answer — “${thin[2]}” is a placeholder, not a brief`)
         return
       }
       // A reference points somewhere. Text on its own has to carry a link;
@@ -539,18 +628,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       if (form.reference_text && !refCarried) {
         if (!hasSubstance(form.reference_text)) {
           setShow((s) => ({ ...s, reference: true }))
-          setErr(`«Reference» needs a real answer — “${form.reference_text.trim()}” is a placeholder, not a reference`)
+          refuse('reference', `«Reference» needs a real answer — “${form.reference_text.trim()}” is a placeholder, not a reference`)
           return
         }
         if (!hasLink(form.reference_text)) {
           setShow((s) => ({ ...s, reference: true }))
-          setErr('«Reference» has to point somewhere — paste a link, or attach the photo or document it refers to')
+          refuse('reference', '«Reference» has to point somewhere — paste a link, or attach the photo or document it refers to')
           return
         }
       }
     }
     setBusy(true)
     setErr('')
+    setBadField('')
     setConflict(null)
     let payload
     if (creating || canEdit) {
@@ -598,7 +688,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       onClose()
     } catch (e) {
       if (e.status === 409 && e.data) setConflict(e.data)
-      else setErr(e.message)
+      // A promised day was refused. Rather than leave the person staring at
+      // "only an admin can move it", the ask opens right here with the day
+      // they wanted already in it — the refusal and the way through are the
+      // same gesture.
+      else if (e.status === 403 && e.data?.ask_to_move) {
+        const { field, to } = e.data.ask_to_move
+        setAsking({ field, to: to || '', reason: '' })
+        setErr(`${e.message} The ask is below — say what happened and it goes to them.`)
+      } else setErr(e.message)
     } finally { setBusy(false) }
   }
   const del = async () => {
@@ -759,7 +857,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           notes, example links, and a reference photo. All optional; none of it
           blocks moving a task forward. Crew see it; only editors set it. */}
       {(hasRef || (canEdit && show.reference)) && (
-        <div className="cm-row cm-ref">
+        <div className={'cm-row cm-ref' + (badField === 'reference' ? ' field-bad' : '')} data-field="reference">
           <span className="cm-key"><BookOpen size={13} style={{ verticalAlign: -2 }} /> Reference</span>
           <div className="ref-block">
             {canEdit ? (
@@ -842,7 +940,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* The script — the words and shots the crew films by. Editors write it;
           the crew read it. Folds behind the extras row unless demanded. */}
       {fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
-        <div className="cm-row">
+        <div className={'cm-row' + (badField === 'script' ? ' field-bad' : '')} data-field="script">
           <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> Script{fReq('script') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
           <textarea className="input cm-script" rows={6} disabled={detailsLocked}
             placeholder="The script / shot plan the crew works by…"
@@ -859,7 +957,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* The description sits with the rest of the brief rather than at the
           foot of the form — it is read at the same moment as the reference. */}
       {show.description && !crewViewer && (
-        <div className="cm-row">
+        <div className={'cm-row' + (badField === 'description' ? ' field-bad' : '')} data-field="description">
           <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> Description{fReq('description') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
           <textarea className="input" rows={2} disabled={detailsLocked} value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="References, links, notes…" />
@@ -1019,7 +1117,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               return (
                 <label key={f.col} className={`ready-link-field dlv-${f.kind}` + (f.mine ? ' dlv-mine' : '')}>
                   <span className="crew-label dlv-head">
-                    <span className="dlv-badge"><Icon size={13} /></span>
+                    {/* The filmed chain is numbered because it has an order —
+                        footage first, cut second. Design is a track of its own
+                        and wears no number rather than a confusing second "2". */}
+                    {f.kind !== 'design' && <span className="dlv-step">{f.kind === 'shot' ? '1' : '2'}</span>}
+                    <span className="dlv-badge"><Icon size={14} /></span>
                     <b className="dlv-name">{f.label}</b>
                     <span className="crew-opt dlv-sub">{f.sub}</span>
                     <span className="dlv-who">{f.mine ? 'yours' : owner ? owner.name.split(' ')[0] : 'nobody yet'}</span>
@@ -1093,7 +1195,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               nothing that counts crew-fields may count these. */}
           <div className="brief-fields">
             {fOn('format') && (
-              <label className="brief-field">
+              <label className={'brief-field' + (badField === 'format' ? ' field-bad' : '')} data-field="format">
                 <span className="brief-label"><Layers size={12} /> Format {fReq('format')
                   ? <b className="req-star" data-tip="The admin made this required">*</b>
                   : <span className="crew-opt">optional</span>}</span>
@@ -1106,7 +1208,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               </label>
             )}
             {fOn('rubrika') && (
-              <label className="brief-field">
+              <label className={'brief-field' + (badField === 'rubrika' ? ' field-bad' : '')} data-field="rubrika">
                 <span className="brief-label"><Hash size={12} /> Rubrika {fReq('rubrika')
                   ? <b className="req-star" data-tip="The admin made this required">*</b>
                   : <span className="crew-opt">optional</span>}</span>
@@ -1196,7 +1298,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           in Admin → People (they multi-select). A post is designed, not shot,
           so it carries only the designer hat; filmed types carry all three.
           Hidden hats keep their person, so flipping the type loses nothing. */}
-      <div className="cm-row">
+      <div className="cm-row" data-field={badField === 'operator_id' ? 'operator_id' : badField === 'editor_id' ? 'editor_id' : undefined}>
         <span className="cm-key">Crew</span>
         <div className="crew-row">
           {(isDesign ? [
@@ -1218,7 +1320,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             // neither — the hats say "optional" until the work reaches them.
             const mustHave = (f.key === 'operator_id' && needsOperator) || (f.key === 'editor_id' && needsEditor)
             return (
-              <label key={f.key} className={'crew-field' + (mustHave && !form[f.key] ? ' crew-missing' : '')}>
+              <label key={f.key} className={'crew-field' + (mustHave && !form[f.key] ? ' crew-missing' : '') + (badField === f.key ? ' field-bad' : '')}>
                 <span className="crew-label">
                   {f.label}{' '}
                   {mustHave
@@ -1321,11 +1423,82 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           designer's artwork deadline, and the public release. Each maker is
           judged by their own date, never by the release. */}
       <div className="dates-block">
-        {!isDesign && <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" form={form} setForm={setForm} disabled={detailsLocked} />}
-        {!isDesign && <DateRow icon={Scissors} label="Edit ready" dateKey="edit_ready_date" form={form} setForm={setForm} disabled={detailsLocked} />}
-        <DateRow icon={Palette} label="Design ready" dateKey="design_ready_date" form={form} setForm={setForm} disabled={detailsLocked} />
-        {!crewViewer && <DateRow icon={Send} label="Release" dateKey="release_date" timeKey="release_time" form={form} setForm={setForm} disabled={detailsLocked} />}
+        {(() => {
+          const shared = {
+            form, setForm, disabled: detailsLocked, confirmSet,
+            locked: datesLocked && !creating, onAskMove: askToMove,
+          }
+          const at = (k) => ({ ...shared, bad: badField === k })
+          return (<>
+            {!isDesign && <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" {...at('recording_date')} />}
+            {!isDesign && <DateRow icon={Scissors} label="Edit ready" dateKey="edit_ready_date" {...at('edit_ready_date')} />}
+            <DateRow icon={Palette} label="Design ready" dateKey="design_ready_date" {...at('design_ready_date')} />
+            {!crewViewer && <DateRow icon={Send} label="Release" dateKey="release_date" timeKey="release_time" {...at('release_date')} />}
+          </>)
+        })()}
       </div>
+
+      {/* Asking for a promised day to move. The reason is the point: a date
+          that slips without one is a date nobody can plan around next time. */}
+      {asking && (
+        <div className="ask-move">
+          <div className="ask-head">
+            <CalendarClock size={15} /> Ask an admin to move {PROMISED[asking.field]}
+          </div>
+          <div className="ask-row">
+            <span className="ask-was">now <b>{item?.[asking.field] || '—'}</b></span>
+            <span className="drow-dash">→</span>
+            <input className="input" type="date" value={asking.to}
+              onChange={(e) => setAsking({ ...asking, to: e.target.value })} />
+          </div>
+          <textarea className="input" rows={2} autoFocus value={asking.reason}
+            onChange={(e) => setAsking({ ...asking, reason: e.target.value })}
+            placeholder="What happened? The shoot was rained off, the location fell through…" />
+          <div className="ask-actions">
+            <span className="stat-sub">They see it in the bell and in Telegram. The day does not move until they say yes.</span>
+            <button type="button" className="btn btn-sm" onClick={() => setAsking(null)}>Cancel</button>
+            <button type="button" className="btn btn-sm btn-primary" disabled={busy || !asking.reason.trim()} onClick={sendAsk}>
+              <Send size={13} /> Ask
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* The asks themselves: what is waiting, and what was decided and why. */}
+      {dateReqs.length > 0 && (
+        <div className="cm-row cm-asks">
+          <span className="cm-key"><CalendarClock size={13} style={{ verticalAlign: -2 }} /> Day moves</span>
+          <div className="ask-list">
+            {dateReqs.map((r) => (
+              <div key={r.id} className={`ask-item ask-${r.state}`}>
+                <span className="ask-line">
+                  <b>{PROMISED[r.field] || r.field}</b>: {r.from_date || '—'} → {r.to_date || 'cleared'}
+                  <span className={`chip ask-state ask-chip-${r.state}`}>
+                    {r.state === 'open' ? 'waiting on an admin'
+                      : r.state === 'approved' ? 'moved'
+                        : r.state === 'stale' ? 'out of date' : 'kept where it was'}
+                  </span>
+                </span>
+                <span className="ask-why">“{r.reason}” — {r.asked_name || 'someone'}</span>
+                {r.decided_at && (
+                  <span className="ask-meta">
+                    {r.state === 'approved' ? 'Moved' : r.state === 'stale' ? 'Dropped' : 'Kept'} by {r.decided_name}
+                    {r.decided_note ? ` — ${r.decided_note}` : ''}
+                  </span>
+                )}
+                {r.state === 'open' && isAdmin && (
+                  <span className="ask-decide">
+                    <button type="button" className="btn btn-sm" disabled={busy} onClick={() => decide(r.id, false)}>Keep the day</button>
+                    <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => decide(r.id, true)}>
+                      <Check size={13} /> Move it
+                    </button>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {(form.edit_ready_date || form.design_ready_date) && (
         <div className="cm-hint">
           <Scissors size={11} />{' '}

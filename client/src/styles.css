@@ -2088,25 +2088,58 @@ button.cb-toggle:hover { color: var(--ink); }
 .ready-link-input .input { flex: 1; }
 .ready-link-input .btn { flex-shrink: 0; }
 
-/* Recording / Edit ready / Design ready were three identical Drive boxes and
-   people pasted the cut into the wrong one. Each stage now owns a colour, a
-   badge and the name of whoever fills it, so they stop reading as one thing. */
-.ready-link-field { border-left: 3px solid var(--hairline-strong); padding: 8px 0 8px 11px; border-radius: 0 8px 8px 0; }
-.dlv-shot { border-left-color: #ec835a; background: linear-gradient(90deg, rgba(236, 131, 90, .09), transparent 42%); }
-.dlv-edit { border-left-color: #b5324a; background: linear-gradient(90deg, rgba(181, 50, 74, .09), transparent 42%); }
-.dlv-design { border-left-color: #7a4fd6; background: linear-gradient(90deg, rgba(122, 79, 214, .09), transparent 42%); }
-.dlv-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.dlv-badge { width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
-.dlv-shot .dlv-badge { background: #ec835a; }
-.dlv-edit .dlv-badge { background: #b5324a; }
-.dlv-design .dlv-badge { background: #7a4fd6; }
-.dlv-name { font-size: 13px; font-weight: 800; letter-spacing: -.01em; }
-.dlv-sub { flex: 1; min-width: 120px; }
-.dlv-who { font-size: 11px; font-weight: 700; color: var(--ink-soft); background: var(--surface-2); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
-.dlv-mine .dlv-who { background: #0ca30c; color: #fff; }
+/* Recording / Edit ready / Design ready were three identical Drive boxes in a
+   row and people pasted the finished cut into Recording. Each is now a card
+   with a SOLID coloured header — the colour of its own pipeline stage — a
+   numbered step, and the name of whoever owes it. Two boxes that used to
+   differ by four words of grey caption now differ by everything. */
+.ready-link-field { border: 1px solid var(--hairline-strong); border-radius: 11px; overflow: hidden; padding: 0; background: var(--surface); }
+.dlv-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 11px; color: #fff; margin: 0; }
+.dlv-shot .dlv-head { background: #ec835a; }
+.dlv-edit .dlv-head { background: #b5324a; }
+.dlv-design .dlv-head { background: #7a4fd6; }
+.dlv-shot { border-color: #ec835a; }
+.dlv-edit { border-color: #b5324a; }
+.dlv-design { border-color: #7a4fd6; }
+.dlv-step { width: 21px; height: 21px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; background: rgba(255, 255, 255, .25); font-size: 11px; font-weight: 800; }
+.dlv-badge { display: inline-flex; align-items: center; flex-shrink: 0; color: #fff; }
+.dlv-name { font-size: 13px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: #fff; }
+.dlv-sub { flex: 1; min-width: 130px; color: rgba(255, 255, 255, .85); font-size: 11.5px; text-transform: none; letter-spacing: 0; }
+.dlv-who { font-size: 11px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, .25); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.dlv-mine .dlv-who { background: #fff; color: #26222b; }
+.ready-link-field .ready-link-input { padding: 10px 11px; }
+.crew-do .ready-link-field + .ready-link-field { margin-top: 12px; }
 .pravki-shot { margin-top: 8px; }
 .rev-shot { display: block; margin-top: 6px; width: fit-content; }
 .rev-shot img { max-height: 120px; max-width: 100%; border-radius: 8px; border: 1px solid var(--hairline); display: block; }
+
+/* A promised day, and the ask that moves it. */
+.drow-locked .input[type="date"] { opacity: .95; border-style: dashed; cursor: not-allowed; }
+.drow-promised { font-size: 11px; color: var(--ink-soft); }
+.drow-ask { grid-column: 1 / -1; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: -2px 0 2px; }
+.drow-ask .qbtn-ask { white-space: nowrap; }
+.qbtn-ask { border-color: var(--brand-500); color: var(--brand-500); font-weight: 700; }
+.ask-move { border: 1px solid var(--brand-500); border-radius: 12px; padding: 11px 13px; margin: 10px 0; background: var(--surface); }
+.ask-head { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 13px; margin-bottom: 8px; }
+.ask-row { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; flex-wrap: wrap; }
+.ask-was { font-size: 12.5px; color: var(--ink-soft); }
+.ask-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.ask-actions .stat-sub { flex: 1; min-width: 180px; }
+.ask-list { display: flex; flex-direction: column; gap: 9px; }
+.ask-item { display: flex; flex-direction: column; gap: 3px; border-left: 3px solid var(--hairline-strong); padding: 2px 0 2px 10px; }
+.ask-open { border-left-color: #f2a413; }
+.ask-approved { border-left-color: #0ca30c; }
+.ask-declined { border-left-color: #A32D2D; }
+.ask-stale { border-left-color: var(--hairline-strong); }
+.ask-line { font-size: 12.5px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.ask-state { font-size: 10.5px; font-weight: 700; }
+.ask-chip-open { background: #f2a413; color: #26222b; }
+.ask-chip-approved { background: #0ca30c; color: #fff; }
+.ask-chip-declined { background: #A32D2D; color: #fff; }
+.ask-why { font-size: 12.5px; color: var(--ink); line-height: 1.4; }
+.ask-meta { font-size: 11px; color: var(--ink-soft); }
+.ask-decide { display: flex; gap: 7px; margin-top: 5px; }
 
 /* crew day board: the "still haunting" emergency section + all-clear line */
 .cb-sec.cb-emergency { border: 1px solid #e6b3b3; background: #fbeeee; border-radius: 12px; padding: 6px 10px 4px; margin-top: 6px; }
@@ -2558,8 +2591,7 @@ button.cb-toggle:hover { color: var(--ink); }
 [data-theme="dark"] .fl-design { background: #2a1c35; color: #d3aeea; border-color: #3d2a4c; }
 [data-theme="dark"] .fl-design:hover { background: #33223f; }
 /* the editable delivery fields get room to breathe */
-.crew-do .ready-link-field + .ready-link-field { margin-top: 14px; }
-.ready-link-field .crew-label { margin-bottom: 5px; }
+.ready-link-field .crew-label { margin-bottom: 0; }
 /* the reminders list in Admin → Telegram */
 .rem-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
 .rem-row:last-child { border-bottom: none; }
@@ -2930,3 +2962,12 @@ button.blame-person:hover { background: var(--surface-2); }
   .proj-bar-track { max-width: none; }
   .proj-meta { gap: 5px; }
 }
+
+/* The field a refusal is ABOUT. A red banner at the top of a long form says
+   something is wrong without saying where — the answer is usually three
+   screens down. The named field is ringed and scrolled to, so the sentence
+   and the box it is about are on screen together. */
+.field-bad { outline: 2px solid #A32D2D; outline-offset: 3px; border-radius: 8px; animation: field-bad-in .5s ease; }
+.field-bad .input, .field-bad .select, .field-bad textarea { border-color: #A32D2D; }
+@keyframes field-bad-in { from { outline-color: transparent; } to { outline-color: #A32D2D; } }
+@media (prefers-reduced-motion: reduce) { .field-bad { animation: none; } }
