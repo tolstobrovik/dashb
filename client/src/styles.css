@@ -3020,3 +3020,24 @@ button.blame-person:hover { background: var(--surface-2); }
 .ov-ask-move { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .ov-ask-why { font-size: 12.5px; color: var(--ink); }
 .ov-ask-do { display: flex; gap: 7px; flex-shrink: 0; }
+
+/* A hand up: somebody on the piece saying early that it is in trouble. */
+.cm-flags .flag-block { display: flex; flex-direction: column; gap: 9px; }
+.flag-item { display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  border-left: 3px solid #f2a413; padding: 3px 0 3px 10px; }
+.flag-cant_take { border-left-color: #A32D2D; }
+.flag-line { font-size: 13px; }
+.flag-why { font-size: 12.5px; color: var(--ink); }
+.flag-form { display: flex; flex-direction: column; gap: 8px; }
+.crew-peek { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft); }
+.crew-peek .select { padding: 6px 9px; font-size: 12.5px; }
+.pravki-same { font-size: 12px; color: #A32D2D; padding: 4px 0 0; }
+/* Standing in someone else's seat should look temporary. */
+.modal.as-crew { outline: 2px solid var(--brand-500); outline-offset: -2px; }
+.as-crew-note { display: flex; align-items: center; gap: 7px; background: var(--brand-500); color: #fff;
+  font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: 9px; margin-bottom: 12px; }
+.ov-hands { border-left-color: #A32D2D; }
+.ov-hands .ov-asks-head svg { color: #A32D2D; }
+.ov-hands .ov-ask { background: none; border: 0; border-top: 1px solid var(--hairline); padding: 9px 0 0;
+  cursor: pointer; font-family: inherit; color: inherit; text-align: left; width: 100%; }
+.ov-hands .ov-ask:first-of-type { border-top: 0; padding-top: 0; }

@@ -316,7 +316,10 @@ function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
    task to Ready for the SMM. Module-level so poll ticks don't remount it. */
 function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
   const relCol = rev.target === 'operator' ? 'shot_link' : rev.target === 'designer' ? 'design_link' : 'ready_link'
-  const [link, setLink] = useState(rev[relCol] || '')
+  // Deliberately EMPTY, not pre-filled with the file that was sent back.
+  // Pre-filling it made "Fixed" one press away from re-delivering the same
+  // cut — which is how a whole revision round used to evaporate.
+  const [link, setLink] = useState('')
   const [busy, setBusy] = useState(false)
   // The task's other rounds — everything asked before this one.
   const prior = (rev.history || []).filter((h) => h.round !== rev.round)
@@ -373,13 +376,18 @@ function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
         </details>
       )}
       <div className="pravki-fix">
-        <input className="input" placeholder="Updated Google-Drive link…" value={link} onChange={(e) => setLink(e.target.value)} />
+        <input className="input" placeholder="Link to the NEW file…" value={link} onChange={(e) => setLink(e.target.value)} />
         {rev[relCol] && /^https?:\/\//i.test(rev[relCol]) && (
           <a className="btn btn-sm" href={rev[relCol]} target="_blank" rel="noreferrer"
-            data-tip="Open the current file" aria-label="Open the current file"><ExternalLink size={14} /></a>
+            data-tip="Open the file that was sent back" aria-label="Open the file that was sent back"><ExternalLink size={14} /></a>
         )}
-        <button className="btn btn-sm btn-primary" disabled={busy} onClick={fix}><Check size={14} /> Fixed</button>
+        <button className="btn btn-sm btn-primary" disabled={busy || !link.trim() || link.trim() === (rev[relCol] || '')}
+          data-tip={link.trim() && link.trim() === (rev[relCol] || '') ? 'That is the file that was sent back' : 'Deliver the fix'}
+          onClick={fix}><Check size={14} /> Fixed</button>
       </div>
+      {link.trim() && link.trim() === (rev[relCol] || '') && (
+        <div className="pravki-same">That is the same file that was sent back — upload the new one.</div>
+      )}
     </div>
   )
 }

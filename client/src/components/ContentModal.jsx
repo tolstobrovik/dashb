@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock,
+  FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
@@ -244,6 +244,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       setPhases(full.phases || [])
       setDocs(full.documents || [])
       setDateReqs(full.date_requests || [])
+      setFlags(full.flags || [])
       setForm((f) => ({ ...f, photo: full.photo, photo_thumb: full.photo_thumb }))
       setInitialPhoto(full.photo)
     }).catch(() => {})
@@ -309,6 +310,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     docs: (item?.documents?.length || 0) > 0,
   }))
 
+  // Admins and SMMs run the board from the full form; the crew get a compact
+  // one. Which meant nobody planning the work could see what the person doing
+  // it actually sees — including where their delivery box is. `asCrew` puts
+  // an admin in that seat for a moment, on any hat the task carries.
+  const [asCrew, setAsCrew] = useState(null)   // null | operator | editor | designer
   const canEdit = can(user, 'manage_content')
   const canMove = can(user, 'move_tasks')
   const isMine = item?.assignee_id === user.id
@@ -320,9 +326,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Detail fields (title, type, platforms, dates, description, photo) need
   // manage_content; the stage needs move_tasks; the assignee may always tick
   // their own checklist. The UI locks exactly what the server would reject.
-  const detailsLocked = !creating && !canEdit
+  const detailsLocked = !creating && (!canEdit || !!asCrew)
+  // What the person whose seat this is could actually change about the brief.
+  const briefEditable = canEdit && !asCrew
   const checklistLocked = detailsLocked && !isMine
   const readOnly = detailsLocked && !isMine && !canMove && !isCrew
+
+  // The hats this task actually carries, for the "see it as…" switch. Only
+  // hats somebody holds: previewing an empty seat shows nothing worth seeing.
+  const crewHats = creating ? [] : [
+    { key: 'operator', label: 'the operator', id: item?.operator_id },
+    { key: 'editor', label: 'the editor', id: item?.editor_id },
+    { key: 'designer', label: 'the designer', id: item?.designer_id },
+  ].filter((h) => h.id).map((h) => ({ ...h, name: team.find((u) => u.id === h.id)?.name || '' }))
 
   const plan = typeInfo(form.type).plan
   // A post is designed, not filmed: one designer hat instead of operator+editor.
@@ -351,12 +367,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Crew accounts work to the shoot and maker deadlines — the release date is
   // the channel's business and is not shown to them at all. They also can't
   // move the stage freely: they see it, and mark their one milestone.
-  const crewViewer = !['admin', 'member'].includes(user.role)
-  const myHats = {
-    operator: !creating && item?.operator_id === user.id,
-    editor: !creating && item?.editor_id === user.id,
-    designer: !creating && item?.designer_id === user.id,
-  }
+  const crewViewer = !['admin', 'member'].includes(user.role) || !!asCrew
+  const myHats = asCrew
+    // Standing in their shoes: the hat being previewed is "mine", the others
+    // are not — which is exactly the shape the real holder sees.
+    ? { operator: asCrew === 'operator', editor: asCrew === 'editor', designer: asCrew === 'designer' }
+    : {
+      operator: !creating && item?.operator_id === user.id,
+      editor: !creating && item?.editor_id === user.id,
+      designer: !creating && item?.designer_id === user.id,
+    }
   // Where the task stands, so a tick shows already-done: the Shot stage and the
   // Ready stage (by sort order in the pipeline).
   const curSort = statuses.find((s) => s.id === form.status_id)?.sort ?? -1
@@ -371,9 +391,21 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // open (links can still be dropped in) and the footer Save keeps working.
   const tickMilestone = async (kind) => {
     if (busy || milestone === kind) return
+    // The two stages that produce a FILE have to produce it. Asked here so
+    // the person is standing next to the box they need to fill, rather than
+    // being refused after the fact. The shoot is exempt on purpose: footage
+    // goes over on a hard drive as often as not.
+    const NEEDS = { edited: ['ready_link', 'the cut'], designed: ['design_link', 'the artwork'] }
+    const need = NEEDS[kind]
+    if (need && !form[need[0]] && docs.length === 0) {
+      setShow((sh) => ({ ...sh, delivery: true }))
+      refuse(need[0], `Paste ${need[1]} before marking it done — a stage that says finished with nothing attached is one the reviewer has to chase`)
+      return
+    }
     setBusy(true); setErr('')
     try {
-      await onUpdate(item, { milestone: kind })
+      // The link rides along with the tick, so one press does both.
+      await onUpdate(item, { milestone: kind, ...(need && form[need[0]] ? { [need[0]]: form[need[0]] } : {}) })
       setMilestone(kind)
       toast(kind === 'shot' ? 'Marked as shot — synced' : kind === 'edited' ? 'Marked as edited — synced' : 'Marked as designed — synced')
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
@@ -478,6 +510,33 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       if (focusable) focusable.focus({ preventScroll: true })
     }
   }, [badField])
+
+  // Raising a hand. The crew could always deliver late; they had no way to say
+  // so in advance, so the first anybody knew was the deadline passing.
+  const [flags, setFlags] = useState(() => item?.flags || [])
+  const [raising, setRaising] = useState(null)  // null | { kind, reason }
+  const openFlags = flags.filter((f) => !f.cleared_at)
+  const onThisTask = !creating && !!item && (
+    [item.operator_id, item.editor_id, item.designer_id, item.assignee_id].includes(user.id) ||
+    (item.assignees || []).includes(user.id))
+  const canRaise = !creating && (onThisTask || canEdit || canMove)
+  const raiseHand = async () => {
+    if (!raising || busy) return
+    setBusy(true); setErr('')
+    try {
+      const made = await api.post(`/content/${item.id}/flags`, { kind: raising.kind, reason: raising.reason.trim() })
+      setFlags((prev) => [made, ...prev])
+      setRaising(null)
+      toast('Said early — the people who plan have it')
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const lowerHand = async (id) => {
+    setBusy(true); setErr('')
+    try {
+      const out = await api.post(`/content/flags/${id}/clear`, {})
+      setFlags((prev) => prev.map((f) => (f.id === id ? out : f)))
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
 
   const [pravki, setPravki] = useState(null) // null | { note, target, photo, photo_thumb }
   // The screenshot that shows what is wrong, pasted into the note itself.
@@ -814,6 +873,33 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <Link2 size={15} />
           </button>
         )}
+        {/* Standing where the crew stand. The people who plan the work ran the
+            board from a form the people doing it never see — including where
+            their delivery box is and what their tick actually asks for. */}
+        {!creating && ['admin', 'member'].includes(user.role) && crewHats.length > 0 && (
+          asCrew ? (
+            <button className="btn btn-ghost" onClick={() => setAsCrew(null)}>
+              <Eye size={15} /> Back to the full task
+            </button>
+          ) : (
+            <span className="crew-peek">
+              <Eye size={15} />
+              <select className="select" value="" data-tip="See this task the way the person doing it sees it"
+                onChange={(e) => e.target.value && setAsCrew(e.target.value)}>
+                <option value="">See it as…</option>
+                {crewHats.map((h) => (
+                  <option key={h.key} value={h.key}>{h.label}{h.name ? ` · ${h.name.split(' ')[0]}` : ''}</option>
+                ))}
+              </select>
+            </span>
+          )
+        )}
+        {canRaise && !raising && openFlags.length === 0 && (
+          <button className="btn btn-ghost" onClick={() => setRaising({ kind: 'at_risk', reason: '' })}
+            data-tip="Say early that this is in trouble">
+            <Hand size={15} /> Raise a hand
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         <button className="btn" onClick={onClose}>Cancel</button>
         {!readOnly && (
@@ -823,6 +909,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         )}
       </>}
     >
+      {asCrew && (
+        <div className="as-crew-note">
+          <Eye size={14} />
+          You are looking at this the way {crewHats.find((h) => h.key === asCrew)?.name || asCrew} sees it.
+          Their ticks and their box, nobody else’s.
+        </div>
+      )}
       {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
 
       {/* Scheduling warning: the operator is double-booked or off the clock.
@@ -892,6 +985,49 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       </div>
 
+      {/* A hand up: somebody on this piece saying early that it is in trouble.
+          Sits directly under the stage, because it is about to change it. */}
+      {(openFlags.length > 0 || raising) && (
+        <div className="cm-row cm-flags">
+          <span className="cm-key"><Hand size={13} style={{ verticalAlign: -2 }} /> Trouble</span>
+          <div className="flag-block">
+            {openFlags.map((f) => (
+              <div key={f.id} className={`flag-item flag-${f.kind}`}>
+                <span className="flag-line">
+                  <b>{f.raised_name}</b> {f.kind === 'cant_take' ? 'cannot take this on' : 'says this will be late'}
+                </span>
+                <span className="flag-why">“{f.reason}”</span>
+                {(canEdit || f.raised_by === user.id) && (
+                  <button type="button" className="btn btn-sm" disabled={busy} onClick={() => lowerHand(f.id)}>
+                    Sorted — hand down
+                  </button>
+                )}
+              </div>
+            ))}
+            {raising && (
+              <div className="flag-form">
+                <div className="pravki-target">
+                  {[['at_risk', 'This will be late'], ['cant_take', 'I can’t take this on']].map(([k, label]) => (
+                    <button key={k} type="button" className={'tchip' + (raising.kind === k ? ' on' : '')}
+                      onClick={() => setRaising({ ...raising, kind: k })}>{label}</button>
+                  ))}
+                </div>
+                <textarea className="input" rows={2} autoFocus value={raising.reason}
+                  onChange={(e) => setRaising({ ...raising, reason: e.target.value })}
+                  placeholder="What is in the way? The other shoot overran, the location fell through…" />
+                <div className="pravki-actions">
+                  <span className="stat-sub">Said now, it can still be planned around.</span>
+                  <button type="button" className="btn btn-sm" onClick={() => setRaising(null)}>Cancel</button>
+                  <button type="button" className="btn btn-sm btn-primary" disabled={busy || !raising.reason.trim()} onClick={raiseHand}>
+                    <Hand size={13} /> Say it now
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Reference — the brief the crew reads before working: style/mood/format
           notes, example links, and a reference photo. All optional; none of it
           blocks moving a task forward. Crew see it; only editors set it. */}
@@ -899,13 +1035,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         <div className={'cm-row cm-ref' + (badField === 'reference' ? ' field-bad' : '')} data-field="reference">
           <span className="cm-key"><BookOpen size={13} style={{ verticalAlign: -2 }} /> Reference</span>
           <div className="ref-block">
-            {canEdit ? (
+            {briefEditable ? (
               <textarea className="input" rows={2} value={form.reference_text}
                 onChange={(e) => setForm({ ...form, reference_text: e.target.value })}
                 placeholder="Style, mood, length, format… (optional)" />
             ) : form.reference_text ? <p className="ref-text">{form.reference_text}</p> : null}
 
-            {canEdit ? (
+            {briefEditable ? (
               <div className="ref-links">
                 {form.reference_links.map((url, i) => (
                   <div key={i} className="ref-link-row">
@@ -929,9 +1065,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {(form.photo || form.photo_thumb) ? (
               <div className="photo-wrap ref-photo">
                 <img src={form.photo || form.photo_thumb} alt="reference" />
-                {canEdit && <button className="photo-remove" data-tip="Remove the photo" data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label="Remove photo"><X size={14} /></button>}
+                {briefEditable && <button className="photo-remove" data-tip="Remove the photo" data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label="Remove photo"><X size={14} /></button>}
               </div>
-            ) : canEdit ? (
+            ) : briefEditable ? (
               <label className="photo-pick ref-photo-pick" data-tip="Pick a file — or just press Ctrl+V with a screenshot on the clipboard">
                 <ImagePlus size={15} /> Reference photo <span className="crew-opt">or paste it — Ctrl+V</span>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPhoto} />
@@ -1156,10 +1292,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 one you can see. */}
             {deliveryFields.map((f) => {
               const Icon = f.icon
-              const editable = f.mine || canEdit
+              // In a borrowed seat only THEIR box is theirs to fill — otherwise
+              // the preview would show reach the person does not have, which
+              // is the thing it exists to reveal.
+              const editable = f.mine || (canEdit && !asCrew)
               const owner = team.find((u) => u.id === item?.[{ shot: 'operator_id', edit: 'editor_id', design: 'designer_id' }[f.kind]])
               return (
-                <label key={f.col} className={`ready-link-field dlv-${f.kind}` + (f.mine ? ' dlv-mine' : '')}>
+                <label key={f.col} data-field={f.col}
+                  className={`ready-link-field dlv-${f.kind}` + (f.mine ? ' dlv-mine' : '') + (badField === f.col ? ' field-bad' : '')}>
                   <span className="crew-label dlv-head">
                     {/* The filmed chain is numbered because it has an order —
                         footage first, cut second. Design is a track of its own

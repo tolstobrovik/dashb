@@ -510,7 +510,9 @@ router.get('/:id', wrap(async (req, res) => {
   // The three accountable phases, derived fresh — the modal shows who owes
   // what, by when, and whether the clock has already run out on them.
   const date_requests = await openRequestsFor(row.id)
-  res.json({ ...row, revisions, comments, activity, documents, date_requests, phases: phasesOf(row), has_photo: row.photo ? 1 : 0 })
+  const flags = await all(
+    'SELECT id, kind, reason, raised_by, raised_name, created_at, cleared_at, cleared_name FROM task_flags WHERE content_id = ? ORDER BY id DESC', row.id)
+  res.json({ ...row, revisions, comments, activity, documents, date_requests, flags, phases: phasesOf(row), has_photo: row.photo ? 1 : 0 })
 }))
 
 // ---- naming somebody in the thread -----------------------------------------
@@ -983,11 +985,29 @@ router.post('/revisions/:rid/resolve', wrap(async (req, res) => {
   if (!hatHolder && req.user.role !== 'admin' && !(can(req.user, 'deliver_work') && canTouch(req.user, row)))
     return res.status(403).json({ error: 'This isn’t your fix to deliver' })
   const patch = {}
+  const field = { operator: 'shot_link', editor: 'ready_link', designer: 'design_link' }[rev.target]
   if (req.body?.link !== undefined) {
     const link = cleanLink(req.body.link)
     if (link && !/^https?:\/\//i.test(link))
-      return res.status(400).json({ error: 'The link should be a full https://… URL' })
-    patch[{ operator: 'shot_link', editor: 'ready_link', designer: 'design_link' }[rev.target]] = link || null
+      return res.status(400).json({ error: linkComplaint(link, 'The fixed file') })
+    patch[field] = link || null
+  }
+  // Sending it back with the SAME file is not a fix. It is the commonest way
+  // a revision round evaporates: the note is read, the tick is pressed, the
+  // reviewer opens the identical cut and the whole round has cost a day for
+  // nothing. Whoever is delivering has to say what they are delivering.
+  {
+    const next = patch[field] !== undefined ? patch[field] : row[field]
+    if (!next)
+      return res.status(400).json({
+        error: 'Attach the fixed file — a fix with nothing on it is the same piece coming back',
+        needs_link: field,
+      })
+    if (String(next) === String(row[field] ?? ''))
+      return res.status(400).json({
+        error: 'That is the same file that was sent back. Upload the new one and paste its link.',
+        needs_link: field,
+      })
   }
   if (!rev.resolved_at) await run('UPDATE revisions SET resolved_at = ? WHERE id = ?', new Date().toISOString(), rev.id)
   const readyId = await milestoneStatusId('ready')
@@ -998,6 +1018,80 @@ router.post('/revisions/:rid/resolve', wrap(async (req, res) => {
     await logPatch(req.user, row, patch)
   }
   res.json({ ok: true, task: await listRow(row.id) })
+}))
+
+// ---- raising a hand --------------------------------------------------------
+// The crew could always deliver late. They had no way to say so in advance,
+// so the first anyone knew was the deadline passing — and by then the only
+// options are bad ones. A flag is the cheap early word, on the task, where
+// the plan is made: "this will be late", or "I cannot take this at all",
+// with the reason. Anybody holding a hat on the piece can raise one; the
+// people who plan hear it at once.
+const FLAG_WORDS = {
+  at_risk: 'says this will be late',
+  cant_take: 'cannot take this on',
+}
+router.post('/:id/flags', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const parsed = { ...row, channels: JSON.parse(row.channels || '[]') }
+  if (!canSee(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
+  const kind = FLAG_WORDS[req.body?.kind] ? req.body.kind : 'at_risk'
+  // The reason IS the flag. "It will be late" without one tells the planner
+  // nothing they can act on, which is the same as not being told.
+  const reason = String(req.body?.reason ?? '').trim().slice(0, 2000)
+  if (!isSentence(reason))
+    return res.status(400).json({ error: 'Say what is in the way — a heads-up with no reason leaves the same guessing as no heads-up' })
+  // Whoever is actually carrying it, or whoever plans it.
+  const onIt = [row.operator_id, row.editor_id, row.designer_id, row.assignee_id, ...assigneesOf(row)].includes(req.user.id)
+  if (!onIt && !can(req.user, 'manage_content') && !can(req.user, 'move_tasks'))
+    return res.status(403).json({ error: 'Only somebody on this task can raise a hand about it' })
+  const already = await get('SELECT id FROM task_flags WHERE content_id = ? AND raised_by = ? AND cleared_at IS NULL', row.id, req.user.id)
+  if (already) return res.status(409).json({ error: 'You already have a hand up on this — say the rest in the thread' })
+
+  const now = new Date().toISOString()
+  const info = await run(
+    'INSERT INTO task_flags (content_id, kind, reason, raised_by, raised_name, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    row.id, kind, reason, req.user.id, req.user.name || '', now)
+  // The people who can do something about it: the admins, and whoever owns
+  // the task. Hearing this late is the whole problem being solved.
+  const admins = (await all("SELECT id FROM users WHERE role = 'admin'")).map((u) => u.id)
+  const people = [...new Set([...admins, row.assignee_id, ...assigneesOf(row)].filter((id) => id && id !== req.user.id))]
+  if (people.length) {
+    const line = `${req.user.name} ${FLAG_WORDS[kind]} — «${row.title}»: ${clip(reason)}`
+    await batch(people.map((id) => [
+      'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      id, 'flag', line, row.id, now,
+    ]))
+    await tgMirror(people, `${kind === 'cant_take' ? '🙅' : '⏳'} <b>${tgEsc(req.user.name)}</b> ${tgEsc(FLAG_WORDS[kind])}\n<b>«${tgEsc(row.title)}»</b>\n“${tgEsc(clip(reason))}”\nSort it while there is still time 👇`, row.id, tgOriginFrom(req))
+  }
+  await run(...actRow(req.user, row.id, row.title, 'updated', 'flag', null, kind, now))
+  res.status(201).json(await get('SELECT * FROM task_flags WHERE id = ?', info.lastInsertRowid))
+}))
+
+// Putting the hand down — by whoever raised it, or by whoever sorted it out.
+router.post('/flags/:fid/clear', wrap(async (req, res) => {
+  const f = await get('SELECT * FROM task_flags WHERE id = ?', req.params.fid)
+  if (!f) return res.status(404).json({ error: 'Not found' })
+  if (f.cleared_at) return res.status(409).json({ error: 'That hand is already down' })
+  if (f.raised_by !== req.user.id && req.user.role !== 'admin' && !can(req.user, 'manage_content'))
+    return res.status(403).json({ error: 'Only whoever raised it, or somebody who can act on it, puts it down' })
+  await run('UPDATE task_flags SET cleared_at = ?, cleared_by = ?, cleared_name = ? WHERE id = ?',
+    new Date().toISOString(), req.user.id, req.user.name || '', f.id)
+  res.json(await get('SELECT * FROM task_flags WHERE id = ?', f.id))
+}))
+
+// Every hand currently up, for the people who plan. Same shape as the
+// day-move queue, and on the same Overview, because they are the same job:
+// something needs deciding before a deadline decides it for you.
+router.get('/flags/open', wrap(async (req, res) => {
+  if (!can(req.user, 'manage_content') && !can(req.user, 'move_tasks') && req.user.role !== 'admin')
+    return res.json([])
+  res.json(await all(`
+    SELECT f.id, f.content_id, f.kind, f.reason, f.raised_name, f.created_at, c.title, c.channels,
+           c.recording_date, c.edit_ready_date, c.release_date
+    FROM task_flags f JOIN content c ON c.id = f.content_id
+    WHERE f.cleared_at IS NULL ORDER BY f.id`))
 }))
 
 // ---- moving a promised day -------------------------------------------------
@@ -1136,6 +1230,29 @@ router.patch('/:id', wrap(async (req, res) => {
   // land it on Ready. Anyone with move_tasks may also tick on their behalf.
   if (body.milestone) {
     const m = body.milestone
+    // Marking work finished is a claim, and for the two stages that produce a
+    // FILE the claim is checkable: a cut exists as a link or it does not
+    // exist. "Edited" with nothing attached sends the piece to review with
+    // nothing to review, and the reviewer discovers that instead of the
+    // editor.
+    //
+    // The shoot is deliberately exempt. Footage is handed over on a hard
+    // drive as often as not, and refusing the tick would not create the file
+    // — it would just leave the board saying the shoot has not happened.
+    const NEEDS_FILE = {
+      edited: { field: 'ready_link', what: 'the cut' },
+      designed: { field: 'design_link', what: 'the artwork' },
+    }
+    const proof = NEEDS_FILE[m]
+    if (proof) {
+      const link = body[proof.field] !== undefined ? cleanLink(body[proof.field]) : row[proof.field]
+      const hasFile = await get('SELECT 1 AS x FROM attachments WHERE content_id = ?', row.id)
+      if (!link && !hasFile)
+        return res.status(400).json({
+          error: `Paste ${proof.what} before marking it done — a stage that says finished with nothing attached is a stage the reviewer has to chase`,
+          needs_link: proof.field,
+        })
+    }
     if (m === 'shot' && (isOperator || canOverride)) {
       const sid = await milestoneStatusId('shot')
       if (sid) patch.status_id = sid
@@ -1459,6 +1576,19 @@ router.patch('/:id', wrap(async (req, res) => {
   // so they never trip this.
   if ((await isFinal(nextStatus)) && !(await isFinal(row.status_id)) && !canPublish(req.user, row))
     return res.status(403).json({ error: 'Only the channel’s reviewer can publish — ask your SMM or an admin' })
+
+  // A piece with changes still outstanding is not finished, whoever presses
+  // the button. Publishing over an open Pravki is how a round gets lost: the
+  // note was written, the fix was never delivered, and the piece went out
+  // anyway with the reviewer assuming somebody had dealt with it.
+  if ((await isFinal(nextStatus)) && !(await isFinal(row.status_id))) {
+    const openFix = await get('SELECT id, note, target FROM revisions WHERE content_id = ? AND resolved_at IS NULL ORDER BY id', row.id)
+    if (openFix)
+      return res.status(409).json({
+        error: `Changes are still outstanding — “${clip(openFix.note)}” went to the ${openFix.target} and has not come back. Close it, or drop it, before this goes out.`,
+        open_revision: openFix.id,
+      })
+  }
 
   // Stage rules: the admin regulates which kind of actor moves work OUT of
   // which stage (Admin → Pipeline). Applies to moves among working stages —

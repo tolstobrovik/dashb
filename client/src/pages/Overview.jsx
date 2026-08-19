@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarClock, Check, AlertCircle, Megaphone, Rows3, UserX, ArrowRight } from 'lucide-react'
+import { CalendarClock, Check, AlertCircle, Megaphone, Rows3, UserX, ArrowRight, Hand } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, isIdeaLabel, tashkentDay } from '../lib/constants.js'
@@ -143,8 +143,13 @@ export default function Overview() {
   // there is nothing to guard here.
   const [asks, setAsks] = useState([])
   const [busyAsk, setBusyAsk] = useState(0)
-  const loadAsks = () => api.pollView('/content/date-requests/open')
-    .then((d) => { if (Array.isArray(d)) setAsks(d) }).catch(() => {})
+  const [hands, setHands] = useState([])
+  const loadAsks = () => {
+    api.pollView('/content/date-requests/open')
+      .then((d) => { if (Array.isArray(d)) setAsks(d) }).catch(() => {})
+    api.pollView('/content/flags/open')
+      .then((d) => { if (Array.isArray(d)) setHands(d) }).catch(() => {})
+  }
   useEffect(() => {
     // Polled with the rest of the page: an ask that arrives while an admin is
     // sitting on Overview should appear there, not wait for a reload. It is
@@ -256,6 +261,28 @@ export default function Overview() {
                 <button className="btn btn-sm btn-primary" disabled={busyAsk === a.id} onClick={() => answer(a, true)}>Move it</button>
               </span>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Hands up. Somebody on a piece has said early that it is in trouble —
+          which is only worth saying if the people who plan see it early. */}
+      {hands.length > 0 && (
+        <div className="card card-pad ov-asks ov-hands">
+          <div className="ov-asks-head">
+            <Hand size={16} />
+            <b>{hands.length} hand{hands.length === 1 ? '' : 's'} up</b>
+          </div>
+          {hands.map((h) => (
+            <button key={h.id} className="ov-ask" onClick={() => navigate(`/todo?task=${h.content_id}`)}>
+              <span className="ov-ask-main">
+                <span className="ov-ask-title">{h.title}</span>
+                <span className="ov-ask-move">
+                  {h.raised_name} {h.kind === 'cant_take' ? 'cannot take this on' : 'says this will be late'}
+                </span>
+                <span className="ov-ask-why">“{h.reason}”</span>
+              </span>
+            </button>
           ))}
         </div>
       )}

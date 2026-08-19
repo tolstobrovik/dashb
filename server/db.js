@@ -792,6 +792,24 @@ export async function initSchema() {
       updated_at TEXT    NOT NULL
     );
 
+    -- Raising a hand. The crew could always deliver late; they had no way to
+    -- say so in advance, so the first anybody knew was the deadline passing.
+    -- A flag is the cheap early word: "I cannot take this" or "this will be
+    -- late", with the reason, sitting on the task where the plan is made
+    -- instead of in a voice note somebody has to remember.
+    CREATE TABLE IF NOT EXISTS task_flags (
+      id          ${ID},
+      content_id  INTEGER NOT NULL,
+      kind        TEXT    NOT NULL DEFAULT 'at_risk',   -- at_risk | cant_take
+      reason      TEXT    NOT NULL DEFAULT '',
+      raised_by   INTEGER,
+      raised_name TEXT    NOT NULL DEFAULT '',
+      created_at  TEXT    NOT NULL,
+      cleared_at  TEXT,
+      cleared_by  INTEGER,
+      cleared_name TEXT   NOT NULL DEFAULT ''
+    );
+
     -- Voice notes. A Pravki that takes four minutes to type takes fifteen
     -- seconds to say, and half of what a reviewer means is in the tone. The
     -- BYTES live here rather than on the comment, so no list, poll or task
@@ -1031,6 +1049,7 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_attachments_content ON attachments(content_id);
     CREATE INDEX IF NOT EXISTS idx_voice_content ON voice_notes(content_id);
     CREATE INDEX IF NOT EXISTS idx_dreq_content ON date_requests(content_id, state);
+    CREATE INDEX IF NOT EXISTS idx_flags_content ON task_flags(content_id, cleared_at);
     -- The repeat-script check. Without this it read every script in the
     -- database — a script runs to 20,000 characters, so a board with a
     -- thousand tasks on it read megabytes to answer one question on every
@@ -1262,7 +1281,7 @@ export async function getTaskFields() {
 // `activity` is the deliberate exception: it writes down names and titles at
 // the moment of the change so the log still reads like a sentence afterwards.
 export const TASK_CHILD_TABLES = [
-  'attachments', 'voice_notes', 'comments', 'revisions', 'date_requests', 'undo_moves',
+  'attachments', 'voice_notes', 'comments', 'revisions', 'date_requests', 'undo_moves', 'task_flags',
   'notifications',   // a bell line pointing at a task nobody can open is a dead end
 ]
 export const taskChildDeletes = (id) =>
