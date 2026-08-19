@@ -92,3 +92,10 @@ export function whyNot(v, want, label) {
   return null
 }
 export const clip = (s) => { const t = String(s ?? '').trim(); return t.length > 40 ? `${t.slice(0, 40)}…` : t }
+
+// The fingerprint two identical scripts share. Case and whitespace folded
+// away, so a re-typed copy still matches. Mirrors server/text.js.
+export const scriptKey = (v) => {
+  const norm = String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  return norm || null
+}

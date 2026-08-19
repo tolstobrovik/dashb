@@ -90,3 +90,12 @@ export function whyNot(v, want, label) {
   return null
 }
 export const clip = (s) => { const t = String(s ?? '').trim(); return t.length > 40 ? `${t.slice(0, 40)}…` : t }
+
+// The fingerprint two identical scripts share. Case and whitespace folded
+// away, so a re-typed copy still matches; stored on the row and indexed, so
+// "does another task already have this script" is a lookup and not a walk
+// through every script in the database.
+export const scriptKey = (v) => {
+  const norm = String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  return norm || null
+}

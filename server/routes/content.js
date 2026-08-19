@@ -3,7 +3,7 @@ import { createHmac } from 'crypto'
 import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { resolveGates, gatesUpTo, phasesOf, holderOf } from '../deadlines.js'
-import { readText, hasSubstance, hasLink, isSentence, clip, MIN_SENTENCE_WORDS } from '../text.js'
+import { readText, hasSubstance, hasLink, isSentence, clip, scriptKey, MIN_SENTENCE_WORDS } from '../text.js'
 import { authRequired, canAccessDept, can, wrap, JWT_SECRET } from '../auth.js'
 import { tgMirror, tgOriginFrom, tgEsc, tgDate } from '../telegram.js'
 
@@ -679,12 +679,17 @@ const isBooking = (statusId, statuses) => {
 // Two scripts that read the same are one script wearing two titles — the
 // crew ends up shooting the same thing twice. Compared loosely (case and
 // whitespace folded away) so a re-typed copy still catches.
-const normScript = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+//
+// The fingerprint is STORED on the row and indexed. Reading every script in
+// the database to answer this — which is what it used to do — meant a board
+// with a thousand tasks on it pulled megabytes of prose through on every
+// single save, for a question that is one lookup.
+const normScript = scriptKey
 async function duplicateScript(script, excludeId) {
-  const norm = normScript(script)
-  if (!norm) return null
-  const rows = await all("SELECT id, title, script FROM content WHERE script IS NOT NULL AND script != ''")
-  return rows.find((r) => r.id !== excludeId && normScript(r.script) === norm) || null
+  const key = scriptKey(script)
+  if (!key) return null
+  return (await get(
+    'SELECT id, title FROM content WHERE script_key = ? AND id <> ? LIMIT 1', key, excludeId ?? -1)) || null
 }
 
 // The first unmet demand among the admin's required brief fields, as the
@@ -870,8 +875,8 @@ router.post('/', wrap(async (req, res) => {
   const info = await run(`
     INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id, reviewer_id, reviewers,
       recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, release_date, release_time, description, ready_link,
-      shot_link, design_link, reference_text, reference_links, format, rubrika, script, photo, photo_thumb, checklist, todo_sort, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      shot_link, design_link, reference_text, reference_links, format, rubrika, script, script_key, photo, photo_thumb, checklist, todo_sort, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     String(title).trim(), JSON.stringify(channels), safeType, assignee, JSON.stringify(assigneeList), req.user.id, status, campaignId,
     crew.operator_id, crew.editor_id, crew.designer_id, crew.reviewer_id, JSON.stringify(reviewerList),
@@ -879,7 +884,7 @@ router.post('/', wrap(async (req, res) => {
     cleanDescription, cleanLink(req.body?.ready_link) || null,
     cleanLink(req.body?.shot_link) || null, cleanLink(req.body?.design_link) || null,
     reference_text ? String(reference_text).slice(0, 4000) : null, JSON.stringify(referenceLinks),
-    briefText.format, briefText.rubrika, briefText.script,
+    briefText.format, briefText.rubrika, briefText.script, scriptKey(briefText.script),
     photo || null, photo_thumb || null, JSON.stringify(Array.isArray(checklist) ? checklist : []),
     maxSort + 1, new Date().toISOString(),
   )
@@ -1009,6 +1014,19 @@ const openRequestsFor = (contentId) => all(
   `SELECT id, field, from_date, to_date, reason, state, asked_by, asked_name, created_at,
           decided_by, decided_name, decided_at, decided_note
    FROM date_requests WHERE content_id = ? ORDER BY id DESC`, contentId)
+
+// Everything waiting on an admin's yes, in one place. Without this the whole
+// asking mechanism depends on an admin happening to open the right task: the
+// bell scrolls away, and a deadline nobody answered is a deadline that quietly
+// stays wrong. Cheap enough to sit on the Overview and be right every time.
+router.get('/date-requests/open', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.json([])
+  res.json(await all(`
+    SELECT d.id, d.content_id, d.field, d.from_date, d.to_date, d.reason, d.asked_name, d.created_at,
+           c.title, c.channels
+    FROM date_requests d JOIN content c ON c.id = d.content_id
+    WHERE d.state = 'open' ORDER BY d.id`))
+}))
 
 router.post('/:id/date-requests', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
@@ -1218,6 +1236,7 @@ router.patch('/:id', wrap(async (req, res) => {
         if (demanded)
           return res.status(400).json({ error: `«${FIELD_LABELS[f]}» needs a real answer — “${clip(v)}” is a placeholder, not a brief` })
         patch[f] = null
+        if (f === 'script') patch.script_key = null
         continue
       }
       // The same script on two cards is one shoot booked twice. A task
@@ -1230,6 +1249,7 @@ router.patch('/:id', wrap(async (req, res) => {
           return res.status(400).json({ error: `That script is already on «${twin.title}» — link to it or write what is different about this one` })
       }
       patch[f] = v
+      if (f === 'script') patch.script_key = scriptKey(v)
     }
   }
 

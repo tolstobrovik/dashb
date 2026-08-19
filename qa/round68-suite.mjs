@@ -220,6 +220,50 @@ const meBefore = (await bell(T)).length
 await req(`/content/${post.id}/comments`, 'POST', { text: '@Admin noting this for myself' })
 ok('naming yourself is not a notification', (await bell(T)).length === meBefore)
 
+// ===================== waiting on an admin, in one place =====================
+// The asking mechanism is only as good as the answering. Without a list of
+// what is waiting, it depends on an admin happening to open the right task —
+// and a request nobody sees is a deadline that quietly stays wrong.
+let open = await req('/content/date-requests/open')
+ok('an admin can see everything waiting on them', open.status === 200 && open.data.length >= 1,
+  `${open.status} ${JSON.stringify(open.data).slice(0, 120)}`)
+ok('…with the task, the move and the reason all on the row', (() => {
+  const a = open.data[0]
+  return a && a.title && a.field && a.from_date && a.reason && a.asked_name
+})(), JSON.stringify(open.data[0]))
+const waiting = open.data[0]
+
+// Somebody who cannot answer is not shown a queue they cannot act on.
+open = await req('/content/date-requests/open', 'GET', null, smmT)
+ok('…and somebody who cannot answer sees no queue', open.status === 200 && open.data.length === 0,
+  JSON.stringify(open.data))
+
+await req(`/content/date-requests/${waiting.id}/decide`, 'POST', { approve: true })
+open = await req('/content/date-requests/open')
+ok('an answered ask leaves the queue', !open.data.some((a) => a.id === waiting.id),
+  JSON.stringify(open.data.map((a) => a.id)))
+
+// ===================== the repeat check does not read the board =============
+// The fingerprint is stored and indexed rather than recomputed from every
+// script in the database. What matters here is that it still CATCHES — the
+// speed is the point, but a fast check that misses is worthless.
+const twin = 'Сцена в библиотеке, один вопрос, съёмка у окна'
+r = await mk({ title: 'r68 the first one', type: 'post', script: twin })
+ok('a script goes in', r.status === 201, `${r.status} ${r.data.error || ''}`)
+r = await mk({ title: 'r68 the twin', type: 'post', script: twin })
+ok('…and the same one on a second task is still caught', r.status === 400, `${r.status} ${r.data.error || ''}`)
+r = await mk({ title: 'r68 the retyped twin', type: 'post', script: `  ${twin.toUpperCase()}  ` })
+ok('…however it is retyped', r.status === 400, `${r.status} ${r.data.error || ''}`)
+// Editing a script keeps the fingerprint in step — otherwise the check would
+// go on answering about the words the task used to hold.
+const moved = (await mk({ title: 'r68 changes its mind', type: 'post', script: 'A script it will not keep for long' })).data
+await req(`/content/${moved.id}`, 'PATCH', { script: 'Совершенно другой сюжет, снятый во дворе' })
+r = await mk({ title: 'r68 takes the old words', type: 'post', script: 'A script it will not keep for long' })
+ok('a script somebody edited AWAY is free for another task to use', r.status === 201,
+  `${r.status} ${r.data.error || ''}`)
+r = await mk({ title: 'r68 takes the new words', type: 'post', script: 'Совершенно другой сюжет, снятый во дворе' })
+ok('…and the words it edited TO are the ones now taken', r.status === 400, `${r.status} ${r.data.error || ''}`)
+
 stop()
 console.log(fails === 0 ? '\nRound-68 suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails ? 1 : 0)

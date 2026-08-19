@@ -4,10 +4,16 @@ import { CalendarClock, Check, AlertCircle, Megaphone, Rows3, UserX, ArrowRight 
 import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, isIdeaLabel, tashkentDay } from '../lib/constants.js'
-import { loadFailed } from '../lib/toast.js'
+import { loadFailed, toast } from '../lib/toast.js'
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PC, daysUntil } from '../components/ProjectBits.jsx'
+
+// The deadlines a person can be asked to move, in the words the ask uses.
+const DAY_LABEL = {
+  recording_date: 'the shoot day', edit_ready_date: 'the day the cut is due',
+  design_ready_date: 'the day the artwork is due', release_date: 'the release day',
+}
 import { gapsOf, stageRankOf, DUE_SOON_DAYS, nearestOf } from './Unassigned.jsx'
 
 // The admin's landing view: every department's process on one screen —
@@ -133,6 +139,22 @@ export default function Overview() {
   useEffect(() => {
     api.cached('/fields').then((f) => setCrewNeeds(f.crew || null)).catch(() => {})
   }, [])
+  // Waiting on this admin. Non-admins get an empty list from the server, so
+  // there is nothing to guard here.
+  const [asks, setAsks] = useState([])
+  const [busyAsk, setBusyAsk] = useState(0)
+  useEffect(() => {
+    api.get('/content/date-requests/open').then((d) => setAsks(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [])
+  const answer = async (a, approve) => {
+    setBusyAsk(a.id)
+    try {
+      await api.post(`/content/date-requests/${a.id}/decide`, { approve })
+      setAsks((prev) => prev.filter((x) => x.id !== a.id))
+      toast(approve ? 'Moved — they hear it right away' : 'Kept where it was — they hear why')
+    } catch (e) { toast(e.message, 'err') } finally { setBusyAsk(0) }
+  }
+
   const gapCount = useMemo(() => {
     const skip = new Set(statuses.filter((s) => isDeletedLabel(s.label) || isIdeaLabel(s.label)).map((s) => s.id))
     const horizon = addDaysISO(todayISO(), DUE_SOON_DAYS)
@@ -200,6 +222,34 @@ export default function Overview() {
               ? <div className="card card-pad empty">Nothing scheduled next.</div>
               : upcomingCamps.map((c) => <CampRow key={c.id} c={c} navigate={navigate} byKey={byKey} colorOf={colorOf} />)}
           </div>
+        </div>
+      )}
+
+      {/* Deadlines waiting on this admin's yes. The asking mechanism is only
+          as good as the answering: the bell scrolls away, and a request
+          nobody sees is a deadline that quietly stays wrong. Answered right
+          here — the reason is the whole of what there is to read. */}
+      {asks.length > 0 && (
+        <div className="card card-pad ov-asks">
+          <div className="ov-asks-head">
+            <CalendarClock size={16} />
+            <b>{asks.length} day{asks.length === 1 ? '' : 's'} waiting on you</b>
+          </div>
+          {asks.map((a) => (
+            <div key={a.id} className="ov-ask">
+              <button className="ov-ask-main" onClick={() => navigate(`/todo?task=${a.content_id}`)}>
+                <span className="ov-ask-title">{a.title}</span>
+                <span className="ov-ask-move">
+                  {DAY_LABEL[a.field] || a.field}: <b>{a.from_date}</b> → <b>{a.to_date || 'cleared'}</b>
+                </span>
+                <span className="ov-ask-why">“{a.reason}” — {a.asked_name}</span>
+              </button>
+              <span className="ov-ask-do">
+                <button className="btn btn-sm" disabled={busyAsk === a.id} onClick={() => answer(a, false)}>Keep</button>
+                <button className="btn btn-sm btn-primary" disabled={busyAsk === a.id} onClick={() => answer(a, true)}>Move it</button>
+              </span>
+            </div>
+          ))}
         </div>
       )}
 

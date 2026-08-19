@@ -15,6 +15,7 @@ import { dirname, join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, existsSync, statSync } from 'fs'
 import { DATABASE_URL as CONFIG_DATABASE_URL, GITHUB_DATA } from './config.js'
 import { createGhStore } from './ghstore.js'
+import { scriptKey } from './text.js'
 
 const PG_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
   process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING ||
@@ -612,6 +613,7 @@ export async function initSchema() {
       format         TEXT,   -- the shape of the piece: talking head, split screen…
       rubrika        TEXT,   -- the recurring column (rubric) it belongs to
       script         TEXT,   -- the written script / shot plan
+      script_key     TEXT,   -- fingerprint of the above, so "is this script already on another task" is a lookup rather than a scan
       release_date   TEXT,
       release_time   TEXT,
       description    TEXT    NOT NULL DEFAULT '',
@@ -1001,6 +1003,7 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS review_due_revised TEXT')
     // A Pravki note is usually about a FRAME. The screenshot travels with it
     // instead of being described in words and then hunted for in a chat.
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script_key TEXT')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_secs INTEGER NOT NULL DEFAULT 0')
     await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS voice_id INTEGER')
@@ -1012,6 +1015,7 @@ export async function initSchema() {
   }
 
   await migrate()
+  await fingerprintScripts()
   await exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -1021,11 +1025,36 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
     CREATE INDEX IF NOT EXISTS idx_comments_content ON comments(content_id);
     CREATE INDEX IF NOT EXISTS idx_activity_content ON activity(content_id, id);
+    -- Everything a task drags in when it is opened: its revisions, its
+    -- documents, its clips, its day-move asks. Each was a table scan.
+    CREATE INDEX IF NOT EXISTS idx_revisions_content ON revisions(content_id);
+    CREATE INDEX IF NOT EXISTS idx_attachments_content ON attachments(content_id);
+    CREATE INDEX IF NOT EXISTS idx_voice_content ON voice_notes(content_id);
+    CREATE INDEX IF NOT EXISTS idx_dreq_content ON date_requests(content_id, state);
+    -- The repeat-script check. Without this it read every script in the
+    -- database — a script runs to 20,000 characters, so a board with a
+    -- thousand tasks on it read megabytes to answer one question on every
+    -- single save. script_key is a fingerprint of the same normalisation the
+    -- check uses, so the question is now one indexed lookup.
+    CREATE INDEX IF NOT EXISTS idx_content_script_key ON content(script_key);
+
   `)
 }
 
 async function hasColumn(table, col) {
   return (await all(`PRAGMA table_info(${table})`)).some((c) => c.name === col)
+}
+
+// Fingerprint the scripts already on the board, once. Without this the repeat
+// check would be blind to every task that existed before it — and doing it in
+// SQL would fold whitespace differently from the JS that writes new keys,
+// which is a subtler way of being blind.
+async function fingerprintScripts() {
+  try {
+    const rows = await all("SELECT id, script FROM content WHERE script_key IS NULL AND script IS NOT NULL AND script <> ''")
+    if (!rows.length) return
+    await batch(rows.map((r) => ['UPDATE content SET script_key = ? WHERE id = ?', scriptKey(r.script), r.id]))
+  } catch { /* a fresh database has no rows to fingerprint */ }
 }
 
 async function migrate() {
@@ -1065,6 +1094,7 @@ async function migrate() {
         DROP TABLE content_legacy;
       `)
     }
+    if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('revisions', 'voice_id'))) await exec('ALTER TABLE revisions ADD COLUMN voice_id INTEGER')

@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, CheckCheck, Clock, ArrowRightCircle } from 'lucide-react'
+import { Bell, CheckCheck, Clock, ArrowRightCircle, MessageSquare, AtSign, CalendarClock, RotateCcw, UserRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api.js'
+
+// A bell where everything wears the same arrow makes you read every line to
+// find the one that needs you. Being NAMED in a thread and being asked to
+// move a deadline are the two that do — so they look like themselves.
+const KIND = {
+  status:  { icon: ArrowRightCircle },
+  comment: { icon: MessageSquare },
+  mention: { icon: AtSign },
+  date_request: { icon: CalendarClock },
+  pravki:  { icon: RotateCcw },
+  assigned: { icon: UserRound },
+}
 
 // The bell: status changes on your tasks (written by whoever moved them)
 // and deadline reminders standing a day / a week out. Reminders are derived
@@ -84,12 +96,15 @@ export default function NotificationsBell({ user }) {
               <span>{r.text}</span>
             </button>
           ))}
-          {data.events.map((e) => (
-            <button key={e.id} className={'notif-row' + (e.read_at ? ' seen' : '')} onClick={() => go(e)}>
-              <ArrowRightCircle size={14} className="notif-ico" />
-              <span>{e.text}</span>
-            </button>
-          ))}
+          {data.events.map((e) => {
+            const K = KIND[e.kind] || KIND.status
+            return (
+              <button key={e.id} className={'notif-row nr-' + (KIND[e.kind] ? e.kind : 'status') + (e.read_at ? ' seen' : '')} onClick={() => go(e)}>
+                <K.icon size={14} className="notif-ico" />
+                <span>{e.text}</span>
+              </button>
+            )
+          })}
         </div>
       )}
     </span>

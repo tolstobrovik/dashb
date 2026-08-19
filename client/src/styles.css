@@ -2998,3 +2998,25 @@ button.blame-person:hover { background: var(--surface-2); }
 .pravki-voice .stat-sub { flex: 1; min-width: 160px; }
 /* A name that reaches somebody looks like one. */
 .cmt-at { color: var(--brand-500); font-weight: 700; }
+
+/* The two kinds of bell line that actually need you, marked so they can be
+   found without reading every row: somebody named you, or somebody is waiting
+   on your yes. */
+.nr-mention .notif-ico { color: var(--brand-500); }
+.nr-date_request .notif-ico { color: #f2a413; }
+.nr-pravki .notif-ico { color: #A32D2D; }
+.nr-comment .notif-ico { color: var(--muted); }
+.notif-row.nr-mention:not(.seen), .notif-row.nr-date_request:not(.seen) { font-weight: 600; }
+
+/* Deadlines waiting on an admin's yes, answerable without leaving Overview. */
+.ov-asks { border-left: 3px solid #f2a413; display: flex; flex-direction: column; gap: 10px; }
+.ov-asks-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink); }
+.ov-asks-head svg { color: #f2a413; }
+.ov-ask { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 9px; border-top: 1px solid var(--hairline); }
+.ov-ask:first-of-type { border-top: 0; padding-top: 0; }
+.ov-ask-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; color: inherit; }
+.ov-ask-title { font-size: 13.5px; font-weight: 700; }
+.ov-ask-move { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.ov-ask-why { font-size: 12.5px; color: var(--ink); }
+.ov-ask-do { display: flex; gap: 7px; flex-shrink: 0; }
