@@ -2971,3 +2971,30 @@ button.blame-person:hover { background: var(--surface-2); }
 .field-bad .input, .field-bad .select, .field-bad textarea { border-color: #A32D2D; }
 @keyframes field-bad-in { from { outline-color: transparent; } to { outline-color: #A32D2D; } }
 @media (prefers-reduced-motion: reduce) { .field-bad { animation: none; } }
+
+/* ---- voice notes ---------------------------------------------------------
+   A clip in a thread should read as a clip at a glance: a round press, a
+   shape that says "a recording", and how long it runs. */
+.vn-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--hairline-strong); background: var(--surface);
+  color: var(--ink-2); border-radius: 999px; padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.vn-btn:hover:not(:disabled) { border-color: var(--brand-500); color: var(--brand-500); }
+.vn-rec { border-color: #A32D2D; color: #A32D2D; position: relative; }
+.vn-pulse { width: 7px; height: 7px; border-radius: 999px; background: #A32D2D; animation: vn-pulse 1s ease-in-out infinite; }
+@keyframes vn-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .vn-pulse { animation: none; } }
+.vn-ready { display: inline-flex; align-items: center; gap: 6px; }
+.vn-audio { height: 32px; max-width: 220px; }
+.vn-denied { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.vn-play { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: 999px; padding: 4px 11px 4px 5px; margin: 4px 0 0; width: fit-content; max-width: 100%; }
+.vn-mine { background: color-mix(in srgb, var(--brand-500) 12%, var(--surface-2)); }
+.vn-play-btn { width: 26px; height: 26px; border-radius: 999px; border: 0; background: var(--brand-500); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
+.vn-play-btn:disabled { opacity: .6; cursor: default; }
+.vn-wave { display: inline-flex; align-items: center; gap: 2px; height: 16px; }
+.vn-wave i { width: 2px; border-radius: 2px; background: var(--muted); display: block; }
+.vn-secs { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.pravki-voice { display: flex; align-items: center; gap: 9px; margin-top: 8px; flex-wrap: wrap; }
+.pravki-voice .stat-sub { flex: 1; min-width: 160px; }
+/* A name that reaches somebody looks like one. */
+.cmt-at { color: var(--brand-500); font-weight: 700; }

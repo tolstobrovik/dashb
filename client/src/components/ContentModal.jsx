@@ -5,13 +5,15 @@ import {
   FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
-import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor, hasSubstance, hasLink, hasRealScript } from '../lib/constants.js'
+import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
+import { readText, hasSubstance, hasLink, isSentence } from '../lib/text.js'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
 import { activityLine } from '../lib/activity.js'
+import { VoiceRecorder, VoicePlayer, canRecord } from './VoiceNote.jsx'
 
 // Documents a task can carry. The cap is deliberate and low: every byte is
 // stored, synced and paid for on the team's storage, so a 4 MB brief is a
@@ -185,14 +187,42 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const [activity, setActivity] = useState(() => item?.activity || [])
   const [allLog, setAllLog] = useState(false)
   const cmtWhen = (ts) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(ts))
+  // A named person is lit up, and lit up ONLY when the name is a real one —
+  // matched against the roster the same way the server matches it, so what
+  // the thread shows in bold is exactly who the bell woke. "@2pm" stays text.
+  const withMentions = (text) => {
+    if (!text.includes('@') || team.length === 0) return text
+    const labels = [...new Set(team.flatMap((u) => {
+      const full = String(u.name || '').trim()
+      return full ? [full, full.split(/\s+/)[0]] : []
+    }))].filter((l) => l.length >= 2).sort((a, b) => b.length - a.length)
+    const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp(`@(?:${labels.map(esc).join('|')})(?![\\p{L}\\p{N}])`, 'giu')
+    const out = []
+    let last = 0
+    for (const m of text.matchAll(re)) {
+      if (m.index > last) out.push(text.slice(last, m.index))
+      out.push(<b key={m.index} className="cmt-at">{m[0]}</b>)
+      last = m.index + m[0].length
+    }
+    if (last < text.length) out.push(text.slice(last))
+    return out
+  }
+  // A line, a clip, or both. A voice note IS the message when there is one.
+  const [cmtClip, setCmtClip] = useState(null)
+  const [clipNonce, setClipNonce] = useState(0)   // remounts the recorder to clear it
   const sendComment = async () => {
     const text = cmtDraft.trim()
-    if (!text || cmtBusy) return
+    if ((!text && !cmtClip) || cmtBusy) return
     setCmtBusy(true)
     try {
-      const c = await api.post(`/content/${item.id}/comments`, { text })
+      const c = await api.post(`/content/${item.id}/comments`, {
+        text, ...(cmtClip ? { voice: cmtClip.data, voice_secs: cmtClip.secs } : {}),
+      })
       setComments((prev) => [...prev, c])
       setCmtDraft('')
+      setCmtClip(null)
+      setClipNonce((n) => n + 1)
     } catch (e) { setErr(e.message) } finally { setCmtBusy(false) }
   }
   // The task's paperwork — a ТЗ in Word, a reference deck as PDF. Only names
@@ -582,7 +612,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       // the stage where the booking happens, and nothing is asked of an idea.
       if (needsOperator) {
         const refReady = form.reference_links.length > 0 || !!form.photo || docs.length > 0
-          || !!form.shot_link || hasLink(form.reference_text) || hasRealScript(form.script)
+          || !!form.shot_link || hasLink(form.reference_text) || isSentence(form.script)
         const gap = [
           [!form.operator_id, 'Pick who is filming this — a shoot nobody is holding is nobody’s job', 'operator_id'],
           [!form.recording_date, 'Filmed work is booked with all three dates — the shoot day is missing', 'recording_date'],
@@ -614,7 +644,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       const thin = [
         ['format', 'Format', form.format, hasSubstance],
         ['rubrika', 'Rubrika', form.rubrika, hasSubstance],
-        ['script', 'Script', form.script.trim(), hasRealScript],
+        ['script', 'Script', form.script.trim(), isSentence],
         ['description', 'Description', form.description.trim(), hasSubstance],
       ].find(([k, , v, real]) => fReq(k) && v && !real(v))
       if (thin) {
@@ -750,6 +780,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       await api.post(`/content/${item.id}/revisions`, {
         note: pravki.note.trim(), target: pravki.target,
         photo: pravki.photo || null, photo_thumb: pravki.photo_thumb || null,
+        ...(pravki.clip ? { voice: pravki.clip.data, voice_secs: pravki.clip.secs } : {}),
       })
       await onUpdate(item, {}) // pull the moved-back row into the parent list
       toast('Sent back to the crew — synced')
@@ -1000,6 +1031,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   onPaste={pravkiPaste}
                   onChange={(e) => setPravki({ ...pravki, note: e.target.value })}
                   placeholder="Write everything that needs changing, in one go… (Ctrl+V pastes the screenshot)" />
+                <div className="pravki-voice">
+                  {canRecord() && <VoiceRecorder key={`p${clipNonce}`} onClip={(c) => setPravki((p) => (p ? { ...p, clip: c } : p))} disabled={busy} />}
+                  <span className="stat-sub">Say it out loud if it is quicker — the note still goes in writing, so it can be skimmed later.</span>
+                </div>
                 {pravki.photo ? (
                   <div className="photo-wrap pravki-shot">
                     <img src={pravki.photo_thumb || pravki.photo} alt="what needs changing" />
@@ -1040,6 +1075,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <span className="rev-round">#{r.round}</span>
                 <span className="rev-body">
                   <span className="rev-note">{r.note}</span>
+                  {r.voice_id ? <VoicePlayer id={r.voice_id} secs={r.voice_secs} /> : null}
                   {r.photo && <a className="rev-shot" href={r.photo} target="_blank" rel="noreferrer"><img src={r.photo} alt="what needed changing" /></a>}
                   <span className="rev-meta">
                     {r.requested_name || '—'} · {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · to {r.target}{r.resolved_at ? ' · fixed' : ''}
@@ -1560,16 +1596,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {comments.map((c) => (
               <div key={c.id} className="cmt-row">
                 <b className="cmt-who">{(c.author || '?').split(' ')[0]}</b>
-                <span className="cmt-text">{c.text}</span>
+                <span className="cmt-text">
+                  {c.text ? withMentions(c.text) : <span className="muted">voice note</span>}
+                  {c.voice_id ? <VoicePlayer id={c.voice_id} secs={c.voice_secs} mine={c.user_id === user.id} /> : null}
+                </span>
                 <span className="cmt-when">{cmtWhen(c.created_at)}</span>
               </div>
             ))}
             {comments.length === 0 && <div className="tt-none" style={{ padding: '0 0 6px' }}>Nothing said yet — better here than lost in Telegram.</div>}
             <div className="add-inline cmt-input">
-              <input className="input" value={cmtDraft} placeholder="Say it where the task lives…"
+              <input className="input" value={cmtDraft} placeholder="Say it where the task lives… @name reaches them"
                 onChange={(e) => setCmtDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); sendComment() } }} />
-              <button className="btn btn-sm" onClick={sendComment} disabled={cmtBusy || !cmtDraft.trim()} aria-label="Send comment">
+              {canRecord() && <VoiceRecorder key={clipNonce} onClip={setCmtClip} disabled={cmtBusy} />}
+              <button className="btn btn-sm" onClick={sendComment} disabled={cmtBusy || (!cmtDraft.trim() && !cmtClip)} aria-label="Send comment">
                 <Send size={14} />
               </button>
             </div>

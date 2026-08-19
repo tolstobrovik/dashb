@@ -164,28 +164,8 @@ export function initials(name = '') {
 
 // ---- what counts as an answer ----------------------------------------------
 // The form asks these BEFORE the save so the message lands next to the field
-// rather than arriving as a refusal. The server applies the same rules and is
-// the one that decides — these mirror `hasSubstance` / `hasLink` in
-// server/routes/content.js, and if the two ever drift the worst case is a
-// server error the form did not predict, never a placeholder getting through.
-const PLACEHOLDER = /^(?:n\/?a|na|none|null|nil|no|nope|tbd|todo|test|тз|нет|нету|н\/?д|тбд|тест|пусто)$/i
-// A required field is answered, not merely filled: ".", "...", "—" and "N/A"
-// are all the same gesture. Strip punctuation and symbols, then see whether
-// anything was written — Unicode-aware, so Cyrillic counts as letters.
-export const hasSubstance = (v) => {
-  const s = String(v ?? '').trim()
-  if (!s || PLACEHOLDER.test(s)) return false
-  return s.replace(/[\s\p{P}\p{S}]/gu, '').length >= 2
-}
-// A reference POINTS somewhere. Words alone are a note, so text standing on
-// its own has to carry a link; a photo or an attached document is a reference
-// in its own right and is never asked for one.
-const LINK_RE = /(?:https?:\/\/|www\.)\S{3,}|\b[\w-]+\.(?:com|ru|uz|org|net|io|me|tv|app|dev|ai|co|uk|kz)\b\S*/i
-export const hasLink = (v) => LINK_RE.test(String(v ?? ''))
-// A script is what the crew films FROM. One careless word has letters in it
-// and clears hasSubstance, and is still not a shot list.
-export const MIN_SCRIPT_WORDS = 3
-export const hasRealScript = (v) => {
-  const s = String(v ?? '').trim()
-  return hasSubstance(s) && s.split(/\s+/).filter(Boolean).length >= MIN_SCRIPT_WORDS
-}
+// rather than arriving as a refusal. The rules themselves live in one place —
+// lib/text.js, mirroring server/text.js — because "is this a link" and "is
+// this a sentence" are two different questions and were being answered by the
+// same blunt check. The server is still the one that decides.
+export { readText, hasSubstance, hasLink, isSentence, isBareLink, MIN_SENTENCE_WORDS } from './text.js'

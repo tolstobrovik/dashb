@@ -65,6 +65,11 @@ fuser -k 4105/tcp 2>/dev/null; sleep 0.5
 fuser -k 4106/tcp 2>/dev/null; sleep 0.5
 if node round67-suite.mjs > $SP/out-round67-suite.log 2>&1; then echo "round67-suite PASS" >> $RES; else echo "round67-suite FAIL" >> $RES; fi
 fuser -k 4106/tcp 2>/dev/null; sleep 0.5
+# round68 imports server/text.js directly, so it runs from the REPO, not the
+# scratchpad copy — the relative import has to resolve to the real tree.
+fuser -k 4107/tcp 2>/dev/null; sleep 0.5
+if node $QA/round68-suite.mjs > $SP/out-round68-suite.log 2>&1; then echo "round68-suite PASS" >> $RES; else echo "round68-suite FAIL" >> $RES; fi
+fuser -k 4107/tcp 2>/dev/null; sleep 0.5
 fuser -k 9989/tcp 2>/dev/null; sleep 0.5
 
 # ---- pc-suite + journey on 4081 ----

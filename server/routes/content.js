@@ -3,6 +3,7 @@ import { createHmac } from 'crypto'
 import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { resolveGates, gatesUpTo, phasesOf, holderOf } from '../deadlines.js'
+import { readText, hasSubstance, hasLink, isSentence, clip, MIN_SENTENCE_WORDS } from '../text.js'
 import { authRequired, canAccessDept, can, wrap, JWT_SECRET } from '../auth.js'
 import { tgMirror, tgOriginFrom, tgEsc, tgDate } from '../telegram.js'
 
@@ -496,10 +497,10 @@ router.get('/:id', wrap(async (req, res) => {
   const row = parse(await get('SELECT * FROM content WHERE id = ?', req.params.id))
   if (!row || !canSee(req.user, row)) return res.status(404).json({ error: 'Not found' })
   const revisions = await all(
-    'SELECT id, round, requested_by, requested_name, target, note, photo, created_at, resolved_at FROM revisions WHERE content_id = ? ORDER BY round, id',
+    'SELECT id, round, requested_by, requested_name, target, note, photo, voice_id, voice_secs, created_at, resolved_at FROM revisions WHERE content_id = ? ORDER BY round, id',
     row.id)
   const comments = await all(
-    'SELECT id, user_id, author, text, created_at FROM comments WHERE content_id = ? ORDER BY id',
+    'SELECT id, user_id, author, text, voice_id, voice_secs, created_at FROM comments WHERE content_id = ? ORDER BY id',
     row.id)
   const activity = await all(
     'SELECT id, user_id, user_name, kind, field, old_value, new_value, created_at FROM activity WHERE content_id = ? ORDER BY id DESC LIMIT 80',
@@ -512,6 +513,66 @@ router.get('/:id', wrap(async (req, res) => {
   res.json({ ...row, revisions, comments, activity, documents, date_requests, phases: phasesOf(row), has_photo: row.photo ? 1 : 0 })
 }))
 
+// ---- naming somebody in the thread -----------------------------------------
+// "@Dilnoza" in a comment should reach Dilnoza, whether or not she is on the
+// task — naming somebody is how you pull them IN. Matched against the real
+// roster rather than a username syntax, because this team writes first names
+// in Cyrillic and nobody types an @handle they would have to look up.
+// Longest names first, so "@Anvar Karimov" is one person and not Anvar.
+export function mentionedIds(text, users) {
+  const t = String(text ?? '')
+  if (!t.includes('@')) return []
+  const hits = []
+  for (const u of [...users].sort((a, b) => (b.name || '').length - (a.name || '').length)) {
+    const full = String(u.name || '').trim()
+    if (!full) continue
+    for (const label of [full, full.split(/\s+/)[0]]) {
+      if (label.length < 2) continue
+      // @ + the name, ending at a word boundary the Unicode way (\b does not
+      // work on Cyrillic in every engine, so the next character is checked).
+      const at = new RegExp(`@${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'iu')
+      if (at.test(t)) { hits.push(u.id); break }
+    }
+  }
+  return [...new Set(hits)]
+}
+
+// ---- voice notes -----------------------------------------------------------
+// A Pravki that takes four minutes to type takes fifteen seconds to say, and
+// half of what a reviewer means is in the tone. A clip is uploaded once and
+// referred to by id: the bytes never ride along with a task, a list or a poll,
+// and are fetched by the press that plays it.
+const VOICE_MAX = 3 * 1024 * 1024        // ~3 minutes of opus, and a hard stop
+const VOICE_SECS_MAX = 300
+const VOICE_MIME = /^audio\/(webm|ogg|mp4|mpeg|wav|aac|x-m4a)(;|$)/i
+
+async function saveVoice(req, row, body) {
+  const data = String(body?.voice ?? '')
+  if (!data) return { id: null, secs: 0 }
+  const m = data.match(/^data:([^;,]+)[;,]/)
+  if (!m || !VOICE_MIME.test(m[1])) return { error: 'That is not a voice recording' }
+  // base64 is 4 chars per 3 bytes; near enough for a cap.
+  const size = Math.round((data.length - data.indexOf(',') - 1) * 0.75)
+  if (size > VOICE_MAX) return { error: 'That recording is too long — keep a voice note under three minutes' }
+  const secs = Math.max(0, Math.min(VOICE_SECS_MAX, Math.round(Number(body?.voice_secs) || 0)))
+  const info = await run(
+    'INSERT INTO voice_notes (content_id, user_id, author, mime, secs, size, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    row.id, req.user.id, req.user.name || '', m[1], secs, size, data, new Date().toISOString())
+  return { id: info.lastInsertRowid, secs }
+}
+
+// Playing one. Same reach as the task it belongs to — if you can open the
+// task you can hear what was said on it.
+router.get('/voice/:vid', wrap(async (req, res) => {
+  const v = await get('SELECT * FROM voice_notes WHERE id = ?', req.params.vid)
+  if (!v) return res.status(404).json({ error: 'Not found' })
+  const row = await get('SELECT * FROM content WHERE id = ?', v.content_id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const parsed = { ...row, channels: JSON.parse(row.channels || '[]') }
+  if (!canSee(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
+  res.json({ id: v.id, mime: v.mime, secs: v.secs, author: v.author, data: v.data })
+}))
+
 // One line into the task's thread. Anyone who can SEE the task may speak —
 // the crew included; that is the point. Everyone else on the task (and
 // anyone who spoke before) hears it through the bell.
@@ -521,26 +582,37 @@ router.post('/:id/comments', wrap(async (req, res) => {
   const parsed = { ...row, channels: JSON.parse(row.channels || '[]') }
   if (!canSee(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
   const text = String(req.body?.text ?? '').trim().slice(0, 2000)
-  if (!text) return res.status(400).json({ error: 'Write something first' })
+  // A voice note IS the message; words beside it are optional.
+  const voice = await saveVoice(req, row, req.body)
+  if (voice.error) return res.status(400).json({ error: voice.error })
+  if (!text && !voice.id) return res.status(400).json({ error: 'Write something first, or hold the mic and say it' })
   const now = new Date().toISOString()
-  const info = await run('INSERT INTO comments (content_id, user_id, author, text, created_at) VALUES (?, ?, ?, ?, ?)',
-    row.id, req.user.id, req.user.name || '', text, now)
+  const info = await run(
+    'INSERT INTO comments (content_id, user_id, author, text, voice_id, voice_secs, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    row.id, req.user.id, req.user.name || '', text, voice.id, voice.secs, now)
   let assignees = []
   try { assignees = JSON.parse(row.assignees || '[]') } catch { assignees = [] }
   const spoke = (await all('SELECT DISTINCT user_id FROM comments WHERE content_id = ?', row.id)).map((r) => r.user_id)
-  const people = [...new Set([...assignees, row.assignee_id, row.operator_id, row.editor_id, row.designer_id, ...spoke]
+  // Naming somebody reaches them even when the task is none of their business
+  // — which is exactly when you name somebody. "@Дилноза, можешь снять?" was
+  // reaching nobody, because she was not on the task yet.
+  const named = mentionedIds(text, await all('SELECT id, name FROM users'))
+    .filter((id) => id !== req.user.id)
+  const people = [...new Set([...assignees, row.assignee_id, row.operator_id, row.editor_id, row.designer_id, ...spoke, ...named]
     .filter((id) => id && id !== req.user.id))]
   if (people.length) {
-    const preview = text.length > 80 ? `${text.slice(0, 80)}…` : text
+    const spoken = voice.id ? `🎤 a ${voice.secs}s voice note` : ''
+    const preview = text ? (text.length > 80 ? `${text.slice(0, 80)}…` : text) : spoken
     const line = `${req.user.name} on «${row.title}»: ${preview}`
+    const namedLine = `${req.user.name} named you on «${row.title}»: ${preview}`
     await batch(people.map((id) => [
       'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
-      id, 'comment', line, row.id, now,
+      id, named.includes(id) ? 'mention' : 'comment', named.includes(id) ? namedLine : line, row.id, now,
     ]))
     // Telegram gets the roomier cut: who spoke, on what, the words, the link.
     await tgMirror(people, `💬 ${tgEsc(req.user.name)} wrote on <b>«${tgEsc(row.title)}»</b>\n“${tgEsc(preview)}”\nAnswer where the task lives 👇`, row.id, tgOriginFrom(req))
   }
-  res.status(201).json(await get('SELECT id, user_id, author, text, created_at FROM comments WHERE id = ?', info.lastInsertRowid))
+  res.status(201).json(await get('SELECT id, user_id, author, text, voice_id, voice_secs, created_at FROM comments WHERE id = ?', info.lastInsertRowid))
 }))
 
 // Times come from <input type="time"> as HH:MM — anything else becomes null.
@@ -553,36 +625,23 @@ const FIELD_LABELS = { format: 'Format', rubrika: 'Rubrika', script: 'Script', r
 const cleanShort = (v) => (v ? String(v).trim().slice(0, 120) : null) || null
 const cleanScript = (v) => (v ? String(v).trim().slice(0, 20000) : null) || null
 
-// A required field is ANSWERED, not merely filled. Below is what people type
-// to get past one without answering it. A brief that reads "." is worse than
-// an empty brief: the empty one still looks like a question waiting for an
-// answer, while the dot looks like it was dealt with.
-const PLACEHOLDER = /^(?:n\/?a|na|none|null|nil|no|nope|tbd|todo|test|тз|нет|нету|н\/?д|тбд|тест|пусто)$/i
-const hasSubstance = (v) => {
-  const s = String(v ?? '').trim()
-  if (!s || PLACEHOLDER.test(s)) return false
-  // ".", "...", ". . ." and "---" are one gesture. Strip punctuation, spaces
-  // and symbols, then see whether anything was actually written. Unicode-aware
-  // so Cyrillic counts as letters rather than being stripped with the dashes.
-  return s.replace(/[\s\p{P}\p{S}]/gu, '').length >= 2
-}
-// A reference POINTS somewhere. Words on their own are a note, so a text-only
-// reference has to carry a link. A photo or an attached document is a
-// reference in its own right and is never asked for one.
-const LINK_RE = /(?:https?:\/\/|www\.)\S{3,}|\b[\w-]+\.(?:com|ru|uz|org|net|io|me|tv|app|dev|ai|co|uk|kz)\b\S*/i
-const hasLink = (v) => LINK_RE.test(String(v ?? ''))
+// What a value IS — a link, a sentence, a placeholder — lives in one place
+// now (server/text.js), because the two questions this board asks are
+// genuinely different and were being answered by the same blunt check. A
+// reference has to POINT somewhere; a script has to SAY something; and a URL,
+// which is three "words" once you split on spaces, is not a shot list.
 // Junk in an OPTIONAL field is not worth an error — but it is not worth
 // storing either, because it reaches the card and reads as content. It comes
 // to rest as empty, which is what it means.
 const orBlank = (v) => (hasSubstance(v) ? v : null)
-// A script that is one careless word ("халатно", "готово") clears hasSubstance
-// — it has letters — but it is not a script the crew can film from. Real shot
-// lists run to more than one word; this is the check that actually catches
-// the lazy answer hasSubstance was built to catch and doesn't.
-const MIN_SCRIPT_WORDS = 3
-const hasRealScript = (v) => {
-  const s = String(v ?? '').trim()
-  return hasSubstance(s) && s.split(/\s+/).filter(Boolean).length >= MIN_SCRIPT_WORDS
+// A delivery box wants a link and nothing else. Somebody who typed a sentence
+// into it has misread the box, and "should be a URL" does not tell them that
+// — so the complaint names what they actually wrote.
+const linkComplaint = (v, what) => {
+  const t = readText(v)
+  if (t.links.length) return `${what} is a link on its own — paste just the address, with the https:// on the front`
+  if (t.words.length >= MIN_SENTENCE_WORDS) return `${what} goes in this box, not a note — this reads like a sentence. Say it in the Talk thread instead.`
+  return `${what} should be a URL — paste the full https://… address`
 }
 // A shoot is BOOKED the moment it reaches — or is created straight into — the
 // "To shoot" gate: from there it needs a shooter, all three dates and a brief
@@ -632,14 +691,23 @@ async function duplicateScript(script, excludeId) {
 // sentence to show. Presence, substance and (for a reference) direction are
 // three different failures and get three different sentences — "required"
 // alone would send somebody back to a field they had already filled in.
-const clip = (s) => { const t = String(s ?? '').trim(); return t.length > 40 ? `${t.slice(0, 40)}…` : t }
 const requiredProblem = (rules, type, checks) => {
   for (const [k, label] of Object.entries(FIELD_LABELS)) {
     const r = rules[k]
     if (r?.state !== 'required' || !r.types.includes(type)) continue
     const c = checks[k] || {}
     if (!c.present) return `«${label}» is required for this type of task`
-    if (c.thin) return `«${label}» needs a real answer — “${clip(c.raw)}” is a placeholder, not a brief`
+    // Three different failures, three different sentences: it is empty, it
+    // says nothing, or it points nowhere. "Required" alone would send
+    // somebody back to a field they had already filled in.
+    if (c.thin) {
+      const t = readText(c.raw)
+      if (k === 'script' && t.kind === 'link')
+        return `«${label}» needs the words, not just the link — the crew films from this`
+      if (t.kind === 'fragment')
+        return `«${label}» needs a real answer — “${clip(c.raw)}” is a note, not something anyone can work from`
+      return `«${label}» needs a real answer — “${clip(c.raw)}” is a placeholder, not a brief`
+    }
     if (c.linkless) return `«${label}» has to point somewhere — paste a link, or attach the photo or document it refers to`
   }
   return null
@@ -676,7 +744,7 @@ router.post('/', wrap(async (req, res) => {
   const problem = requiredProblem(fieldRules, safeType, {
     format: { present: !!format, thin: !hasSubstance(format), raw: format },
     rubrika: { present: !!rubrika, thin: !hasSubstance(rubrika), raw: rubrika },
-    script: { present: !!script, thin: !hasRealScript(script), raw: script },
+    script: { present: !!script, thin: !isSentence(script), raw: script },
     description: {
       present: !!(description && String(description).trim()),
       thin: !hasSubstance(description), raw: description,
@@ -794,7 +862,7 @@ router.post('/', wrap(async (req, res) => {
   if (isFilmed && isBooking(status, await all('SELECT id, label, sort, is_final FROM statuses'))) {
     const booking = bookingProblem({
       operatorId: crew.operator_id, recording: recording_date, editReady: edit_ready_date,
-      release: release_date, refReady: refCarried || hasLink(reference_text) || hasRealScript(briefText.script),
+      release: release_date, refReady: refCarried || hasLink(reference_text) || isSentence(briefText.script),
     })
     if (booking) return res.status(400).json({ error: booking })
   }
@@ -855,6 +923,9 @@ router.post('/:id/revisions', wrap(async (req, res) => {
     return res.status(403).json({ error: 'Only the channel’s reviewer can request changes' })
   const note = String(req.body?.note ?? '').trim().slice(0, 4000)
   if (!note) return res.status(400).json({ error: 'Write what needs changing' })
+  // Deliberately still required in writing even when a clip is attached: a
+  // voice note cannot be skimmed a week later, and the editor coming back to
+  // this on Friday needs a line they can read at a glance.
   // Who fixes it: the picked stage, defaulting to whoever holds a hat.
   let target = ['operator', 'editor', 'designer'].includes(req.body?.target) ? req.body.target : null
   if (!target) target = row.editor_id ? 'editor' : row.designer_id ? 'designer' : row.operator_id ? 'operator' : 'editor'
@@ -864,10 +935,14 @@ router.post('/:id/revisions', wrap(async (req, res) => {
   // browser exactly like the reference photo.
   const shot = typeof req.body?.photo === 'string' && req.body.photo.startsWith('data:image/') ? req.body.photo : null
   const shotThumb = shot && typeof req.body?.photo_thumb === 'string' ? req.body.photo_thumb : null
+  // Said out loud is the fastest way to explain what is wrong with a cut, and
+  // the tone carries half the meaning.
+  const voice = await saveVoice(req, row, req.body)
+  if (voice.error) return res.status(400).json({ error: voice.error })
   await run(`
-    INSERT INTO revisions (content_id, round, requested_by, requested_name, target, note, photo, photo_thumb, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, row.id, round, req.user.id, req.user.name || '', target, note, shot, shotThumb, new Date().toISOString())
+    INSERT INTO revisions (content_id, round, requested_by, requested_name, target, note, photo, photo_thumb, voice_id, voice_secs, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, row.id, round, req.user.id, req.user.name || '', target, note, shot, shotThumb, voice.id, voice.secs, new Date().toISOString())
   // Send the stage back — leaving the final stage undoes done_at and its plan.
   const sid = await revisionStageId(target)
   if (sid && sid !== row.status_id) {
@@ -951,7 +1026,7 @@ router.post('/:id/date-requests', wrap(async (req, res) => {
   // The reason is the whole point of asking, so it has to BE one. A dot or an
   // "N/A" here would leave the record saying a date moved for no reason.
   const reason = String(req.body?.reason ?? '').trim().slice(0, 2000)
-  if (!hasSubstance(reason) || reason.split(/\s+/).filter(Boolean).length < 3)
+  if (!isSentence(reason))
     return res.status(400).json({ error: 'Say what happened — a day moves on a reason, and “—” is not one' })
   // One open ask per deadline: a second is the same conversation, not a new one.
   const already = await get(
@@ -1072,7 +1147,7 @@ router.patch('/:id', wrap(async (req, res) => {
       return res.status(403).json({ error: 'You can’t set the ready link on this task' })
     const link = cleanLink(body.ready_link)
     if (link && !/^https?:\/\//i.test(link))
-      return res.status(400).json({ error: 'The ready link should be a URL — paste the full https://… address' })
+      return res.status(400).json({ error: linkComplaint(link, 'The cut') })
     patch.ready_link = link || null
   }
 
@@ -1089,7 +1164,7 @@ router.patch('/:id', wrap(async (req, res) => {
       return res.status(403).json({ error: 'You can’t set that delivery link' })
     const link = cleanLink(body[field])
     if (link && !/^https?:\/\//i.test(link))
-      return res.status(400).json({ error: 'A delivery link should be a URL — paste the full https://… address' })
+      return res.status(400).json({ error: linkComplaint(link, 'A delivery link') })
     patch[field] = link || null
   }
 
@@ -1138,7 +1213,7 @@ router.patch('/:id', wrap(async (req, res) => {
       // than reaching the card and reading as content. A demanded SCRIPT is
       // held to the higher bar the crew actually films from — one careless
       // word has letters in it and is still not a shot list.
-      const answered = f === 'script' && demanded ? hasRealScript(v) : hasSubstance(v)
+      const answered = f === 'script' && demanded ? isSentence(v) : hasSubstance(v)
       if (v && !answered) {
         if (demanded)
           return res.status(400).json({ error: `«${FIELD_LABELS[f]}» needs a real answer — “${clip(v)}” is a placeholder, not a brief` })
@@ -1501,7 +1576,7 @@ router.patch('/:id', wrap(async (req, res) => {
           operatorId: val('operator_id'),
           recording: val('recording_date'), editReady: val('edit_ready_date'), release: val('release_date'),
           refReady: links.length > 0 || !!val('photo') || !!doc || !!val('shot_link')
-            || hasLink(val('reference_text')) || hasRealScript(val('script')),
+            || hasLink(val('reference_text')) || isSentence(val('script')),
         })
         if (problem) return res.status(400).json({ error: problem })
       }

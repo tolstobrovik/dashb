@@ -790,6 +790,23 @@ export async function initSchema() {
       updated_at TEXT    NOT NULL
     );
 
+    -- Voice notes. A Pravki that takes four minutes to type takes fifteen
+    -- seconds to say, and half of what a reviewer means is in the tone. The
+    -- BYTES live here rather than on the comment, so no list, poll or task
+    -- payload ever drags a minute of audio along — the clip is fetched by the
+    -- press that plays it, exactly like a document.
+    CREATE TABLE IF NOT EXISTS voice_notes (
+      id         ${ID},
+      content_id INTEGER NOT NULL,
+      user_id    INTEGER,
+      author     TEXT    NOT NULL DEFAULT '',
+      mime       TEXT    NOT NULL DEFAULT 'audio/webm',
+      secs       INTEGER NOT NULL DEFAULT 0,
+      size       INTEGER NOT NULL DEFAULT 0,
+      data       TEXT    NOT NULL,            -- data:<mime>;base64,…
+      created_at TEXT    NOT NULL
+    );
+
     -- Moving a promised day. A deadline that has a date is a promise, and a
     -- promise the person who made it can quietly move is not one — so only an
     -- admin moves a date that is already set. Everyone else ASKS, in writing,
@@ -984,6 +1001,10 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS review_due_revised TEXT')
     // A Pravki note is usually about a FRAME. The screenshot travels with it
     // instead of being described in words and then hunted for in a chat.
+    await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
+    await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_secs INTEGER NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS voice_id INTEGER')
+    await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS voice_secs INTEGER NOT NULL DEFAULT 0')
     await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS photo TEXT')
     await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS photo_thumb TEXT')
     await exec(`CREATE TABLE IF NOT EXISTS undo_moves (
@@ -1044,6 +1065,10 @@ async function migrate() {
         DROP TABLE content_legacy;
       `)
     }
+    if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
+    if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
+    if (!(await hasColumn('revisions', 'voice_id'))) await exec('ALTER TABLE revisions ADD COLUMN voice_id INTEGER')
+    if (!(await hasColumn('revisions', 'voice_secs'))) await exec('ALTER TABLE revisions ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('revisions', 'photo'))) await exec('ALTER TABLE revisions ADD COLUMN photo TEXT')
     if (!(await hasColumn('revisions', 'photo_thumb'))) await exec('ALTER TABLE revisions ADD COLUMN photo_thumb TEXT')
     if (!(await hasColumn('content', 'todo_sort'))) await exec('ALTER TABLE content ADD COLUMN todo_sort INTEGER NOT NULL DEFAULT 0')
