@@ -496,7 +496,7 @@ router.get('/:id', wrap(async (req, res) => {
   const row = parse(await get('SELECT * FROM content WHERE id = ?', req.params.id))
   if (!row || !canSee(req.user, row)) return res.status(404).json({ error: 'Not found' })
   const revisions = await all(
-    'SELECT id, round, requested_by, requested_name, target, note, created_at, resolved_at FROM revisions WHERE content_id = ? ORDER BY round, id',
+    'SELECT id, round, requested_by, requested_name, target, note, photo, created_at, resolved_at FROM revisions WHERE content_id = ? ORDER BY round, id',
     row.id)
   const comments = await all(
     'SELECT id, user_id, author, text, created_at FROM comments WHERE content_id = ? ORDER BY id',
@@ -574,6 +574,58 @@ const hasLink = (v) => LINK_RE.test(String(v ?? ''))
 // storing either, because it reaches the card and reads as content. It comes
 // to rest as empty, which is what it means.
 const orBlank = (v) => (hasSubstance(v) ? v : null)
+// A script that is one careless word ("халатно", "готово") clears hasSubstance
+// — it has letters — but it is not a script the crew can film from. Real shot
+// lists run to more than one word; this is the check that actually catches
+// the lazy answer hasSubstance was built to catch and doesn't.
+const MIN_SCRIPT_WORDS = 3
+const hasRealScript = (v) => {
+  const s = String(v ?? '').trim()
+  return hasSubstance(s) && s.split(/\s+/).filter(Boolean).length >= MIN_SCRIPT_WORDS
+}
+// A shoot is BOOKED the moment it reaches — or is created straight into — the
+// "To shoot" gate: from there it needs a shooter, all three dates and a brief
+// ready for them to work from. Earlier than that (the Idea stage, the
+// quick-add box) a filmed piece is still just a title, and stays cheap to
+// jot down; the demand lands the moment somebody actually books the shoot.
+const bookingProblem = ({ operatorId, recording, editReady, release, refReady }) => {
+  if (!operatorId) return 'Pick who is filming this — a shoot nobody is holding is nobody’s job'
+  const missingDate = [
+    [recording, 'the shoot day'], [editReady, 'the day the cut is due'], [release, 'the release day'],
+  ].find(([v]) => !v)
+  if (missingDate) return `Filmed work is booked with all three dates — ${missingDate[1]} is missing`
+  if (!refReady) return 'Booking the shoot needs a brief ready — paste a reference link or TZ, or attach the photo it refers to'
+  return null
+}
+// Everything before the shooting gate is still an idea: a title and a maybe,
+// which owes nobody a crew, a date or a brief. The gate itself is the admin's
+// stage list, matched the way every other stage rule matches it.
+const isIdea = (statusId, statuses) => {
+  const { gates, ordered } = resolveGates(statuses)
+  if (!gates.shoot) return false
+  const at = ordered.findIndex((s) => s.id === statusId)
+  return at >= 0 && at < gates.shoot.index
+}
+// The one stage where a filmed piece is BEING booked. A task created further
+// along than this is not making a promise — it is recording work that already
+// happened, and demanding a future shoot day of it would be nonsense. Nothing
+// escapes that way: MOVING into or through the gate is what the wall in the
+// PATCH handler watches, whichever stage the move aims at.
+const isBooking = (statusId, statuses) => {
+  const { gates, ordered } = resolveGates(statuses)
+  if (!gates.shoot) return false
+  return ordered.findIndex((s) => s.id === statusId) === gates.shoot.index
+}
+// Two scripts that read the same are one script wearing two titles — the
+// crew ends up shooting the same thing twice. Compared loosely (case and
+// whitespace folded away) so a re-typed copy still catches.
+const normScript = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+async function duplicateScript(script, excludeId) {
+  const norm = normScript(script)
+  if (!norm) return null
+  const rows = await all("SELECT id, title, script FROM content WHERE script IS NOT NULL AND script != ''")
+  return rows.find((r) => r.id !== excludeId && normScript(r.script) === norm) || null
+}
 
 // The first unmet demand among the admin's required brief fields, as the
 // sentence to show. Presence, substance and (for a reference) direction are
@@ -623,7 +675,7 @@ router.post('/', wrap(async (req, res) => {
   const problem = requiredProblem(fieldRules, safeType, {
     format: { present: !!format, thin: !hasSubstance(format), raw: format },
     rubrika: { present: !!rubrika, thin: !hasSubstance(rubrika), raw: rubrika },
-    script: { present: !!script, thin: !hasSubstance(script), raw: script },
+    script: { present: !!script, thin: !hasRealScript(script), raw: script },
     description: {
       present: !!(description && String(description).trim()),
       thin: !hasSubstance(description), raw: description,
@@ -646,6 +698,14 @@ router.post('/', wrap(async (req, res) => {
       return res.status(400).json({ error: `«Reference» needs a real answer — “${clip(reference_text)}” is a placeholder, not a reference` })
     if (!hasLink(reference_text))
       return res.status(400).json({ error: '«Reference» has to point somewhere — paste a link, or attach the photo or document it refers to' })
+  }
+  // A script the crew already has is not a second script — it is the same
+  // shoot booked twice, and both cards then wait for the same footage.
+  // Duplicate carries the brief across ON PURPOSE, so it says so and passes.
+  if (!req.body?.allow_duplicate_script) {
+    const twin = await duplicateScript(script)
+    if (twin)
+      return res.status(400).json({ error: `That script is already on «${twin.title}» — link to it or write what is different about this one` })
   }
   // Junk in a field nobody demanded is not worth an error, but it is not worth
   // storing either — it reaches the card and reads as content. It comes to
@@ -696,43 +756,6 @@ router.post('/', wrap(async (req, res) => {
     }
   }
 
-  // A shoot needs somebody holding the camera, and it needs them from the
-  // start: an unowned shoot is the one thing on this board that cannot be
-  // picked up later by whoever is free, because the day it was booked for
-  // passes whether or not anyone turns up.
-  //
-  // WHICH types need one is the admin's existing crew rule (Admin → Pipeline),
-  // the same rule the Unassigned and Overview gap counts already read — so a
-  // text post is never asked for an operator, and a type added there starts
-  // being demanded here too, with nothing further to configure.
-  //
-  // Editing and design stay advisory on purpose. They are named later, often
-  // after the footage exists, and demanding them at creation would only teach
-  // people to put any name in the box.
-  const crewNeeds = await getCrewNeeds()
-  const isFilmed = crewNeeds.operator.includes(safeType)
-  if (isFilmed && !crew.operator_id)
-    return res.status(400).json({ error: 'Pick who is filming this — a shoot nobody is holding is nobody’s job' })
-
-  // Filmed work is booked, not sketched: a shoot day, a day the cut is due and
-  // a release day, all three, before it exists. They are the promises the
-  // whole board is built to measure, and a promise made later is a promise
-  // made after somebody has already missed it.
-  //
-  // Only filmed work. A post or a story can still be jotted down with nothing
-  // but a title, so the Idea stage and the quick-add box keep working — the
-  // list is the admin's crew rule again, which is this board's definition of
-  // "this is a shoot".
-  if (isFilmed) {
-    const missingDate = [
-      ['recording_date', recording_date, 'the shoot day'],
-      ['edit_ready_date', edit_ready_date, 'the day the cut is due'],
-      ['release_date', release_date, 'the release day'],
-    ].find(([, v]) => !v)
-    if (missingDate)
-      return res.status(400).json({ error: `Filmed work is booked with all three dates — ${missingDate[2]} is missing` })
-  }
-
   // Review can be shared from the start; a lone reviewer_id becomes a list of
   // one, so nothing downstream has to care which way it was given.
   const reviewerList = [...new Set((Array.isArray(req.body?.reviewer_ids) ? req.body.reviewer_ids : [])
@@ -751,6 +774,29 @@ router.post('/', wrap(async (req, res) => {
   })) return
 
   const status = status_id || (await get('SELECT id FROM statuses ORDER BY sort, id'))?.id || null
+
+  // A shoot is BOOKED, not sketched: whoever holds the camera, the three days
+  // the whole board measures, and a brief they can work from — all of it before
+  // the shoot exists, because the day it was booked for passes whether or not
+  // anyone turns up or knows what to film.
+  //
+  // But only from the "To shoot" gate onward. An IDEA is a title and a maybe;
+  // demanding a crew and three dates of it killed the cheapest, most-used thing
+  // on the board. So a filmed piece created straight INTO the shooting stage
+  // (or past it) carries the full booking, and one parked at Idea carries
+  // nothing — it is asked when somebody actually books it, in the PATCH below.
+  //
+  // WHICH types count as filmed is the admin's crew rule (Admin → Pipeline),
+  // the same list the gap counts read. Editing and design stay advisory: they
+  // are named later, often after the footage exists.
+  const isFilmed = (await getCrewNeeds()).operator.includes(safeType)
+  if (isFilmed && isBooking(status, await all('SELECT id, label, sort, is_final FROM statuses'))) {
+    const booking = bookingProblem({
+      operatorId: crew.operator_id, recording: recording_date, editReady: edit_ready_date,
+      release: release_date, refReady: refCarried || hasLink(reference_text) || hasRealScript(briefText.script),
+    })
+    if (booking) return res.status(400).json({ error: booking })
+  }
   const maxSort = (await get('SELECT COALESCE(MAX(todo_sort), -1) AS m FROM content')).m
   const info = await run(`
     INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id, reviewer_id, reviewers,
@@ -812,10 +858,15 @@ router.post('/:id/revisions', wrap(async (req, res) => {
   let target = ['operator', 'editor', 'designer'].includes(req.body?.target) ? req.body.target : null
   if (!target) target = row.editor_id ? 'editor' : row.designer_id ? 'designer' : row.operator_id ? 'operator' : 'editor'
   const round = (await get('SELECT COALESCE(MAX(round), 0) AS m FROM revisions WHERE content_id = ?', row.id)).m + 1
+  // A Pravki note is usually about a frame, so it may carry the screenshot
+  // that shows it — pasted straight from the clipboard, downscaled in the
+  // browser exactly like the reference photo.
+  const shot = typeof req.body?.photo === 'string' && req.body.photo.startsWith('data:image/') ? req.body.photo : null
+  const shotThumb = shot && typeof req.body?.photo_thumb === 'string' ? req.body.photo_thumb : null
   await run(`
-    INSERT INTO revisions (content_id, round, requested_by, requested_name, target, note, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `, row.id, round, req.user.id, req.user.name || '', target, note, new Date().toISOString())
+    INSERT INTO revisions (content_id, round, requested_by, requested_name, target, note, photo, photo_thumb, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, row.id, round, req.user.id, req.user.name || '', target, note, shot, shotThumb, new Date().toISOString())
   // Send the stage back — leaving the final stage undoes done_at and its plan.
   const sid = await revisionStageId(target)
   if (sid && sid !== row.status_id) {
@@ -984,12 +1035,24 @@ router.patch('/:id', wrap(async (req, res) => {
       // Emptying a demanded field is refused above; filling it with a dot is
       // the same act wearing a disguise, so it is refused too. Where the field
       // is NOT demanded, a placeholder simply comes to rest as empty rather
-      // than reaching the card and reading as content.
-      if (v && !hasSubstance(v)) {
+      // than reaching the card and reading as content. A demanded SCRIPT is
+      // held to the higher bar the crew actually films from — one careless
+      // word has letters in it and is still not a shot list.
+      const answered = f === 'script' && demanded ? hasRealScript(v) : hasSubstance(v)
+      if (v && !answered) {
         if (demanded)
           return res.status(400).json({ error: `«${FIELD_LABELS[f]}» needs a real answer — “${clip(v)}” is a placeholder, not a brief` })
         patch[f] = null
         continue
+      }
+      // The same script on two cards is one shoot booked twice. A task
+      // KEEPING its own script is not repeating anything, though — an
+      // ordinary save sends every field back, and a twin made on purpose
+      // (Duplicate) would otherwise make the original unsaveable ever after.
+      if (f === 'script' && v && !body.allow_duplicate_script && normScript(v) !== normScript(row.script)) {
+        const twin = await duplicateScript(v, row.id)
+        if (twin)
+          return res.status(400).json({ error: `That script is already on «${twin.title}» — link to it or write what is different about this one` })
       }
       patch[f] = v
     }
@@ -1020,17 +1083,15 @@ router.patch('/:id', wrap(async (req, res) => {
       return res.status(400).json({ error: '«Description» is required for this type of task — it can’t be cleared' })
   }
 
-  // The shoot keeps its operator. Creation demands one for the types the
-  // admin's crew rule covers; without this, the demand lasts exactly until
-  // somebody opens the task and clears the field, or retypes a post as a video
-  // after the fact. Same rule, applied to the result of the edit.
+  // A BOOKED shoot keeps its operator. Without this the demand made at the
+  // shooting gate lasts exactly until somebody opens the task and clears the
+  // field, or retypes a post as a video after the fact.
   //
-  // Only when the edit TOUCHES the operator or the type, though. Tasks made
-  // before this rule have no operator and are allowed to keep existing: a
-  // guard on every patch would make each of them unmovable, so dragging one to
+  // Only when the edit TOUCHES the operator or the type, and only once the
+  // shoot is actually booked — an idea has no crew to lose, and a guard on
+  // every patch would make every pre-rule task unmovable, so dragging one to
   // another day would fail for a reason that has nothing to do with the drag.
-  // The demand lands when somebody edits the thing the demand is about.
-  if (body.operator_id !== undefined || body.type !== undefined) {
+  if ((body.operator_id !== undefined || body.type !== undefined) && !isIdea(row.status_id, await all('SELECT id, label, sort, is_final FROM statuses'))) {
     const nType = patch.type !== undefined ? patch.type : row.type
     const nOperator = body.operator_id !== undefined
       ? (body.operator_id === null || body.operator_id === '' ? null : Number(body.operator_id))
@@ -1308,22 +1369,41 @@ router.patch('/:id', wrap(async (req, res) => {
         else if (need.link && !val(need.link) && !(await hasFile())) shortfalls.push({ gate: gate.key, missing: need.link })
       }
 
-      // No walls, for any type. A filmed reel really does have an editor and
-      // a file somewhere, and refusing the move until both are typed in is a
-      // fair thing to want — but it is not what this dashboard is for. The
-      // team plans here and works elsewhere: footage is handed over on a hard
-      // drive, an editor is agreed in a voice note, and the card catches up
-      // afterwards. Refusing the move does not create the missing editor; it
-      // just leaves the board lying about where the work is, which is worse
-      // than a card that moved with a gap on it.
+      // The shortfall above stays ADVISORY for everything that is written
+      // rather than filmed: a text post has no cut to attach and no editor to
+      // name, and refusing the move would not create either. It is shown on
+      // the card by the StageGate panel (/api/warnings computes the same list)
+      // and counted against the handover deadlines below.
       //
-      // So the shortfall above is worked out for EVERY move, admins included,
-      // and shown on the card by the StageGate panel (/api/warnings computes
-      // the same list) and counted against the handover deadlines below. The
-      // move itself goes through.
-      //
-      // To make the editing gate a wall again, refuse here when `shortfalls`
-      // holds a gate: 'edit' entry.
+      // FILMED work is different, and this is where the walls are. A shoot is
+      // the one thing on this board that cannot be sorted out afterwards: the
+      // day passes whether or not a camera, a crew and a brief turned up. So
+      // booking one is a wall, and it lands exactly where the booking happens
+      // — the move onto the shooting stage — instead of at creation, which is
+      // what made every idea expensive to jot down.
+      const filmedNow = (await getCrewNeeds()).operator.includes(val('type') ?? row.type)
+      if (filmedNow) {
+        const g = resolved.gates.shoot
+        const crossing = (gate) => gate && at(patch.status_id) >= gate.index && at(row.status_id) < gate.index
+        if (crossing(g)) {
+          let links = []
+          try { links = JSON.parse(val('reference_links') || '[]') } catch { links = [] }
+          const doc = await hasFile()
+          const problem = bookingProblem({
+            operatorId: val('operator_id'),
+            recording: val('recording_date'), editReady: val('edit_ready_date'), release: val('release_date'),
+            refReady: links.length > 0 || !!val('photo') || !!doc || !!val('shot_link')
+              || hasLink(val('reference_text')) || hasRealScript(val('script')),
+          })
+          if (problem) return res.status(400).json({ error: problem })
+        }
+        // Filming done means the next pair of hands has a name. The footage
+        // exists by now, so the editor is a real answer rather than a guess —
+        // which is why this is asked HERE and never at creation.
+        const shotIndex = g ? g.index + 1 : -1
+        if (shotIndex > 0 && at(patch.status_id) >= shotIndex && at(row.status_id) < shotIndex && !val('editor_id'))
+          return res.status(400).json({ error: 'Name who cuts this — footage with no editor waiting is footage nobody is cutting' })
+      }
 
       // The re-promise. When the stage being handed over finished after its
       // own deadline, the next owner cannot inherit a date that is already

@@ -5,7 +5,7 @@ import {
   FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
-import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor, hasSubstance, hasLink } from '../lib/constants.js'
+import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor, hasSubstance, hasLink, hasRealScript } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { api } from '../lib/api.js'
@@ -223,12 +223,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       setDocs((prev) => prev.filter((d) => d.id !== doc.id))
     } catch (e2) { setErr(e2.message) }
   }
-  // Extras stay hidden until asked for — the common case is a quick add.
+  // The brief is the point of the form, not an extra: Reference and
+  // Description are open from the start, so the boxes the crew actually work
+  // from are in front of whoever is filling the task in rather than folded
+  // behind a row of buttons at the very bottom. Chrome that is only useful
+  // once there is something in it (checklist, documents, the other people's
+  // delivery links) still waits to be asked for.
   const [show, setShow] = useState(() => ({
-    description: !!item?.description,
+    description: true,
     photo: !!item?.photo || !!item?.has_photo,
     checklist: (item?.checklist?.length || 0) > 0,
-    reference: false, // empty reference/delivery chrome hides until asked for
+    reference: true,
     delivery: false,
     script: false,
     docs: (item?.documents?.length || 0) > 0,
@@ -259,7 +264,22 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // rule (Admin → Pipeline) decides, and /fields serves it beside the brief
   // rules — so a text post is never asked, and a type added there starts being
   // asked with nothing further to wire up.
-  const needsOperator = !!fieldRules?.crew?.operator?.includes(form.type)
+  const isFilmedType = !!fieldRules?.crew?.operator?.includes(form.type)
+  // WHERE the task sits decides what it owes. Before the shooting stage it is
+  // an idea — a title and a maybe — and owes nobody a crew, a date or a brief.
+  // From the shooting stage on it is a BOOKED shoot and owes all three; one
+  // stage further, with footage in hand, it owes an editor as well.
+  const liveStages = useMemo(() => statuses.filter((s) => !/^deleted$/i.test(s.label)), [statuses])
+  const shootAt = liveStages.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))
+  const stageAt = liveStages.findIndex((s) => s.id === form.status_id)
+  // Where the task WAS. A piece already past the shoot is not being booked by
+  // this save — it was booked (or backfilled) long ago, and asking again would
+  // block every unrelated edit to work that is already in the can.
+  const wasAt = creating ? -1 : liveStages.findIndex((s) => s.id === item.status_id)
+  const bookingNow = shootAt >= 0 && stageAt >= shootAt &&
+    (creating ? stageAt === shootAt : wasAt < shootAt)
+  const needsOperator = isFilmedType && bookingNow
+  const needsEditor = isFilmedType && shootAt >= 0 && stageAt > shootAt && !creating && wasAt <= shootAt
   // Crew accounts work to the shoot and maker deadlines — the release date is
   // the channel's business and is not shown to them at all. They also can't
   // move the stage freely: they see it, and mark their one milestone.
@@ -334,7 +354,27 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     item?.designer_id && { key: 'designer', label: 'Designer' },
   ].filter(Boolean)
   if (pravkiTargets.length === 0) pravkiTargets.push({ key: 'editor', label: 'Editor' })
-  const [pravki, setPravki] = useState(null) // null | { note, target }
+  const [pravki, setPravki] = useState(null) // null | { note, target, photo, photo_thumb }
+  // The screenshot that shows what is wrong, pasted into the note itself.
+  const pravkiPaste = (e) => {
+    const shot = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'))
+    if (!shot) return
+    e.preventDefault()
+    e.stopPropagation()
+    const file = shot.getAsFile()
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) { setErr('Image is too large — keep it under 15 MB'); return }
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        setPravki((p) => (p ? { ...p, photo: scaleImage(img, 1600, 0.85), photo_thumb: scaleImage(img, 320, 0.75) } : p))
+        setErr('')
+      } catch { setErr('Could not read that image') } finally { URL.revokeObjectURL(url) }
+    }
+    img.onerror = () => { setErr('Could not read that image'); URL.revokeObjectURL(url) }
+    img.src = url
+  }
   // The finished files, ready to open right in the Review row — reviewing
   // means watching the work, not hunting for its link further down the modal.
   const reviewLinks = [
@@ -387,8 +427,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
     return canvas.toDataURL('image/jpeg', quality)
   }
-  const pickPhoto = (e) => {
-    const file = e.target.files?.[0]
+  const takePhoto = (file) => {
     if (!file) return
     if (file.size > 15 * 1024 * 1024) { setErr('Image is too large — keep it under 15 MB'); return }
     const url = URL.createObjectURL(file)
@@ -397,11 +436,41 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       try {
         setForm((f) => ({ ...f, photo: scaleImage(img, 1600, 0.85), photo_thumb: scaleImage(img, 320, 0.75) }))
         setErr('')
+        toast('Screenshot pasted in')
       } catch { setErr('Could not read that image') } finally { URL.revokeObjectURL(url) }
     }
     img.onerror = () => { setErr('Could not read that image'); URL.revokeObjectURL(url) }
     img.src = url
   }
+  const pickPhoto = (e) => takePhoto(e.target.files?.[0])
+  // A reference is almost always a screenshot that is already on the
+  // clipboard — Ctrl+V drops it straight in, so nobody has to save it to disk
+  // first just to pick it back out of a file dialog. Anywhere in the task
+  // (or in a Pravki note) counts, as long as the cursor is not in a field
+  // where a paste means text.
+  const pasteImageFrom = (e) => {
+    const items = [...(e.clipboardData?.items || [])]
+    const shot = items.find((i) => i.kind === 'file' && i.type.startsWith('image/'))
+    if (!shot) return false
+    e.preventDefault()
+    takePhoto(shot.getAsFile())
+    return true
+  }
+  useEffect(() => {
+    if (!canEdit) return undefined
+    const onPaste = (e) => {
+      const el = e.target
+      // A paste into a text box is a paste of text — unless what is on the
+      // clipboard is an image, which no text box can hold anyway.
+      if (!e.clipboardData?.items) return
+      const hasImage = [...e.clipboardData.items].some((i) => i.kind === 'file' && i.type.startsWith('image/'))
+      if (!hasImage) return
+      if (el?.tagName === 'INPUT' && el.type !== 'text') return
+      pasteImageFrom(e)
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [canEdit]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const addCheck = () => {
     if (!subText.trim()) return
@@ -421,12 +490,23 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     // The admin's required brief fields gate the save — with the section
     // opened so the cursor lands where the answer goes.
     if (creating || canEdit) {
-      // A shoot needs somebody holding the camera, and it needs them from the
-      // start — the day it was booked for passes whether or not anyone turns
-      // up. Which types need one is the admin's crew rule, the same one the
-      // gap counts read. Editing and design are named later and stay advisory.
-      if (needsOperator && !form.operator_id) {
-        setErr('Pick who is filming this — a shoot nobody is holding is nobody’s job')
+      // Booking a shoot is a promise about a day that passes whether or not a
+      // camera, a crew and a brief turn up — so the whole booking is asked at
+      // the stage where the booking happens, and nothing is asked of an idea.
+      if (needsOperator) {
+        const refReady = form.reference_links.length > 0 || !!form.photo || docs.length > 0
+          || !!form.shot_link || hasLink(form.reference_text) || hasRealScript(form.script)
+        const gap = [
+          [!form.operator_id, 'Pick who is filming this — a shoot nobody is holding is nobody’s job'],
+          [!form.recording_date, 'Filmed work is booked with all three dates — the shoot day is missing'],
+          [!form.edit_ready_date, 'Filmed work is booked with all three dates — the day the cut is due is missing'],
+          [!form.release_date, 'Filmed work is booked with all three dates — the release day is missing'],
+          [!refReady, 'Booking the shoot needs a brief ready — paste a reference link or TZ, or attach the photo it refers to'],
+        ].find(([bad]) => bad)
+        if (gap) { setShow((s) => ({ ...s, reference: true, script: true })); setErr(gap[1]); return }
+      }
+      if (needsEditor && !form.editor_id) {
+        setErr('Name who cuts this — footage with no editor waiting is footage nobody is cutting')
         return
       }
       const missing = [
@@ -445,11 +525,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       // caught here so the message arrives beside the field, rather than as a
       // refusal after the save has apparently been accepted.
       const thin = [
-        ['format', 'Format', form.format],
-        ['rubrika', 'Rubrika', form.rubrika],
-        ['script', 'Script', form.script.trim()],
-        ['description', 'Description', form.description.trim()],
-      ].find(([k, , v]) => fReq(k) && v && !hasSubstance(v))
+        ['format', 'Format', form.format, hasSubstance],
+        ['rubrika', 'Rubrika', form.rubrika, hasSubstance],
+        ['script', 'Script', form.script.trim(), hasRealScript],
+        ['description', 'Description', form.description.trim(), hasSubstance],
+      ].find(([k, , v, real]) => fReq(k) && v && !real(v))
       if (thin) {
         setShow((s) => ({ ...s, script: true, description: true }))
         setErr(`«${thin[1]}» needs a real answer — “${thin[2]}” is a placeholder, not a brief`)
@@ -540,6 +620,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         checklist: form.checklist.map((c) => (typeof c === 'object' ? { ...c, done: false } : c)),
         reference_text: form.reference_text || null, reference_links: form.reference_links,
         format: form.format || null, rubrika: form.rubrika.trim() || null, script: form.script.trim() || null,
+        // Carrying the brief across is the whole point of this button, so the
+        // repeat-script filter is told this one is deliberate.
+        allow_duplicate_script: true,
         operator_id: form.operator_id, editor_id: form.editor_id, designer_id: form.designer_id,
         reviewer_ids: form.reviewer_ids,
         campaign_id: form.campaign_id,
@@ -568,7 +651,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     if (busy || !pravki?.note.trim()) return
     setBusy(true); setErr('')
     try {
-      await api.post(`/content/${item.id}/revisions`, { note: pravki.note.trim(), target: pravki.target })
+      await api.post(`/content/${item.id}/revisions`, {
+        note: pravki.note.trim(), target: pravki.target,
+        photo: pravki.photo || null, photo_thumb: pravki.photo_thumb || null,
+      })
       await onUpdate(item, {}) // pull the moved-back row into the parent list
       toast('Sent back to the crew — synced')
       onClose()
@@ -711,8 +797,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 {canEdit && <button className="photo-remove" data-tip="Remove the photo" data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label="Remove photo"><X size={14} /></button>}
               </div>
             ) : canEdit ? (
-              <label className="photo-pick ref-photo-pick">
-                <ImagePlus size={15} /> Reference photo
+              <label className="photo-pick ref-photo-pick" data-tip="Pick a file — or just press Ctrl+V with a screenshot on the clipboard">
+                <ImagePlus size={15} /> Reference photo <span className="crew-opt">or paste it — Ctrl+V</span>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPhoto} />
               </label>
             ) : null}
@@ -772,6 +858,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      {/* The description sits with the rest of the brief rather than at the
+          foot of the form — it is read at the same moment as the reference. */}
+      {show.description && !crewViewer && (
+        <div className="cm-row">
+          <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> Description{fReq('description') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
+          <textarea className="input" rows={2} disabled={detailsLocked} value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="References, links, notes…" />
+        </div>
+      )}
+
       {/* Review (SMM & admin): a Ready task waits here for release. Publish it,
           or send it back to the crew with one note (Pravki). */}
       {atReady && (canReview || canRequest) && (
@@ -795,7 +891,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   </button>
                 )}
                 {canRequest && (
-                  <button type="button" className="btn" onClick={() => setPravki({ note: '', target: pravkiTargets[0].key })}>
+                  <button type="button" className="btn" onClick={() => setPravki({ note: '', target: pravkiTargets[0].key, photo: null, photo_thumb: null })}>
                     <RotateCcw size={14} /> Request changes
                   </button>
                 )}
@@ -805,8 +901,18 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {pravki && (
               <div className="pravki-form">
                 <textarea className="input" rows={3} autoFocus value={pravki.note}
+                  onPaste={pravkiPaste}
                   onChange={(e) => setPravki({ ...pravki, note: e.target.value })}
-                  placeholder="Write everything that needs changing, in one go…" />
+                  placeholder="Write everything that needs changing, in one go… (Ctrl+V pastes the screenshot)" />
+                {pravki.photo ? (
+                  <div className="photo-wrap pravki-shot">
+                    <img src={pravki.photo_thumb || pravki.photo} alt="what needs changing" />
+                    <button className="photo-remove" aria-label="Remove screenshot" data-tip="Remove the screenshot" data-tip-left=""
+                      onClick={() => setPravki({ ...pravki, photo: null, photo_thumb: null })}><X size={14} /></button>
+                  </div>
+                ) : (
+                  <span className="doc-hint"><ImagePlus size={12} /> Press Ctrl+V to paste the frame you mean.</span>
+                )}
                 {pravkiTargets.length > 1 && (
                   <div className="pravki-target">
                     <span className="crew-opt">Send back to:</span>
@@ -838,6 +944,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <span className="rev-round">#{r.round}</span>
                 <span className="rev-body">
                   <span className="rev-note">{r.note}</span>
+                  {r.photo && <a className="rev-shot" href={r.photo} target="_blank" rel="noreferrer"><img src={r.photo} alt="what needed changing" /></a>}
                   <span className="rev-meta">
                     {r.requested_name || '—'} · {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · to {r.target}{r.resolved_at ? ' · fixed' : ''}
                   </span>
@@ -902,12 +1009,23 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 )}
               </div>
             )}
+            {/* Three near-identical Drive boxes in a row were impossible to
+                tell apart at a glance — people pasted the cut into Recording.
+                Each one now carries its stage's colour, its own icon and the
+                name of the person it belongs to, so the box you want is the
+                one you can see. */}
             {deliveryFields.map((f) => {
               const Icon = f.icon
               const editable = f.mine || canEdit
+              const owner = team.find((u) => u.id === item?.[{ shot: 'operator_id', edit: 'editor_id', design: 'designer_id' }[f.kind]])
               return (
-                <label key={f.col} className="ready-link-field">
-                  <span className="crew-label"><Icon size={12} /> {f.label} <span className="crew-opt">{f.sub}</span></span>
+                <label key={f.col} className={`ready-link-field dlv-${f.kind}` + (f.mine ? ' dlv-mine' : '')}>
+                  <span className="crew-label dlv-head">
+                    <span className="dlv-badge"><Icon size={13} /></span>
+                    <b className="dlv-name">{f.label}</b>
+                    <span className="crew-opt dlv-sub">{f.sub}</span>
+                    <span className="dlv-who">{f.mine ? 'yours' : owner ? owner.name.split(' ')[0] : 'nobody yet'}</span>
+                  </span>
                   <span className="ready-link-input">
                     <input className="input" placeholder="https://drive.google.com/…"
                       disabled={!editable}
@@ -1097,10 +1215,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             // one-time editor, a content head doing the filming.
             const specialists = team.filter(holds).sort(bySort)
             const everyoneElse = team.filter((u) => !holds(u)).sort(bySort)
-            // The operator is the one hat this type of task cannot go without.
-            // The others are named later, often after the footage exists, so
-            // they stay optional — and say so, rather than looking the same.
-            const mustHave = f.key === 'operator_id' && needsOperator
+            // What the stage owes: a booked shoot needs its shooter, and
+            // footage in hand needs the editor who will cut it. An idea owes
+            // neither — the hats say "optional" until the work reaches them.
+            const mustHave = (f.key === 'operator_id' && needsOperator) || (f.key === 'editor_id' && needsEditor)
             return (
               <label key={f.key} className={'crew-field' + (mustHave && !form[f.key] ? ' crew-missing' : '')}>
                 <span className="crew-label">
@@ -1110,9 +1228,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                     : <span className="crew-opt">optional</span>}
                 </span>
                 <select className="select" disabled={detailsLocked} value={form[f.key] ?? ''}
-                  data-tip={mustHave ? 'Who films this — a shoot needs an operator' : f.tip}
+                  data-tip={mustHave ? `${f.label} — this stage can’t go on without one` : f.tip}
                   onChange={(e) => setForm({ ...form, [f.key]: e.target.value === '' ? null : Number(e.target.value) })}>
-                  <option value="">{mustHave ? '— pick who films it —' : '— nobody —'}</option>
+                  <option value="">{mustHave ? `— pick the ${f.label.toLowerCase()} —` : '— nobody —'}</option>
                   {specialists.length > 0 && (
                     <optgroup label={`${f.label}s`}>
                       {specialists.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -1221,27 +1339,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
-      {/* Extras appear only when wanted (the photo lives in Reference now). */}
-      {!detailsLocked && (!show.description || !show.checklist || (!hasRef && !show.reference) || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !show.docs && docs.length === 0) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
+      {/* Reference and Description are open from the start now, so what is
+          left here is the chrome that only earns its space once it holds
+          something. */}
+      {!detailsLocked && (!show.checklist || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !show.docs && docs.length === 0) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
         <div className="extra-btns">
-          {!hasRef && !show.reference && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, reference: true })}><BookOpen size={14} /> Reference</button>}
           {!creating && !show.docs && docs.length === 0 && (
             <button type="button" className="extra-btn" onClick={() => setShow({ ...show, docs: true })}><Paperclip size={14} /> Documents</button>
           )}
           {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, script: true })}><FileText size={14} /> Script</button>}
-          {!show.description && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, description: true })}><AlignLeft size={14} /> Description</button>}
           {!show.checklist && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, checklist: true })}><CheckSquare size={14} /> Checklist</button>}
           {!creating && !crewViewer && canEdit && !show.delivery && (
             <button type="button" className="extra-btn" onClick={() => setShow({ ...show, delivery: true })}><Link2 size={14} /> Delivery links</button>
           )}
-        </div>
-      )}
-
-      {show.description && (
-        <div className="field">
-          <label>Description</label>
-          <textarea className="input" rows={2} disabled={detailsLocked} autoFocus={!form.description} value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="References, links, notes…" />
         </div>
       )}
 

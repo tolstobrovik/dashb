@@ -801,6 +801,10 @@ export async function initSchema() {
       requested_name TEXT    NOT NULL DEFAULT '',
       target         TEXT    NOT NULL DEFAULT 'editor', -- operator | editor | designer
       note           TEXT    NOT NULL DEFAULT '',
+      -- A Pravki note is usually about a FRAME, so it can carry the screenshot
+      -- that shows it, pasted straight from the clipboard.
+      photo          TEXT,
+      photo_thumb    TEXT,
       created_at     TEXT    NOT NULL,
       resolved_at    TEXT
     );
@@ -955,6 +959,10 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edited_at TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_due_revised TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS review_due_revised TEXT')
+    // A Pravki note is usually about a FRAME. The screenshot travels with it
+    // instead of being described in words and then hunted for in a chat.
+    await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS photo TEXT')
+    await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS photo_thumb TEXT')
     await exec(`CREATE TABLE IF NOT EXISTS undo_moves (
       content_id INTEGER PRIMARY KEY, user_id INTEGER, before TEXT NOT NULL, created_at TEXT NOT NULL)`)
   }
@@ -1013,6 +1021,8 @@ async function migrate() {
         DROP TABLE content_legacy;
       `)
     }
+    if (!(await hasColumn('revisions', 'photo'))) await exec('ALTER TABLE revisions ADD COLUMN photo TEXT')
+    if (!(await hasColumn('revisions', 'photo_thumb'))) await exec('ALTER TABLE revisions ADD COLUMN photo_thumb TEXT')
     if (!(await hasColumn('content', 'todo_sort'))) await exec('ALTER TABLE content ADD COLUMN todo_sort INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'pinned'))) await exec('ALTER TABLE content ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'photo_thumb'))) await exec('ALTER TABLE content ADD COLUMN photo_thumb TEXT')

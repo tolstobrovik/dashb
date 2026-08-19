@@ -55,6 +55,13 @@ if node storage-suite.mjs > $SP/out-storage-suite.log 2>&1; then echo "storage-s
 fuser -k 4103/tcp 9986/tcp 2>/dev/null; sleep 0.5
 if node round64-suite.mjs > $SP/out-round64-suite.log 2>&1; then echo "round64-suite PASS" >> $RES; else echo "round64-suite FAIL" >> $RES; fi
 fuser -k 4103/tcp 9986/tcp 2>/dev/null; sleep 0.5
+# round65 and round66 each bring their own server (4104 / 4105)
+fuser -k 4104/tcp 2>/dev/null; sleep 0.5
+if node round65-suite.mjs > $SP/out-round65-suite.log 2>&1; then echo "round65-suite PASS" >> $RES; else echo "round65-suite FAIL" >> $RES; fi
+fuser -k 4104/tcp 2>/dev/null; sleep 0.5
+fuser -k 4105/tcp 2>/dev/null; sleep 0.5
+if node round66-suite.mjs > $SP/out-round66-suite.log 2>&1; then echo "round66-suite PASS" >> $RES; else echo "round66-suite FAIL" >> $RES; fi
+fuser -k 4105/tcp 2>/dev/null; sleep 0.5
 fuser -k 9989/tcp 2>/dev/null; sleep 0.5
 
 # ---- pc-suite + journey on 4081 ----

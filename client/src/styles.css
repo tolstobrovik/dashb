@@ -2088,6 +2088,26 @@ button.cb-toggle:hover { color: var(--ink); }
 .ready-link-input .input { flex: 1; }
 .ready-link-input .btn { flex-shrink: 0; }
 
+/* Recording / Edit ready / Design ready were three identical Drive boxes and
+   people pasted the cut into the wrong one. Each stage now owns a colour, a
+   badge and the name of whoever fills it, so they stop reading as one thing. */
+.ready-link-field { border-left: 3px solid var(--hairline-strong); padding: 8px 0 8px 11px; border-radius: 0 8px 8px 0; }
+.dlv-shot { border-left-color: #ec835a; background: linear-gradient(90deg, rgba(236, 131, 90, .09), transparent 42%); }
+.dlv-edit { border-left-color: #b5324a; background: linear-gradient(90deg, rgba(181, 50, 74, .09), transparent 42%); }
+.dlv-design { border-left-color: #7a4fd6; background: linear-gradient(90deg, rgba(122, 79, 214, .09), transparent 42%); }
+.dlv-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.dlv-badge { width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
+.dlv-shot .dlv-badge { background: #ec835a; }
+.dlv-edit .dlv-badge { background: #b5324a; }
+.dlv-design .dlv-badge { background: #7a4fd6; }
+.dlv-name { font-size: 13px; font-weight: 800; letter-spacing: -.01em; }
+.dlv-sub { flex: 1; min-width: 120px; }
+.dlv-who { font-size: 11px; font-weight: 700; color: var(--ink-soft); background: var(--surface-2); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.dlv-mine .dlv-who { background: #0ca30c; color: #fff; }
+.pravki-shot { margin-top: 8px; }
+.rev-shot { display: block; margin-top: 6px; width: fit-content; }
+.rev-shot img { max-height: 120px; max-width: 100%; border-radius: 8px; border: 1px solid var(--hairline); display: block; }
+
 /* crew day board: the "still haunting" emergency section + all-clear line */
 .cb-sec.cb-emergency { border: 1px solid #e6b3b3; background: #fbeeee; border-radius: 12px; padding: 6px 10px 4px; margin-top: 6px; }
 .cb-sec.cb-emergency .cb-sec-head { color: #A32D2D; }

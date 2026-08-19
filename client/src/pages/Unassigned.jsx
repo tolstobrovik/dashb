@@ -23,15 +23,36 @@ import ContentModal from '../components/ContentModal.jsx'
 // everything wants a release day, and work already past the edit (ready_at)
 // stopped needing its shoot-side people long ago. Icon-free so Overview can
 // count gaps without dragging this page's chrome along.
-export const gapsOf = (t, crew) => {
+//
+// WHERE the task sits decides what it owes. An idea owes nothing and never
+// reaches this page at all. From the shooting stage a filmed piece owes its
+// shooter, its days and a brief — that is what booking a shoot means. The
+// EDITOR is owed one stage later, once the footage exists: asking for one
+// while the shoot is still ahead was a gap nobody could close honestly, and
+// it was the loudest row on this page.
+export const stageRankOf = (statuses) => {
+  const live = [...statuses].sort((a, b) => (a.sort - b.sort) || (a.id - b.id))
+    .filter((s) => !isDeletedLabel(s.label))
+  const shootAt = live.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))
+  const idx = new Map(live.map((s, i) => [s.id, i]))
+  return (statusId) => {
+    const at = idx.has(statusId) ? idx.get(statusId) : -1
+    if (shootAt < 0 || at < 0) return 'booked'    // no shooting stage: everything is booked
+    if (at < shootAt) return 'idea'
+    if (at === shootAt) return 'booked'
+    return 'shot'
+  }
+}
+export const gapsOf = (t, crew, rank) => {
   const need = (hat, fallback) => (Array.isArray(crew?.[hat]) ? crew[hat] : fallback).includes(t.type)
   const filmed = t.type === 'reel' || t.type === 'video'
   const preEdit = !t.ready_at
+  const where = rank ? rank(t.status_id) : 'shot'
   const people = []
   const dates = []
   if (!(t.assignees?.length ? t.assignees.length : t.assignee_id)) people.push({ key: 'owner', label: 'needs an owner' })
   if (need('operator', ['reel', 'video']) && preEdit && !t.operator_id) people.push({ key: 'operator', label: 'needs an operator' })
-  if (need('editor', ['reel', 'video']) && preEdit && !t.editor_id) people.push({ key: 'editor', label: 'needs an editor' })
+  if (need('editor', ['reel', 'video']) && preEdit && where === 'shot' && !t.editor_id) people.push({ key: 'editor', label: 'needs an editor' })
   if (need('designer', ['post']) && !t.designer_id) people.push({ key: 'designer', label: 'needs a designer' })
   if (filmed && preEdit && !t.recording_date) dates.push({ key: 'shoot', label: 'no shoot day' })
   if (!t.release_date) dates.push({ key: 'release', label: 'no release day' })
@@ -148,12 +169,13 @@ export default function Unassigned() {
   // Every live task with raw gaps — the filters carve this list, the hero
   // keeps quoting it whole so the headline never argues with reality.
   // Ideas sit out: a task only owes people and dates once it leaves the Idea stage.
+  const rank = useMemo(() => stageRankOf(statuses), [statuses])
   const rows = useMemo(() => content
     .filter((t) => !t.done_at && !deadIds.has(t.status_id) && !ideaIds.has(t.status_id))
-    .map((t) => ({ t, gaps: gapsOf(t, crew) }))
+    .map((t) => ({ t, gaps: gapsOf(t, crew, rank) }))
     .filter((r) => r.gaps.people.length > 0 || r.gaps.dates.length > 0)
     .sort((a, b) => (a.t.release_date || '9999').localeCompare(b.t.release_date || '9999') || b.t.id - a.t.id),
-  [content, deadIds, ideaIds, crew])
+  [content, deadIds, ideaIds, crew, rank])
 
   const holdsHat = (t, id) =>
     (t.assignees?.length ? t.assignees.includes(id) : t.assignee_id === id) ||

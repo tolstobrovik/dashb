@@ -182,3 +182,10 @@ export const hasSubstance = (v) => {
 // in its own right and is never asked for one.
 const LINK_RE = /(?:https?:\/\/|www\.)\S{3,}|\b[\w-]+\.(?:com|ru|uz|org|net|io|me|tv|app|dev|ai|co|uk|kz)\b\S*/i
 export const hasLink = (v) => LINK_RE.test(String(v ?? ''))
+// A script is what the crew films FROM. One careless word has letters in it
+// and clears hasSubstance, and is still not a shot list.
+export const MIN_SCRIPT_WORDS = 3
+export const hasRealScript = (v) => {
+  const s = String(v ?? '').trim()
+  return hasSubstance(s) && s.split(/\s+/).filter(Boolean).length >= MIN_SCRIPT_WORDS
+}

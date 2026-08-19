@@ -5,18 +5,19 @@ const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
 // Round 65: filmed work is BOOKED, and an answer is an answer.
 //
 // THE SHOOTER. A shoot needs somebody holding the camera, and needs them from
-// the start: the day it was booked for passes whether or not anyone turns up.
-// Which types count as filmed is the admin's existing crew rule (Admin →
-// Pipeline) — the same list the gap counts already read — so a post is never
-// asked, and a type added there is demanded here with nothing else to wire up.
-// Editing and design stay advisory: they are named later, often after the
-// footage exists, and demanding them would only teach people to put any name
-// in the box.
+// the moment it is BOOKED: the day it was booked for passes whether or not
+// anyone turns up. Which types count as filmed is the admin's existing crew
+// rule (Admin → Pipeline) — the same list the gap counts already read — so a
+// post is never asked, and a type added there is demanded here with nothing
+// else to wire up. Editing and design are asked one stage later, when the
+// footage exists and the answer is real rather than a guess. (Round 66 moved
+// the demand from creation to the shooting stage, so an idea stays cheap to
+// jot down; every fixture here books its shoot on purpose.)
 //
-// THE THREE DAYS. Filmed work carries a shoot day, a day the cut is due and a
-// release day, all three, before it exists — they are the promises the whole
-// board measures. Only filmed work: a post or a story can still be jotted
-// down with a title alone, so the Idea stage and quick-add keep working.
+// THE THREE DAYS. Booked filmed work carries a shoot day, a day the cut is due
+// and a release day, all three — they are the promises the whole board
+// measures. Only filmed work, and only once booked: a post, a story or an idea
+// can still be jotted down with a title alone.
 //
 // AND THE PROMISE HOLDS. A date that HAS a day may only be moved by an admin.
 // Filling an empty one still belongs to whoever may move tasks, so unscheduled
@@ -63,7 +64,13 @@ const smm = (await req('/users', 'POST', {
 })).data
 const smmT = await login('r65smm', 'probe123')
 
-const booked = { recording_date: day(1), edit_ready_date: day(3), release_date: day(5) }
+// The shooting stage — where a filmed piece stops being an idea and becomes a
+// booking. Everything filmed in this suite is created straight into it.
+const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+const booked = {
+  recording_date: day(1), edit_ready_date: day(3), release_date: day(5),
+  status_id: shootId, reference_links: ['https://example.com/reference'],
+}
 const mk = (over) => req('/content', 'POST', { channels: [ch], ...over })
 
 // ===================== the shooter =====================
