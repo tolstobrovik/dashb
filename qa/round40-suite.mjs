@@ -59,12 +59,16 @@ const link = (await req('/telegram/link', 'POST', {}, MT)).data
 await hook({ message: { chat: { id: 900 }, text: `/start ${link.code}` } })
 
 // ---- links immediately: NO set-webhook has happened on this stack ----
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// Fixtures park on Shot, not To shoot: since round 66 the shooting stage is a
+// BOOKING and demands a crew, three days and a brief. Shot is the same thing
+// this suite actually wants — real work, past the Idea stage — without
+// pretending to book a shoot these tests are not about.
+const shotId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
 const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
 const task = (await req('/content', 'POST', {
   title: 'x40: rich video', channels: [chKey], type: 'video',
-  assignee_ids: [member.id], status_id: shootId, release_date: tomorrow,
+  assignee_ids: [member.id], status_id: shotId, release_date: tomorrow,
 })).data
 await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
@@ -85,7 +89,7 @@ ok('…and links the task', !!m && m.text.includes(`/todo?task=${task.id}`))
 // ---- once activated, the remembered origin wins over the request host ----
 await req('/telegram/set-webhook', 'POST', { url: 'https://team.example.org/api/telegram/webhook' })
 await reset()
-await req(`/content/${task.id}`, 'PATCH', { status_id: shootId })
+await req(`/content/${task.id}`, 'PATCH', { status_id: shotId })
 m = (await sentList()).find((s) => String(s.chat_id) === '900' && /🔔/.test(s.text || ''))
 ok('after Activate the public origin takes over', !!m && m.text.includes(`https://team.example.org/todo?task=${task.id}`)
   && !m.text.includes('localhost:4098'))

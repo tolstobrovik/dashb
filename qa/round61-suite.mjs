@@ -67,7 +67,7 @@ const mkUser = async (name, username, role) => (await api('/users', 'POST', {
 const anvar = await mkUser(`${tag} Anvar`, `${tag}anvar`, 'operator')
 const dilnoza = await mkUser(`${tag} Dilnoza`, `${tag}dil`, 'editor')
 const mk = (over) => api('/content', 'POST', {
-  channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), assignee_ids: [], ...over,
+  channels: ['instagram_main'], type: 'video', status_id: sid(/^shot$/i), assignee_ids: [], ...over,
 }, T).then((r) => r.data)
 
 const late = await mk({ title: `${tag} overdue release`, release_date: day(-3), operator_id: anvar.id })

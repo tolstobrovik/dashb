@@ -26,6 +26,12 @@ const iso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).form
 const hist = (await req('/content', 'POST', {
   title: 'x36: history video', channels: ['youtube'], type: 'video',
   status_id: sid(/to shoot/i), recording_date: iso, recording_time: '10:00',
+  // The shooting stage is a booking since round 66, and this round asserts on
+  // the "To shoot → Editing" labels, so the card books the shoot for real.
+  // Far-future days on purpose: the booking has to be complete, but this card
+  // must stay off the crowded-day count the calendar block below asserts on.
+  edit_ready_date: '2031-03-05', release_date: '2031-03-07', operator_id: 1,
+  reference_links: ['https://example.com/reference'],
 })).data
 await req(`/content/${hist.id}`, 'PATCH', { recording_time: '11:00' })
 await req(`/content/${hist.id}`, 'PATCH', { status_id: sid(/editing/i) })

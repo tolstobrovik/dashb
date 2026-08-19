@@ -79,7 +79,7 @@ const sts = (await req('/statuses')).data
 const stage = (re) => sts.find((x) => re.test(x.label)).id
 const task = (await req('/content', 'POST', {
   title: 'x47: blocked-chat clip', channels: [chKey], type: 'video',
-  assignee_ids: [m1.id], editor_id: m2.id, status_id: stage(/to shoot/i),
+  assignee_ids: [m1.id], editor_id: m2.id, status_id: stage(/^shot$/i),
 })).data
 await block(['702'])
 await reset()

@@ -37,10 +37,13 @@ const rev1T = await login('r1' + sfx, 'pw123456')
 const rev2T = await login('r2' + sfx, 'pw123456')
 ok('accounts created', !!(shooter && editor && rev1 && rev2 && rev2T))
 
+// A booked shoot carries a brief since round 66, so the fixtures carry one —
+// these tasks are moved onto the shooting stage all through this suite.
 const newTask = async (over = {}) => (await req('/content', 'POST', {
   title: 'Own ' + Math.random().toString(36).slice(2, 7),
   channels: ['instagram_main'], type: 'reel', status_id: S['Idea'],
-  recording_date: day(2), edit_ready_date: day(4), release_date: day(6), ...over,
+  recording_date: day(2), edit_ready_date: day(4), release_date: day(6),
+  reference_links: ['https://example.com/reference'], ...over,
 })).data
 
 // ---- review can be shared ----------------------------------------------

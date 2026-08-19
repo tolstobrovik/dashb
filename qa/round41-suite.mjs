@@ -63,12 +63,16 @@ for (const [tok, chat] of [[T1, 111], [T2, 222]]) {
 }
 
 // ---- creating with hats rings every hat-holder, with the hat named ----
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// Fixtures park on Shot, not To shoot: since round 66 the shooting stage is a
+// BOOKING and demands a crew, three days and a brief. Shot is the same thing
+// this suite actually wants — real work, past the Idea stage — without
+// pretending to book a shoot these tests are not about.
+const shotId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
 await reset()
 const task = (await req('/content', 'POST', {
   title: 'x41: handed video', channels: [chKey], type: 'video',
-  assignee_ids: [m1.id], editor_id: m2.id, status_id: shootId, recording_date: tomorrow,
+  assignee_ids: [m1.id], editor_id: m2.id, status_id: shotId, recording_date: tomorrow,
 })).data
 let sent = await sentList()
 const to1 = sent.find((s) => String(s.chat_id) === '111' && /📌/.test(s.text || ''))
@@ -102,7 +106,7 @@ ok('…the previous holder is not pinged', !sent.some((s) => String(s.chat_id) =
 
 // ---- self-assignment is silent ----
 await reset()
-await req('/content', 'POST', { title: 'x41: my own post', channels: [chKey], type: 'post', status_id: shootId }, T1)
+await req('/content', 'POST', { title: 'x41: my own post', channels: [chKey], type: 'post', status_id: shotId }, T1)
 ok('creating for yourself rings nobody', !(await sentList()).some((s) => /📌/.test(s.text || '')))
 
 // ---- Pravki carries the note to the one who owes the fix ----

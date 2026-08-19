@@ -55,19 +55,27 @@ const newTask = async (over = {}) => {
   return data
 }
 
-// ---- gate 1: naming the shooter ----------------------------------------
+// ---- gate 1: booking the shoot -----------------------------------------
 {
   const t = await newTask()
-  // The gates ADVISE rather than refuse (the owner's call: ordinary work was
-  // being blocked — a written post has no cut, and footage handed over on a
-  // drive never becomes a link). What a stage is missing is still worked out
-  // and still shown on the card; the move itself is accepted.
+  // The later gates ADVISE rather than refuse (a written post has no cut, and
+  // footage handed over on a drive never becomes a link) — but BOOKING a shoot
+  // is a wall since round 66. The day passes whether or not a camera, a crew
+  // and a brief turned up, so it is the one promise that cannot be tidied up
+  // afterwards, and the wall stands exactly where the promise is made.
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, shooterT)
-  ok('→ To shoot is accepted even with no shooter named', r.status === 200, `${r.status} ${r.data.error || ''}`)
-  ok('  and the card really moved', r.data.status_id === S['To shoot'], String(r.data.status_id))
+  ok('→ To shoot is refused while nobody is holding the camera', r.status === 400, `${r.status} ${r.data.error || ''}`)
+  ok('  and the card did not move', (await req(`/content/${t.id}`)).data.status_id === S['Idea'])
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'], operator_id: shooter }, shooterT)
-  ok('→ To shoot passes once a shooter is named', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  a shooter alone is not the whole booking — the brief is asked for too',
+    r.status === 400, `${r.status} ${r.data.error || ''}`)
+
+  r = await req(`/content/${t.id}`, 'PATCH', {
+    status_id: S['To shoot'], operator_id: shooter, reference_links: ['https://example.com/reference'],
+  }, shooterT)
+  ok('→ To shoot passes once the shoot is properly booked', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and the card really moved', r.data.status_id === S['To shoot'], String(r.data.status_id))
 }
 
 // ---- gate 2: advice for every type, filmed work included ---------------
@@ -78,7 +86,9 @@ const newTask = async (over = {}) => {
 // work is. The gap is worked out and shown; the move goes through.
 {
   const t = await newTask({ operator_id: shooter })   // a reel
-  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, shooterT)
+  // Straight to Editing rather than by way of Shot: landing ON Shot is where
+  // the editor is demanded (round 66), and this block is about what happens
+  // when no editor has been named at all.
 
   // The card knows what the move is missing BEFORE it is made — this is the
   // question the board asks to decide whether to open the handover panel.

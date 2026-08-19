@@ -55,12 +55,18 @@ await p.waitForTimeout(400)
 await p.keyboard.press('Enter')
 await p.waitForSelector('.modal', { timeout: 8000 })
 ok('no empty Drive inputs on open', (await p.locator('.modal .ready-link-field').count()) === 0)
-ok('no blank Reference block on open', (await p.locator('.modal .cm-key', { hasText: 'Reference' }).count()) === 0)
+// The Reference block is open from the start since round 66. It was folded
+// behind a button at the foot of the form, which is a strange place for the
+// thing the crew reads first — and a shoot cannot be booked without it, so
+// hiding the box that answers the demand was the wrong saving.
+ok('the Reference block is open and waiting, not hidden at the foot of the form',
+  (await p.locator('.modal .cm-key', { hasText: 'Reference' }).count()) === 1)
 await p.screenshot({ path: 'r23-modal.png' })
 await p.locator('.modal .extra-btn', { hasText: 'Delivery links' }).click()
 ok('“Delivery links” reveals all three fields', (await p.locator('.modal .ready-link-field').count()) === 3)
-await p.locator('.modal .extra-btn', { hasText: 'Reference' }).click()
-ok('“Reference” reveals the brief block', (await p.locator('.modal .cm-key', { hasText: 'Reference' }).count()) === 1)
+// There is no "Reference" button left to press — the block is simply there.
+ok('…so no button is offered to reveal what is already on screen',
+  (await p.locator('.modal .extra-btn', { hasText: 'Reference' }).count()) === 0)
 await p.keyboard.press('Escape')
 await p.close()
 

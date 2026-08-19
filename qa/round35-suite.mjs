@@ -17,7 +17,13 @@ const cleanup = async () => {
 }
 await cleanup()
 const statuses = (await req('/statuses')).data
-const shootId = statuses.find((s) => /to shoot/i.test(s.label)).id
+// "Real work" is Shot rather than To shoot since round 66: the shooting stage
+// is a BOOKING now, and a properly booked shoot has its crew and its days by
+// definition — so it has no gaps left to show, which would test nothing. Shot
+// is the same step in this round's terms (out of the brainstorm, into the
+// pipeline) and still carries the holes the gap views exist for.
+const shotId = statuses.find((s) => /^shot$/i.test(s.label)).id
+const me = (await req('/auth/me')).data.user
 // an idea with every gap in the book (default status = the Idea stage)
 const idea = (await req('/content', 'POST', { title: 'x35: idea video', channels: ['youtube'], type: 'video' })).data
 
@@ -36,10 +42,14 @@ const stripN = async () => {
 const beforeN = await stripN()
 await p.goto(BASE + '/unassigned'); await p.waitForTimeout(1100)
 ok('an Idea-stage task never reaches Unassigned', (await p.locator('.ov-row', { hasText: 'x35: idea video' }).count()) === 0)
-// move it into real work — now the gaps are real
-await req(`/content/${idea.id}`, 'PATCH', { status_id: shootId })
+// Move it into real work — now the gaps are real. Landing on Shot names the
+// editor (footage with nobody cutting it is refused since round 66); the days
+// are still missing, and those are the gaps this round is about.
+await req(`/content/${idea.id}`, 'PATCH', { editor_id: me.id })
+const movedIn = await req(`/content/${idea.id}`, 'PATCH', { status_id: shotId })
+ok('the idea really moved into real work', movedIn.status === 200, `${movedIn.status} ${movedIn.data.error || ''}`)
 await p.reload(); await p.waitForTimeout(1100)
-ok('…but the moment it moves to To shoot, it appears', (await p.locator('.ov-row', { hasText: 'x35: idea video' }).count()) === 1)
+ok('…but the moment it leaves the brainstorm, it appears', (await p.locator('.ov-row', { hasText: 'x35: idea video' }).count()) === 1)
 await p.goto(BASE + '/overview'); await p.waitForTimeout(1100)
 ok('Overview’s strip agrees — the idea joined the count only now', (await stripN()) === beforeN + 1, `${beforeN} → ${await stripN()}`)
 await p.close()

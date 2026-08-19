@@ -46,7 +46,7 @@ const zarina = (await api('/users', 'POST', {
   name: `${tag} Zarina`, username: `${tag}zar`, password: 'probe123', role: 'member', departments: ['instagram_main'],
 }, T)).data
 const mk = (over) => api('/content', 'POST', {
-  channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), assignee_ids: [], ...over,
+  channels: ['instagram_main'], type: 'video', status_id: sid(/^shot$/i), assignee_ids: [], ...over,
 }, T).then((r) => r.data)
 
 // One the admin owns, one he only edits (a different seat, still his work),
@@ -223,8 +223,11 @@ await page.keyboard.press('Control+k')
 await page.waitForSelector('.qf-input', { timeout: 10000 })
 await page.keyboard.type('releas')
 await page.waitForTimeout(600)
+// Count the PAGE row, not every row saying "release": Quick-find searches
+// task titles too, and the shared stack carries fixtures from other suites
+// with the word in their names. Matching those is the feature working.
 ok('Ctrl-K finds Releases by name',
-  (await page.locator('.qf-row').filter({ hasText: 'Releases' }).count()) === 1)
+  (await page.locator('.qf-row').filter({ has: page.locator('.qf-kind') }).filter({ hasText: 'Releases' }).count()) === 1)
 await page.keyboard.press('Escape')
 await page.waitForTimeout(400)
 await page.keyboard.press('Control+k')

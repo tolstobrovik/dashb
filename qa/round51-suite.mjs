@@ -63,7 +63,14 @@ const mk = (title, extra) => req('/content', 'POST', { title, channels: [chKey],
 const t1 = await mk('f51: sardor reel', { type: 'reel', assignee_ids: [sardor.id], status_id: idea })
 // 2 — Anvar FILMS this one and is nobody's assignee (an empty assignee_ids
 // is what stops the creator being written in as the owner by default)
-const t2 = await mk('f51: anvar shoots', { type: 'video', assignee_ids: [], operator_id: anvar.id, status_id: shoot, release_date: day(2), recording_date: day(1) })
+// Booking a shoot carries a crew, three days and a brief since round 66, and
+// this card really does belong on the shooting stage — the board's stage
+// filter is what the suite is about — so it books the shoot for real.
+const t2 = await mk('f51: anvar shoots', {
+  type: 'video', assignee_ids: [], operator_id: anvar.id, status_id: shoot,
+  release_date: day(2), recording_date: day(1), edit_ready_date: day(2),
+  reference_links: ['https://example.com/reference'],
+})
 // 3 — Dilnoza CUTS this one; a video in editing, dated
 const t3 = await mk('f51: dilnoza cuts', { type: 'video', assignee_ids: [], editor_id: dilnoza.id, status_id: edit, release_date: day(3), recording_date: day(1) })
 // 4 — a post with nobody on it at all

@@ -80,7 +80,7 @@ const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' })
 await reset()
 const task = (await req('/content', 'POST', {
   title: 'x42 <b>&clip', channels: [chKey], type: 'video',
-  assignee_ids: [m2.id], editor_id: m1.id, status_id: sid(/to shoot/i), recording_date: tomorrow,
+  assignee_ids: [m2.id], editor_id: m1.id, status_id: sid(/^shot$/i), recording_date: tomorrow,
 })).data
 let sent = await sentList()
 let m = sent.find((s) => String(s.chat_id) === '121' && /📌/.test(s.text || ''))

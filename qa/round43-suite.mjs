@@ -39,7 +39,7 @@ const admin = (await req('/users')).data.find((u) => u.username === 'admin')
 // owner + release set → the designer is this post's ONLY possible gap
 const post = (await req('/content', 'POST', {
   title: 'x43: bare post', channels: ['youtube'], type: 'post',
-  assignee_ids: [admin.id], release_date: today, status_id: sid(/to shoot/i),
+  assignee_ids: [admin.id], release_date: today, status_id: sid(/^shot$/i),
 })).data
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

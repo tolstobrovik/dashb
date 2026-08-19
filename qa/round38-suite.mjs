@@ -71,9 +71,13 @@ await req('/telegram/set-webhook', 'POST', { url: 'https://dash.example.com/api/
 adm = (await req('/telegram/admin')).data
 ok('the panel shows where the webhook points', adm.webhook?.url === 'https://dash.example.com/api/telegram/webhook'
   && adm.public_url === 'https://dash.example.com')
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// Fixtures park on Shot, not To shoot: since round 66 the shooting stage is a
+// BOOKING and demands a crew, three days and a brief. Shot is the same thing
+// this suite actually wants — real work, past the Idea stage — without
+// pretending to book a shoot these tests are not about.
+const shotId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
 const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
-const task = (await req('/content', 'POST', { title: 'x38: linked video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shootId })).data
+const task = (await req('/content', 'POST', { title: 'x38: linked video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shotId })).data
 await fetch(MOCK + '/__reset', { method: 'POST' })
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 ok('the bell now carries a task link', (await sentList()).some((s) =>

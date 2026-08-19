@@ -77,9 +77,13 @@ ok('Start with the code links the account', (await req('/telegram/status', 'GET'
 ok('…and the bot said hello', (await sentList()).some((s) => s.method === 'sendMessage' && String(s.chat_id) === '777' && /Connected/.test(s.text || '')))
 
 // ---- the mirrored bell ----
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// Fixtures park on Shot, not To shoot: since round 66 the shooting stage is a
+// BOOKING and demands a crew, three days and a brief. Shot is the same thing
+// this suite actually wants — real work, past the Idea stage — without
+// pretending to book a shoot these tests are not about.
+const shotId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
 const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
-const task = (await req('/content', 'POST', { title: 'x37: bridge video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shootId })).data
+const task = (await req('/content', 'POST', { title: 'x37: bridge video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shotId })).data
 await fetch(MOCK + '/__reset', { method: 'POST' })
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 let sent = await sentList()
@@ -109,7 +113,7 @@ ok('the test line reaches the member', (await sentList()).some((s) => String(s.c
 await req('/telegram/unlink', 'POST', {}, MT)
 ok('unlink forgets the chat', (await req('/telegram/status', 'GET', undefined, MT)).data.linked === false)
 await fetch(MOCK + '/__reset', { method: 'POST' })
-await req(`/content/${task.id}`, 'PATCH', { status_id: shootId })
+await req(`/content/${task.id}`, 'PATCH', { status_id: shotId })
 ok('an unlinked member is left in peace', !(await sentList()).some((s) => String(s.chat_id) === '777'))
 
 // ---- the Profile card ----

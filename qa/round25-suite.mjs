@@ -20,8 +20,11 @@ await cleanup()
 const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
 const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + d * 864e5))
-// seeds start in To shoot: since round 35, Idea-stage tasks sit out the gap views
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// Seeds start in Shot: Idea-stage tasks sit out the gap views (round 35), and
+// since round 66 the shooting stage is a BOOKING that refuses exactly the
+// holes this page exists to show. Work logged after the fact is where those
+// holes really live now, and Shot is where it lands.
+const shootId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
 await req('/content', 'POST', { title: 'x25: gap video', channels: ['youtube'], type: 'video', status_id: shootId })
 await req('/content', 'POST', { title: 'x25: late post', channels: ['instagram_main'], type: 'post', assignees: [jas.id], designer_id: jas.id, release_date: iso(-1), status_id: shootId })
 
