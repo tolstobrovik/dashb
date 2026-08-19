@@ -28,8 +28,19 @@ const task = (await req('/content', { method: 'POST', token: MT, body: { title: 
 ok('member creates task with long title', !!task.id)
 const statuses = (await req('/statuses', { token: MT })).data
 const toShoot = statuses.find((s) => s.label === 'To shoot')
+// Booking a shoot is a promise now, so it carries one: who is filming, the
+// three days, and something for them to work from. A member may still make
+// that promise — the rule is about the booking being complete, not about who
+// is allowed to make it.
+const bare = await req(`/content/${task.id}`, { method: 'PATCH', token: MT, body: { status_id: toShoot.id } })
+ok('a bare reel cannot be booked onto To shoot', bare.status === 400, `${bare.status} ${bare.data.error || ''}`)
+await req(`/content/${task.id}`, { method: 'PATCH', token: MT, body: {
+  operator_id: jas.id, recording_date: '2026-07-14', edit_ready_date: '2026-07-17',
+  reference_links: ['https://example.com/reference'],
+} })
 const moved = await req(`/content/${task.id}`, { method: 'PATCH', token: MT, body: { status_id: toShoot.id } })
-ok('member moves task to To shoot', moved.status === 200 && moved.data.status_id === toShoot.id)
+ok('member books the shoot and moves it to To shoot', moved.status === 200 && moved.data.status_id === toShoot.id,
+  `${moved.status} ${moved.data.error || ''}`)
 ok('member blocked from admin user PATCH', (await req(`/users/${mir.id}`, { method: 'PATCH', token: MT, body: { name: 'hack' } })).status === 403)
 const MT2 = await login('mir', 'm1234')
 const mirView = (await req('/content', { token: MT2 })).data
