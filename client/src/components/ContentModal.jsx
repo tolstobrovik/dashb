@@ -90,8 +90,12 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
         // slot for quick buttons, and a sentence wrapped into it a word at a
         // time is how "Ask to move" became four lines tall.
         <span className="drow-ask">
-          <button type="button" className="qbtn qbtn-ask" onClick={() => onAskMove(dateKey)}>Ask to move</button>
-          <span className="drow-promised">This day is promised — only an admin moves it, and only on a reason.</span>
+          {onAskMove && (
+            <button type="button" className="qbtn qbtn-ask" onClick={() => onAskMove(dateKey)}>Ask to move</button>
+          )}
+          <span className="drow-promised">
+            This day is promised — only an admin moves it{onAskMove ? ', and only on a reason.' : '.'}
+          </span>
         </span>
       )}
     </div>
@@ -427,6 +431,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Promised days are the admin's to move. For everyone else the picker is
   // read-only and the ask is the way through.
   const datesLocked = !isAdmin
+  // Only the people who could actually make the ask are offered it. A crew
+  // account has neither right, and a button that answers 403 is worse than no
+  // button — it reads as the app being broken rather than as "not your call".
+  const canAsk = !isAdmin && (can(user, 'manage_content') || can(user, 'move_tasks'))
   const confirmSet = (field, day) => window.confirm(
     `Promise ${PROMISED[field]} for ${day}?\n\n`
     + 'Everything on the board measures itself against this day, so once it is '
@@ -1462,7 +1470,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         {(() => {
           const shared = {
             form, setForm, disabled: detailsLocked, confirmSet,
-            locked: datesLocked && !creating, onAskMove: askToMove,
+            locked: datesLocked && !creating, onAskMove: canAsk ? askToMove : null,
           }
           const at = (k) => ({ ...shared, bad: badField === k })
           return (<>

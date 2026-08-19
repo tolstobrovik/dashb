@@ -243,6 +243,18 @@ open = await req('/content/date-requests/open')
 ok('an answered ask leaves the queue', !open.data.some((a) => a.id === waiting.id),
   JSON.stringify(open.data.map((a) => a.id)))
 
+// A crew account cannot ask, so the form must not offer them the button — and
+// the server is the one that decides. The SHOOTER is used deliberately: they
+// hold the task and are on its channel, so this reaches the dates rule itself
+// rather than stopping at "not your channel" and proving nothing.
+const shooterT = await login('r68op', 'probe123')
+r = await req(`/content/${filmed.id}/date-requests`, 'POST',
+  { field: 'recording_date', to_date: day(4), reason: 'I would rather shoot on the Friday' }, shooterT)
+ok('the crew hold the task and still have no say over its days', r.status === 403,
+  `${r.status} ${r.data.error || ''}`)
+ok('…refused for THAT reason, not for the channel', /permission to move dates/i.test(r.data.error || ''),
+  r.data.error)
+
 // ===================== the repeat check does not read the board =============
 // The fingerprint is stored and indexed rather than recomputed from every
 // script in the database. What matters here is that it still CATCHES — the

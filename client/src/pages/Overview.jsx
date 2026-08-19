@@ -143,8 +143,15 @@ export default function Overview() {
   // there is nothing to guard here.
   const [asks, setAsks] = useState([])
   const [busyAsk, setBusyAsk] = useState(0)
+  const loadAsks = () => api.pollView('/content/date-requests/open')
+    .then((d) => { if (Array.isArray(d)) setAsks(d) }).catch(() => {})
   useEffect(() => {
-    api.get('/content/date-requests/open').then((d) => setAsks(Array.isArray(d) ? d : [])).catch(() => {})
+    // Polled with the rest of the page: an ask that arrives while an admin is
+    // sitting on Overview should appear there, not wait for a reload. It is
+    // ETag'd like everything else, so a quiet minute costs one 304.
+    loadAsks()
+    const id = setInterval(() => { if (!document.hidden) loadAsks() }, 10000)
+    return () => clearInterval(id)
   }, [])
   const answer = async (a, approve) => {
     setBusyAsk(a.id)
