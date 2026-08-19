@@ -1375,35 +1375,38 @@ router.patch('/:id', wrap(async (req, res) => {
       // the card by the StageGate panel (/api/warnings computes the same list)
       // and counted against the handover deadlines below.
       //
-      // FILMED work is different, and this is where the walls are. A shoot is
-      // the one thing on this board that cannot be sorted out afterwards: the
-      // day passes whether or not a camera, a crew and a brief turned up. So
-      // booking one is a wall, and it lands exactly where the booking happens
-      // — the move onto the shooting stage — instead of at creation, which is
-      // what made every idea expensive to jot down.
+      // FILMED work is different, and this is where the two walls are. A shoot
+      // is the one thing on this board that cannot be sorted out afterwards:
+      // the day passes whether or not a camera, a crew and a brief turned up.
+      //
+      // Each wall stands at the stage it is ABOUT, and refuses a move that
+      // LANDS there — booking a shoot when the card is put on the shooting
+      // stage, naming an editor when it is put on the one after. A card thrown
+      // further along than that is not making either promise: it is a record
+      // of work that happened elsewhere — shot on a phone last week, cut on
+      // somebody's laptop, dragged onto Ready to catch the board up — and
+      // demanding a future shoot day of it would be asking about a day that
+      // has been and gone. That is the same reason creating one there is left
+      // alone, and the walls stay where a person actually stands.
       const filmedNow = (await getCrewNeeds()).operator.includes(val('type') ?? row.type)
-      if (filmedNow) {
-        const g = resolved.gates.shoot
-        const crossing = (gate) => gate && at(patch.status_id) >= gate.index && at(row.status_id) < gate.index
-        if (crossing(g)) {
-          let links = []
-          try { links = JSON.parse(val('reference_links') || '[]') } catch { links = [] }
-          const doc = await hasFile()
-          const problem = bookingProblem({
-            operatorId: val('operator_id'),
-            recording: val('recording_date'), editReady: val('edit_ready_date'), release: val('release_date'),
-            refReady: links.length > 0 || !!val('photo') || !!doc || !!val('shot_link')
-              || hasLink(val('reference_text')) || hasRealScript(val('script')),
-          })
-          if (problem) return res.status(400).json({ error: problem })
-        }
-        // Filming done means the next pair of hands has a name. The footage
-        // exists by now, so the editor is a real answer rather than a guess —
-        // which is why this is asked HERE and never at creation.
-        const shotIndex = g ? g.index + 1 : -1
-        if (shotIndex > 0 && at(patch.status_id) >= shotIndex && at(row.status_id) < shotIndex && !val('editor_id'))
-          return res.status(400).json({ error: 'Name who cuts this — footage with no editor waiting is footage nobody is cutting' })
+      const g = resolved.gates.shoot
+      if (filmedNow && g && at(patch.status_id) === g.index) {
+        let links = []
+        try { links = JSON.parse(val('reference_links') || '[]') } catch { links = [] }
+        const doc = await hasFile()
+        const problem = bookingProblem({
+          operatorId: val('operator_id'),
+          recording: val('recording_date'), editReady: val('edit_ready_date'), release: val('release_date'),
+          refReady: links.length > 0 || !!val('photo') || !!doc || !!val('shot_link')
+            || hasLink(val('reference_text')) || hasRealScript(val('script')),
+        })
+        if (problem) return res.status(400).json({ error: problem })
       }
+      // Filming done means the next pair of hands has a name. The footage
+      // exists by now, so the editor is a real answer rather than a guess —
+      // which is why this is asked HERE and never at creation.
+      if (filmedNow && g && at(patch.status_id) === g.index + 1 && !val('editor_id'))
+        return res.status(400).json({ error: 'Name who cuts this — footage with no editor waiting is footage nobody is cutting' })
 
       // The re-promise. When the stage being handed over finished after its
       // own deadline, the next owner cannot inherit a date that is already

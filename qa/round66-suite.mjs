@@ -99,11 +99,13 @@ r = await req(`/content/${idea.id}`, 'PATCH', { operator_id: null })
 ok('…and clearing a hat it never had is not a refusal', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
 // ===================== booking one IS the promise =====================
-// A jump straight from Idea past the shooting stage still crosses the gate,
-// so the booking is caught there rather than skipped.
-const leaper = await mk({ title: 'r66 the leap', type: 'video', status_id: ideaId })
+// Each wall stands at the stage it is ABOUT and refuses a move that LANDS
+// there. A card thrown further along than that is not making either promise —
+// it is a record of work that happened elsewhere, and a shoot day in its
+// future would be a day that has been and gone.
+const leaper = await mk({ title: 'r66 shot on a phone, logged after', type: 'video', status_id: ideaId })
 r = await req(`/content/${leaper.data.id}`, 'PATCH', { status_id: editId })
-ok('leaping an idea straight to Editing does not skip the booking', r.status === 400,
+ok('a card dragged past the shoot to catch the board up is left alone', r.status === 200,
   `${r.status} ${r.data.error || ''}`)
 
 r = await mk({ title: 'r66 booked with nothing', type: 'video', status_id: shootId })
@@ -145,6 +147,9 @@ ok('…and a real script is a brief in its own right', r.status === 201, `${r.st
 r = await mk({ title: 'r66 filmed last week, logged now', type: 'video', status_id: editId })
 ok('a piece created straight into Editing is a record being backfilled', r.status === 201,
   `${r.status} ${r.data.error || ''}`)
+r = await req(`/content/${r.data.id}`, 'PATCH', { status_id: sid(/^ready$/i) })
+ok('…and it keeps moving, because its shoot is behind it, not ahead', r.status === 200,
+  `${r.status} ${r.data.error || ''}`)
 
 // ===================== MOVING an idea into the shoot =====================
 // This is the path people actually use: the idea is agreed, and somebody drags
@@ -185,6 +190,15 @@ r = await mk({ title: 'r66 a written post', type: 'post', status_id: shootId })
 ok('a post is never asked for a shooter, wherever it sits', r.status === 201, `${r.status} ${r.data.error || ''}`)
 r = await req(`/content/${r.data.id}`, 'PATCH', { status_id: editId })
 ok('…and moves through the stages with nobody named', r.status === 200, `${r.status} ${r.data.error || ''}`)
+
+// Ticking work OFF a list is not booking a shoot. A card landing in the final
+// stage is finished, and asking it to promise a shoot day asks about a day
+// that has been and gone — publishing has its own guard and never was this
+// rule's business.
+const ticked = await mk({ title: 'r66 filmed before the board existed', type: 'video', status_id: ideaId })
+r = await req(`/content/${ticked.data.id}`, 'PATCH', { done: true })
+ok('ticking a bare video complete is not asked for a booking', r.status === 200,
+  `${r.status} ${r.data.error || ''}`)
 
 // ===================== a careless word is not a script =====================
 // POST replaces the whole rule set, so every key is sent together.

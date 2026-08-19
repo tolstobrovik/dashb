@@ -272,14 +272,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const liveStages = useMemo(() => statuses.filter((s) => !/^deleted$/i.test(s.label)), [statuses])
   const shootAt = liveStages.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))
   const stageAt = liveStages.findIndex((s) => s.id === form.status_id)
-  // Where the task WAS. A piece already past the shoot is not being booked by
-  // this save — it was booked (or backfilled) long ago, and asking again would
-  // block every unrelated edit to work that is already in the can.
-  const wasAt = creating ? -1 : liveStages.findIndex((s) => s.id === item.status_id)
-  const bookingNow = shootAt >= 0 && stageAt >= shootAt &&
-    (creating ? stageAt === shootAt : wasAt < shootAt)
-  const needsOperator = isFilmedType && bookingNow
-  const needsEditor = isFilmedType && shootAt >= 0 && stageAt > shootAt && !creating && wasAt <= shootAt
+  // Each demand stands at the stage it is about and lands on a save that puts
+  // the card THERE. A card parked further along is not making either promise —
+  // it is a record of work that happened elsewhere, and a shoot day in its
+  // future would be a day that has been and gone.
+  const needsOperator = isFilmedType && shootAt >= 0 && stageAt === shootAt
+  const needsEditor = isFilmedType && shootAt >= 0 && stageAt === shootAt + 1
   // Crew accounts work to the shoot and maker deadlines — the release date is
   // the channel's business and is not shown to them at all. They also can't
   // move the stage freely: they see it, and mark their one milestone.
