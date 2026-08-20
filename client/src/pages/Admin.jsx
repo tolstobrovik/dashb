@@ -542,7 +542,7 @@ function TasksTab() {
 }
 
 /* ==================== TEAM (+ permissions) ==================== */
-const BLANK_USER = { name: '', username: '', password: '', role: 'member', crew_roles: [], departments: [], permissions: {} }
+const BLANK_USER = { name: '', username: '', password: '', role: 'member', crew_roles: [], departments: [], admin_channels: [], permissions: {} }
 
 function TeamTab() {
   const { channels } = useChannels()
@@ -558,7 +558,7 @@ function TeamTab() {
 
   const openAdd = () => { setForm(BLANK_USER); setUsernameTouched(false); setEditing(null); setErr(''); setModal(true) }
   const openEdit = (u) => {
-    setForm({ name: u.name, username: u.username, password: '', role: u.role, crew_roles: [...(u.crew_roles || [])], departments: u.departments, permissions: { ...u.permissions } })
+    setForm({ name: u.name, username: u.username, password: '', role: u.role, crew_roles: [...(u.crew_roles || [])], departments: u.departments, admin_channels: [...(u.admin_channels || [])], permissions: { ...u.permissions } })
     setUsernameTouched(true); setEditing(u.id); setErr(''); setModal(true)
   }
 
@@ -566,7 +566,7 @@ function TeamTab() {
     setBusy(true); setErr('')
     try {
       if (editing) {
-        const body = { name: form.name, username: form.username, role: form.role, crew_roles: form.crew_roles, departments: form.departments, permissions: form.permissions }
+        const body = { name: form.name, username: form.username, role: form.role, crew_roles: form.crew_roles, departments: form.departments, admin_channels: form.admin_channels || [], permissions: form.permissions }
         if (form.password) body.password = form.password
         const u = await api.patch(`/users/${editing}`, body)
         setUsers((prev) => prev.map((x) => (x.id === editing ? u : x)))
@@ -585,6 +585,11 @@ function TeamTab() {
 
   const toggleDept = (k) =>
     setForm((f) => ({ ...f, departments: f.departments.includes(k) ? f.departments.filter((d) => d !== k) : [...f.departments, k] }))
+  const toggleAdminChan = (k) =>
+    setForm((f) => {
+      const cur = f.admin_channels || []
+      return { ...f, admin_channels: cur.includes(k) ? cur.filter((d) => d !== k) : [...cur, k] }
+    })
   const togglePerm = (k) =>
     setForm((f) => ({ ...f, permissions: { ...f.permissions, [k]: !f.permissions[k] } }))
 
@@ -612,14 +617,19 @@ function TeamTab() {
                   </div>
                 </td>
                 <td>
-                  {u.role === 'admin' ? <span className="badge"><ShieldCheck size={12} /> Admin</span>
+                  {u.role === 'admin' ? <span className="badge"><ShieldCheck size={12} /> {(u.admin_channels || []).length ? 'Channel admin' : 'Admin'}</span>
                     : (u.crew_roles || []).length > 0 ? <span className="badge badge-muted"><Video size={12} /> {(u.crew_roles || []).map((c) => c[0].toUpperCase() + c.slice(1)).join(' & ')}</span>
                     : <span className="badge badge-muted">Member</span>}
                 </td>
                 <td>
                   <div className="dept-chips">
                     {u.role === 'admin'
-                      ? <span className="stat-sub">All channels</span>
+                      ? ((u.admin_channels || []).length
+                        ? u.admin_channels.map((d) => {
+                          const c = channels.find((x) => x.key === d)
+                          return <span key={d} className="badge">{c?.label || d}</span>
+                        })
+                        : <span className="stat-sub">All channels</span>)
                       : (u.crew_roles || []).length > 0
                         ? <span className="stat-sub">Their work, any channel</span>
                         : u.departments.map((d) => {
@@ -675,6 +685,24 @@ function TeamTab() {
             <RolePicker role={form.role} crewRoles={form.crew_roles}
               onChange={(role, crew_roles) => setForm({ ...form, role, crew_roles })} />
           </div>
+          {form.role === 'admin' && (
+            <div className="field">
+              <label>Which channels do they run?</label>
+              <div className="checkbox-row">
+                {channels.map((c) => (
+                  <label key={c.key} className={'checkbox-chip' + ((form.admin_channels || []).includes(c.key) ? ' on' : '')}>
+                    <input type="checkbox" checked={(form.admin_channels || []).includes(c.key)} onChange={() => toggleAdminChan(c.key)} />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+              <div className="cm-hint">
+                {(form.admin_channels || []).length === 0
+                  ? 'Nothing ticked — an admin of the whole board: every channel, plus accounts, channels and the pipeline rules.'
+                  : 'They run these channels only. Full reach over the work there — the dates, the crew, publishing — and no access to accounts, channels or the pipeline rules.'}
+              </div>
+            </div>
+          )}
           {form.role === 'member' && (
             <>
               <div className="field"><label>Channels</label>

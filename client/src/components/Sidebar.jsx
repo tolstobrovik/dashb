@@ -53,6 +53,11 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   const customized = prefs.hidden.length > 0 || Object.values(prefs.order).some((l) => l.length > 0)
 
   const isAdmin = user.role === 'admin'
+  // The Admin panel is where accounts, channels and the pipeline rules live —
+  // the whole board's furniture. A CHANNEL admin runs content on their own
+  // channels and would meet a refusal on every tab in there, so they are not
+  // shown the door. Post Production and Team stay: both are about the work.
+  const runsEverything = isAdmin && !(user.admin_channels || []).length
   const groups = useMemo(() => ({
     main: [
       isAdmin && { key: 'overview', to: '/overview', label: 'Overview', icon: LayoutDashboard },
@@ -71,9 +76,9 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
     manage: isAdmin ? [
       { key: 'crew', to: '/crew', label: 'Post Production', icon: Clapperboard },
       { key: 'team', to: '/team', label: 'Team & hiring', icon: UsersRound },
-      { key: 'admin', to: '/admin', label: 'Admin', icon: Shield },
+      ...(runsEverything ? [{ key: 'admin', to: '/admin', label: 'Admin', icon: Shield }] : []),
     ] : [],
-  }), [isAdmin, visible])
+  }), [isAdmin, runsEverything, visible])
 
   // Personal order first; unknown items (new channels) keep their place at
   // the end, visible — nothing is ever born hidden.

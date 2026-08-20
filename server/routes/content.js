@@ -4,7 +4,7 @@ import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveS
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { resolveGates, gatesUpTo, phasesOf, holderOf } from '../deadlines.js'
 import { readText, hasSubstance, hasLink, isSentence, clip, scriptKey, MIN_SENTENCE_WORDS } from '../text.js'
-import { authRequired, canAccessDept, can, wrap, JWT_SECRET } from '../auth.js'
+import { authRequired, canAccessDept, can, wrap, JWT_SECRET, isAdminOn, isFullAdmin } from '../auth.js'
 import { tgMirror, tgOriginFrom, tgEsc, tgDate } from '../telegram.js'
 
 const router = Router()
@@ -126,8 +126,16 @@ const cleanLink = (v) => {
 // Publishing (Ready → Published) is the SMM's call: an admin, or someone with
 // the review_publish right who is actually on one of the task's channels — you
 // can't publish to a channel you don't belong to.
+// The channels a task lives on — rows arrive both parsed and raw depending on
+// which query built them, so this asks once and both shapes answer.
+const chansOf = (row) => (Array.isArray(row?.channels)
+  ? row.channels
+  : (() => { try { return JSON.parse(row?.channels || '[]') } catch { return [] } })())
+// Does this person's admin writ cover this task?
+const adminHere = (user, row) => isAdminOn(user, chansOf(row))
+
 const canPublish = (user, row) => {
-  if (user.role === 'admin') return true
+  if (adminHere(user, row)) return true
   if (!can(user, 'review_publish')) return false
   return JSON.parse(row.channels || '[]').some((ch) => (user.departments || []).includes(ch))
 }
@@ -143,7 +151,7 @@ async function revisionStageId(target) {
 
 // A member touches a task when it sits on one of their channels (or is theirs).
 const canTouch = (user, row) =>
-  user.role === 'admin' ||
+  adminHere(user, row) ||
   assigneesOf(row).includes(user.id) ||
   row.operator_id === user.id ||
   row.editor_id === user.id ||
@@ -278,7 +286,7 @@ const addRole = (map, id, role) => {
 const dateBit = (rec, rel) => (rec ? ` · shoot ${tgDate(rec)}` : rel ? ` · release ${tgDate(rel)}` : '')
 
 const canSee = (user, row) =>
-  user.role === 'admin' ||
+  adminHere(user, row) ||
   assigneesOf(row).includes(user.id) ||
   row.operator_id === user.id || // crew see their work even outside their departments
   row.editor_id === user.id ||
@@ -335,15 +343,18 @@ async function shootProblems({ operatorId, date, start, end, excludeId }) {
 }
 
 // Answers a 409 unless the caller is an admin pushing through on purpose.
-async function guardShoot(req, res, { operatorId, date, start, end, excludeId }) {
+async function guardShoot(req, res, { operatorId, date, start, end, excludeId, chans }) {
   const problems = await shootProblems({ operatorId, date, start, end, excludeId })
   if (!problems) return false
-  if (req.body?.force === true && req.user.role === 'admin') return false
+  // Double-booking somebody is the channel owner's call to make, on their own
+  // channels — not a power that belongs to whoever happens to be an admin.
+  const mayForce = isAdminOn(req.user, chans || [])
+  if (req.body?.force === true && mayForce) return false
   res.status(409).json({
     error: problems.schedule || 'That operator is already booked at this time',
     conflicts: problems.conflicts,
     schedule_issue: problems.schedule,
-    can_force: req.user.role === 'admin',
+    can_force: mayForce,
   })
   return true
 }
@@ -351,7 +362,7 @@ async function guardShoot(req, res, { operatorId, date, start, end, excludeId })
 router.get('/', wrap(async (req, res) => {
   const { department, mine, thumbs } = req.query
   let rows = (await all(`SELECT ${listColumns(thumbs === '1')} FROM content ORDER BY pinned DESC, todo_sort, created_at DESC`)).map(parse)
-  if (req.user.role !== 'admin') rows = rows.filter((c) => canSee(req.user, c))
+  if (!isFullAdmin(req.user)) rows = rows.filter((c) => canSee(req.user, c))
   if (department) rows = rows.filter((c) => c.channels.includes(department))
   if (mine === 'true') rows = rows.filter((c) => c.assignee_id === req.user.id)
   res.json(rows)
@@ -396,13 +407,17 @@ router.get('/revisions/mine', wrap(async (req, res) => {
 // Powers the "N pravki" chips on Post Production.
 router.get('/open-revisions', wrap(async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
-  const rows = await all(`
+  // A channel admin sees the channels they run, and only those. Filtered
+  // after the query rather than in it, because a task's channels are a JSON
+  // array and every store this runs on spells that differently.
+  const mine = (rows) => (isFullAdmin(req.user) ? rows : rows.filter((r) => isAdminOn(req.user, chansOf(r))))
+  const rows = mine(await all(`
     SELECT r.id, r.content_id, r.target, r.note, r.created_at,
-      c.title, c.operator_id, c.editor_id, c.designer_id
+      c.title, c.channels, c.operator_id, c.editor_id, c.designer_id
     FROM revisions r JOIN content c ON c.id = r.content_id
     WHERE r.resolved_at IS NULL
       AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
-    ORDER BY r.created_at DESC`)
+    ORDER BY r.created_at DESC`))
   res.json(rows.map((r) => ({
     id: r.id, content_id: r.content_id, target: r.target, note: r.note, created_at: r.created_at, title: r.title,
     person_id: r.target === 'operator' ? r.operator_id : r.target === 'designer' ? r.designer_id : r.editor_id,
@@ -484,7 +499,7 @@ router.delete('/files/:fileId', wrap(async (req, res) => {
   if (!doc) return res.status(404).json({ error: 'Not found' })
   const row = await parentOf(req.user, doc.content_id)
   if (!row) return res.status(404).json({ error: 'Not found' })
-  if (req.user.role !== 'admin' && doc.uploaded_by !== req.user.id)
+  if (!isFullAdmin(req.user) && doc.uploaded_by !== req.user.id)
     return res.status(403).json({ error: 'Only the person who attached this (or an admin) can remove it' })
   await run('DELETE FROM attachments WHERE id = ?', doc.id)
   await run(...actRow(req.user, row.id, row.title, 'updated', 'document', doc.name, null, new Date().toISOString()))
@@ -802,7 +817,7 @@ router.post('/', wrap(async (req, res) => {
       : undefined
   if (rawIds !== undefined) {
     const ids = [...new Set((Array.isArray(rawIds) ? rawIds : [rawIds]).map(Number).filter(Boolean))]
-    if ((ids.length !== 1 || ids[0] !== req.user.id) && req.user.role !== 'admin')
+    if ((ids.length !== 1 || ids[0] !== req.user.id) && !isAdminOn(req.user, channels))
       return res.status(403).json({ error: 'Only admins can assign tasks to others' })
     for (const id of ids) {
       if (!(await userExists(id)))
@@ -846,7 +861,7 @@ router.post('/', wrap(async (req, res) => {
   // Double-booking / working-hours guard — warns before the shoot is saved.
   if (await guardShoot(req, res, {
     operatorId: crew.operator_id, date: recording_date || null,
-    start: recording_time, end: recording_end,
+    start: recording_time, end: recording_end, chans: channels,
   })) return
 
   const status = status_id || (await get('SELECT id FROM statuses ORDER BY sort, id'))?.id || null
@@ -924,8 +939,8 @@ router.post('/:id/revisions', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
   if (!canTouch(req.user, row)) return res.status(403).json({ error: 'Not your channel' })
-  const onChannel = req.user.role === 'admin' ||
-    JSON.parse(row.channels || '[]').some((ch) => (req.user.departments || []).includes(ch))
+  const onChannel = adminHere(req.user, row) ||
+    chansOf(row).some((ch) => (req.user.departments || []).includes(ch))
   if (!can(req.user, 'request_changes') || !onChannel)
     return res.status(403).json({ error: 'Only the channel’s reviewer can request changes' })
   const note = String(req.body?.note ?? '').trim().slice(0, 4000)
@@ -982,7 +997,7 @@ router.post('/revisions/:rid/resolve', wrap(async (req, res) => {
     (rev.target === 'operator' && row.operator_id === req.user.id) ||
     (rev.target === 'editor' && row.editor_id === req.user.id) ||
     (rev.target === 'designer' && row.designer_id === req.user.id)
-  if (!hatHolder && req.user.role !== 'admin' && !(can(req.user, 'deliver_work') && canTouch(req.user, row)))
+  if (!hatHolder && !adminHere(req.user, row) && !(can(req.user, 'deliver_work') && canTouch(req.user, row)))
     return res.status(403).json({ error: 'This isn’t your fix to deliver' })
   const patch = {}
   const field = { operator: 'shot_link', editor: 'ready_link', designer: 'design_link' }[rev.target]
@@ -1074,7 +1089,7 @@ router.post('/flags/:fid/clear', wrap(async (req, res) => {
   const f = await get('SELECT * FROM task_flags WHERE id = ?', req.params.fid)
   if (!f) return res.status(404).json({ error: 'Not found' })
   if (f.cleared_at) return res.status(409).json({ error: 'That hand is already down' })
-  if (f.raised_by !== req.user.id && req.user.role !== 'admin' && !can(req.user, 'manage_content'))
+  if (f.raised_by !== req.user.id && !adminHere(req.user, await get('SELECT channels FROM content WHERE id = ?', f.content_id)) && !can(req.user, 'manage_content'))
     return res.status(403).json({ error: 'Only whoever raised it, or somebody who can act on it, puts it down' })
   await run('UPDATE task_flags SET cleared_at = ?, cleared_by = ?, cleared_name = ? WHERE id = ?',
     new Date().toISOString(), req.user.id, req.user.name || '', f.id)
@@ -1087,11 +1102,16 @@ router.post('/flags/:fid/clear', wrap(async (req, res) => {
 router.get('/flags/open', wrap(async (req, res) => {
   if (!can(req.user, 'manage_content') && !can(req.user, 'move_tasks') && req.user.role !== 'admin')
     return res.json([])
-  res.json(await all(`
+  const rows = await all(`
     SELECT f.id, f.content_id, f.kind, f.reason, f.raised_name, f.created_at, c.title, c.channels,
            c.recording_date, c.edit_ready_date, c.release_date
     FROM task_flags f JOIN content c ON c.id = f.content_id
-    WHERE f.cleared_at IS NULL ORDER BY f.id`))
+    WHERE f.cleared_at IS NULL ORDER BY f.id`)
+  // A channel admin is shown the channels they run; everyone else who can see
+  // this queue sees what they could already see on the board.
+  res.json(req.user.role === 'admin'
+    ? rows.filter((r) => isAdminOn(req.user, chansOf(r)))
+    : rows.filter((r) => chansOf(r).some((ch) => (req.user.departments || []).includes(ch))))
 }))
 
 // ---- moving a promised day -------------------------------------------------
@@ -1115,11 +1135,13 @@ const openRequestsFor = (contentId) => all(
 // stays wrong. Cheap enough to sit on the Overview and be right every time.
 router.get('/date-requests/open', wrap(async (req, res) => {
   if (req.user.role !== 'admin') return res.json([])
-  res.json(await all(`
+  const rows = await all(`
     SELECT d.id, d.content_id, d.field, d.from_date, d.to_date, d.reason, d.asked_name, d.created_at,
            c.title, c.channels
     FROM date_requests d JOIN content c ON c.id = d.content_id
-    WHERE d.state = 'open' ORDER BY d.id`))
+    WHERE d.state = 'open' ORDER BY d.id`)
+  // Only the channels this admin runs — a queue you cannot act on is noise.
+  res.json(rows.filter((r) => isAdminOn(req.user, chansOf(r))))
 }))
 
 router.post('/:id/date-requests', wrap(async (req, res) => {
@@ -1176,6 +1198,10 @@ router.post('/date-requests/:rid/decide', wrap(async (req, res) => {
   if (dr.state !== 'open') return res.status(409).json({ error: 'That request has already been answered' })
   const row = await get('SELECT * FROM content WHERE id = ?', dr.content_id)
   if (!row) return res.status(404).json({ error: 'Not found' })
+  // An admin answers for the channels they run. Somebody else's channel is
+  // somebody else's promise to move.
+  if (!adminHere(req.user, row))
+    return res.status(403).json({ error: 'That day belongs to a channel you don’t run — its own admin answers this' })
   const approve = !!req.body?.approve
   const note = String(req.body?.note ?? '').trim().slice(0, 2000)
   const now = new Date().toISOString()
@@ -1441,7 +1467,7 @@ router.patch('/:id', wrap(async (req, res) => {
       if (!can(req.user, 'manage_content') && !can(req.user, 'move_tasks'))
         return res.status(403).json({ error: 'You don’t have permission to move dates' })
       const next = body[f] || null
-      if (LOCKED_DATES.includes(f) && row[f] && String(next ?? '') !== String(row[f]) && req.user.role !== 'admin')
+      if (LOCKED_DATES.includes(f) && row[f] && String(next ?? '') !== String(row[f]) && !adminHere(req.user, row))
         return res.status(403).json({
           error: `That day is already promised — ask an admin to move it, and say what happened.`,
           // What the form needs to offer the ask instead of just refusing:
@@ -1518,7 +1544,7 @@ router.patch('/:id', wrap(async (req, res) => {
     const ids = [...new Set(reassign.map(Number).filter(Boolean))]
     const same = JSON.stringify(ids) === JSON.stringify(assigneesOf(row))
     if (!same) {
-      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can reassign tasks' })
+      if (!adminHere(req.user, row)) return res.status(403).json({ error: 'Only admins can reassign tasks' })
       for (const id of ids) {
         if (!(await userExists(id)))
           return res.status(400).json({ error: 'That member is no longer on the team — refresh the page and pick again' })
@@ -1560,6 +1586,7 @@ router.patch('/:id', wrap(async (req, res) => {
     if (await guardShoot(req, res, {
       operatorId: nx('operator_id'), date: nx('recording_date'),
       start: nx('recording_time'), end: nx('recording_end'), excludeId: row.id,
+      chans: patch.channels !== undefined ? chansOf({ channels: patch.channels }) : chansOf(row),
     })) return
   }
 
@@ -1595,7 +1622,7 @@ router.patch('/:id', wrap(async (req, res) => {
   // publishing keeps its own key above, un-publishing stays as it was, and
   // admins pass everything. Rules only ever narrow the existing tickets
   // (crew milestones, a member's move_tasks); they never grant new ones.
-  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin' &&
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id && !adminHere(req.user, row) &&
       !(await isFinal(row.status_id)) && !(await isFinal(nextStatus))) {
     const kinds = [
       row.operator_id === req.user.id && 'operator',
@@ -1619,7 +1646,7 @@ router.patch('/:id', wrap(async (req, res) => {
   // tick already proved the person holds the hat they are closing. Without
   // this an editor could not mark a cut finished while the card still sat in
   // the shooter's phase — which is exactly when they finish it.
-  if (patch.status_id !== undefined && patch.status_id !== row.status_id && req.user.role !== 'admin' && !body.milestone) {
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id && !adminHere(req.user, row) && !body.milestone) {
     const held = holderOf(row, resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')))
     // Whoever the task itself was handed to holds it as well. A stage owner is
     // the crew hat working it right now; an ASSIGNEE is the person the whole
@@ -1839,7 +1866,7 @@ router.patch('/:id', wrap(async (req, res) => {
       const chans = JSON.parse(row.channels || '[]')
       const reviewers = (await all('SELECT * FROM users')).map(publicUser).filter((u) =>
         u.id !== req.user.id &&
-        (u.role === 'admin' || (!!u.permissions.review_publish && chans.some((ch) => u.departments.includes(ch)))))
+        (isAdminOn(u, chans) || (!!u.permissions.review_publish && chans.some((ch) => u.departments.includes(ch)))))
       recipients = [...new Set([...people, ...reviewers.map((u) => u.id)])]
     }
     if (recipients.length && newSt) {
@@ -2009,7 +2036,7 @@ router.post('/:id/undo', wrap(async (req, res) => {
   }
   // Your own regret, or an admin's. Undoing somebody else's move would be a
   // way to move their work without it looking like a move.
-  if (snap.user_id !== req.user.id && req.user.role !== 'admin')
+  if (snap.user_id !== req.user.id && !adminHere(req.user, await get('SELECT channels FROM content WHERE id = ?', snap.content_id)))
     return res.status(403).json({ error: 'Only whoever made that move can take it back' })
 
   let before
@@ -2044,7 +2071,7 @@ router.post('/:id/undo', wrap(async (req, res) => {
 router.delete('/:id', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
-  const allowed = req.user.role === 'admin' || (can(req.user, 'manage_content') && canTouch(req.user, row))
+  const allowed = adminHere(req.user, row) || (can(req.user, 'manage_content') && canTouch(req.user, row))
   if (!allowed) return res.status(403).json({ error: 'You don’t have permission to delete this' })
   // Removing a task lowers each channel's plan again (and its count if done).
   for (const ch of JSON.parse(row.channels || '[]'))

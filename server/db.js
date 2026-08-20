@@ -1021,6 +1021,7 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS review_due_revised TEXT')
     // A Pravki note is usually about a FRAME. The screenshot travels with it
     // instead of being described in words and then hunted for in a chat.
+    await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_channels TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script_key TEXT')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_secs INTEGER NOT NULL DEFAULT 0')
@@ -1113,6 +1114,7 @@ async function migrate() {
         DROP TABLE content_legacy;
       `)
     }
+    if (!(await hasColumn('users', 'admin_channels'))) await exec("ALTER TABLE users ADD COLUMN admin_channels TEXT NOT NULL DEFAULT '[]'")
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
@@ -1710,6 +1712,10 @@ export function publicUser(row) {
     role: row.role,
     crew_roles: crewRolesOf(row),
     departments: JSON.parse(row.departments || '[]'),
+    // Which channels this admin runs. EMPTY means all of them, which is what
+    // every admin was before this existed — so nobody's reach changed by the
+    // column appearing.
+    admin_channels: (() => { try { return JSON.parse(row.admin_channels || '[]') } catch { return [] } })(),
     permissions: crew ? {} : { ...DEFAULT_PERMS, ...perms },
     color: row.color,
     avatar: row.avatar || null,

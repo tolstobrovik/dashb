@@ -55,14 +55,44 @@ export async function authRequired(req, res, next) {
   }
 }
 
+// ---- how far an admin's writ runs -------------------------------------------
+// An admin used to be an admin everywhere, which is the wrong shape for a team
+// where one person runs YouTube and another runs the Instagram accounts:
+// giving the YouTube lead the power to move a promised Instagram date was the
+// only way to let them run their own channel.
+//
+// `admin_channels` scopes it. EMPTY means everywhere — which is what every
+// admin was before this existed, so nobody's reach changed when the column
+// appeared, and the person who sets these up keeps theirs by leaving it empty.
+export const adminChannelsOf = (user) => (Array.isArray(user?.admin_channels) ? user.admin_channels : [])
+// Runs the whole board: the person who makes accounts and sets the rules.
+export const isFullAdmin = (user) => user?.role === 'admin' && adminChannelsOf(user).length === 0
+// Runs THIS work: a full admin, or a channel admin on one of these channels.
+// `chans` is the channel keys the thing in question lives on.
+export function isAdminOn(user, chans) {
+  if (user?.role !== 'admin') return false
+  const mine = adminChannelsOf(user)
+  if (mine.length === 0) return true
+  const list = Array.isArray(chans) ? chans : [chans].filter(Boolean)
+  return list.some((ch) => mine.includes(ch))
+}
+
+// The structural things — accounts, channels, the pipeline rules, hiring —
+// belong to whoever runs the whole board. A CHANNEL admin runs the content on
+// their channels; they do not reshape the organisation around it.
 export function adminOnly(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
+  if (!isFullAdmin(req.user))
+    return res.status(403).json({ error: 'This is for an admin of the whole board — you run particular channels' })
   next()
 }
 
-// A member may only touch data for channels they belong to; admins see all.
+// A member may only touch data for channels they belong to. A full admin sees
+// everything; a channel admin sees their channels, whether or not anybody
+// remembered to also list those channels as their departments.
 export function canAccessDept(user, dept) {
-  return user.role === 'admin' || (user.departments || []).includes(dept)
+  if (isFullAdmin(user)) return true
+  return (user.departments || []).includes(dept) || adminChannelsOf(user).includes(dept)
 }
 
 // Telegram-style granular rights: admins can do everything; members only what

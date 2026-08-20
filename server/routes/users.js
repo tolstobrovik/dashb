@@ -87,6 +87,9 @@ function scheduleFields(b, patch, { own = false } = {}) {
 
 router.post('/', adminOnly, wrap(async (req, res) => {
   const { name, username, email = null, password, role = 'member', crew_roles, departments = [], permissions = {}, color = '#a32234' } = req.body || {}
+  // Which channels this admin runs. Empty means the whole board, which is
+  // what an admin was before this existed.
+  const adminChans = role === 'admin' ? ((await cleanDepartments(req.body?.admin_channels ?? [])) || []) : []
   if (!name || !username || !password) return res.status(400).json({ error: 'Name, username and password are required' })
   if (!ROLES.includes(role)) return res.status(400).json({ error: 'Unknown role' })
   const rf = roleFields(role, crew_roles)
@@ -100,8 +103,8 @@ router.post('/', adminOnly, wrap(async (req, res) => {
   try {
     const info = await run(`
       INSERT INTO users (name, username, email, password_hash, role, crew_roles, departments, permissions, color,
-        phone, position, duties, work_start, work_end, work_days, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        admin_channels, phone, position, duties, work_start, work_end, work_days, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       name.trim(),
       String(username).toLowerCase().trim(),
@@ -111,6 +114,7 @@ router.post('/', adminOnly, wrap(async (req, res) => {
       JSON.stringify(depts),
       JSON.stringify(perms),
       color,
+      JSON.stringify(adminChans),
       extra.phone, extra.position, extra.duties, extra.work_start, extra.work_end, extra.work_days,
       new Date().toISOString(),
     )
@@ -183,6 +187,19 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
   }
   // Admins see every channel; crew roles belong to none — both carry no list.
   if (nextRole !== 'member') depts = '[]'
+  // Which channels an admin runs. Empty is the whole board. Stops being a
+  // question the moment somebody is not an admin any more.
+  let adminChans = row.admin_channels || '[]'
+  if (nextRole !== 'admin') adminChans = '[]'
+  else if (req.body?.admin_channels !== undefined) {
+    const cleaned = await cleanDepartments(req.body.admin_channels)
+    if (!cleaned) return res.status(400).json({ error: 'admin_channels must be an array' })
+    // Nobody may narrow their OWN writ to nothing by accident, and nobody may
+    // quietly widen it either: this route already belongs to a full admin.
+    if (row.id === req.user.id && cleaned.length > 0)
+      return res.status(400).json({ error: 'You can’t scope yourself to particular channels — ask another full admin to do it' })
+    adminChans = JSON.stringify(cleaned)
+  }
   if (username !== undefined && !String(username).trim()) return res.status(400).json({ error: 'Username cannot be empty' })
   const nextUsername = username !== undefined ? String(username).toLowerCase().trim() : row.username
   const nextEmail = email !== undefined ? (email ? String(email).toLowerCase().trim() : null) : row.email
@@ -195,8 +212,8 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
   if (schedErr) return res.status(400).json({ error: schedErr })
   try {
     const extraSql = Object.keys(extra).map((k) => `, ${k}=?`).join('')
-    await run(`UPDATE users SET name=?, username=?, email=?, role=?, crew_roles=?, color=?, departments=?, permissions=?, password_hash=?${extraSql} WHERE id=?`,
-      name ?? row.name, nextUsername, nextEmail, nextRole, rf.crew_roles, color ?? row.color, depts, nextPerms, pwHash,
+    await run(`UPDATE users SET name=?, username=?, email=?, role=?, crew_roles=?, color=?, departments=?, permissions=?, admin_channels=?, password_hash=?${extraSql} WHERE id=?`,
+      name ?? row.name, nextUsername, nextEmail, nextRole, rf.crew_roles, color ?? row.color, depts, nextPerms, adminChans, pwHash,
       ...Object.keys(extra).map((k) => extra[k]), row.id)
   } catch (e) {
     if (/unique/i.test(String(e))) return res.status(409).json({ error: 'That username or email is already taken' })
