@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel, can, tashkentDay } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
+import MyLate from '../components/MyLate.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { playDone } from '../lib/sound.js'
@@ -932,6 +933,11 @@ export default function Brief() {
 
   return (
     <>
+      {/* What YOU are late on, before anything else on the page. Overdue work
+          used to be an admin's wall of chips to drag back onto a calendar;
+          it belongs to whoever is carrying it, with the answers that exist. */}
+      <MyLate onOpen={openByContentId} />
+
       {/* The brief: one line that says what today is about */}
       <div className="card card-pad brief-hero">
         <div className="brief-hello"><Sun size={18} /> {niceDate}</div>

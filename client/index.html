@@ -5,6 +5,20 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#a32234" />
+    <!-- Installable, so the team reaches the board by tapping an icon rather
+         than remembering a .vercel.app address. iOS reads the apple- tags and
+         ignores the manifest's display mode; everything else reads the
+         manifest. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Satashkent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Satashkent" />
+    <!-- Windows tiles read these rather than the manifest. -->
+    <meta name="msapplication-TileColor" content="#a32234" />
+    <meta name="msapplication-TileImage" content="/icon-192.png" />
     <title>Satashkent · Marketing Dashboard</title>
   </head>
   <body>

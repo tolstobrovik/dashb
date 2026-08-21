@@ -18,7 +18,7 @@ import statusRoutes from './routes/statuses.js'
 import fieldRoutes from './routes/fields.js'
 import notificationRoutes from './routes/notifications.js'
 import trackerRoutes from './routes/trackers.js'
-import contentRoutes from './routes/content.js'
+import contentRoutes, { autoFlagSilentlyLate } from './routes/content.js'
 import reportRoutes from './routes/reports.js'
 import campaignRoutes from './routes/campaigns.js'
 import projectRoutes from './routes/projects.js'
@@ -68,8 +68,12 @@ app.get('/api/cron/daily', wrap(async (req, res) => {
   try { await tgRunSchedules() } catch (e) { console.error('telegram schedules failed:', e.message) }
   // In GitHub-storage mode, also compact the data branch to one commit.
   let squashed = false
+  // Work that has gone days past its day with nobody saying anything raises
+  // its own hand, so it stops being invisible to everyone but the strip.
+  let flagged = 0
+  try { flagged = await autoFlagSilentlyLate() } catch (e) { console.error('auto-flag failed:', e.message) }
   try { await squashData(); squashed = true } catch (e) { console.error('squash failed:', e.message) }
-  res.json({ ok: true, day: dayISO(), snapped: trackers.length, reminded, squashed })
+  res.json({ ok: true, day: dayISO(), snapped: trackers.length, reminded, flagged, squashed })
 }))
 // A Monday-morning nudge should not wait for midnight. The host's cron runs
 // once a night, so the schedules are also checked as the team works: at most

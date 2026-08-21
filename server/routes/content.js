@@ -1035,6 +1035,150 @@ router.post('/revisions/:rid/resolve', wrap(async (req, res) => {
   res.json({ ok: true, task: await listRow(row.id) })
 }))
 
+// ---- late work chases its own owner ----------------------------------------
+// Fifty overdue pieces piled into one strip for an admin to drag back onto the
+// calendar, one at a time. That is the wrong person doing the wrong job: the
+// people who know why a piece slipped are the ones holding it, and every one
+// of those fifty had a reason nobody ever wrote down.
+//
+// So late work is dealt out to whoever is carrying it. Each phase has an owner
+// and a promised day (server/deadlines.js), and a day that has gone by with
+// the work still in somebody's hands is theirs to answer for: give it a new
+// day (which, for a promised one, means asking), say what is in the way, or
+// finish it.
+const LATE_PHASE = {
+  shoot: { field: 'recording_date', owner: 'operator_id', what: 'the shoot', past: /^shot$/i },
+  edit: { field: 'edit_ready_date', owner: 'editor_id', what: 'the cut', past: /^ready$/i },
+  design: { field: 'design_ready_date', owner: 'designer_id', what: 'the artwork', past: /^ready$/i },
+  release: { field: 'release_date', owner: null, what: 'the release', past: null },
+}
+// Whether a phase is BEHIND the card, judged by the stage it sits in rather
+// than by a timestamp. shot_at looks like it should answer this and does not:
+// it is stamped when the work is handed to the EDITOR, so a card sitting on
+// Shot — filming finished, nothing handed over yet — still had no shot_at and
+// read as an overdue shoot for as long as it sat there.
+async function phasePassedBy(statusId) {
+  const live = (await all('SELECT id, label, sort FROM statuses'))
+    .filter((st) => !/^deleted$/i.test(st.label))
+    .sort((a, b) => (a.sort - b.sort) || (a.id - b.id))
+  const at = live.findIndex((st) => st.id === statusId)
+  return (re) => {
+    if (!re || at < 0) return false
+    const gate = live.findIndex((st) => re.test(st.label))
+    return gate >= 0 && at >= gate
+  }
+}
+// Everything this person is personally late on, newest first — the list they
+// are asked to deal with, not the whole board's backlog.
+async function lateForUser(user) {
+  const today = dayISO()
+  const dead = new Set((await all('SELECT id, label FROM statuses'))
+    .filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
+  const rows = await all(`SELECT id, title, channels, type, status_id, assignee_id, assignees,
+      operator_id, editor_id, designer_id, ready_at, shot_at, edited_at, done_at,
+      recording_date, edit_ready_date, design_ready_date, release_date FROM content WHERE done_at IS NULL`)
+  const out = []
+  for (const row of rows) {
+    if (dead.has(row.status_id)) continue
+    if (!canSee(user, { ...row, channels: chansOf(row) })) continue
+    for (const [phase, spec] of Object.entries(LATE_PHASE)) {
+      const due = row[spec.field]
+      if (!due || due >= today) continue
+      // Work that has already left this phase is not late in it any more.
+      if ((await phasePassedBy(row.status_id))(spec.past)) continue
+      // Whose is it? The hat that owns the phase, or the person the whole
+      // task belongs to when the phase has no hat of its own.
+      const owners = spec.owner ? [row[spec.owner]] : [row.assignee_id, ...assigneesOf(row)]
+      if (!owners.filter(Boolean).includes(user.id)) continue
+      const openAsk = await get(
+        "SELECT id FROM date_requests WHERE content_id = ? AND field = ? AND state = 'open'", row.id, spec.field)
+      // ANY hand up on the piece, not only this person's: the board raises one
+      // itself when work goes silently late, and being nagged to say something
+      // about a piece that already has a hand up is the nagging being wrong.
+      const openFlag = await get(
+        'SELECT id FROM task_flags WHERE content_id = ? AND cleared_at IS NULL', row.id)
+      out.push({
+        id: `${row.id}:${phase}`,
+        content_id: row.id,
+        title: row.title,
+        type: row.type,
+        channels: chansOf(row),
+        phase,
+        what: spec.what,
+        field: spec.field,
+        due,
+        days_late: Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86400000),
+        // Already answered for? Then it is not still asking anything of them.
+        asked: !!openAsk,
+        flagged: !!openFlag,
+      })
+    }
+  }
+  return out.sort((a, b) => b.days_late - a.days_late || a.title.localeCompare(b.title))
+}
+
+// "What am I late on?" — the question the strip was answering for the wrong
+// person. Cheap enough to ask on every page load.
+router.get('/late/mine', wrap(async (req, res) => {
+  res.json(await lateForUser(req.user))
+}))
+
+// Work that has been late for days without anybody saying anything raises its
+// own hand. Silence is the failure mode this whole round is about: a piece
+// three days past its day, with no new date asked for and nothing said about
+// why, is invisible to everyone except the strip nobody reads.
+//
+// Once per piece, never again — this puts a thing on the planners' queue, and
+// a queue that refills itself every night is one people stop looking at.
+export const AUTO_FLAG_DAYS = 3
+export async function autoFlagSilentlyLate() {
+  const today = dayISO()
+  const dead = new Set((await all('SELECT id, label FROM statuses'))
+    .filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
+  const rows = await all(`SELECT id, title, channels, status_id, assignee_id, assignees,
+      operator_id, editor_id, designer_id, shot_at, edited_at, ready_at,
+      recording_date, edit_ready_date, design_ready_date, release_date FROM content WHERE done_at IS NULL`)
+  let raised = 0
+  for (const row of rows) {
+    if (dead.has(row.status_id)) continue
+    for (const [phase, spec] of Object.entries(LATE_PHASE)) {
+      const due = row[spec.field]
+      if (!due) continue
+      const daysLate = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86400000)
+      if (daysLate < AUTO_FLAG_DAYS) continue
+      if ((await phasePassedBy(row.status_id))(spec.past)) continue
+      // Somebody has already spoken for this piece — an ask in flight, or a
+      // hand already up. Nothing to add.
+      const spoken = await get(
+        `SELECT 1 AS x FROM date_requests WHERE content_id = ? AND state = 'open'
+         UNION SELECT 1 AS x FROM task_flags WHERE content_id = ? AND cleared_at IS NULL`, row.id, row.id)
+      if (spoken) continue
+      // And never twice for the same piece, however long it goes on.
+      const before = await get(
+        "SELECT 1 AS x FROM task_flags WHERE content_id = ? AND raised_by IS NULL", row.id)
+      if (before) continue
+      const owner = spec.owner ? row[spec.owner] : row.assignee_id
+      const who = owner ? (await get('SELECT name FROM users WHERE id = ?', owner))?.name : null
+      const now = new Date().toISOString()
+      await run(
+        'INSERT INTO task_flags (content_id, kind, reason, raised_by, raised_name, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        row.id, 'at_risk',
+        `${spec.what} was due ${due} and is ${daysLate} days past it, with nothing said about why.`,
+        null, 'The board', now)
+      raised++
+      // The person holding it hears first — this is a nudge before it is a
+      // report, and they still have the ask and the hand to answer with.
+      if (owner) {
+        await run('INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+          owner, 'flag', `«${row.title}» — ${spec.what} is ${daysLate} days late. Give it a day, or say what is in the way.`, row.id, now)
+        await tgMirror([owner], `⏳ <b>«${tgEsc(row.title)}»</b>\n${tgEsc(spec.what)} is ${daysLate} days late and nobody has said why.\nGive it a new day, or say what is in the way 👇`, row.id, null)
+      }
+      break   // one hand per piece, not one per phase
+    }
+  }
+  return raised
+}
+
 // ---- raising a hand --------------------------------------------------------
 // The crew could always deliver late. They had no way to say so in advance,
 // so the first anyone knew was the deadline passing — and by then the only

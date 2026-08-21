@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import GetSetUp from './GetSetUp.jsx'
 import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import QuickFind from './QuickFind.jsx'
@@ -114,6 +115,7 @@ export default function Layout() {
           <button className="icon-btn" onClick={logout} data-tip="Sign out" data-tip-left="" aria-label="Sign out"><LogOut size={17} /></button>
         </header>
         <main className="content">
+          <GetSetUp />
           <WeakPasswordBanner user={user} />
           <Outlet />
         </main>
@@ -150,6 +152,7 @@ export default function Layout() {
           <NotificationsBell user={user} />
         </header>
         <main className="content">
+          <GetSetUp />
           <WeakPasswordBanner user={user} />
           <Outlet />
         </main>

@@ -11,6 +11,9 @@ import ContentCalendar from '../components/ContentCalendar.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
 import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
 
+// How many overdue chips the strip shows before it stops being a strip.
+const LATE_SHOWN = 8
+
 // Everything that comes OUT, and everything that gets SHOT — across every
 // channel at once. The channel pages answer "what is happening on Instagram
 // Main"; these answer the question the week actually starts with, which is
@@ -155,6 +158,11 @@ export default function Schedule({ mode }) {
   // into Recordings, and every shoot into Releases. The channel pages keep the
   // unscheduled tray, where it is scoped to one channel and means something.
   const dated = useMemo(() => shown.filter((t) => t[M.dateField]), [shown, M])
+  // The strip shows the nearest handful. It used to show every overdue piece
+  // the board had ever accumulated — fifty chips going back a month, which is
+  // not a strip, it is a backlog, and dragging them back one at a time was the
+  // wrong person doing the wrong job. The rest are on their owners' My Day.
+  const [allLate, setAllLate] = useState(false)
   const late = useMemo(
     () => dated.filter((t) => !t.done_at && t[M.dateField] < today).sort(byWhen),
     [dated, today, byWhen, M])
@@ -270,9 +278,14 @@ export default function Schedule({ mode }) {
         <div className="cal-tray sch-late">
           <span className="cal-tray-label">
             <AlertCircle size={12} /> Late<b> · {late.length}</b>
+            {late.length > LATE_SHOWN && (
+              <button type="button" className="qbtn" onClick={() => setAllLate((v) => !v)}>
+                {allLate ? 'show fewer' : `show all ${late.length}`}
+              </button>
+            )}
           </span>
           <div className="cal-tray-items">
-            {late.map((t) => {
+            {(allLate ? late : late.slice(0, LATE_SHOWN)).map((t) => {
               const st = statusesById[t.status_id]
               return (
                 <div
@@ -293,7 +306,18 @@ export default function Schedule({ mode }) {
                 </div>
               )
             })}
+            {!allLate && late.length > LATE_SHOWN && (
+              <button type="button" className="cal-tray-chip late-more" onClick={() => setAllLate(true)}>
+                …and {late.length - LATE_SHOWN} more
+              </button>
+            )}
           </div>
+          {late.length > LATE_SHOWN && (
+            <div className="late-hint">
+              The people carrying these are asked about them on their own My Day, and work that goes
+              quiet raises its own hand — this strip is for the ones you want to move yourself.
+            </div>
+          )}
         </div>
       )}
 
