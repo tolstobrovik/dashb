@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { createHmac } from 'crypto'
 import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO, taskChildDeletes } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
-import { resolveGates, gatesUpTo, phasesOf, holderOf } from '../deadlines.js'
+import { resolveGates, gatesUpTo, phasesOf, holderOf, phasePassed } from '../deadlines.js'
 import { readText, hasSubstance, hasLink, isSentence, clip, scriptKey, MIN_SENTENCE_WORDS } from '../text.js'
 import { authRequired, canAccessDept, can, wrap, JWT_SECRET, isAdminOn, isFullAdmin } from '../auth.js'
 import { tgMirror, tgOriginFrom, tgEsc, tgDate } from '../telegram.js'
@@ -1047,31 +1047,19 @@ router.post('/revisions/:rid/resolve', wrap(async (req, res) => {
 // day (which, for a promised one, means asking), say what is in the way, or
 // finish it.
 const LATE_PHASE = {
-  shoot: { field: 'recording_date', owner: 'operator_id', what: 'the shoot', past: /^shot$/i },
-  edit: { field: 'edit_ready_date', owner: 'editor_id', what: 'the cut', past: /^ready$/i },
-  design: { field: 'design_ready_date', owner: 'designer_id', what: 'the artwork', past: /^ready$/i },
-  release: { field: 'release_date', owner: null, what: 'the release', past: null },
+  shoot: { field: 'recording_date', owner: 'operator_id', what: 'the shoot', phase: 'shoot' },
+  edit: { field: 'edit_ready_date', owner: 'editor_id', what: 'the cut', phase: 'edit' },
+  design: { field: 'design_ready_date', owner: 'designer_id', what: 'the artwork', phase: 'design' },
+  release: { field: 'release_date', owner: null, what: 'the release', phase: 'review' },
 }
-// Whether a phase is BEHIND the card, judged by the stage it sits in rather
-// than by a timestamp. shot_at looks like it should answer this and does not:
-// it is stamped when the work is handed to the EDITOR, so a card sitting on
-// Shot — filming finished, nothing handed over yet — still had no shot_at and
-// read as an overdue shoot for as long as it sat there.
-async function phasePassedBy(statusId) {
-  const live = (await all('SELECT id, label, sort FROM statuses'))
-    .filter((st) => !/^deleted$/i.test(st.label))
-    .sort((a, b) => (a.sort - b.sort) || (a.id - b.id))
-  const at = live.findIndex((st) => st.id === statusId)
-  return (re) => {
-    if (!re || at < 0) return false
-    const gate = live.findIndex((st) => re.test(st.label))
-    return gate >= 0 && at >= gate
-  }
-}
+// "Is this phase behind us?" lives in ONE place — deadlines.js — because every
+// part of the board was answering it slightly differently and finished work
+// went on being called late for weeks as a result.
 // Everything this person is personally late on, newest first — the list they
 // are asked to deal with, not the whole board's backlog.
 async function lateForUser(user) {
   const today = dayISO()
+  const gates = resolveGates(await all('SELECT id, label, sort, is_final FROM statuses'))
   const dead = new Set((await all('SELECT id, label FROM statuses'))
     .filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
   const rows = await all(`SELECT id, title, channels, type, status_id, assignee_id, assignees,
@@ -1085,7 +1073,7 @@ async function lateForUser(user) {
       const due = row[spec.field]
       if (!due || due >= today) continue
       // Work that has already left this phase is not late in it any more.
-      if ((await phasePassedBy(row.status_id))(spec.past)) continue
+      if (phasePassed(row, spec.phase, gates)) continue
       // Whose is it? The hat that owns the phase, or the person the whole
       // task belongs to when the phase has no hat of its own.
       const owners = spec.owner ? [row[spec.owner]] : [row.assignee_id, ...assigneesOf(row)]
@@ -1133,10 +1121,11 @@ router.get('/late/mine', wrap(async (req, res) => {
 export const AUTO_FLAG_DAYS = 3
 export async function autoFlagSilentlyLate() {
   const today = dayISO()
+  const gates = resolveGates(await all('SELECT id, label, sort, is_final FROM statuses'))
   const dead = new Set((await all('SELECT id, label FROM statuses'))
     .filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
   const rows = await all(`SELECT id, title, channels, status_id, assignee_id, assignees,
-      operator_id, editor_id, designer_id, shot_at, edited_at, ready_at,
+      operator_id, editor_id, designer_id, shot_at, edited_at, ready_at, done_at,
       recording_date, edit_ready_date, design_ready_date, release_date FROM content WHERE done_at IS NULL`)
   let raised = 0
   for (const row of rows) {
@@ -1146,7 +1135,7 @@ export async function autoFlagSilentlyLate() {
       if (!due) continue
       const daysLate = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86400000)
       if (daysLate < AUTO_FLAG_DAYS) continue
-      if ((await phasePassedBy(row.status_id))(spec.past)) continue
+      if (phasePassed(row, spec.phase, gates)) continue
       // Somebody has already spoken for this piece — an ask in flight, or a
       // hand already up. Nothing to add.
       const spoken = await get(

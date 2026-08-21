@@ -163,9 +163,27 @@ export default function Schedule({ mode }) {
   // not a strip, it is a backlog, and dragging them back one at a time was the
   // wrong person doing the wrong job. The rest are on their owners' My Day.
   const [allLate, setAllLate] = useState(false)
+  // A shoot that has HAPPENED is not an overdue shoot. The strip used to ask
+  // only whether the day had passed and the whole task was unfinished, so a
+  // piece that had been filmed, cut and was sitting in review still sat in
+  // Recordings' Late strip with its shoot nineteen days overdue.
+  const shotAlready = useMemo(() => {
+    const live = [...statuses].filter((st) => !isDeletedLabel(st.label))
+      .sort((a, b) => (a.sort - b.sort) || (a.id - b.id))
+    const gate = live.findIndex((st) => /editing|montaj/i.test(st.label))
+    return (t) => {
+      if (t.shot_at) return true
+      if (gate < 0) return false
+      const at = live.findIndex((st) => st.id === t.status_id)
+      return at >= 0 && at >= gate
+    }
+  }, [statuses])
   const late = useMemo(
-    () => dated.filter((t) => !t.done_at && t[M.dateField] < today).sort(byWhen),
-    [dated, today, byWhen, M])
+    () => dated.filter((t) => {
+      if (t.done_at || t[M.dateField] >= today) return false
+      return M.dateField === 'recording_date' ? !shotAlready(t) : true
+    }).sort(byWhen),
+    [dated, today, byWhen, M, shotAlready])
 
   const updateContent = async (item, payload) => {
     const c = await api.patch(`/content/${item.id}`, payload)

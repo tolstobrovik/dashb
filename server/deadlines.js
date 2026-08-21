@@ -100,6 +100,40 @@ export function holderOf(task, resolved) {
   return { phase, owner_ids: ownersOfPhase(task, phase) }
 }
 
+// ---- has this phase been passed? -------------------------------------------
+// The question that decides whether a piece is late, and the one every part of
+// this board was answering slightly differently — with the result that work
+// visibly finished went on being called late for weeks.
+//
+// A timestamp alone does not answer it. shot_at is stamped when the work is
+// handed to the EDITOR, so a card sitting on Shot — filmed, nothing handed
+// over yet — has none; and rows that predate the stamping have none at all,
+// however long ago the shoot happened. So the STAGE answers as well: a card
+// that has reached Editing has finished its shoot whatever its timestamps say.
+//
+// Either signal is enough. They can only disagree by one being missing.
+const PHASE_DONE_AT = { shoot: 'edit', edit: 'review', design: 'review', review: null }
+// The shoot is the one phase whose end is not a gate. Gates mark handovers —
+// "edit" is the moment footage reaches the editor — but filming is finished
+// the moment the card reaches SHOT, which can sit there for days before
+// anybody hands anything over. Asking the gate instead was why a filmed piece
+// went on being an overdue shoot.
+const SHOT_STAGE = /^shot$|^filmed$/i
+export function phasePassed(task, key, resolved) {
+  const f = FIELDS[key]
+  if (f && task[f.delivered]) return true
+  if (!resolved) return false
+  const at = resolved.ordered.findIndex((s) => s.id === task.status_id)
+  if (at < 0) return false
+  if (key === 'shoot') {
+    const shot = resolved.ordered.findIndex((s) => SHOT_STAGE.test(String(s.label || '')))
+    if (shot >= 0) return at >= shot
+  }
+  const gateKey = PHASE_DONE_AT[key]
+  const gate = gateKey ? resolved.gates[gateKey] : null
+  return !!gate && at >= gate.index
+}
+
 // ---- the state of one phase ---------------------------------------------
 // ok       delivered on or before the promised day
 // late     delivered after it, or still undelivered with the day gone
@@ -110,7 +144,7 @@ export function holderOf(task, resolved) {
 // none     no date was ever promised, so there is nothing to answer for
 const dayDiff = (a, b) => Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400000)
 
-export function phaseState(task, key, today = dayISO()) {
+export function phaseState(task, key, today = dayISO(), resolved = null) {
   const f = FIELDS[key]
   const promised = task[f.promised] || null
   const revised = f.revised ? task[f.revised] || null : null
@@ -135,6 +169,10 @@ export function phaseState(task, key, today = dayISO()) {
 
   let state
   if (delivered) state = delivered <= due ? 'ok' : 'late'
+  // No timestamp, but the card has moved past this phase — the work happened,
+  // it simply happened before anything wrote it down. Calling that late is how
+  // finished pieces stayed on people's overdue lists for weeks.
+  else if (phasePassed(task, key, resolved)) state = 'ok'
   else state = today > due ? 'late' : 'pending'
 
   // The upstream excuse: the work landed here after this phase's own date had
@@ -148,8 +186,8 @@ export function phaseState(task, key, today = dayISO()) {
 }
 
 // All three phases of one task.
-export function phasesOf(task, today = dayISO()) {
-  return PHASES.map((k) => phaseState(task, k, today))
+export function phasesOf(task, today = dayISO(), resolved = null) {
+  return PHASES.map((k) => phaseState(task, k, today, resolved))
 }
 
 // The warnings a task produces: late phases that have somebody to answer for.
@@ -157,8 +195,8 @@ export function phasesOf(task, today = dayISO()) {
 // to own is late for both of them. A late phase nobody owns is still returned
 // (owner_id null) so admins can see unowned slippage, but it never lands in a
 // person's account.
-export function warningsOf(task, today = dayISO()) {
-  return phasesOf(task, today)
+export function warningsOf(task, today = dayISO(), resolved = null) {
+  return phasesOf(task, today, resolved)
     .filter((p) => p.state === 'late')
     .flatMap((p) => {
       const owners = p.owner_ids.length ? p.owner_ids : [null]
