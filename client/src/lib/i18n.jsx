@@ -538,6 +538,9 @@ export const DICTS = { en: EN, ru: RU, uz: UZ }
 
 const PHRASES = {
   ru: {
+    "Marked as designed — synced": "Отмечено как дизайн готов — синхронизировано",
+    "Marked as edited — synced": "Отмечено как смонтировано — синхронизировано",
+    "Marked as shot — synced": "Отмечено как снято — синхронизировано",
     "Added — synced": "Добавлено — синхронизировано",
     "Asked — the admins have it": "Отправлено — админы получили",
     "Candidate removed": "Кандидат удалён",
@@ -921,6 +924,9 @@ const PHRASES = {
     "yours": "ваше",
   },
   uz: {
+    "Marked as designed — synced": "Dizayn tayyor deb belgilandi — sinxronlandi",
+    "Marked as edited — synced": "Montaj qilindi deb belgilandi — sinxronlandi",
+    "Marked as shot — synced": "Suratga olindi deb belgilandi — sinxronlandi",
     "Added — synced": "Qo‘shildi — sinxronlandi",
     "Asked — the admins have it": "Yuborildi — adminlarda",
     "Candidate removed": "Nomzod o‘chirildi",

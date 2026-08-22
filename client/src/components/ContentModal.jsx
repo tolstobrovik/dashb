@@ -426,7 +426,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           : need && form[need[0]] ? { [need[0]]: form[need[0]] } : {}),
       })
       setMilestone(kind)
-      toast(kind === 'shot' ? 'Marked as shot — synced' : kind === 'edited' ? 'Marked as edited — synced' : 'Marked as designed — synced')
+      // The crew's own finish line. An editor may never see the piece
+      // published — that happens days later, on somebody else's screen — so
+      // celebrating only the publish celebrates only the planner. Handing
+      // over the cut IS the achievement, for the person who cut it.
+      rewardFinish()
+      toast(kind === 'shot' ? tx('Marked as shot — synced') : kind === 'edited' ? tx('Marked as edited — synced') : tx('Marked as designed — synced'))
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
