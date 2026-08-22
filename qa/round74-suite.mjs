@@ -44,7 +44,7 @@ const req = async (p, m = 'GET', b, tok = T) => {
   const r = await fetch(B + p, { method: m, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` }, body: b ? JSON.stringify(b) : undefined })
   return { status: r.status, data: await r.json().catch(() => ({})) }
 }
-const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+const day = (n) => { const d = new Date(Date.now() + 5 * 3600e3); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) } // Tashkent day, like the server
 const ch = (await req('/channels')).data[0].key
 const stages = (await req('/statuses')).data
 const sid = (re) => stages.find((s) => re.test(s.label)).id

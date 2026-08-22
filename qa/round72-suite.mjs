@@ -67,7 +67,7 @@ const hook = (update) => fetch(B + '/telegram/webhook', {
   method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': SECRET },
   body: JSON.stringify(update),
 })
-const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+const day = (n) => { const d = new Date(Date.now() + 5 * 3600e3); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) } // Tashkent day, like the server
 const ch = (await req('/channels')).data[0].key
 const stages = (await req('/statuses')).data
 const sid = (re) => stages.find((s) => re.test(s.label)).id
