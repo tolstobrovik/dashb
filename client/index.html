@@ -9,12 +9,19 @@
          than remembering a .vercel.app address. iOS reads the apple- tags and
          ignores the manifest's display mode; everything else reads the
          manifest. -->
-    <!-- The wordmark's face. Latin only is fine: it sets four words of brand
-         text and nothing else — the UI keeps its own stack, which covers the
-         Cyrillic this team writes in. -->
+    <!-- The two faces.
+         Inter sets the interface. It was named first in the CSS stack from the
+         beginning and never actually fetched, so every machine fell through to
+         its own system font and the board looked different on each of them.
+         Golos Text sets the wordmark and headings.
+         BOTH carry Cyrillic, which the previous display face did not — Space
+         Grotesk has no Cyrillic subset at all, so the moment the board learned
+         Russian its own headings fell out of the brand face mid-word.
+         Google serves these by unicode-range, so a Latin-only reader never
+         downloads the Cyrillic. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Golos+Text:wght@700;800&display=swap" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

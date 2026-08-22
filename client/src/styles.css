@@ -58,13 +58,16 @@
 
   --sidebar-w: 256px;
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  /* The display face, for the wordmark only. The brand face is Nekst, but the
-     file supplied is a Fontspring DEMO — evaluation only, no web embedding,
-     and no Cyrillic, which this team writes in daily. Space Grotesk is the
-     nearest licensed (OFL) geometric grotesque. To move to real Nekst, buy
-     the licence, drop the .otf in client/public/ and add it at the front of
-     this stack behind an @font-face. */
-  --font-display: 'Space Grotesk', 'Archivo', var(--font);
+  /* The display face: the wordmark and the page headings.
+     The brand face is Nekst, but the file supplied is a Fontspring DEMO —
+     evaluation only, no web embedding, and 95 glyphs with no Cyrillic at all.
+     Golos Text is the nearest licensed (OFL) alternative and, unlike the
+     Space Grotesk that stood here before it, its Cyrillic is native rather
+     than absent: the board now speaks Russian, and a display face with no
+     Cyrillic drops out of the brand mid-heading.
+     To move to real Nekst, buy the licence, drop the .otf in client/public/
+     and add it at the front of this stack behind an @font-face. */
+  --font-display: 'Golos Text', 'Onest', var(--font);
   color-scheme: light;
 }
 
