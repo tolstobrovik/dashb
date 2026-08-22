@@ -62,8 +62,8 @@ export const gapsOf = (t, crew, rank) => {
 }
 const GAP_ICONS = { owner: User, operator: Clapperboard, editor: Scissors, designer: Palette, shoot: CalendarX2, release: CalendarX2 }
 const GAP_KINDS = [
-  { key: 'owner', label: 'Owner' }, { key: 'operator', label: 'Operator' },
-  { key: 'editor', label: 'Editor' }, { key: 'designer', label: 'Designer' },
+  { key: 'owner', label: 'Owner' }, { key: 'operator', label: tx('Operator') },
+  { key: 'editor', label: tx('Editor') }, { key: 'designer', label: tx('Designer') },
   { key: 'shoot', label: 'Shoot day' }, { key: 'release', label: 'Release day' },
 ]
 // "Due soon" is the default: work whose nearest date stands within
@@ -86,8 +86,8 @@ export const nearestOf = (t) => {
 }
 const NEAR_ICONS = { shoot: Clapperboard, edit: Scissors, design: Palette, release: Send }
 const RANGES = [
-  { key: 'soon', label: 'Due soon' }, { key: 'today', label: 'Today' },
-  { key: '7d', label: 'Next 7 days' }, { key: 'any', label: 'Any date' }, { key: 'custom', label: 'Custom…' },
+  { key: 'soon', label: 'Due soon' }, { key: 'today', label: tx('Today') },
+  { key: '7d', label: 'Next 7 days' }, { key: 'any', label: 'Any date' }, { key: 'custom', label: tx('Custom…') },
 ]
 
 function GapRow({ t, holes, byKey, onOpen, today }) {
@@ -270,7 +270,7 @@ export default function Unassigned() {
           {total === 0
             ? (rows.length > 0
               ? 'Nothing urgent — the gaps sit further out in the calendar.'
-              : 'Every task has its people and its dates.')
+              : tx('Every task has its people and its dates.'))
             : [
               allUnowned > 0 && `${allUnowned} waiting for a person`,
               total - allUnowned > 0 && `${total - allUnowned} waiting for dates`,

@@ -146,7 +146,7 @@ function ScheduleModal({ member, onClose, onSaved }) {
 
 const VIEWS = [
   { key: 'deck', label: 'Deck', icon: LayoutGrid },
-  { key: 'week', label: 'Timetable', icon: CalendarDays },
+  { key: 'week', label: tx('Timetable'), icon: CalendarDays },
   { key: 'list', label: 'List', icon: Rows3 },
 ]
 
@@ -308,10 +308,10 @@ export default function Crew() {
   return (
     <>
       <div className="card card-pad brief-hero">
-        <div className="brief-hello"><Clapperboard size={17} /> Post Production{tab === 'video' ? ' — video, next 7 days' : ' — design'}</div>
+        <div className="brief-hello"><Clapperboard size={17} />{' '}{tx('Post Production')}{tab === 'video' ? ` — ${tx('video, next 7 days')}` : ` — ${tx('design')}`}</div>
         <h2 className="brief-title">
           {tab === 'video' ? (
-            crewAll.length === 0 ? 'No crew yet — give someone the operator or editor role.' : (
+            crewAll.length === 0 ? tx('No crew yet — give someone the operator or editor role.') : (
               <>
                 {crew.length} {who ? 'selected' : 'on the crew'} · {totalShoots} shoot{totalShoots === 1 ? '' : 's'} booked
                 {hot.length > 0 && <> · <span style={{ color: '#A32D2D' }}>{hot.map((u) => u.name.split(' ')[0]).join(', ')} overloaded</span></>}
@@ -336,15 +336,15 @@ export default function Crew() {
       <div className="miss-filters">
         <div className="pill-group pp-tabs">
           <button className={'pill' + (tab === 'video' ? ' active' : '')} onClick={() => setTab('video')}>
-            <Clapperboard size={14} /> Editors & shooters
+            <Clapperboard size={14} />{' '}{tx('Editors and shooters')}
           </button>
           <button className={'pill' + (tab === 'design' ? ' active' : '')} onClick={() => setTab('design')}>
-            <Palette size={14} /> Designers
+            <Palette size={14} />{' '}{tx('Designers')}
           </button>
         </div>
         {tab === 'design' && (
           <div className="pill-group">
-            {[{ key: 'deck', label: 'Deck', icon: LayoutGrid }, { key: 'week', label: 'Timetable', icon: CalendarDays }].map((v) => {
+            {[{ key: 'deck', label: 'Deck', icon: LayoutGrid }, { key: 'week', label: tx('Timetable'), icon: CalendarDays }].map((v) => {
               const Icon = v.icon
               return (
                 <button key={v.key} className={'pill' + (dview === v.key ? ' active' : '')} onClick={() => setDview(v.key)}>

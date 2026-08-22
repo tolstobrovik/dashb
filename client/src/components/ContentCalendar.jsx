@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clapperboard, Send, Plus } from 'lucide-react'
 import { WEEKDAYS, MONTHS, localISO, todayISO, addDaysISO, typeInfo, onColor, statusIcon, isDeletedLabel } from '../lib/constants.js'
-import { tr as tx } from '../lib/i18n.jsx'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1)
@@ -21,7 +21,7 @@ function mondayOf(iso) {
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
   return localISO(d)
 }
-const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 
 // The content calendar, used for both date fields: mode 'release' reads
 // release_date, mode 'recording' reads recording_date. Two scales:

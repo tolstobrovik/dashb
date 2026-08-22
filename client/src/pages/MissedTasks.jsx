@@ -16,7 +16,7 @@ import { tr as tx } from '../lib/i18n.jsx'
 // Admins see the whole team; everybody else sees their own name only.
 const ROLE = {
   operator: { label: 'Shooter', icon: Video, cls: 'rl-shoot' },
-  editor: { label: 'Editor', icon: Scissors, cls: 'rl-edit' },
+  editor: { label: tx('Editor'), icon: Scissors, cls: 'rl-edit' },
   reviewer: { label: 'Review', icon: Eye, cls: 'rl-review' },
 }
 
@@ -66,7 +66,7 @@ export default function MissedTasks() {
     <div>
       <div className="section-head">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <AlertTriangle size={17} /> Missed tasks
+          <AlertTriangle size={17} />{' '}{tx('Missed tasks')}
         </h2>
       </div>
 
@@ -106,7 +106,7 @@ export default function MissedTasks() {
         </div>
 
         <div className="mt-summary">
-          <b>{shown.length}</b> missed {shown.length === 1 ? 'deadline' : 'deadlines'}
+          <b>{shown.length}</b> missed {shown.length === 1 ? 'deadline' : tx('deadlines')}
           {' · '}<b>{totalDays}</b> {totalDays === 1 ? 'day' : 'days'} lost
           {doubles > 0 && <> · <b>{doubles}</b> {doubles === 1 ? 'task' : 'tasks'} missed at more than one stage</>}
         </div>
@@ -114,7 +114,7 @@ export default function MissedTasks() {
 
       {shown.length === 0 ? (
         <div className="card card-pad empty">
-          {anyFilter ? 'Nothing missed that matches those filters.' : 'Nothing missed. Every deadline met so far.'}
+          {anyFilter ? 'Nothing missed that matches those filters.' : tx('Nothing missed. Every deadline met so far.')}
         </div>
       ) : (
         <div className="card card-pad" style={{ paddingTop: 8, paddingBottom: 8 }}>

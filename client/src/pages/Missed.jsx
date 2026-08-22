@@ -50,7 +50,7 @@ const RANGES = [
   { key: '1d', label: 'Last day', days: 1 },
   { key: '7d', label: 'Last 7 days', days: 7 },
   { key: '30d', label: 'Last 30 days', days: 30 },
-  { key: 'custom', label: 'Custom…', days: null },
+  { key: 'custom', label: tx('Custom…'), days: null },
 ]
 
 /* Where the time goes: the whole point of the exercise, in one block.
@@ -289,14 +289,14 @@ export default function Missed() {
   // their real span. Done and missed look at the past side of the window,
   // upcoming at the future side — so "this week" shows both at once.
   const STAT_RANGES = [
-    { key: 'today', label: 'Today' },
+    { key: 'today', label: tx('Today') },
     { key: 'tweek', label: 'This week' },
     { key: 'lweek', label: 'Last week' },
-    { key: 'tmonth', label: 'This month' },
-    { key: 'lmonth', label: 'Last month' },
-    { key: '6mo', label: '6 months' },
+    { key: 'tmonth', label: tx('This month') },
+    { key: 'lmonth', label: tx('Last month') },
+    { key: '6mo', label: tx('6 months') },
     { key: 'tyear', label: 'This year' },
-    { key: 'custom', label: 'Custom…' },
+    { key: 'custom', label: tx('Custom…') },
   ]
   const stats = useMemo(() => {
     const mondayOf = (iso) => addDaysISO(iso, -((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7))
@@ -490,13 +490,13 @@ export default function Missed() {
       <div className="card card-pad brief-hero">
         <div className="brief-hello"><BarChart3 size={17} />{' '}{tx("Statistics")}</div>
         <h2 className="brief-title">
-          {isAdmin ? 'The whole team: ' : ''}
+          {isAdmin ? `${tx('The whole team:')} ` : ''}
           {missed.length === 0
-            ? 'nothing missed — clean record.'
+            ? tx('nothing missed — clean record.')
             : `${open.length} still not done · ${late.length} finished late`}
         </h2>
         <div className="stat-sub" style={{ marginTop: 4 }}>
-          Done, upcoming and missed — across every task {isAdmin ? 'of the team' : 'assigned to you'},
+          {tx('Done, upcoming and missed — across every task')}{' '}{isAdmin ? 'of the team' : 'assigned to you'},
           each judged by its own clock: release, edit-ready, design-ready.
         </div>
       </div>

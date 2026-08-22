@@ -33,17 +33,17 @@ const LATE_SHOWN = 8
 
 const MODES = {
   release: {
-    label: 'Releases', icon: Send, dateField: 'release_date', timeField: 'release_time',
-    lead: 'everything going out, every channel',
-    empty: 'Nothing is scheduled to go out yet.',
+    label: tx('Releases'), icon: Send, dateField: 'release_date', timeField: 'release_time',
+    lead: tx('everything going out, every channel'),
+    empty: tx('Nothing is scheduled to go out yet.'),
     file: 'releases',
     // A post is written, not filmed — but everything gets released.
     applies: () => true,
   },
   recording: {
-    label: 'Recordings', icon: Clapperboard, dateField: 'recording_date', timeField: 'recording_time',
-    lead: 'every shoot on the books, every channel',
-    empty: 'No shoots are booked yet.',
+    label: tx('Recordings'), icon: Clapperboard, dateField: 'recording_date', timeField: 'recording_time',
+    lead: tx('every shoot on the books, every channel'),
+    empty: tx('No shoots are booked yet.'),
     file: 'recordings',
     applies: (t) => t.type !== 'post',
   },
@@ -54,7 +54,7 @@ const MODES = {
 // leading BOM is what makes Excel read a Cyrillic title as Cyrillic instead of
 // mojibake, and the file name stays ASCII because Chromium silently drops a
 // non-ASCII one from <a download>.
-const CSV_HEAD = ['Date', 'Time', 'Title', 'Type', 'Channels', 'Stage', 'Operator', 'Editor', 'Designer', 'Assignees']
+const CSV_HEAD = ['Date', 'Time', 'Title', 'Type', 'Channels', 'Stage', tx('Operator'), tx('Editor'), tx('Designer'), 'Assignees']
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
 const csvOf = (rows) => '\uFEFF' + [CSV_HEAD, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n')
 const saveText = (name, text, type) => {

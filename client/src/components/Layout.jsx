@@ -8,7 +8,7 @@ import NotificationsBell from './NotificationsBell.jsx'
 import Logo from './Logo.jsx'
 import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
-import { useT } from '../lib/i18n.jsx'
+import { useT, tr as tx } from '../lib/i18n.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAutoUpdate } from '../lib/useAutoUpdate.js'
@@ -24,10 +24,10 @@ function WeakPasswordBanner({ user }) {
     <div className="weak-pw" role="alert">
       <ShieldAlert size={16} />
       <span>
-        <b>Your password is the one this app ships with.</b> Anyone who finds the
-        dashboard can sign in as {user.name}.
+        <b>{tx('Your password is the one this app ships with.')}</b>{' '}
+        {tx('Anyone who finds the dashboard can sign in as {name}.', { name: user.name })}
       </span>
-      <NavLink to="/profile" className="weak-pw-go">Change it</NavLink>
+      <NavLink to="/profile" className="weak-pw-go">{tx('Change it')}</NavLink>
     </div>
   )
 }

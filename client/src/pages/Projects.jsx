@@ -11,6 +11,7 @@ import CampaignGantt from '../components/CampaignGantt.jsx'
 import { HealthPill, StatusBadge, CampaignRow, PC, PhotoField } from '../components/ProjectBits.jsx'
 import { dateLabel, todayISO } from '../lib/constants.js'
 import { loadFailed } from '../lib/toast.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 const CAMP_FILTERS = [
   { key: 'all', label: 'All' },
@@ -208,7 +209,7 @@ export default function Projects() {
   const VIEWS = [
     { key: 'projects', label: 'Projects', icon: Briefcase },
     { key: 'campaigns', label: 'Campaigns', icon: Megaphone },
-    { key: 'board', label: 'Board', icon: KanbanSquare },
+    { key: 'board', label: tx('Board'), icon: KanbanSquare },
     { key: 'gantt', label: 'Gantt', icon: GanttChartSquare },
   ]
 

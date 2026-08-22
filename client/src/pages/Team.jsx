@@ -28,11 +28,11 @@ const roleWord = (u) => {
 
 // The candidate pipeline, plain and readable.
 const STAGES = [
-  { key: 'new', label: 'Considering', color: '#2a78d6' },
-  { key: 'interview', label: 'Interview', color: '#BA7517' },
-  { key: 'offer', label: 'Offer', color: '#7b5ad6' },
-  { key: 'hired', label: 'Hired', color: '#1D9E75' },
-  { key: 'declined', label: 'Declined', color: '#6d6a70' },
+  { key: 'new', label: tx('Considering'), color: '#2a78d6' },
+  { key: 'interview', label: tx('Interview'), color: '#BA7517' },
+  { key: 'offer', label: tx('Offer'), color: '#7b5ad6' },
+  { key: 'hired', label: tx('Hired'), color: '#1D9E75' },
+  { key: 'declined', label: tx('Declined'), color: '#6d6a70' },
 ]
 const stageOf = (k) => STAGES.find((x) => x.key === k) || STAGES[0]
 
@@ -297,9 +297,9 @@ export default function Team() {
   const gaps = useMemo(() => {
     const out = []
     const has = (r) => users.some((u) => (u.crew_roles || []).includes(r))
-    if (!has('operator')) out.push({ key: 'op', title: 'Operator', note: 'Nobody on the team can shoot — every video waits on this.' })
-    if (!has('editor')) out.push({ key: 'ed', title: 'Editor', note: 'Nobody on the team edits video.' })
-    if (!has('designer')) out.push({ key: 'de', title: 'Designer', note: 'Nobody designs posts — every artwork waits on this.' })
+    if (!has('operator')) out.push({ key: 'op', title: tx('Operator'), note: 'Nobody on the team can shoot — every video waits on this.' })
+    if (!has('editor')) out.push({ key: 'ed', title: tx('Editor'), note: 'Nobody on the team edits video.' })
+    if (!has('designer')) out.push({ key: 'de', title: tx('Designer'), note: 'Nobody designs posts — every artwork waits on this.' })
     for (const c of channels) {
       const covered = users.some((u) => u.role === 'admin' ? false : (u.departments || []).includes(c.key))
       if (!covered) out.push({ key: `ch-${c.key}`, title: `${c.label} lead`, note: `Nobody covers the ${c.label} channel.` })
@@ -476,7 +476,7 @@ export default function Team() {
       </div>
       {candList.length === 0 ? (
         <div className="card card-pad empty">
-          {cands.length === 0 ? 'Nobody under consideration yet — add the first candidate.' : 'Nobody in this stage.'}
+          {cands.length === 0 ? tx('Nobody under consideration yet — add the first candidate.') : 'Nobody in this stage.'}
         </div>
       ) : (
         <div className="cand-grid">
@@ -549,7 +549,7 @@ export default function Team() {
                   </span>
                 </div>
                 <div className="team-duty">
-                  {u.duties || (u.role === 'admin' ? 'Runs the whole marketing team.'
+                  {u.duties || (u.role === 'admin' ? tx('Runs the whole marketing team.')
                     : depts.length ? `Channels: ${depts.join(', ')}`
                     : u.role !== 'member' ? 'Cross-channel video work — shoots and edits ride the task crew.' : 'No responsibilities written yet.')}
                 </div>
@@ -600,7 +600,7 @@ export default function Team() {
             { label: 'Members', match: (u) => u.role === 'member' },
             { label: 'Operators', match: (u) => (u.crew_roles || []).includes('operator') },
             { label: 'Editors', match: (u) => (u.crew_roles || []).includes('editor') },
-            { label: 'Designers', match: (u) => (u.crew_roles || []).includes('designer') },
+            { label: tx('Designers'), match: (u) => (u.crew_roles || []).includes('designer') },
           ].map((col) => {
             const list = team.filter(col.match)
             return (
@@ -631,7 +631,7 @@ export default function Team() {
           { label: 'Members', n: team.filter((u) => u.role === 'member').length, color: '#5a6b7a' },
           { label: 'Operators', n: team.filter((u) => (u.crew_roles || []).includes('operator')).length, color: '#2a78d6' },
           { label: 'Editors', n: team.filter((u) => (u.crew_roles || []).includes('editor')).length, color: '#7b5ad6' },
-          { label: 'Designers', n: team.filter((u) => (u.crew_roles || []).includes('designer')).length, color: '#0e8a6d' },
+          { label: tx('Designers'), n: team.filter((u) => (u.crew_roles || []).includes('designer')).length, color: '#0e8a6d' },
         ].filter((r) => r.n > 0)
         return (
           <div className="team-dash">

@@ -7,7 +7,7 @@ import {
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
 import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHref } from '../lib/text.js'
-import { useT, tr as tx } from '../lib/i18n.jsx'
+import { useT, tr as tx, locale } from '../lib/i18n.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { api } from '../lib/api.js'
@@ -478,11 +478,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const canReview = (user.role === 'admin' || can(user, 'review_publish')) && onChannel && !!finalStatusObj
   const canRequest = (user.role === 'admin' || can(user, 'request_changes')) && onChannel
   const pravkiTargets = [
-    item?.editor_id && { key: 'editor', label: 'Editor' },
+    item?.editor_id && { key: 'editor', label: tx('Editor') },
     item?.operator_id && { key: 'operator', label: 'Operator · re-shoot' },
-    item?.designer_id && { key: 'designer', label: 'Designer' },
+    item?.designer_id && { key: 'designer', label: tx('Designer') },
   ].filter(Boolean)
-  if (pravkiTargets.length === 0) pravkiTargets.push({ key: 'editor', label: 'Editor' })
+  if (pravkiTargets.length === 0) pravkiTargets.push({ key: 'editor', label: tx('Editor') })
   // ---- promised days: asking, and answering ----
   // Every ask ever made on this task, newest first — open ones waiting on an
   // admin, and answered ones kept as the record of why a day moved.
@@ -1265,7 +1265,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   {r.voice_id ? <VoicePlayer id={r.voice_id} secs={r.voice_secs} /> : null}
                   {r.photo && <a className="rev-shot" href={r.photo} target="_blank" rel="noreferrer"><img src={r.photo} alt="what needed changing" /></a>}
                   <span className="rev-meta">
-                    {r.requested_name || '—'} · {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · to {r.target}{r.resolved_at ? ' · fixed' : ''}
+                    {r.requested_name || '—'} · {new Date(r.created_at).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })} · to {r.target}{r.resolved_at ? ' · fixed' : ''}
                   </span>
                 </span>
               </div>
@@ -1539,11 +1539,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         <span className="cm-key">{t('task.crew')}</span>
         <div className="crew-row">
           {(isDesign ? [
-            { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs this post' },
+            { key: 'designer_id', label: tx('Designer'), role: 'designer', tip: 'Who designs this post' },
           ] : [
-            { key: 'operator_id', label: 'Operator', role: 'operator', tip: 'Who films / shoots this' },
-            { key: 'editor_id', label: 'Editor', role: 'editor', tip: 'Who edits this' },
-            { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs the artwork (thumbnail, cover…)' },
+            { key: 'operator_id', label: tx('Operator'), role: 'operator', tip: 'Who films / shoots this' },
+            { key: 'editor_id', label: tx('Editor'), role: 'editor', tip: 'Who edits this' },
+            { key: 'designer_id', label: tx('Designer'), role: 'designer', tip: 'Who designs the artwork (thumbnail, cover…)' },
           ]).map((f) => {
             const holds = (u) => (u.crew_roles || []).includes(f.role)
             const bySort = (a, b) =>

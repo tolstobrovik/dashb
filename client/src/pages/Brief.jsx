@@ -18,7 +18,7 @@ import { deliveryHref, splitDelivery } from '../lib/text.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { playDone } from '../lib/sound.js'
-import { tr as tx } from '../lib/i18n.jsx'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 
 // My Day — the deadline-first landing page, in two shapes:
 //   crew (operator / editor / both): what to shoot at which hour, the editing
@@ -642,7 +642,7 @@ export default function Brief() {
 
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 
-  const niceDate = new Date(`${today}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  const niceDate = new Date(`${today}T12:00:00Z`).toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
   const firstName = user.name.split(' ')[0]
 
   const missingBlock = overdue.length > 0 && (
@@ -837,7 +837,7 @@ export default function Brief() {
           <div className="brief-horizon">
             {!customOpen ? (
               <button className="extra-btn" onClick={() => setCustomOpen(true)}>
-                <CalendarRange size={13} /> Pick your own dates
+                <CalendarRange size={13} />{' '}{tx('Pick your own dates')}
               </button>
             ) : (
               <>
@@ -883,7 +883,7 @@ export default function Brief() {
           <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
           <h2 className="brief-title">
             {firstName}, today:{' '}
-            {nothingToday ? 'nothing on the schedule — enjoy the quiet.' : (
+            {nothingToday ? tx('nothing on the schedule — enjoy the quiet.') : (
               [
                 dueToday.length > 0 && `${dueToday.length} to do`,
                 overdue.length > 0 && `${overdue.length} missing`,
@@ -965,7 +965,7 @@ export default function Brief() {
         <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
         <h2 className="brief-title">
           {firstName}, today:{' '}
-          {nothingToday ? 'nothing on the schedule — enjoy the quiet.' : (
+          {nothingToday ? tx('nothing on the schedule — enjoy the quiet.') : (
             [
               overdueN > 0 && `${overdueN} overdue`,
               lanes.shoot.today.length > 0 && `${lanes.shoot.today.length} to record`,

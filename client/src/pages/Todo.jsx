@@ -210,7 +210,7 @@ function QuickAdd({ visible, canTeamAdd, isAdmin, team, chan, viewUser, onAddCon
 
   return (
     <form className="card card-pad" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }} onSubmit={submit}>
-      <input className="input" style={{ flex: '2 1 200px' }} placeholder={channel === '__personal' ? 'Add a personal task…' : 'Add a task…'} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <input className="input" style={{ flex: '2 1 200px' }} placeholder={channel === '__personal' ? 'Add a personal task…' : tx('Add a task…')} value={title} onChange={(e) => setTitle(e.target.value)} />
       {channel !== '__personal' && (
         <select className="select" style={{ flex: '0 1 110px' }} value={type} onChange={(e) => setType(e.target.value)} data-tip={tx("Task type — counts toward that plan")}>
           {CONTENT_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
@@ -544,7 +544,7 @@ export default function Todo() {
             ? 'Your personal tasks live here — only you can see them.'
             : viewingMember
               ? `${viewingMember.name} has no assigned tasks yet — add the day's tasks above.`
-              : `Tasks for ${chan === 'all' ? 'your channels' : byKey[chan]?.label || 'this channel'} will appear here.`}
+              : tx('Tasks for {where} will appear here.', { where: chan === 'all' ? tx('your channels') : byKey[chan]?.label || tx('this channel') })}
         </div>
       )}
 

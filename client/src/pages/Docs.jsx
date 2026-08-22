@@ -19,8 +19,8 @@ import { tr as tx } from '../lib/i18n.jsx'
 
 const KINDS = [
   { key: 'sop', label: 'SOP' },
-  { key: 'responsibility', label: 'Responsibility' },
-  { key: 'other', label: 'Other' },
+  { key: 'responsibility', label: tx('Responsibility') },
+  { key: 'other', label: tx('Other') },
 ]
 const kindLabel = (k) => (KINDS.find((x) => x.key === k) || KINDS[2]).label
 
@@ -208,7 +208,7 @@ export default function Docs() {
                 ))}
               </div>
               <button className="btn btn-primary" onClick={pickFile} disabled={busyUp}>
-                <Upload size={15} /> {busyUp ? 'Uploading…' : 'Upload'}
+                <Upload size={15} /> {busyUp ? 'Uploading…' : tx('Upload')}
               </button>
               <input ref={fileRef} type="file" hidden onChange={onFile}
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*" />
@@ -218,7 +218,7 @@ export default function Docs() {
         <div className="brief-note docs-note">
           {allMode
             ? 'Every document of every person, newest first — pick a person above to upload to their shelf.'
-            : `SOPs and responsibility sheets${person ? ` for ${person.name}` : ''} — stored for good, visible to ${isAdmin ? 'them and every admin' : 'you and the admins'}.`}
+            : `${tx('SOPs and responsibility sheets')}${person ? ` ${tx('for')} ${person.name}` : ''} — stored for good, visible to ${isAdmin ? 'them and every admin' : 'you and the admins'}.`}
         </div>
         {docs === null ? (
           <div className="empty">{tx("Loading…")}</div>
@@ -261,12 +261,12 @@ export default function Docs() {
         <div className="brief-note docs-note">
           {allMode
             ? 'Every KPI of every person — double-click a row to update it; pick a person above to add new ones.'
-            : 'Every KPI in one place — the target, where it stands, and who updated it last.'}
+            : tx('Every KPI in one place — the target, where it stands, and who updated it last.')}
         </div>
         {kpis === null ? (
           <div className="empty">{tx("Loading…")}</div>
         ) : kpis.length === 0 ? (
-          <div className="empty">No KPIs set{isAdmin ? ' — add the first one.' : ' yet.'}</div>
+          <div className="empty">{tx('No KPIs set')}{isAdmin ? ` ${tx('— add the first one.')}` : ` ${tx('yet.')}`}</div>
         ) : (
           <div className={'kpi-table' + (allMode ? ' kpi-all' : '')}>
             <div className="kpi-row kpi-head">

@@ -367,7 +367,7 @@ export default function Overview() {
             data-tip={tx("Recently completed, newest first")}>Done · {done.length}</button>
           <button className={'pill' + (tab === 'lanes' ? ' active' : '')} onClick={() => setTab('lanes')}
             data-tip={tx("Two weeks, one lane per department — the same tasks as the channel calendars")} data-tip-left="">
-            <Rows3 size={13} /> By department
+            <Rows3 size={13} />{' '}{tx('By department')}
           </button>
         </div>
       </div>
@@ -433,7 +433,7 @@ export default function Overview() {
           )
         })}
         {rows.length === 0 && (
-          <div className="empty">{tab === 'upcoming' ? 'Nothing scheduled — plan some tasks.' : 'Nothing completed yet.'}</div>
+          <div className="empty">{tab === 'upcoming' ? tx('Nothing scheduled — plan some tasks.') : 'Nothing completed yet.'}</div>
         )}
       </div>
       )}

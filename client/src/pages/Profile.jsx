@@ -9,6 +9,7 @@ import { THEMES, getTheme, applyTheme } from '../lib/theme.js'
 import { LANGS, useT } from '../lib/i18n.jsx'
 import { soundsOn, setSounds, playDone } from '../lib/sound.js'
 import { Moon, Languages } from 'lucide-react'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Distinct hues, not seven shades of brand red — avatars and chips must be
 // tellable apart at a glance.
@@ -39,7 +40,7 @@ function WarningRecord() {
         ) : (
           <>
             <p className="muted" style={{ marginTop: 0 }}>
-              {warnings.length} missed {warnings.length === 1 ? 'deadline' : 'deadlines'}
+              {warnings.length} missed {warnings.length === 1 ? 'deadline' : tx('deadlines')}
               {open > 0 && <> · <b>{open}</b> still running</>}. Delays caused by someone
               handing work over late are not counted here.
             </p>

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { ArrowLeft, Plus, Clapperboard, Send } from 'lucide-react'
 import { MONTHS, typeInfo, onColor } from '../lib/constants.js'
-import { tr as tx } from '../lib/i18n.jsx'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 
 // A clean, simple day view: everything happening that day in time order —
 // recordings and releases side by side, no hour grid to decipher.
@@ -16,7 +16,7 @@ export default function DayAgenda({ date, items, statusesById, canEdit, onOpen, 
   }, [items, date])
 
   const dt = new Date(`${date}T00:00:00`)
-  const heading = `${dt.toLocaleDateString(undefined, { weekday: 'long' })}, ${dt.getDate()} ${MONTHS[dt.getMonth()]}`
+  const heading = dt.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
 
   return (
     <div className="card planner">

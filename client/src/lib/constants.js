@@ -1,3 +1,4 @@
+import { tr as tx, locale } from './i18n.jsx'
 import {
   Instagram, Send, Youtube, Target, Camera, Clapperboard, Megaphone,
   Star, BarChart3, Globe, Music2, PenTool, Image as ImageIcon, Film, CirclePlay, Video, FileText,
@@ -101,7 +102,7 @@ export const CONTENT_TYPES = [
   { key: 'video', label: 'Video', plan: 'Videos',  icon: Video },
   // Paid promotion: a creative made for an ad set rather than for the feed.
   { key: 'target', label: 'Target', plan: 'Target', icon: Target },
-  { key: 'other', label: 'Other', plan: null,      icon: FileText },
+  { key: 'other', label: tx('Other'), plan: null,      icon: FileText },
 ]
 export const typeInfo = (key) => CONTENT_TYPES.find((t) => t.key === key) || CONTENT_TYPES[CONTENT_TYPES.length - 1]
 
@@ -132,7 +133,7 @@ export function dateLabel(iso) {
   if (iso === t) return 'Today'
   if (iso === addDaysISO(t, 1)) return 'Tomorrow'
   if (iso === addDaysISO(t, -1)) return 'Yesterday'
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 }
 
 // Distinct solid colors for departments — the admin overview and timeline

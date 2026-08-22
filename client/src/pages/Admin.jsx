@@ -828,9 +828,9 @@ const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_de
  */
 const SHAPE = { base: 0.60, piece: 0.25, quota: 0.10, ontime: 0.05 }
 const JOBS = [
-  { key: 'editor', label: 'Editor', rate: 'per_edit', monthly: 4000000, quota: 20 },
-  { key: 'operator', label: 'Operator', rate: 'per_shoot', monthly: 4000000, quota: 20 },
-  { key: 'designer', label: 'Designer', rate: 'per_design', monthly: 3500000, quota: 25 },
+  { key: 'editor', label: tx('Editor'), rate: 'per_edit', monthly: 4000000, quota: 20 },
+  { key: 'operator', label: tx('Operator'), rate: 'per_shoot', monthly: 4000000, quota: 20 },
+  { key: 'designer', label: tx('Designer'), rate: 'per_design', monthly: 3500000, quota: 25 },
   { key: 'planner', label: 'Runs the channel', rate: 'per_publish', monthly: 5000000, quota: 30 },
 ]
 // Round to something a person would actually write down.
@@ -862,8 +862,8 @@ function PayTab() {
   const prevEnd = addDaysISO(monthStart, -1)
   const prevStart = prevEnd.slice(0, 8) + '01'
   const PRESETS = [
-    { key: 'month', label: 'This month', from: monthStart, to: t },
-    { key: 'prev', label: 'Last month', from: prevStart, to: prevEnd },
+    { key: 'month', label: tx('This month'), from: monthStart, to: t },
+    { key: 'prev', label: tx('Last month'), from: prevStart, to: prevEnd },
     { key: 'custom', label: 'Custom' },
   ]
   const [preset, setPreset] = useState('month')
@@ -1263,9 +1263,9 @@ function ChannelsTab({ onOpenReport }) {
 // Who moves work OUT of which stage — the natural chain by default (operator
 // works until Shot, editor until Ready, the SMM everywhere), tunable per cell.
 const STAGE_ACTORS = [
-  { key: 'operator', label: 'Operator' },
-  { key: 'editor', label: 'Editor' },
-  { key: 'designer', label: 'Designer' },
+  { key: 'operator', label: tx('Operator') },
+  { key: 'editor', label: tx('Editor') },
+  { key: 'designer', label: tx('Designer') },
   { key: 'member', label: 'Member (SMM)' },
 ]
 
@@ -1520,9 +1520,9 @@ function PipelineTab() {
                   </thead>
                   <tbody>
                     {[
-                      { key: 'operator', label: 'Operator', hint: 'who films it' },
-                      { key: 'editor', label: 'Editor', hint: 'who cuts it' },
-                      { key: 'designer', label: 'Designer', hint: 'who draws the artwork' },
+                      { key: 'operator', label: tx('Operator'), hint: 'who films it' },
+                      { key: 'editor', label: tx('Editor'), hint: 'who cuts it' },
+                      { key: 'designer', label: tx('Designer'), hint: 'who draws the artwork' },
                     ].map((h) => (
                       <tr key={h.key}>
                         <td>
@@ -1607,8 +1607,8 @@ function ReportsTab({ channel, setChannel }) {
 
   const PRESETS = [
     { key: 'week', label: 'This week', from: weekStart, to: t },
-    { key: 'month', label: 'This month', from: monthStart, to: t },
-    { key: 'prev', label: 'Last month', from: prevMonthStart, to: prevMonthEnd },
+    { key: 'month', label: tx('This month'), from: monthStart, to: t },
+    { key: 'prev', label: tx('Last month'), from: prevMonthStart, to: prevMonthEnd },
     { key: 'custom', label: 'Custom' },
   ]
   const [preset, setPreset] = useState('month')

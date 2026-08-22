@@ -538,6 +538,68 @@ export const DICTS = { en: EN, ru: RU, uz: UZ }
 
 const PHRASES = {
   ru: {
+    "By department": "По отделам",
+    "Change": "Изменение",
+    "Compared with": "По сравнению с",
+    "Done, upcoming and missed — across every task": "Выполнено, предстоит и просрочено — по всем задачам",
+    "Editors and shooters": "Монтажёры и операторы",
+    "Metric": "Метрика",
+    "Missed tasks": "Просроченные задачи",
+    "No KPIs set": "KPI не заданы",
+    "No crew yet — give someone the operator or editor role.": "Команды пока нет — назначьте кому-нибудь роль оператора или монтажёра.",
+    "Nobody under consideration yet — add the first candidate.": "Пока никого не рассматриваем — добавьте первого кандидата.",
+    "Nothing scheduled — plan some tasks.": "Ничего не запланировано — поставьте задачи.",
+    "Now": "Сейчас",
+    "Pick your own dates": "Выбрать свои даты",
+    "Runs the whole marketing team.": "Руководит всей командой маркетинга.",
+    "SOPs and responsibility sheets": "Регламенты и зоны ответственности",
+    "The whole team:": "Вся команда:",
+    "Then": "Было",
+    "design": "дизайн",
+    "for": "для",
+    "no owner — assign one": "нет владельца — назначьте",
+    "nothing missed — clean record.": "ничего не просрочено — чисто.",
+    "nothing on the schedule — enjoy the quiet.": "в расписании пусто — наслаждайтесь тишиной.",
+    "video, next 7 days": "видео, ближайшие 7 дней",
+    "yet.": "пока.",
+    "— add the first one.": "— добавьте первый.",
+    "Anyone who finds the dashboard can sign in as {name}.": "Любой, кто найдёт панель, войдёт как {name}.",
+    "Change it": "Сменить",
+    "Tasks for {where} will appear here.": "Задачи для «{where}» появятся здесь.",
+    "Your password is the one this app ships with.": "У вас стандартный пароль этого приложения.",
+    "this channel": "этого канала",
+    "your channels": "ваших каналов",
+    "6 months": "6 месяцев",
+    "Add a task…": "Добавить задачу…",
+    "Considering": "Рассматриваем",
+    "Custom…": "Свой период…",
+    "Declined": "Отказ",
+    "Designer": "Дизайнер",
+    "Designers": "Дизайнеры",
+    "Editor": "Монтажёр",
+    "Every KPI in one place — the target, where it stands, and who updated it last.": "Все KPI в одном месте — цель, текущее значение и кто обновил последним.",
+    "Every task has its people and its dates.": "У каждой задачи есть люди и даты.",
+    "Interview": "Собеседование",
+    "Last month": "Прошлый месяц",
+    "No metrics yet.": "Метрик пока нет.",
+    "No shoots are booked yet.": "Съёмки пока не запланированы.",
+    "Nothing is scheduled to go out yet.": "К публикации пока ничего не запланировано.",
+    "Nothing missed. Every deadline met so far.": "Ничего не просрочено. Все сроки соблюдены.",
+    "Offer": "Оффер",
+    "Operator": "Оператор",
+    "Other": "Другое",
+    "Pick a date": "Выбрать дату",
+    "Post Production": "Пост-продакшн",
+    "Recordings": "Съёмки",
+    "Releases": "Публикации",
+    "Responsibility": "Зона ответственности",
+    "This month": "Этот месяц",
+    "Timetable": "Расписание",
+    "Upload": "Загрузить",
+    "Yesterday": "Вчера",
+    "deadlines": "сроков",
+    "every shoot on the books, every channel": "все запланированные съёмки, все каналы",
+    "everything going out, every channel": "всё, что выходит, по всем каналам",
     "Marked as designed — synced": "Отмечено как дизайн готов — синхронизировано",
     "Marked as edited — synced": "Отмечено как смонтировано — синхронизировано",
     "Marked as shot — synced": "Отмечено как снято — синхронизировано",
@@ -924,6 +986,68 @@ const PHRASES = {
     "yours": "ваше",
   },
   uz: {
+    "By department": "Bo‘limlar bo‘yicha",
+    "Change": "O‘zgarish",
+    "Compared with": "Taqqoslanmoqda",
+    "Done, upcoming and missed — across every task": "Bajarilgan, kutilayotgan va kechikkan — barcha vazifalar bo‘yicha",
+    "Editors and shooters": "Montajchilar va operatorlar",
+    "Metric": "Ko‘rsatkich",
+    "Missed tasks": "Kechikkan vazifalar",
+    "No KPIs set": "KPI belgilanmagan",
+    "No crew yet — give someone the operator or editor role.": "Hozircha jamoa yo‘q — kimgadir operator yoki montajchi rolini bering.",
+    "Nobody under consideration yet — add the first candidate.": "Hozircha hech kim ko‘rib chiqilmayapti — birinchi nomzodni qo‘shing.",
+    "Nothing scheduled — plan some tasks.": "Hech nima rejalashtirilmagan — vazifalar qo‘ying.",
+    "Now": "Hozir",
+    "Pick your own dates": "O‘z sanalaringizni tanlang",
+    "Runs the whole marketing team.": "Butun marketing jamoasini boshqaradi.",
+    "SOPs and responsibility sheets": "Reglamentlar va mas’uliyat doiralari",
+    "The whole team:": "Butun jamoa:",
+    "Then": "Avval",
+    "design": "dizayn",
+    "for": "uchun",
+    "no owner — assign one": "egasi yo‘q — tayinlang",
+    "nothing missed — clean record.": "hech nima kechikmagan — toza.",
+    "nothing on the schedule — enjoy the quiet.": "jadvalda hech nima yo‘q — tinchlikdan bahra oling.",
+    "video, next 7 days": "video, keyingi 7 kun",
+    "yet.": "hozircha.",
+    "— add the first one.": "— birinchisini qo‘shing.",
+    "Anyone who finds the dashboard can sign in as {name}.": "Panelni topgan har kim {name} sifatida kira oladi.",
+    "Change it": "O‘zgartirish",
+    "Tasks for {where} will appear here.": "«{where}» uchun vazifalar shu yerda paydo bo‘ladi.",
+    "Your password is the one this app ships with.": "Sizda ilovaning standart paroli turibdi.",
+    "this channel": "bu kanal",
+    "your channels": "sizning kanallaringiz",
+    "6 months": "6 oy",
+    "Add a task…": "Vazifa qo‘shish…",
+    "Considering": "Ko‘rib chiqilmoqda",
+    "Custom…": "O‘z davri…",
+    "Declined": "Rad etildi",
+    "Designer": "Dizayner",
+    "Designers": "Dizaynerlar",
+    "Editor": "Montajchi",
+    "Every KPI in one place — the target, where it stands, and who updated it last.": "Barcha KPI bir joyda — maqsad, hozirgi holat va oxirgi marta kim yangilagani.",
+    "Every task has its people and its dates.": "Har bir vazifaning odamlari va sanalari bor.",
+    "Interview": "Suhbat",
+    "Last month": "O‘tgan oy",
+    "No metrics yet.": "Hozircha ko‘rsatkichlar yo‘q.",
+    "No shoots are booked yet.": "Hozircha suratga olish rejalashtirilmagan.",
+    "Nothing is scheduled to go out yet.": "Chiqarishga hozircha hech nima rejalashtirilmagan.",
+    "Nothing missed. Every deadline met so far.": "Hech nima o‘tkazib yuborilmagan. Barcha muddatlar bajarilgan.",
+    "Offer": "Taklif",
+    "Operator": "Operator",
+    "Other": "Boshqa",
+    "Pick a date": "Sana tanlash",
+    "Post Production": "Post-produksiya",
+    "Recordings": "Suratga olish",
+    "Releases": "Chiqishlar",
+    "Responsibility": "Mas’uliyat doirasi",
+    "This month": "Shu oy",
+    "Timetable": "Jadval",
+    "Upload": "Yuklash",
+    "Yesterday": "Kecha",
+    "deadlines": "muddat",
+    "every shoot on the books, every channel": "barcha rejalashtirilgan suratga olishlar, barcha kanallar",
+    "everything going out, every channel": "chiqadigan hamma narsa, barcha kanallar",
     "Marked as designed — synced": "Dizayn tayyor deb belgilandi — sinxronlandi",
     "Marked as edited — synced": "Montaj qilindi deb belgilandi — sinxronlandi",
     "Marked as shot — synced": "Suratga olindi deb belgilandi — sinxronlandi",
@@ -1333,16 +1457,33 @@ const guess = () => {
 
 // The language, kept in a module variable so `tr` below can translate from
 // anywhere without a hook and without touching storage three hundred times a
-// render. The provider is the only writer.
-let current = 'en'
+// render.
+//
+// It is settled HERE, at module load, and not by the provider — because a
+// good deal of the board's text lives in constant arrays (the hiring stages,
+// the crew hats, the report presets) that are built the moment their module
+// is imported, which is before React has rendered anything. Those arrays get
+// the right language only if the language is already known by then. Every
+// module that translates imports this one, so this line runs first.
+let current = guess()
 
 export function I18nProvider({ children }) {
-  const [lang, setLangState] = useState(() => { current = guess(); return current })
+  const [lang, setLangState] = useState(current)
   const setLang = (next) => {
     if (!DICTS[next]) return
     current = next
     setLangState(next)
     try { localStorage.setItem(STORE, next) } catch { /* private window */ }
+    // And start again in the new language.
+    //
+    // The constant arrays above were built at import time and will not be
+    // built again; re-rendering would leave the hiring stages and the crew
+    // hats in the language the page opened in, which is a worse result than
+    // either language on its own. A reload is one second, it happens about
+    // once per person per lifetime, and it makes every string on the board
+    // agree. React's own re-render is kept as well, so anything the reload
+    // does not reach has already changed by the time it lands.
+    setTimeout(() => { try { window.location.reload() } catch { /* fine */ } }, 60)
   }
   useEffect(() => { document.documentElement.lang = lang }, [lang])
 
@@ -1371,6 +1512,12 @@ export function I18nProvider({ children }) {
 }
 
 export const useT = () => useContext(I18n)
+
+// The BCP-47 tag for whatever language is on, so dates and numbers follow it
+// too. The board greeted a Russian speaker with "Sunday 23 August" in
+// Russian-labelled chrome, which is the giveaway that a translation is a
+// veneer: the words changed and the machinery underneath did not.
+export const locale = () => ({ en: 'en-GB', ru: 'ru-RU', uz: 'uz-UZ' }[current] || 'en-GB')
 
 // The same translator, outside React.
 //

@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { TrendingUp, TrendingDown, Minus as Flat } from 'lucide-react'
 import { todayISO, addDaysISO } from '../lib/constants.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 const PERIODS = [
-  { key: 'day', label: 'Yesterday', days: 1 },
+  { key: 'day', label: tx('Yesterday'), days: 1 },
   { key: 'week', label: 'Last week', days: 7 },
-  { key: 'month', label: 'Last month', days: 30 },
-  { key: 'custom', label: 'Pick a date' },
+  { key: 'month', label: tx('Last month'), days: 30 },
+  { key: 'custom', label: tx('Pick a date') },
 ]
 
 // Growth comparison: current value vs the snapshot closest to the chosen
@@ -34,7 +35,7 @@ export default function CompareCard({ trackers, history }) {
   return (
     <div className="card card-pad">
       <div className="compare-head">
-        <span className="compare-cap">Compared with</span>
+        <span className="compare-cap">{tx('Compared with')}</span>
         <div className="pill-group">
           {PERIODS.map((p) => (
             <button key={p.key} className={'pill' + (period === p.key ? ' active' : '')} onClick={() => setPeriod(p.key)}>
@@ -51,7 +52,7 @@ export default function CompareCard({ trackers, history }) {
       <div className="table-wrap">
         <table className="tbl compare-tbl">
           <thead>
-            <tr><th>Metric</th><th>Then</th><th>Now</th><th>Change</th></tr>
+            <tr><th>{tx('Metric')}</th><th>{tx('Then')}</th><th>{tx('Now')}</th><th>{tx('Change')}</th></tr>
           </thead>
           <tbody>
             {rows.map(({ t, then, delta, pct }) => (

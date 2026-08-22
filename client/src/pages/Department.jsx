@@ -57,7 +57,7 @@ const DASH_WIDGETS = [
   { key: 'metrics', label: 'Metrics & plans', hint: 'Headline numbers and plan meters' },
   { key: 'growth', label: 'Growth', hint: 'Then-vs-now comparison table' },
   { key: 'campaigns', label: 'Campaigns', hint: 'Campaigns running on this channel' },
-  { key: 'timetable', label: 'Timetable', hint: 'The next 7 days, day by day' },
+  { key: 'timetable', label: tx('Timetable'), hint: 'The next 7 days, day by day' },
   { key: 'upcoming', label: 'Upcoming board', hint: 'Everything dated, closest first' },
   { key: 'done', label: 'Done board', hint: 'Recently completed work' },
   { key: 'content', label: 'Content workspace', hint: 'Kanban board and calendars' },
@@ -489,8 +489,8 @@ export default function Department() {
     )
 
   const VIEWS = [
-    { key: 'board', label: 'Board', icon: KanbanSquare },
-    { key: 'release', label: 'Releases', icon: Send },
+    { key: 'board', label: tx('Board'), icon: KanbanSquare },
+    { key: 'release', label: tx('Releases'), icon: Send },
     { key: 'recording', label: 'Recording', icon: Clapperboard },
   ]
 
@@ -643,7 +643,7 @@ export default function Department() {
         {manageMetrics && <button className="btn btn-primary btn-sm" onClick={() => openMetric(null)}><Plus size={15} />{' '}{tx("Add metric")}</button>}
       </div>
       {gridMetrics.length === 0 ? (
-        <div className="card card-pad empty">{pinned.length > 0 ? 'All metrics are pinned above.' : 'No metrics yet.'}</div>
+        <div className="card card-pad empty">{pinned.length > 0 ? 'All metrics are pinned above.' : tx('No metrics yet.')}</div>
       ) : (
         <div className="grid grid-auto">
           {gridMetrics.map((t, i) => (
@@ -760,7 +760,7 @@ export default function Department() {
         ) : isAdmin ? (
           <button className="no-owner-badge no-owner-btn" data-tip={tx("Nobody owns this channel — click to assign a head")}
             onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }}>
-            no owner — assign one
+            {tx('no owner — assign one')}
           </button>
         ) : (
           <span className="no-owner-badge">{tx("no owner yet")}</span>
