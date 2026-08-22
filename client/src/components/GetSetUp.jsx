@@ -93,7 +93,7 @@ export default function GetSetUp() {
         <div className="setup-card setup-install">
           <Download size={16} />
           <span className="setup-txt">
-            <b>Put Satashkent on your home screen</b>
+            <b>Put SATashkent on your home screen</b>
             <span className="setup-sub">
               {showIOS
                 ? <>Tap <Share size={12} style={{ verticalAlign: -2 }} /> Share, then <Plus size={12} style={{ verticalAlign: -2 }} /> “Add to Home Screen”. It opens like an app — no address to remember.</>

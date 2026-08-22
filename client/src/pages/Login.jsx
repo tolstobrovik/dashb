@@ -35,7 +35,7 @@ export default function Login() {
       <div className="login-card">
         <div className="login-logo">
           <Logo size={46} tone="var(--brand-500)" />
-          <div className="login-word">SATASHKENT</div>
+          <div className="login-word"><b className="logo-sat">SAT</b>ashkent</div>
           <div className="login-tag">College Prep Community</div>
         </div>
 
