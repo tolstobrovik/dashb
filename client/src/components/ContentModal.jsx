@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
-import { readText, hasSubstance, hasLink, isSentence } from '../lib/text.js'
+import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHref } from '../lib/text.js'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { api } from '../lib/api.js'
@@ -455,7 +455,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     ? (f.offer && (f.mine || f.present))
     : (f.offer && canEdit && show.delivery))))
   // The files themselves, one press away for anyone who can open the task.
-  const deliveryLinks = DELIVERY.filter((f) => form[f.col] && /^https?:\/\//i.test(form[f.col]))
+  // A delivery made through a channel's shared folder is stored as the folder,
+  // a separator and the file the person named — "…/folders/ABC · 1-3". It is
+  // one fact and reads as one, but pasted whole into an href it 404s, so the
+  // address is taken from it rather than assumed to BE it.
+  const deliveryLinks = DELIVERY.map((f) => ({ ...f, href: deliveryHref(form[f.col]), note: splitDelivery(form[f.col]).note }))
+    .filter((f) => f.href)
   const hasRef = !!(form.reference_text || form.reference_links.length > 0 || form.photo || form.photo_thumb)
 
   // ---- Review / Pravki (SMM & admin, when a task is waiting at Ready) ----
@@ -579,10 +584,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // The finished files, ready to open right in the Review row — reviewing
   // means watching the work, not hunting for its link further down the modal.
   const reviewLinks = [
-    { url: form.ready_link, label: '▶ Watch the cut' },
-    { url: form.design_link, label: '🎨 See the design' },
-    { url: form.shot_link, label: '🎬 Raw footage' },
-  ].filter((l) => l.url && /^https?:\/\//i.test(l.url))
+    { value: form.ready_link, label: '▶ Watch the cut' },
+    { value: form.design_link, label: '🎨 See the design' },
+    { value: form.shot_link, label: '🎬 Raw footage' },
+  ].map((l) => ({ ...l, url: deliveryHref(l.value), note: splitDelivery(l.value).note })).filter((l) => l.url)
 
   // Admin's shortcut: a brand-new department without leaving the task.
   // The icon picks itself from the name (Instagram/Telegram/YouTube/Target…).
@@ -1180,7 +1185,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <div className="review-links">
                 {reviewLinks.map((l) => (
                   <a key={l.label} className="btn btn-sm" href={l.url} target="_blank" rel="noreferrer">
-                    {l.label} <ExternalLink size={12} />
+                    {l.label}{l.note ? ` · ${l.note}` : ''} <ExternalLink size={12} />
                   </a>
                 ))}
               </div>
@@ -1274,9 +1279,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {deliveryLinks.map((f) => {
               const Icon = f.icon
               return (
-                <a key={f.col} className={`file-link fl-${f.kind}`} href={form[f.col]} target="_blank" rel="noreferrer"
-                  data-tip={f.sub}>
-                  <Icon size={13} /> {f.label} <ExternalLink size={12} className="fl-go" />
+                <a key={f.col} className={`file-link fl-${f.kind}`} href={f.href} target="_blank" rel="noreferrer"
+                  data-tip={f.note ? `${f.sub} — ${f.note}` : f.sub}>
+                  <Icon size={13} /> {f.label}{f.note ? ` · ${f.note}` : ''} <ExternalLink size={12} className="fl-go" />
                 </a>
               )
             })}
@@ -1356,8 +1361,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                         value={form[f.col]}
                         onChange={(e) => setForm({ ...form, [f.col]: e.target.value })} />
                     )}
-                    {form[f.col] && /^https?:\/\//i.test(form[f.col]) && (
-                      <a className="btn btn-sm" href={form[f.col]} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open</a>
+                    {deliveryHref(form[f.col]) && (
+                      <a className="btn btn-sm" href={deliveryHref(form[f.col])} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open</a>
                     )}
                   </span>
                 </label>

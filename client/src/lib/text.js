@@ -99,3 +99,28 @@ export const scriptKey = (v) => {
   const norm = String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
   return norm || null
 }
+
+// ---- delivered files -------------------------------------------------------
+// A delivery is stored as ONE string, because it is one fact: where the file
+// is. When the channel has a shared Drive folder the person types only the
+// file — "1-3" — and it is stored as the folder, a separator, and their label:
+//
+//     https://drive.google.com/drive/folders/ABC · 1-3
+//
+// That whole string is what everybody reads, and it is what the history and
+// the notifications quote. It is NOT an address: pasted into an href it 404s,
+// because of the label on the end. So anything that wants to OPEN a delivery
+// splits it here first, and nowhere else guesses at the separator.
+export const DELIVERY_SEP = ' · '
+export function splitDelivery(value) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return { url: '', note: '' }
+  const at = raw.indexOf(DELIVERY_SEP)
+  if (at < 0) return { url: raw, note: '' }
+  return { url: raw.slice(0, at).trim(), note: raw.slice(at + DELIVERY_SEP.length).trim() }
+}
+// The address to open, or '' when there is nothing openable.
+export const deliveryHref = (value) => {
+  const { url } = splitDelivery(value)
+  return /^https?:\/\//i.test(url) ? url : ''
+}

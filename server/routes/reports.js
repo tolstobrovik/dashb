@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { all, get, run, publicUser, tashkentDay } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
-import { resolveGates, phasesOf } from '../deadlines.js'
+import { resolveGates, phasesOf, phasePassed } from '../deadlines.js'
 
 const router = Router()
 
@@ -24,11 +24,11 @@ const router = Router()
 //
 // The FIELD each hat is read from, and the timestamp that dates the work.
 export const HATS = {
-  assignee: { column: 'assignee_id', at: 'done_at',   phase: 'review', label: 'Ran the piece' },
-  operator: { column: 'operator_id', at: 'shot_at',   phase: 'shoot',  label: 'Shot it' },
-  editor:   { column: 'editor_id',   at: 'edited_at', phase: 'edit',   label: 'Cut it' },
-  designer: { column: 'designer_id', at: 'done_at',   phase: null,     label: 'Designed it' },
-  reviewer: { column: 'reviewers',   at: 'done_at',   phase: 'review', label: 'Signed it off' },
+  assignee: { column: 'assignee_id', at: 'done_at',   phase: 'review', due: 'release_date',     label: 'Ran the piece' },
+  operator: { column: 'operator_id', at: 'shot_at',   phase: 'shoot',  due: 'recording_date',   label: 'Shot it' },
+  editor:   { column: 'editor_id',   at: 'edited_at', phase: 'edit',   due: 'edit_ready_date',  label: 'Cut it' },
+  designer: { column: 'designer_id', at: 'done_at',   phase: null,     due: 'design_ready_date', label: 'Designed it' },
+  reviewer: { column: 'reviewers',   at: 'done_at',   phase: 'review', due: 'release_date',     label: 'Signed it off' },
 }
 
 const parseList = (s) => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a : [] } catch { return [] } }
@@ -66,9 +66,18 @@ async function contributions({ from, to, channel, type }) {
     let phases = null
     for (const hat of Object.keys(HATS)) {
       const f = HATS[hat]
+      // The handover timestamp, if there is one. shot_at is stamped when the
+      // footage reaches the EDITOR — so an operator who filmed twenty pieces
+      // this month that no editor has picked up yet had, by that column
+      // alone, done nothing. Round 72 settled this everywhere else: a card
+      // that has reached Shot HAS finished its shoot, whatever the timestamps
+      // say. The report and the payroll have to agree with the rest of the
+      // board, so when the stage says the phase is behind us and no timestamp
+      // exists, the work is credited on the day it was due.
       const stamp = r[f.at]
-      if (!stamp) continue
-      const day = tashkentDay(stamp)
+      let day = stamp ? tashkentDay(stamp) : null
+      if (!day && f.phase && phasePassed(r, f.phase, resolved)) day = r[f.due] || null
+      if (!day) continue
       if (from && day < from) continue
       if (to && day > to) continue
       const who = wearers(r, hat)

@@ -13,6 +13,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import { celebrateIfFinished } from '../lib/celebrate.js'
 import MyLate from '../components/MyLate.jsx'
 import MyPay from '../components/MyPay.jsx'
+import { deliveryHref, splitDelivery } from '../lib/text.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { playDone } from '../lib/sound.js'
@@ -208,13 +209,17 @@ function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
     // The files this row's work runs on, told apart at a glance: the
     // operator's raw FOOTAGE is the editor's source; the CUT (or the DESIGN)
     // is this person's own deliverable. No more guessing which link is which.
-    const ok = (u) => u && /^https?:\/\//i.test(u)
+    // A delivery through a channel's shared folder is stored as the folder
+    // and the file the person named — the address has to be taken out of it
+    // before it can be opened (see splitDelivery in lib/text.js).
+    const ok = (u) => deliveryHref(u)
+    const note = (u) => { const n = splitDelivery(u).note; return n ? ` · ${n}` : '' }
     const links = [
       ok(e.t.shot_link) && (e.kind !== 'shoot'
-        ? { url: e.t.shot_link, label: 'Footage', cls: 'src', LIcon: Clapperboard, tip: 'The raw material from the operator — your source' }
-        : { url: e.t.shot_link, label: 'Footage', cls: 'mine', LIcon: Clapperboard, tip: 'Your delivered footage' }),
-      e.kind === 'edit' && ok(e.t.ready_link) && { url: e.t.ready_link, label: 'Cut', cls: 'mine', LIcon: Scissors, tip: 'Your finished cut' },
-      e.kind === 'design' && ok(e.t.design_link) && { url: e.t.design_link, label: 'Design', cls: 'mine', LIcon: Palette, tip: 'Your finished artwork' },
+        ? { url: ok(e.t.shot_link), label: 'Footage' + note(e.t.shot_link), cls: 'src', LIcon: Clapperboard, tip: 'The raw material from the operator — your source' }
+        : { url: ok(e.t.shot_link), label: 'Footage' + note(e.t.shot_link), cls: 'mine', LIcon: Clapperboard, tip: 'Your delivered footage' }),
+      e.kind === 'edit' && ok(e.t.ready_link) && { url: ok(e.t.ready_link), label: 'Cut' + note(e.t.ready_link), cls: 'mine', LIcon: Scissors, tip: 'Your finished cut' },
+      e.kind === 'design' && ok(e.t.design_link) && { url: ok(e.t.design_link), label: 'Design' + note(e.t.design_link), cls: 'mine', LIcon: Palette, tip: 'Your finished artwork' },
     ].filter(Boolean)
     return (
       <div className="cb-row" role="button" tabIndex={0} onClick={() => onOpen(e.t)}
@@ -380,8 +385,8 @@ function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
       )}
       <div className="pravki-fix">
         <input className="input" placeholder="Link to the NEW file…" value={link} onChange={(e) => setLink(e.target.value)} />
-        {rev[relCol] && /^https?:\/\//i.test(rev[relCol]) && (
-          <a className="btn btn-sm" href={rev[relCol]} target="_blank" rel="noreferrer"
+        {deliveryHref(rev[relCol]) && (
+          <a className="btn btn-sm" href={deliveryHref(rev[relCol])} target="_blank" rel="noreferrer"
             data-tip="Open the file that was sent back" aria-label="Open the file that was sent back"><ExternalLink size={14} /></a>
         )}
         <button className="btn btn-sm btn-primary" disabled={busy || !link.trim() || link.trim() === (rev[relCol] || '')}
@@ -690,11 +695,13 @@ export default function Brief() {
               {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
               {(t.ready_link || t.design_link) && (
                 <>
-                  {/^https?:\/\//i.test(t.ready_link || t.design_link) && (
-                    <a className="btn btn-sm rq-open" href={t.ready_link || t.design_link}
+                  {deliveryHref(t.ready_link || t.design_link) && (
+                    <a className="btn btn-sm rq-open" href={deliveryHref(t.ready_link || t.design_link)}
                       target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
                       data-tip="Watch the finished file before releasing it">
                       <ExternalLink size={13} /> {t.ready_link ? 'Cut' : 'Design'}
+                      {splitDelivery(t.ready_link || t.design_link).note
+                        ? ` · ${splitDelivery(t.ready_link || t.design_link).note}` : ''}
                     </a>
                   )}
                   <button className="icon-btn rq-copy"
