@@ -549,6 +549,11 @@ export async function initSchema() {
       label   TEXT NOT NULL,
       icon    TEXT NOT NULL DEFAULT 'star',
       head_id INTEGER,
+      -- The one Drive folder this channel's footage and cuts live in. With it
+      -- set, nobody pastes a URL per task: they say WHICH file in the folder
+      -- ("1-3", "reel 14"), which is what they would have said out loud
+      -- anyway, and the board keeps the folder.
+      drive_url TEXT NOT NULL DEFAULT '',
       sort    INTEGER NOT NULL DEFAULT 0
     );
 
@@ -1022,6 +1027,9 @@ export async function initSchema() {
     // A Pravki note is usually about a FRAME. The screenshot travels with it
     // instead of being described in words and then hunted for in a chat.
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_channels TEXT NOT NULL DEFAULT '[]'")
+    await exec("ALTER TABLE channels ADD COLUMN IF NOT EXISTS drive_url TEXT NOT NULL DEFAULT ''")
+    await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_cap INTEGER NOT NULL DEFAULT 0')
+    await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_channels TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script_key TEXT')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_secs INTEGER NOT NULL DEFAULT 0')
@@ -1115,6 +1123,9 @@ async function migrate() {
       `)
     }
     if (!(await hasColumn('users', 'admin_channels'))) await exec("ALTER TABLE users ADD COLUMN admin_channels TEXT NOT NULL DEFAULT '[]'")
+    if (!(await hasColumn('channels', 'drive_url'))) await exec("ALTER TABLE channels ADD COLUMN drive_url TEXT NOT NULL DEFAULT ''")
+    if (!(await hasColumn('users', 'daily_cap'))) await exec('ALTER TABLE users ADD COLUMN daily_cap INTEGER NOT NULL DEFAULT 0')
+    if (!(await hasColumn('users', 'crew_channels'))) await exec("ALTER TABLE users ADD COLUMN crew_channels TEXT NOT NULL DEFAULT '[]'")
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
@@ -1237,7 +1248,7 @@ export async function mayLeaveStage(actor, statusId) {
 // in meta 'task_fields'; getTaskFields always answers the EFFECTIVE config
 // (stored overrides merged over these defaults).
 export const TASK_FIELD_KEYS = ['format', 'rubrika', 'script', 'reference', 'description']
-const ALL_TYPES = ['post', 'reel', 'story', 'video', 'other']
+const ALL_TYPES = ['post', 'reel', 'story', 'video', 'target', 'other']
 export const DEFAULT_TASK_FIELDS = {
   format:      { state: 'optional', types: ['reel', 'video'], options: ['Talking head', 'Split screen', 'Voiceover', 'Interview', 'Vlog', 'Skit'] },
   rubrika:     { state: 'optional', types: [...ALL_TYPES], options: [] },
@@ -1321,8 +1332,10 @@ export async function snapshotTracker(trackerId) {
 }
 
 // Task types that can bind to a channel's plan metric.
-export const CONTENT_TYPES = ['post', 'reel', 'story', 'video', 'other']
-export const TYPE_PLAN_LABELS = { post: 'Posts', reel: 'Reels', story: 'Stories', video: 'Videos' }
+// 'target' is paid promotion — a creative made for an ad set rather than
+// for the feed. It plans and counts like anything else.
+export const CONTENT_TYPES = ['post', 'reel', 'story', 'video', 'target', 'other']
+export const TYPE_PLAN_LABELS = { post: 'Posts', reel: 'Reels', story: 'Stories', video: 'Videos', target: 'Target' }
 
 // The plan metric for (channel, type) — optionally created on first use, so a
 // new task always has a plan to count toward.
@@ -1716,6 +1729,12 @@ export function publicUser(row) {
     // every admin was before this existed — so nobody's reach changed by the
     // column appearing.
     admin_channels: (() => { try { return JSON.parse(row.admin_channels || '[]') } catch { return [] } })(),
+    // How many pieces this person can be given for one day. 0 = no ceiling,
+    // which is what everyone was before this existed.
+    daily_cap: row.daily_cap || 0,
+    // The channels this crew member works on. EMPTY means all of them — again,
+    // what everyone was — so nobody's reach narrowed when the column appeared.
+    crew_channels: (() => { try { return JSON.parse(row.crew_channels || '[]') } catch { return [] } })(),
     permissions: crew ? {} : { ...DEFAULT_PERMS, ...perms },
     color: row.color,
     avatar: row.avatar || null,

@@ -92,7 +92,7 @@ export default function MissedTasks() {
 
           <select className="select" value={type} onChange={(e) => setType(e.target.value)}>
             <option value="">Any type</option>
-            {['post', 'reel', 'story', 'video', 'other'].map((t) =>
+            {['post', 'reel', 'story', 'video', 'target', 'other'].map((t) =>
               <option key={t} value={t}>{typeInfo(t).label}</option>)}
           </select>
 

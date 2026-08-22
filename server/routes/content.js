@@ -123,6 +123,32 @@ const cleanLink = (v) => {
   return s
 }
 
+// ---- the channel's shared folder -------------------------------------------
+// Pasting a full Drive URL for every single cut is the same folder typed out
+// forty times a week, and the one part that differs — which file — is the part
+// people leave out. So a channel can carry the folder once, and a delivery
+// then says only WHICH file it is: "1-3", "reel 14", "Bahrom final".
+//
+// The label is still required. The folder alone points at everything the
+// channel has ever made, which is the same as pointing at nothing.
+const FILE_LABEL_MAX = 120
+const cleanFileLabel = (v) => String(v ?? '').trim().slice(0, FILE_LABEL_MAX)
+// Where a delivery lands: the folder, and the file said in words. Kept as ONE
+// stored string so everything that already reads these columns — the digest,
+// the review row, the Files list — keeps working untouched.
+export const deliveryValue = (folder, label) => (folder && label ? `${folder} · ${label}` : '')
+// The folder for a task's channels, if they agree on one. A task on two
+// channels with two different folders has no single answer, so it falls back
+// to asking for the whole URL.
+async function folderFor(chans) {
+  const list = Array.isArray(chans) ? chans : []
+  if (!list.length) return ''
+  const rows = await all(
+    `SELECT key, drive_url FROM channels WHERE key IN (${list.map(() => '?').join(',')})`, ...list)
+  const set = [...new Set(rows.map((r) => (r.drive_url || '').trim()).filter(Boolean))]
+  return set.length === 1 ? set[0] : ''
+}
+
 // Publishing (Ready → Published) is the SMM's call: an admin, or someone with
 // the review_publish right who is actually on one of the task's channels — you
 // can't publish to a channel you don't belong to.
@@ -530,6 +556,26 @@ router.get('/:id', wrap(async (req, res) => {
   res.json({ ...row, revisions, comments, activity, documents, date_requests, flags, phases: phasesOf(row), has_photo: row.photo ? 1 : 0 })
 }))
 
+// One delivery, however it was given. With a folder on the channel the person
+// names the file and the folder is remembered for them; without one they paste
+// the whole address as before. Either way the answer has to point at a FILE —
+// a folder on its own points at everything the channel has ever made.
+async function buildDelivery(req, row, body, fileKey, what) {
+  const folder = await folderFor(chansOf(row))
+  const raw = body[fileKey]
+  if (raw !== undefined) {
+    const label = cleanFileLabel(raw)
+    if (!label) return { value: null }
+    if (!folder)
+      return { error: 'This channel has no shared folder yet — paste the whole link, or ask an admin to set the folder in Admin → Channels' }
+    return { value: deliveryValue(folder, label) }
+  }
+  const link = cleanLink(body[fileKey === 'ready_file' ? 'ready_link' : fileKey === 'shot_file' ? 'shot_link' : 'design_link'])
+  if (!link) return { value: null }
+  if (!/^https?:\/\//i.test(link)) return { error: linkComplaint(link, what) }
+  return { value: link }
+}
+
 // ---- naming somebody in the thread -----------------------------------------
 // "@Dilnoza" in a comment should reach Dilnoza, whether or not she is on the
 // task — naming somebody is how you pull them IN. Matched against the real
@@ -880,6 +926,17 @@ router.post('/', wrap(async (req, res) => {
   // WHICH types count as filmed is the admin's crew rule (Admin → Pipeline),
   // the same list the gap counts read. Editing and design stay advisory: they
   // are named later, often after the footage exists.
+  // Nobody is handed work on a channel they do not work on, or more for one
+  // day than they can take. Checked here, where somebody can still change it.
+  for (const f of ['operator_id', 'editor_id', 'designer_id']) {
+    if (!crew[f]) continue
+    const chanProblem = await crewChannelProblem(crew[f], channels)
+    if (chanProblem) return res.status(400).json({ error: chanProblem, crew_field: f })
+    const capDay = { operator_id: recording_date, editor_id: edit_ready_date, designer_id: design_ready_date }[f]
+    const capped = await capProblem(f, crew[f], capDay)
+    if (capped) return res.status(409).json({ error: capped, crew_field: f })
+  }
+
   const isFilmed = (await getCrewNeeds()).operator.includes(safeType)
   if (isFilmed && isBooking(status, await all('SELECT id, label, sort, is_final FROM statuses'))) {
     const booking = bookingProblem({
@@ -1034,6 +1091,50 @@ router.post('/revisions/:rid/resolve', wrap(async (req, res) => {
   }
   res.json({ ok: true, task: await listRow(row.id) })
 }))
+
+// ---- how much one person can be given ---------------------------------------
+// A content head could hand an editor eleven cuts for a Tuesday, and nothing
+// on the board said otherwise until Tuesday came and nine of them were late.
+// The ceiling is a property of the PERSON — some editors take four a day and
+// some take one — and it is checked when the work is handed over, which is
+// the only moment anybody can still do something about it.
+//
+// 0 means no ceiling, which is what everyone was before this existed.
+//
+// The day counted is the day the work is DUE from them: an editor's cut day,
+// an operator's shoot day, a designer's artwork day. Not the release, which
+// is somebody else's promise.
+const CAP_DATE = { editor_id: 'edit_ready_date', operator_id: 'recording_date', designer_id: 'design_ready_date' }
+export async function capProblem(hatField, personId, day, excludeId) {
+  if (!personId || !day) return null
+  const u = await get('SELECT name, daily_cap FROM users WHERE id = ?', personId)
+  const cap = u?.daily_cap || 0
+  if (!cap) return null
+  const dateCol = CAP_DATE[hatField]
+  const dead = (await all('SELECT id, label FROM statuses'))
+    .filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id)
+  const rows = await all(
+    `SELECT id FROM content WHERE ${hatField} = ? AND ${dateCol} = ? AND done_at IS NULL
+     ${dead.length ? `AND status_id NOT IN (${dead.map(() => '?').join(',')})` : ''}`,
+    personId, day, ...dead)
+  const already = rows.filter((r) => r.id !== excludeId).length
+  if (already < cap) return null
+  const what = { editor_id: 'cuts', operator_id: 'shoots', designer_id: 'pieces of artwork' }[hatField]
+  return `${u.name} already has ${already} ${what} due on ${day}, which is their day's limit of ${cap}. `
+    + 'Give it another day, another person, or raise their limit in Admin → People.'
+}
+
+// The channels a crew member works on. Empty means all of them.
+export async function crewChannelProblem(personId, chans) {
+  if (!personId) return null
+  const u = await get('SELECT name, crew_channels FROM users WHERE id = ?', personId)
+  let mine = []
+  try { mine = JSON.parse(u?.crew_channels || '[]') } catch { mine = [] }
+  if (!mine.length) return null
+  const list = Array.isArray(chans) ? chans : []
+  if (list.some((ch) => mine.includes(ch))) return null
+  return `${u.name} doesn’t work on this channel. Pick somebody who does, or add the channel to them in Admin → People.`
+}
 
 // ---- late work chases its own owner ----------------------------------------
 // Fifty overdue pieces piled into one strip for an admin to drag back onto the
@@ -1404,7 +1505,9 @@ router.patch('/:id', wrap(async (req, res) => {
     }
     const proof = NEEDS_FILE[m]
     if (proof) {
-      const link = body[proof.field] !== undefined ? cleanLink(body[proof.field]) : row[proof.field]
+      const fileKey = { ready_link: 'ready_file', design_link: 'design_file' }[proof.field]
+      const named = body[fileKey] !== undefined ? cleanFileLabel(body[fileKey]) : ''
+      const link = named || (body[proof.field] !== undefined ? cleanLink(body[proof.field]) : row[proof.field])
       const hasFile = await get('SELECT 1 AS x FROM attachments WHERE content_id = ?', row.id)
       if (!link && !hasFile)
         return res.status(400).json({
@@ -1436,13 +1539,12 @@ router.patch('/:id', wrap(async (req, res) => {
 
   // The finished-file link: the crew (or an editor of the task) drops in a
   // Google-Drive URL; admins with manage_content may set it too.
-  if (body.ready_link !== undefined) {
+  if (body.ready_link !== undefined || body.ready_file !== undefined) {
     if (!isCrew && !can(req.user, 'manage_content'))
       return res.status(403).json({ error: 'You can’t set the ready link on this task' })
-    const link = cleanLink(body.ready_link)
-    if (link && !/^https?:\/\//i.test(link))
-      return res.status(400).json({ error: linkComplaint(link, 'The cut') })
-    patch.ready_link = link || null
+    const built = await buildDelivery(req, row, body, 'ready_file', 'The cut')
+    if (built.error) return res.status(400).json({ error: built.error })
+    patch.ready_link = built.value
   }
 
   // Per-stage delivery links: the operator drops raw footage (shot_link) and
@@ -1453,13 +1555,13 @@ router.patch('/:id', wrap(async (req, res) => {
     { field: 'shot_link', hat: isOperator },
     { field: 'design_link', hat: isDesigner },
   ]) {
-    if (body[field] === undefined) continue
+    const fileKey = field === 'shot_link' ? 'shot_file' : 'design_file'
+    if (body[field] === undefined && body[fileKey] === undefined) continue
     if (!hat && !can(req.user, 'manage_content') && !can(req.user, 'deliver_work'))
       return res.status(403).json({ error: 'You can’t set that delivery link' })
-    const link = cleanLink(body[field])
-    if (link && !/^https?:\/\//i.test(link))
-      return res.status(400).json({ error: linkComplaint(link, 'A delivery link') })
-    patch[field] = link || null
+    const built = await buildDelivery(req, row, body, fileKey, 'A delivery link')
+    if (built.error) return res.status(400).json({ error: built.error })
+    patch[field] = built.value
   }
 
   // The Reference block (style / mood / format text and example URLs) — part
@@ -1631,6 +1733,29 @@ router.patch('/:id', wrap(async (req, res) => {
       // Setting the single reviewer replaces the whole list — the two must
       // never disagree about who is on the hook.
       if (f === 'reviewer_id') patch.reviewers = JSON.stringify(next ? [next] : [])
+    }
+  }
+
+  // The same two questions on an edit — whether the hat changed, or the day it
+  // is due did. Moving three cuts onto one Tuesday is the same act as handing
+  // somebody three cuts for Tuesday.
+  {
+    const nextChans = patch.channels !== undefined ? chansOf({ channels: patch.channels }) : chansOf(row)
+    for (const f of ['operator_id', 'editor_id', 'designer_id']) {
+      const dateCol = CAP_DATE[f]
+      const hatChanged = patch[f] !== undefined && patch[f] !== row[f]
+      const dayChanged = patch[dateCol] !== undefined && patch[dateCol] !== row[dateCol]
+      const chansChanged = patch.channels !== undefined
+      if (!hatChanged && !dayChanged && !chansChanged) continue
+      const person = patch[f] !== undefined ? patch[f] : row[f]
+      if (!person) continue
+      if (hatChanged || chansChanged) {
+        const chanProblem = await crewChannelProblem(person, nextChans)
+        if (chanProblem) return res.status(400).json({ error: chanProblem, crew_field: f })
+      }
+      const day = patch[dateCol] !== undefined ? patch[dateCol] : row[dateCol]
+      const capped = await capProblem(f, person, day, row.id)
+      if (capped) return res.status(409).json({ error: capped, crew_field: f })
     }
   }
 

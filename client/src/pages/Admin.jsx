@@ -780,7 +780,7 @@ function ChannelsTab({ onOpenReport }) {
     if (!modal.label.trim()) return
     setErr('')
     try {
-      const body = { label: modal.label.trim(), icon: modal.icon, head_id: modal.head_id ?? null }
+      const body = { label: modal.label.trim(), icon: modal.icon, head_id: modal.head_id ?? null, drive_url: (modal.drive_url ?? '').trim() }
       if (modal.id) await api.patch(`/channels/${modal.id}`, body)
       else await api.post('/channels', body)
       reload()
@@ -805,7 +805,7 @@ function ChannelsTab({ onOpenReport }) {
         <h2>Sidebar channels</h2>
         <span className="count">· shown top to bottom</span>
         <span className="spacer" />
-        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', icon: 'instagram', head_id: null }); setErr('') }}><Plus size={15} /> Add channel</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', icon: 'instagram', head_id: null, drive_url: '' }); setErr('') }}><Plus size={15} /> Add channel</button>
       </div>
       <div className="card" style={{ padding: '6px 14px' }}>
         {channels.map((c, i) => {
@@ -839,7 +839,7 @@ function ChannelsTab({ onOpenReport }) {
               <span className="spacer" style={{ flex: 1 }} />
               <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} data-tip="Move up in the sidebar" aria-label="Up"><ArrowUp size={15} /></button>
               <button className="icon-btn" disabled={i === channels.length - 1} onClick={() => move(i, 1)} data-tip="Move down in the sidebar" aria-label="Down"><ArrowDown size={15} /></button>
-              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null }); setErr('') }} data-tip="Edit name, head & icon" aria-label="Edit"><Pencil size={15} /></button>
+              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null, drive_url: c.drive_url || '' }); setErr('') }} data-tip="Edit name, head & icon" aria-label="Edit"><Pencil size={15} /></button>
               <button className="btn btn-danger btn-sm btn-icon" onClick={() => del(c)} data-tip="Delete channel & its data" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
             </div>
           )
@@ -864,6 +864,16 @@ function ChannelsTab({ onOpenReport }) {
               <option value="">— No head yet —</option>
               {team.map((u) => <option key={u.id} value={u.id}>{u.name}{u.role === 'admin' ? ' (admin)' : ''}</option>)}
             </select>
+          </div>
+          <div className="field"><label>Shared Drive folder <span className="stat-sub">(optional)</span></label>
+            <input className="input" value={modal.drive_url ?? ''}
+              onChange={(e) => setModal({ ...modal, drive_url: e.target.value })}
+              placeholder="https://drive.google.com/drive/folders/…" />
+            <div className="cm-hint">
+              {modal.drive_url
+                ? 'Set. The crew now name the file — “1-3”, “reel 14” — instead of pasting this address on every task. Naming one is still required.'
+                : 'With a folder here, the crew name the file instead of pasting a full link every time. Without one they paste the whole address, as now.'}
+            </div>
           </div>
           <div className="field"><label>Icon</label>
             <div className="icon-grid">

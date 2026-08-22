@@ -13,6 +13,7 @@ import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
 import { activityLine } from '../lib/activity.js'
+import { celebrate } from '../lib/celebrate.js'
 import { VoiceRecorder, VoicePlayer, canRecord } from './VoiceNote.jsx'
 
 // Documents a task can carry. The cap is deliberate and low: every byte is
@@ -146,6 +147,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     ready_link: item?.ready_link || '',
     shot_link: item?.shot_link || '',
     design_link: item?.design_link || '',
+    // What the person typed into the "which file?" box. Kept apart from the
+    // stored link so switching a channel's folder on or off never silently
+    // rewrites a delivery that already exists.
+    ready_file: '', shot_file: '', design_file: '',
     reference_text: item?.reference_text || '',
     reference_links: item?.reference_links?.length ? [...item.reference_links] : [],
     format: item?.format || '',
@@ -340,6 +345,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     { key: 'designer', label: 'the designer', id: item?.designer_id },
   ].filter((h) => h.id).map((h) => ({ ...h, name: team.find((u) => u.id === h.id)?.name || '' }))
 
+  // The shared Drive folder, if this task's channels agree on one. Two
+  // channels with two different folders have no single answer, so the box
+  // goes back to asking for the whole address.
+  const sharedFolder = (() => {
+    const set = [...new Set(form.channels.map((k) => (byKey[k]?.drive_url || '').trim()).filter(Boolean))]
+    return set.length === 1 ? set[0] : ''
+  })()
+
   const plan = typeInfo(form.type).plan
   // A post is designed, not filmed: one designer hat instead of operator+editor.
   const isDesign = form.type === 'post'
@@ -395,9 +408,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     // the person is standing next to the box they need to fill, rather than
     // being refused after the fact. The shoot is exempt on purpose: footage
     // goes over on a hard drive as often as not.
-    const NEEDS = { edited: ['ready_link', 'the cut'], designed: ['design_link', 'the artwork'] }
+    const NEEDS = { edited: ['ready_link', 'the cut', 'ready_file'], designed: ['design_link', 'the artwork', 'design_file'] }
     const need = NEEDS[kind]
-    if (need && !form[need[0]] && docs.length === 0) {
+    if (need && !form[need[0]] && !form[need[2]] && docs.length === 0) {
       setShow((sh) => ({ ...sh, delivery: true }))
       refuse(need[0], `Paste ${need[1]} before marking it done — a stage that says finished with nothing attached is one the reviewer has to chase`)
       return
@@ -405,7 +418,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     setBusy(true); setErr('')
     try {
       // The link rides along with the tick, so one press does both.
-      await onUpdate(item, { milestone: kind, ...(need && form[need[0]] ? { [need[0]]: form[need[0]] } : {}) })
+      await onUpdate(item, {
+        milestone: kind,
+        ...(need && form[need[2]] ? { [need[2]]: form[need[2]] }
+          : need && form[need[0]] ? { [need[0]]: form[need[0]] } : {}),
+      })
       setMilestone(kind)
       toast(kind === 'shot' ? 'Marked as shot — synced' : kind === 'edited' ? 'Marked as edited — synced' : 'Marked as designed — synced')
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
@@ -430,9 +447,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // a link they could see was there. The type only decides which EMPTY
   // fields are worth offering.
   const DELIVERY = [
-    { col: 'shot_link', label: 'Recording', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, kind: 'shot', mine: myHats.operator, present: !!item?.operator_id, offer: !isDesign },
-    { col: 'ready_link', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, kind: 'edit', mine: myHats.editor, present: !!item?.editor_id, offer: !isDesign },
-    { col: 'design_link', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, kind: 'design', mine: myHats.designer, present: !!item?.designer_id, offer: true },
+    { col: 'shot_link', file: 'shot_file', label: 'Recording', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, kind: 'shot', mine: myHats.operator, present: !!item?.operator_id, offer: !isDesign },
+    { col: 'ready_link', file: 'ready_file', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, kind: 'edit', mine: myHats.editor, present: !!item?.editor_id, offer: !isDesign },
+    { col: 'design_link', file: 'design_file', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, kind: 'design', mine: myHats.designer, present: !!item?.designer_id, offer: true },
   ]
   const deliveryFields = DELIVERY.filter((f) => (form[f.col] ? true : (crewViewer
     ? (f.offer && (f.mine || f.present))
@@ -744,6 +761,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       payload = {
         ...form,
         title: form.title.trim(),
+        // A named file wins over the stored link: it is what was just typed.
+        ...(form.ready_file ? { ready_file: form.ready_file.trim() } : {}),
+        ...(form.shot_file ? { shot_file: form.shot_file.trim() } : {}),
+        ...(form.design_file ? { design_file: form.design_file.trim() } : {}),
         format: form.format || null,
         rubrika: form.rubrika.trim() || null,
         script: form.script.trim() || null,
@@ -768,9 +789,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       if (crewViewer) {
         // The crew move their work with a milestone tick and drop their own
         // stage's file link — never a raw stage change, never another's link.
-        if (myHats.operator && (form.shot_link || '') !== (item.shot_link || '')) payload.shot_link = form.shot_link.trim()
-        if (myHats.editor && (form.ready_link || '') !== (item.ready_link || '')) payload.ready_link = form.ready_link.trim()
-        if (myHats.designer && (form.design_link || '') !== (item.design_link || '')) payload.design_link = form.design_link.trim()
+        for (const [hat, col, file] of [
+          [myHats.operator, 'shot_link', 'shot_file'],
+          [myHats.editor, 'ready_link', 'ready_file'],
+          [myHats.designer, 'design_link', 'design_file'],
+        ]) {
+          if (!hat) continue
+          if (form[file]) payload[file] = form[file].trim()
+          else if ((form[col] || '') !== (item[col] || '')) payload[col] = form[col].trim()
+        }
       } else if (canMove && form.status_id !== item.status_id) {
         payload.status_id = form.status_id
       }
@@ -779,6 +806,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     try {
       if (creating) await onCreate(payload)
       else await onUpdate(item, payload)
+      // Reaching the last stage is the moment a piece is FINISHED, however it
+      // was reached — the stage chips, the done tick, or the Publish button.
+      if (!creating && finalStatusObj && payload.status_id === finalStatusObj.id
+          && item.status_id !== finalStatusObj.id) celebrate()
       // Learn from the confirmed save: these picks float up next time.
       bumpPick(payload.operator_id, payload.editor_id, payload.designer_id, ...(payload.assignee_ids || []))
       toast(creating ? 'Task added — synced' : 'Task saved — synced')
@@ -836,7 +867,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const publish = async () => {
     if (busy || !finalStatusObj) return
     setBusy(true); setErr('')
-    try { await onUpdate(item, { status_id: finalStatusObj.id }); toast('Published — synced'); onClose() }
+    try { await onUpdate(item, { status_id: finalStatusObj.id }); celebrate(); toast('Published — synced'); onClose() }
     catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   // Request changes (Pravki): one note, sent back to the chosen crew stage.
@@ -1311,10 +1342,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                     <span className="dlv-who">{f.mine ? 'yours' : owner ? owner.name.split(' ')[0] : 'nobody yet'}</span>
                   </span>
                   <span className="ready-link-input">
-                    <input className="input" placeholder="https://drive.google.com/…"
-                      disabled={!editable}
-                      value={form[f.col]}
-                      onChange={(e) => setForm({ ...form, [f.col]: e.target.value })} />
+                    {/* With a folder on the channel, the box asks WHICH file —
+                        the folder is the same forty times a week and the file
+                        is the part people leave out. */}
+                    {sharedFolder && !/^https?:\/\//i.test(form[f.col] || '') ? (
+                      <input className="input" placeholder="which file? e.g. 1-3, or “reel 14”"
+                        disabled={!editable}
+                        value={form[f.file] || ''}
+                        onChange={(e) => setForm({ ...form, [f.file]: e.target.value })} />
+                    ) : (
+                      <input className="input" placeholder="https://drive.google.com/…"
+                        disabled={!editable}
+                        value={form[f.col]}
+                        onChange={(e) => setForm({ ...form, [f.col]: e.target.value })} />
+                    )}
                     {form[f.col] && /^https?:\/\//i.test(form[f.col]) && (
                       <a className="btn btn-sm" href={form[f.col]} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open</a>
                     )}

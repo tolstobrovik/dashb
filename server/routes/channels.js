@@ -45,13 +45,23 @@ router.post('/', adminOnly, wrap(async (req, res) => {
 router.patch('/:id', adminOnly, wrap(async (req, res) => {
   const row = await get('SELECT * FROM channels WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Channel not found' })
-  const { label, icon, head_id } = req.body || {}
+  const { label, icon, head_id, drive_url } = req.body || {}
   let head = row.head_id
   if (head_id !== undefined) {
     try { head = await cleanHead(head_id) } catch (e) { return res.status(400).json({ error: e.message }) }
   }
-  await run('UPDATE channels SET label = ?, icon = ?, head_id = ? WHERE id = ?',
-    label !== undefined ? String(label).trim() : row.label, icon ?? row.icon, head, row.id)
+  // The channel's shared Drive folder. Cleared with an empty string; anything
+  // else has to be a real address, because every delivery on this channel is
+  // about to be built on top of it.
+  let drive = row.drive_url || ''
+  if (drive_url !== undefined) {
+    const next = String(drive_url || '').trim()
+    if (next && !/^https?:\/\//i.test(next))
+      return res.status(400).json({ error: 'The folder is a link — paste the full https://… address of the Drive folder' })
+    drive = next
+  }
+  await run('UPDATE channels SET label = ?, icon = ?, head_id = ?, drive_url = ? WHERE id = ?',
+    label !== undefined ? String(label).trim() : row.label, icon ?? row.icon, head, drive, row.id)
   res.json(await get('SELECT * FROM channels WHERE id = ?', row.id))
 }))
 

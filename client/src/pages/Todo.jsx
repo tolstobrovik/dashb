@@ -14,6 +14,7 @@ import { playDing } from '../lib/sound.js'
 import { todayISO, dateLabel, addDaysISO, can, CONTENT_TYPES, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
 import PersonalModal from '../components/PersonalModal.jsx'
+import { celebrateIfFinished } from '../lib/celebrate.js'
 
 const keyOf = (it) => (it.personal ? 'p' : 'c') + it.id
 
@@ -399,6 +400,7 @@ export default function Todo() {
 
   const updateContent = async (item, payload) => {
     const c = await api.patch(`/content/${item.id}`, payload)
+    celebrateIfFinished(item, c)
     setItems((prev) => prev.map((x) => (x.id === item.id ? c : x)))
   }
   const updatePersonal = async (item, payload) => {

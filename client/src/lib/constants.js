@@ -99,6 +99,8 @@ export const CONTENT_TYPES = [
   { key: 'reel',  label: 'Reel',  plan: 'Reels',   icon: Film },
   { key: 'story', label: 'Story', plan: 'Stories', icon: CirclePlay },
   { key: 'video', label: 'Video', plan: 'Videos',  icon: Video },
+  // Paid promotion: a creative made for an ad set rather than for the feed.
+  { key: 'target', label: 'Target', plan: 'Target', icon: Target },
   { key: 'other', label: 'Other', plan: null,      icon: FileText },
 ]
 export const typeInfo = (key) => CONTENT_TYPES.find((t) => t.key === key) || CONTENT_TYPES[CONTENT_TYPES.length - 1]

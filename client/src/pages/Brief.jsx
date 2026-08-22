@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel, can, tashkentDay } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
+import { celebrateIfFinished } from '../lib/celebrate.js'
 import MyLate from '../components/MyLate.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
@@ -604,6 +605,7 @@ export default function Brief() {
   }
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
+    celebrateIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   const deleteContent = async (item) => {
