@@ -7,8 +7,10 @@ import {
 import { LogoLockup } from './Logo.jsx'
 import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
+import LangToggle from './LangToggle.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { iconFor } from '../lib/constants.js'
+import { useT } from '../lib/i18n.jsx'
 
 // ---- personal sidebar (this account, this browser) ----
 // Every group — the main pages, the channels, the admin's Manage links — can
@@ -37,6 +39,7 @@ function readPrefs(uid) {
 
 export default function Sidebar({ user, onNavigate, onLogout }) {
   const { visible } = useChannels()
+  const { t } = useT()
   const cls = ({ isActive }) => 'nav-item' + (isActive ? ' active' : '')
 
   const [prefs, setPrefs] = useState(() => readPrefs(user.id))
@@ -60,25 +63,25 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   const runsEverything = isAdmin && !(user.admin_channels || []).length
   const groups = useMemo(() => ({
     main: [
-      isAdmin && { key: 'overview', to: '/overview', label: 'Overview', icon: LayoutDashboard },
-      { key: 'brief', to: '/brief', label: 'My Day', icon: Sun, locked: true },
-      { key: 'todo', to: '/todo', label: 'To-Do', icon: ListChecks },
+      isAdmin && { key: 'overview', to: '/overview', label: t('nav.overview'), icon: LayoutDashboard },
+      { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun, locked: true },
+      { key: 'todo', to: '/todo', label: t('nav.todo'), icon: ListChecks },
       // Every channel at once: what is going out, and what is being filmed.
-      { key: 'releases', to: '/releases', label: 'Releases', icon: Send },
-      { key: 'recordings', to: '/recordings', label: 'Recordings', icon: Clapperboard },
-      { key: 'missed', to: '/missed', label: 'Statistics', icon: BarChart3 },
-      { key: 'missed-tasks', to: '/missed-tasks', label: 'Missed tasks', icon: AlertTriangle },
-      isAdmin && { key: 'unassigned', to: '/unassigned', label: 'Unassigned', icon: UserX },
-      { key: 'docs', to: '/docs', label: 'Docs & KPIs', icon: ScrollText },
-      isAdmin && { key: 'projects', to: '/projects', label: 'Projects', icon: Briefcase },
+      { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
+      { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
+      { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
+      { key: 'missed-tasks', to: '/missed-tasks', label: t('nav.missedtasks'), icon: AlertTriangle },
+      isAdmin && { key: 'unassigned', to: '/unassigned', label: t('nav.unassigned'), icon: UserX },
+      { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
+      isAdmin && { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },
     ].filter(Boolean),
     channels: visible.map((c) => ({ key: `ch:${c.key}`, to: `/dept/${c.key}`, label: c.label, icon: iconFor(c.icon) })),
     manage: isAdmin ? [
-      { key: 'crew', to: '/crew', label: 'Post Production', icon: Clapperboard },
-      { key: 'team', to: '/team', label: 'Team & hiring', icon: UsersRound },
-      ...(runsEverything ? [{ key: 'admin', to: '/admin', label: 'Admin', icon: Shield }] : []),
+      { key: 'crew', to: '/crew', label: t('nav.crew'), icon: Clapperboard },
+      { key: 'team', to: '/team', label: t('nav.team'), icon: UsersRound },
+      ...(runsEverything ? [{ key: 'admin', to: '/admin', label: t('nav.admin'), icon: Shield }] : []),
     ] : [],
-  }), [isAdmin, runsEverything, visible])
+  }), [isAdmin, runsEverything, visible, t])
 
   // Personal order first; unknown items (new channels) keep their place at
   // the end, visible — nothing is ever born hidden.
@@ -171,45 +174,46 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
 
   return (
     <>
-      <Link to="/" className="logo-link" onClick={onNavigate} data-tip="Home" aria-label="Home">
+      <Link to="/" className="logo-link" onClick={onNavigate} data-tip={t('nav.home')} aria-label={t('nav.home')}>
         <LogoLockup />
       </Link>
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
         <Group g="main" />
 
-        {groups.channels.length > 0 && <div className="nav-label">Channels</div>}
+        {groups.channels.length > 0 && <div className="nav-label">{t('nav.channels')}</div>}
         <Group g="channels" />
 
-        {groups.manage.length > 0 && <div className="nav-label">Manage</div>}
+        {groups.manage.length > 0 && <div className="nav-label">{t('nav.manage')}</div>}
         <Group g="manage" />
 
         {/* One quiet switch governs the whole sidebar. */}
         <div className="side-edit-foot">
           {editing && customized && (
             <button className="side-edit-btn" onClick={resetPrefs} data-tip="Back to the default sidebar — everything shown, default order">
-              <RotateCcw size={12} /> Reset
+              <RotateCcw size={12} /> {t('nav.reset')}
             </button>
           )}
           <button className="side-edit-btn" onClick={() => setEditing((e) => !e)}
             aria-label={editing ? 'Finish personalizing' : 'Personalize sidebar'}>
             {editing
-              ? <><Check size={12} /> Done</>
-              : <><SlidersHorizontal size={12} /> Personalize{hidden.size > 0 ? ` · ${hidden.size} hidden` : ''}</>}
+              ? <><Check size={12} /> {t('nav.donepersonalizing')}</>
+              : <><SlidersHorizontal size={12} /> {t('nav.personalize')}{hidden.size > 0 ? ` · ${t('nav.hiddencount', { n: hidden.size })}` : ''}</>}
           </button>
         </div>
       </nav>
 
       <div className="sidebar-foot">
         <div className="side-user">
-          <Link to="/profile" className="side-user-link" onClick={onNavigate} data-tip="My profile — photo, name, password">
+          <Link to="/profile" className="side-user-link" onClick={onNavigate} data-tip={t('nav.myprofile')}>
             <Avatar name={user.name} color={user.color} src={user.avatar} size="sm" />
             <div className="su-meta">
               <span className="su-name">{user.name}</span>
               <span className="su-role">{user.role}</span>
             </div>
           </Link>
+          <LangToggle className="side-logout" />
           <ThemeToggle className="side-logout" />
-          <button className="side-logout" onClick={onLogout} data-tip="Sign out" data-tip-left="" aria-label="Sign out">
+          <button className="side-logout" onClick={onLogout} data-tip={t('nav.signout')} data-tip-left="" aria-label={t('nav.signout')}>
             <LogOut size={16} />
           </button>
         </div>

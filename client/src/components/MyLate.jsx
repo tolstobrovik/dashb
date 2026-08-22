@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, CalendarClock, Hand, ArrowRight, Check } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
+import { useT } from '../lib/i18n.jsx'
 
 // Late work, handed to the person carrying it.
 //
@@ -16,12 +17,10 @@ import { toast } from '../lib/toast.js'
 // here is a nag for its own sake — a piece somebody has already spoken for
 // drops off the list the moment they speak.
 
-const PHASE_WORD = {
-  shoot: 'the shoot', edit: 'the cut', design: 'the artwork', release: 'the release',
-}
-const lateWord = (n) => (n === 1 ? 'a day late' : `${n} days late`)
-
 export default function MyLate({ onOpen }) {
+  const { t } = useT()
+  const phaseWord = (p) => (p ? t(`late.phase.${p}`) : '')
+  const lateWord = (n) => (n === 1 ? t('late.day_one') : t('late.day_many', { n }))
   const [rows, setRows] = useState(null)
   const [asking, setAsking] = useState(null)   // null | { row, to, reason }
   const [saying, setSaying] = useState(null)   // null | { row, reason }
@@ -45,7 +44,7 @@ export default function MyLate({ onOpen }) {
       await api.post(`/content/${asking.row.content_id}/date-requests`, {
         field: asking.row.field, to_date: asking.to || null, reason: asking.reason.trim(),
       })
-      toast('Asked — the admins have it')
+      toast(t('late.asked'))
       setAsking(null)
       load()
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
@@ -57,7 +56,7 @@ export default function MyLate({ onOpen }) {
       await api.post(`/content/${saying.row.content_id}/flags`, {
         kind: 'at_risk', reason: saying.reason.trim(),
       })
-      toast('Said — the people who plan have it')
+      toast(t('late.said'))
       setSaying(null)
       load()
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
@@ -68,9 +67,9 @@ export default function MyLate({ onOpen }) {
       <div className="my-late-head">
         <AlertTriangle size={17} />
         <b>{open.length > 0
-          ? `${open.length} thing${open.length === 1 ? '' : 's'} of yours ${open.length === 1 ? 'is' : 'are'} past their day`
-          : 'Everything late is spoken for'}</b>
-        {spokenFor > 0 && <span className="stat-sub">· {spokenFor} already answered for</span>}
+          ? (open.length === 1 ? t('late.heading_one') : t('late.heading_many', { n: open.length }))
+          : t('late.allanswered')}</b>
+        {spokenFor > 0 && <span className="stat-sub">· {t('late.answered', { n: spokenFor })}</span>}
       </div>
 
       {open.map((r) => (
@@ -78,37 +77,37 @@ export default function MyLate({ onOpen }) {
           <span className="my-late-when">{lateWord(r.days_late)}</span>
           <button type="button" className="my-late-main" onClick={() => onOpen?.(r.content_id)}>
             <span className="my-late-title">{r.title}</span>
-            <span className="my-late-what">{PHASE_WORD[r.phase] || r.what} · was due {r.due}</span>
+            <span className="my-late-what">{phaseWord(r.phase) || r.what} · {t('late.wasdue', { d: r.due })}</span>
           </button>
           <span className="my-late-do">
             <button type="button" className="btn btn-sm"
               onClick={() => { setSaying(null); setAsking({ row: r, to: '', reason: '' }) }}>
-              <CalendarClock size={13} /> New day
+              <CalendarClock size={13} /> {t('late.newday')}
             </button>
             <button type="button" className="btn btn-sm"
               onClick={() => { setAsking(null); setSaying({ row: r, reason: '' }) }}>
-              <Hand size={13} /> Say why
+              <Hand size={13} /> {t('late.saywhy')}
             </button>
             <button type="button" className="btn btn-sm btn-primary" onClick={() => onOpen?.(r.content_id)}>
-              <ArrowRight size={13} /> Finish it
+              <ArrowRight size={13} /> {t('late.finish')}
             </button>
           </span>
 
           {asking?.row.id === r.id && (
             <div className="my-late-form">
               <div className="ask-row">
-                <span className="ask-was">move to</span>
+                <span className="ask-was">{t('late.moveto')}</span>
                 <input className="input" type="date" value={asking.to}
                   onChange={(e) => setAsking({ ...asking, to: e.target.value })} />
               </div>
               <textarea className="input" rows={2} autoFocus value={asking.reason}
                 onChange={(e) => setAsking({ ...asking, reason: e.target.value })}
-                placeholder="What happened? The location fell through, the other shoot overran…" />
+                placeholder={t('late.whathappened')} />
               <div className="pravki-actions">
-                <span className="stat-sub">A day that was promised moves on an admin’s yes, not before.</span>
-                <button type="button" className="btn btn-sm" onClick={() => setAsking(null)}>Cancel</button>
+                <span className="stat-sub">{t('late.promisedhint')}</span>
+                <button type="button" className="btn btn-sm" onClick={() => setAsking(null)}>{t('common.cancel')}</button>
                 <button type="button" className="btn btn-sm btn-primary" disabled={busy || !asking.reason.trim()} onClick={askMove}>
-                  <Check size={13} /> Ask
+                  <Check size={13} /> {t('late.ask')}
                 </button>
               </div>
             </div>
@@ -117,12 +116,12 @@ export default function MyLate({ onOpen }) {
             <div className="my-late-form">
               <textarea className="input" rows={2} autoFocus value={saying.reason}
                 onChange={(e) => setSaying({ ...saying, reason: e.target.value })}
-                placeholder="What is in the way? Said now, it can still be planned around." />
+                placeholder={t('late.intheway')} />
               <div className="pravki-actions">
-                <span className="stat-sub">Goes to the people who plan, with your name on it.</span>
-                <button type="button" className="btn btn-sm" onClick={() => setSaying(null)}>Cancel</button>
+                <span className="stat-sub">{t('late.sayhint')}</span>
+                <button type="button" className="btn btn-sm" onClick={() => setSaying(null)}>{t('common.cancel')}</button>
                 <button type="button" className="btn btn-sm btn-primary" disabled={busy || !saying.reason.trim()} onClick={sayIt}>
-                  <Hand size={13} /> Say it
+                  <Hand size={13} /> {t('late.sayit')}
                 </button>
               </div>
             </div>

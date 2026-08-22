@@ -6,8 +6,9 @@ import Avatar from '../components/Avatar.jsx'
 import { WORK_DAYS } from '../lib/constants.js'
 import { TEXT_SIZES, getTextSize, applyTextSize } from '../lib/textSize.js'
 import { THEMES, getTheme, applyTheme } from '../lib/theme.js'
+import { LANGS, useT } from '../lib/i18n.jsx'
 import { soundsOn, setSounds, playDone } from '../lib/sound.js'
-import { Moon } from 'lucide-react'
+import { Moon, Languages } from 'lucide-react'
 
 // Distinct hues, not seven shades of brand red — avatars and chips must be
 // tellable apart at a glance.
@@ -96,6 +97,7 @@ export default function Profile() {
       setTimeout(() => setSchedSaved(false), 2500)
     } catch (e) { setSchedErr(e.message) }
   }
+  const { lang, setLang, t } = useT()
   const [textSize, setTextSize] = useState(getTextSize())
   const [theme, setTheme] = useState(getTheme())
   const [snd, setSnd] = useState(soundsOn())
@@ -351,6 +353,23 @@ export default function Profile() {
             onClick={() => { setSounds(true); setSnd(true); playDone() }}>Sounds on</button>
           <button type="button" className={'seg-btn' + (!snd ? ' on' : '')}
             onClick={() => { setSounds(false); setSnd(false) }}>Off</button>
+        </div>
+      </div>
+
+      <div className="section-head" style={{ marginTop: 22 }}><h2><Languages size={16} style={{ verticalAlign: -2 }} /> {t('common.language')}</h2></div>
+      <div className="card card-pad">
+        <div className="stat-sub" style={{ marginBottom: 10 }}>
+          The buttons, menus and headings on this device. What you and everybody
+          else TYPE — titles, scripts, comments — is never translated.
+        </div>
+        <div className="seg">
+          {LANGS.map((l) => (
+            <button key={l.key} type="button"
+              className={'seg-btn' + (lang === l.key ? ' on' : '')}
+              onClick={() => setLang(l.key)}>
+              {l.native}
+            </button>
+          ))}
         </div>
       </div>
 

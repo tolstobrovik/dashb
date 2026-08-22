@@ -265,6 +265,56 @@ button { font-family: inherit; }
 }
 .side-logout:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
 
+/* The language picker in the sidebar foot. The row used to space its two
+   buttons with one `margin-left: auto`; with a third the autos would fight
+   and spread them apart, so only the first one pushes. */
+.side-user .lang-wrap { margin-left: auto; position: relative; display: flex; }
+.side-user .lang-wrap ~ .side-logout { margin-left: 0; }
+.lang-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  min-width: 152px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+.lang-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: inherit;
+  cursor: pointer;
+}
+.lang-opt:hover { background: var(--surface-2); }
+.lang-opt.on { background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
+.lang-code {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--tint-neutral);
+  color: var(--muted);
+}
+.lang-opt.on .lang-code { background: var(--brand-500); color: #fff; }
+
 /* ---------- main ---------- */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 

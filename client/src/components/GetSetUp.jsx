@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Download, Send, X, Share, Plus } from 'lucide-react'
 import { api } from '../lib/api.js'
+import { useT } from '../lib/i18n.jsx'
 
 // The two things a person has to do once, and which nobody does unprompted:
 // put the board on their home screen, and connect the bot.
@@ -26,6 +27,7 @@ const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
 export default function GetSetUp() {
+  const { t } = useT()
   // ---- installing ----
   const [prompt, setPrompt] = useState(null)   // the browser's own install event
   const [showIOS, setShowIOS] = useState(false)
@@ -78,13 +80,11 @@ export default function GetSetUp() {
         <div className="setup-card setup-tg">
           <Send size={16} />
           <span className="setup-txt">
-            <b>Connect Telegram</b>
-            <span className="setup-sub">
-              Deadlines, Pravki and anything with your name on it reach you there. Right now they don’t reach you at all.
-            </span>
+            <b>{t('setup.connect')}</b>
+            <span className="setup-sub">{t('setup.connectwhy')}</span>
           </span>
           <button type="button" className="btn btn-sm btn-primary" disabled={linking} onClick={connect}>
-            {linking ? 'Opening…' : 'Connect'}
+            {linking ? t('setup.opening') : t('setup.connectbtn')}
           </button>
         </div>
       )}
@@ -93,18 +93,18 @@ export default function GetSetUp() {
         <div className="setup-card setup-install">
           <Download size={16} />
           <span className="setup-txt">
-            <b>Put SATashkent on your home screen</b>
+            <b>{t('setup.install')}</b>
             <span className="setup-sub">
               {showIOS
-                ? <>Tap <Share size={12} style={{ verticalAlign: -2 }} /> Share, then <Plus size={12} style={{ verticalAlign: -2 }} /> “Add to Home Screen”. It opens like an app — no address to remember.</>
-                : 'One tap and it opens like an app, with no address to remember.'}
+                ? <><Share size={12} style={{ verticalAlign: -2 }} /> <Plus size={12} style={{ verticalAlign: -2 }} /> {t('setup.ios')}</>
+                : t('setup.installwhy')}
             </span>
           </span>
           {prompt && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={install}>Install</button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={install}>{t('setup.install_btn')}</button>
           )}
-          <button type="button" className="icon-btn" onClick={snooze} aria-label="Not now"
-            data-tip="Not now — ask again next week"><X size={15} /></button>
+          <button type="button" className="icon-btn" onClick={snooze} aria-label={t('setup.notnow')}
+            data-tip={t('setup.asknextweek')}><X size={15} /></button>
         </div>
       )}
     </div>
