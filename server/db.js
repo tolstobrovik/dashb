@@ -815,6 +815,8 @@ export async function initSchema() {
       per_design    REAL    NOT NULL DEFAULT 0,
       per_publish   REAL    NOT NULL DEFAULT 0,
       per_review    REAL    NOT NULL DEFAULT 0,
+      quota         REAL    NOT NULL DEFAULT 0,    -- pieces expected in the period
+      quota_bonus   REAL    NOT NULL DEFAULT 0,    -- paid whole when the quota is met
       ontime_bonus  REAL    NOT NULL DEFAULT 0,    -- paid whole, or not at all
       ontime_target REAL    NOT NULL DEFAULT 90,   -- the per cent that earns it
       late_penalty  REAL    NOT NULL DEFAULT 0,    -- per piece delivered late
@@ -1055,6 +1057,8 @@ export async function initSchema() {
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_channels TEXT NOT NULL DEFAULT '[]'")
     await exec("ALTER TABLE channels ADD COLUMN IF NOT EXISTS drive_url TEXT NOT NULL DEFAULT ''")
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_cap INTEGER NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota_bonus REAL NOT NULL DEFAULT 0')
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_channels TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script_key TEXT')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
@@ -1157,6 +1161,11 @@ async function migrate() {
     if (!(await hasColumn('channels', 'drive_url'))) await exec("ALTER TABLE channels ADD COLUMN drive_url TEXT NOT NULL DEFAULT ''")
     if (!(await hasColumn('users', 'daily_cap'))) await exec('ALTER TABLE users ADD COLUMN daily_cap INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('users', 'crew_channels'))) await exec("ALTER TABLE users ADD COLUMN crew_channels TEXT NOT NULL DEFAULT '[]'")
+    // pay_rules arrived in round 73 without a quota; the table is created by
+    // CREATE TABLE IF NOT EXISTS, which will not add a column to one that is
+    // already there, so an existing board needs these two spelled out.
+    if (!(await hasColumn('pay_rules', 'quota'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'quota_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota_bonus REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')

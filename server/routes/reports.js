@@ -171,11 +171,11 @@ router.get('/', wrap(async (req, res) => {
 // edited in Admin → Pay. This file only does the arithmetic.
 export const RATE_FIELDS = [
   'base', 'per_shoot', 'per_edit', 'per_design', 'per_publish', 'per_review',
-  'ontime_bonus', 'ontime_target', 'late_penalty',
+  'quota', 'quota_bonus', 'ontime_bonus', 'ontime_target', 'late_penalty',
 ]
 const BLANK_RATES = {
   currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0,
-  per_review: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0,
+  per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0,
 }
 const HAT_RATE = {
   operator: 'per_shoot', editor: 'per_edit', designer: 'per_design',
@@ -230,15 +230,25 @@ async function payRun({ from, to, only }) {
     // A share of nothing is not 0% — it is "nothing to judge". Somebody who
     // delivered nothing this month has not failed a punctuality target.
     const onTimePct = e.done ? Math.round((onTime / e.done) * 100) : null
-    const bonus = (rates.ontime_bonus && onTimePct !== null && onTimePct >= (rates.ontime_target || 0))
+    const onTimeBonus = (rates.ontime_bonus && onTimePct !== null && onTimePct >= (rates.ontime_target || 0))
       ? rates.ontime_bonus : 0
+    // How much, and was it enough. The two questions are deliberately paid
+    // apart: somebody can hit the quota and still be late with all of it, and
+    // somebody can be perfectly punctual with three pieces when the job asks
+    // for twenty. Rewarding only punctuality quietly rewards doing less.
+    const quota = rates.quota || 0
+    const quotaMet = quota > 0 && e.done >= quota
+    const quotaBonus = quotaMet ? (rates.quota_bonus || 0) : 0
     const penalty = e.late * (rates.late_penalty || 0)
+    const bonus = onTimeBonus + quotaBonus
     const total = (rates.base || 0) + piecework + bonus - penalty
     return {
       id: u.id, name: u.name, color: u.color, avatar: u.avatar, role: u.role, crew_roles: u.crew_roles,
       currency: rates.currency, source: rates.source, rates,
       delivered: e.done, late: e.late, onTime, onTimePct,
-      lines, base: rates.base || 0, piecework, bonus, penalty, total,
+      quota, quotaMet, quotaLeft: quota > 0 ? Math.max(0, quota - e.done) : null,
+      lines, base: rates.base || 0, piecework,
+      onTimeBonus, quotaBonus, bonus, penalty, total,
       items: e.items.sort((a, b) => String(b.day).localeCompare(String(a.day))),
     }
   })

@@ -799,11 +799,57 @@ const RATE_ROWS = [
   { key: 'per_design', label: 'Per design', hint: 'Each piece they designed' },
   { key: 'per_publish', label: 'Per piece run', hint: 'Each piece that went out as theirs' },
   { key: 'per_review', label: 'Per sign-off', hint: 'Each piece they signed off' },
+  { key: 'quota', label: 'Pieces a month', hint: 'What a full month of this job looks like. 0 means no quota', plain: true },
+  { key: 'quota_bonus', label: 'Quota bonus', hint: 'Paid whole when they reach it' },
   { key: 'ontime_bonus', label: 'On-time bonus', hint: 'Paid whole, or not at all' },
   { key: 'ontime_target', label: 'On-time target %', hint: 'The share of deliveries that earns the bonus', pct: true },
   { key: 'late_penalty', label: 'Per late piece', hint: 'Taken off for each delivery after its promised day' },
 ]
-const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0 }
+const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0 }
+
+/* ---- working a card out from one number ----
+ *
+ * Typing eleven rates from scratch, per person, is how a pay scheme never
+ * gets set up at all. Almost nobody thinks in rates; everybody thinks in "an
+ * editor's month is worth about four million". So that is the question asked,
+ * plus roughly how many pieces a full month is, and the shape is applied:
+ *
+ *   60%  base            paid for turning up and being available
+ *   25%  piecework       spread over the quota, so a full month lands on the
+ *                        full package and every piece past it pays on top
+ *   10%  quota bonus     for doing the whole job
+ *    5%  on-time bonus   for doing it when promised
+ *   late costs half a piece, so slipping is felt but does not wipe out the day
+ *
+ * These are a starting shape, not a rule. Every line stays editable, and
+ * nothing is saved until Save is pressed — the numbers just appear in the
+ * boxes where they can be argued with.
+ */
+const SHAPE = { base: 0.60, piece: 0.25, quota: 0.10, ontime: 0.05 }
+const JOBS = [
+  { key: 'editor', label: 'Editor', rate: 'per_edit', monthly: 4000000, quota: 20 },
+  { key: 'operator', label: 'Operator', rate: 'per_shoot', monthly: 4000000, quota: 20 },
+  { key: 'designer', label: 'Designer', rate: 'per_design', monthly: 3500000, quota: 25 },
+  { key: 'planner', label: 'Runs the channel', rate: 'per_publish', monthly: 5000000, quota: 30 },
+]
+// Round to something a person would actually write down.
+const tidy = (n, step = 10000) => Math.max(0, Math.round(n / step) * step)
+function workOutCard(job, monthly, quota, currency) {
+  const q = Math.max(1, Math.round(Number(quota) || 1))
+  const m = Math.max(0, Number(monthly) || 0)
+  const perPiece = tidy((m * SHAPE.piece) / q, 5000)
+  return {
+    ...BLANK_CARD,
+    currency,
+    base: tidy(m * SHAPE.base),
+    [job.rate]: perPiece,
+    quota: q,
+    quota_bonus: tidy(m * SHAPE.quota),
+    ontime_bonus: tidy(m * SHAPE.ontime),
+    ontime_target: 90,
+    late_penalty: tidy(perPiece / 2, 5000),
+  }
+}
 
 // Money reads as money: grouped thousands, no decimals for whole sums. UZS
 // runs to millions, so an ungrouped 2200000 is unreadable at a glance.
@@ -825,6 +871,7 @@ function PayTab() {
   const [data, setData] = useState(null)
   const [rules, setRules] = useState([])
   const [card, setCard] = useState(null) // { userId | 'default', name, form }
+  const [plan, setPlan] = useState(null) // null | { job, monthly, quota } — the calculator
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -843,6 +890,7 @@ function PayTab() {
     const row = rules.find((r) => (userId === 'default' ? !r.user_id : r.user_id === userId))
     const fallback = userId === 'default' ? BLANK_CARD : (rules.find((r) => !r.user_id) || BLANK_CARD)
     setErr('')
+    setPlan(null)
     setCard({ userId, name, own: !!row, form: { ...BLANK_CARD, ...(row || fallback) } })
   }
   const saveCard = async () => {
@@ -932,7 +980,12 @@ function PayTab() {
                       </div>
                     </td>
                     <td>
-                      <b>{p.delivered}</b>
+                      <b>{p.delivered}</b>{p.quota > 0 && <span className="stat-sub"> / {p.quota}</span>}
+                      {p.quota > 0 && (
+                        <div className={p.quotaMet ? 'pay-good' : 'stat-sub'} style={{ fontSize: 11 }}>
+                          {p.quotaMet ? 'quota met' : `${p.quotaLeft} to go`}
+                        </div>
+                      )}
                       {p.lines.filter((l) => l.count > 0).length > 0 && (
                         <div className="stat-sub">{p.lines.filter((l) => l.count > 0).map((l) => `${l.label} ${l.count}`).join(' · ')}</div>
                       )}
@@ -941,7 +994,14 @@ function PayTab() {
                       : <span className={p.onTimePct >= (p.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>{p.onTimePct}%</span>}</td>
                     <td>{money(p.base, p.currency)}</td>
                     <td>{money(p.piecework, p.currency)}</td>
-                    <td>{p.bonus ? <span className="pay-good">+{money(p.bonus, p.currency)}</span> : <span className="stat-sub">—</span>}</td>
+                    <td>
+                      {p.bonus ? <span className="pay-good">+{money(p.bonus, p.currency)}</span> : <span className="stat-sub">—</span>}
+                      {p.bonus > 0 && (
+                        <div className="stat-sub" style={{ fontSize: 11 }}>
+                          {[p.quotaBonus > 0 && 'quota', p.onTimeBonus > 0 && 'on time'].filter(Boolean).join(' + ')}
+                        </div>
+                      )}
+                    </td>
                     <td>{p.penalty ? <span className="pay-bad">−{money(p.penalty, p.currency)}</span> : <span className="stat-sub">—</span>}</td>
                     <td><b>{money(p.total, p.currency)}</b></td>
                     <td style={{ textAlign: 'right' }}>
@@ -984,11 +1044,64 @@ function PayTab() {
             <input className="input" style={{ maxWidth: 120 }} value={card.form.currency || ''}
               onChange={(e) => setCard({ ...card, form: { ...card.form, currency: e.target.value } })} />
           </div>
+
+          {/* Eleven rates typed from scratch, per person, is how a pay scheme
+              never gets set up at all. Nobody thinks in rates; everybody
+              thinks in "an editor's month is worth about four million". */}
+          {!plan ? (
+            <button type="button" className="btn btn-sm" style={{ marginBottom: 14 }}
+              onClick={() => setPlan({ job: JOBS[0].key, monthly: JOBS[0].monthly, quota: JOBS[0].quota })}>
+              <Wallet size={14} /> Work it out from a monthly figure
+            </button>
+          ) : (
+            <div className="card card-pad pay-plan">
+              <div className="cm-hint">
+                Say what a full month of this job is worth and roughly how many pieces that is.
+                It splits into {Math.round(SHAPE.base * 100)}% base, {Math.round(SHAPE.piece * 100)}% paid per piece,
+                {' '}{Math.round(SHAPE.quota * 100)}% for reaching the quota and {Math.round(SHAPE.ontime * 100)}% for
+                being on time — a starting shape, not a rule. Nothing is saved until you press Save, and every
+                line below stays yours to argue with.
+              </div>
+              <div className="pay-plan-row">
+                <label>
+                  <span>Job</span>
+                  <select className="select" value={plan.job}
+                    onChange={(e) => {
+                      const j = JOBS.find((x) => x.key === e.target.value)
+                      setPlan({ job: j.key, monthly: j.monthly, quota: j.quota })
+                    }}>
+                    {JOBS.map((j) => <option key={j.key} value={j.key}>{j.label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>A full month is worth</span>
+                  <input className="input" type="number" min="0" step="100000" value={plan.monthly}
+                    onChange={(e) => setPlan({ ...plan, monthly: e.target.value })} />
+                </label>
+                <label>
+                  <span>…and is about</span>
+                  <input className="input" type="number" min="1" step="1" value={plan.quota}
+                    onChange={(e) => setPlan({ ...plan, quota: e.target.value })} />
+                </label>
+              </div>
+              <div className="pay-plan-do">
+                <button type="button" className="btn btn-sm" onClick={() => setPlan(null)}>Never mind</button>
+                <button type="button" className="btn btn-sm btn-primary"
+                  onClick={() => {
+                    const j = JOBS.find((x) => x.key === plan.job)
+                    setCard({ ...card, form: workOutCard(j, plan.monthly, plan.quota, card.form.currency || 'UZS') })
+                    setPlan(null)
+                  }}>
+                  <Check size={14} /> Fill the rates in
+                </button>
+              </div>
+            </div>
+          )}
           {RATE_ROWS.map((r) => (
             <div className="field" key={r.key}>
               <label>{r.label} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>— {r.hint}</span></label>
               <input className="input" type="number" min="0" style={{ maxWidth: 220 }}
-                step={r.pct ? 1 : 1000} max={r.pct ? 100 : undefined}
+                step={r.pct || r.plain ? 1 : 1000} max={r.pct ? 100 : undefined}
                 value={card.form[r.key] ?? 0}
                 onChange={(e) => setCard({ ...card, form: { ...card.form, [r.key]: e.target.value } })} />
             </div>

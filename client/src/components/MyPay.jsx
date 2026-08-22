@@ -40,7 +40,7 @@ export default function MyPay() {
           <span className="stat-sub">this month so far</span>
         </span>
         <span className="my-pay-facts">
-          <span><b>{pay.delivered}</b> delivered</span>
+          <span><b>{pay.delivered}</b>{pay.quota > 0 ? ` / ${pay.quota}` : ''} delivered</span>
           {pay.onTimePct !== null && (
             <span className={pay.onTimePct >= (pay.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>
               <b>{pay.onTimePct}%</b> on time
@@ -62,16 +62,32 @@ export default function MyPay() {
               <b>{money(l.amount, cur)}</b>
             </div>
           ))}
-          {pay.bonus > 0 && (
+          {pay.quotaBonus > 0 && (
+            <div className="my-pay-line">
+              <span>Quota bonus</span>
+              <span className="stat-sub">{pay.quota} in the month</span>
+              <b className="pay-good">+{money(pay.quotaBonus, cur)}</b>
+            </div>
+          )}
+          {/* The one that is worth chasing, said plainly while there is still
+              time to chase it. */}
+          {!pay.quotaBonus && pay.rates.quota_bonus > 0 && pay.quotaLeft > 0 && (
+            <div className="my-pay-line">
+              <span className="stat-sub">Quota bonus</span>
+              <span className="stat-sub">{pay.quotaLeft} more to go</span>
+              <span className="stat-sub">{money(pay.rates.quota_bonus, cur)}</span>
+            </div>
+          )}
+          {pay.onTimeBonus > 0 && (
             <div className="my-pay-line">
               <span>On-time bonus</span>
               <span className="stat-sub">{pay.rates.ontime_target}% or better</span>
-              <b className="pay-good">+{money(pay.bonus, cur)}</b>
+              <b className="pay-good">+{money(pay.onTimeBonus, cur)}</b>
             </div>
           )}
           {/* Why the bonus is not there yet — a number missing with no reason
               given is the thing people come and ask about. */}
-          {!pay.bonus && pay.rates.ontime_bonus > 0 && pay.onTimePct !== null && (
+          {!pay.onTimeBonus && pay.rates.ontime_bonus > 0 && pay.onTimePct !== null && (
             <div className="my-pay-line">
               <span className="stat-sub">On-time bonus</span>
               <span className="stat-sub">needs {pay.rates.ontime_target}% — you are on {pay.onTimePct}%</span>
