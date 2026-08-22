@@ -178,6 +178,10 @@ export const api = {
   cached: cachedGet,
   post: async (p, body) => { dropMemo(p); const r = await request(p, { method: 'POST', body }); noteWrite(p, r); return r },
   patch: async (p, body) => { dropMemo(p); const r = await request(p, { method: 'PATCH', body }); noteWrite(p, r); return r },
+  // A whole-record replace. Not folded into the recent-write merge: what PUT
+  // is used for here (a rate card) is not a row in any list the client polls,
+  // and splicing it into one would be wrong.
+  put: async (p, body) => { dropMemo(p); return request(p, { method: 'PUT', body }) },
   del: async (p) => { dropMemo(p); const r = await request(p, { method: 'DELETE' }); noteDelete(p); return r },
   poll,
   pollView,

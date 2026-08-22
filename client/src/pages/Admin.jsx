@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
-  X, CheckSquare, Scissors, Video, History, Eye, EyeOff,
+  X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Palette, UserCheck, RotateCcw,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast, loadFailed } from '../lib/toast.js'
@@ -33,6 +33,7 @@ const TABS = [
   { key: 'channels', label: 'Channels', icon: PanelLeft },
   { key: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
   { key: 'reports', label: 'Reports', icon: FileBarChart },
+  { key: 'pay', label: 'Pay', icon: Wallet },
   { key: 'history', label: 'History', icon: History },
   { key: 'telegram', label: 'Telegram', icon: Send },
 ]
@@ -60,6 +61,7 @@ export default function Admin() {
       {tab === 'channels' && <ChannelsTab onOpenReport={openReport} />}
       {tab === 'pipeline' && <PipelineTab />}
       {tab === 'reports' && <ReportsTab channel={reportChannel} setChannel={setReportChannel} />}
+      {tab === 'pay' && <PayTab />}
       {tab === 'history' && <HistoryTab />}
       {tab === 'telegram' && <TelegramTab />}
     </>
@@ -542,7 +544,7 @@ function TasksTab() {
 }
 
 /* ==================== TEAM (+ permissions) ==================== */
-const BLANK_USER = { name: '', username: '', password: '', role: 'member', crew_roles: [], departments: [], admin_channels: [], permissions: {} }
+const BLANK_USER = { name: '', username: '', password: '', role: 'member', crew_roles: [], departments: [], admin_channels: [], crew_channels: [], daily_cap: 0, permissions: {} }
 
 function TeamTab() {
   const { channels } = useChannels()
@@ -558,7 +560,7 @@ function TeamTab() {
 
   const openAdd = () => { setForm(BLANK_USER); setUsernameTouched(false); setEditing(null); setErr(''); setModal(true) }
   const openEdit = (u) => {
-    setForm({ name: u.name, username: u.username, password: '', role: u.role, crew_roles: [...(u.crew_roles || [])], departments: u.departments, admin_channels: [...(u.admin_channels || [])], permissions: { ...u.permissions } })
+    setForm({ name: u.name, username: u.username, password: '', role: u.role, crew_roles: [...(u.crew_roles || [])], departments: u.departments, admin_channels: [...(u.admin_channels || [])], crew_channels: [...(u.crew_channels || [])], daily_cap: u.daily_cap || 0, permissions: { ...u.permissions } })
     setUsernameTouched(true); setEditing(u.id); setErr(''); setModal(true)
   }
 
@@ -566,7 +568,7 @@ function TeamTab() {
     setBusy(true); setErr('')
     try {
       if (editing) {
-        const body = { name: form.name, username: form.username, role: form.role, crew_roles: form.crew_roles, departments: form.departments, admin_channels: form.admin_channels || [], permissions: form.permissions }
+        const body = { name: form.name, username: form.username, role: form.role, crew_roles: form.crew_roles, departments: form.departments, admin_channels: form.admin_channels || [], crew_channels: form.crew_channels || [], daily_cap: Number(form.daily_cap) || 0, permissions: form.permissions }
         if (form.password) body.password = form.password
         const u = await api.patch(`/users/${editing}`, body)
         setUsers((prev) => prev.map((x) => (x.id === editing ? u : x)))
@@ -589,6 +591,11 @@ function TeamTab() {
     setForm((f) => {
       const cur = f.admin_channels || []
       return { ...f, admin_channels: cur.includes(k) ? cur.filter((d) => d !== k) : [...cur, k] }
+    })
+  const toggleCrewChan = (k) =>
+    setForm((f) => {
+      const cur = f.crew_channels || []
+      return { ...f, crew_channels: cur.includes(k) ? cur.filter((d) => d !== k) : [...cur, k] }
     })
   const togglePerm = (k) =>
     setForm((f) => ({ ...f, permissions: { ...f.permissions, [k]: !f.permissions[k] } }))
@@ -732,12 +739,257 @@ function TeamTab() {
           )}
           {form.role === 'admin' && <span className="stat-sub">Admins can access every channel and do everything.</span>}
           {!['member', 'admin'].includes(form.role) && (
-            <span className="stat-sub">
-              Production crew: no channels, no metrics, no task creation. They sign in to a daily brief of
-              the tasks where they hold a hat ({(form.crew_roles || []).join(', ') || 'crew'}) — set on each task’s
-              Crew row — with deadlines and hours, and they move that work through the pipeline themselves.
-            </span>
+            <>
+              <div className="field">
+                <label>Which channels do they work on?</label>
+                <div className="checkbox-row">
+                  {channels.map((c) => (
+                    <label key={c.key} className={'checkbox-chip' + ((form.crew_channels || []).includes(c.key) ? ' on' : '')}>
+                      <input type="checkbox" checked={(form.crew_channels || []).includes(c.key)} onChange={() => toggleCrewChan(c.key)} />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+                <div className="cm-hint">
+                  {(form.crew_channels || []).length === 0
+                    ? 'Nothing ticked — they can be given work on any channel.'
+                    : 'They only appear in the crew pickers on these channels, and cannot be assigned work on the others.'}
+                </div>
+              </div>
+              <div className="field">
+                <label>How many pieces a day?</label>
+                <input className="input" type="number" min="0" max="50" style={{ maxWidth: 120 }}
+                  value={form.daily_cap ?? 0}
+                  onChange={(e) => setForm({ ...form, daily_cap: e.target.value })} />
+                <div className="cm-hint">
+                  {Number(form.daily_cap) > 0
+                    ? `At most ${Number(form.daily_cap)} for one day — handing them one more is refused, so it is caught while it can still be moved. Counted on the day the work is due FROM them: a cut day, a shoot day, an artwork day, never the release.`
+                    : 'No limit, which is what everybody was before this existed. Set a number and over-assignment is refused rather than discovered on the day.'}
+                </div>
+              </div>
+              <span className="stat-sub">
+                Production crew: no channels, no metrics, no task creation. They sign in to a daily brief of
+                the tasks where they hold a hat ({(form.crew_roles || []).join(', ') || 'crew'}) — set on each task’s
+                Crew row — with deadlines and hours, and they move that work through the pipeline themselves.
+              </span>
+            </>
           )}
+        </Modal>
+      )}
+    </>
+  )
+}
+
+/* ==================== PAY ==================== */
+/* What people are paid, worked out from what the board already knows.
+ *
+ * Payroll was being rebuilt by hand every month from numbers this system had
+ * to the day: who shot what, who cut what, and how much of it landed on the
+ * day they promised. The rates are the part no code can know — they differ per
+ * person and they change — so they are edited here and stored as data. One
+ * default card everybody starts from, and a card per person that overrides it.
+ *
+ * Nothing here invents a KPI. It multiplies counts by rates an admin typed. */
+const RATE_ROWS = [
+  { key: 'base', label: 'Base', hint: 'Paid for the period whatever the count' },
+  { key: 'per_shoot', label: 'Per shoot', hint: 'Each shoot handed to the editor' },
+  { key: 'per_edit', label: 'Per cut', hint: 'Each cut handed to review' },
+  { key: 'per_design', label: 'Per design', hint: 'Each piece they designed' },
+  { key: 'per_publish', label: 'Per piece run', hint: 'Each piece that went out as theirs' },
+  { key: 'per_review', label: 'Per sign-off', hint: 'Each piece they signed off' },
+  { key: 'ontime_bonus', label: 'On-time bonus', hint: 'Paid whole, or not at all' },
+  { key: 'ontime_target', label: 'On-time target %', hint: 'The share of deliveries that earns the bonus' },
+  { key: 'late_penalty', label: 'Per late piece', hint: 'Taken off for each delivery after its promised day' },
+]
+const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0 }
+
+// Money reads as money: grouped thousands, no decimals for whole sums. UZS
+// runs to millions, so an ungrouped 2200000 is unreadable at a glance.
+const money = (n, cur) => `${Math.round(Number(n) || 0).toLocaleString('en-US').replace(/,/g, ' ')} ${cur || ''}`.trim()
+
+function PayTab() {
+  const t = todayISO()
+  const monthStart = t.slice(0, 8) + '01'
+  const prevEnd = addDaysISO(monthStart, -1)
+  const prevStart = prevEnd.slice(0, 8) + '01'
+  const PRESETS = [
+    { key: 'month', label: 'This month', from: monthStart, to: t },
+    { key: 'prev', label: 'Last month', from: prevStart, to: prevEnd },
+    { key: 'custom', label: 'Custom' },
+  ]
+  const [preset, setPreset] = useState('month')
+  const [from, setFrom] = useState(monthStart)
+  const [to, setTo] = useState(t)
+  const [data, setData] = useState(null)
+  const [rules, setRules] = useState([])
+  const [card, setCard] = useState(null) // { userId | 'default', name, form }
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const range = useMemo(() => {
+    const p = PRESETS.find((x) => x.key === preset)
+    return preset === 'custom' ? { from, to } : { from: p.from, to: p.to }
+  }, [preset, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const load = () => {
+    api.get(`/reports/pay?from=${range.from}&to=${range.to}`).then(setData).catch(() => setData(null))
+    api.get('/reports/pay/rules').then(setRules).catch(() => setRules([]))
+  }
+  useEffect(load, [range.from, range.to]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openCard = (userId, name) => {
+    const row = rules.find((r) => (userId === 'default' ? !r.user_id : r.user_id === userId))
+    const fallback = userId === 'default' ? BLANK_CARD : (rules.find((r) => !r.user_id) || BLANK_CARD)
+    setErr('')
+    setCard({ userId, name, own: !!row, form: { ...BLANK_CARD, ...(row || fallback) } })
+  }
+  const saveCard = async () => {
+    if (!card) return
+    setBusy(true); setErr('')
+    try {
+      await api.put(`/reports/pay/rules/${card.userId}`, card.form)
+      setCard(null)
+      load()
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const dropCard = async () => {
+    if (!card || card.userId === 'default') return
+    if (!confirm(`Put ${card.name} back on the default card?`)) return
+    setBusy(true)
+    try { await api.del(`/reports/pay/rules/${card.userId}`); setCard(null); load() }
+    catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  const total = (data?.people || []).reduce((a, p) => a + p.total, 0)
+  const cur = data?.currency || 'UZS'
+
+  return (
+    <>
+      <div className="section-head">
+        <h2>Pay</h2>
+        <span className="count">· worked out from what was delivered</span>
+        <span className="spacer" />
+        <button className="btn btn-sm" onClick={() => openCard('default', 'everybody')}>
+          <Wallet size={14} /> Default rates
+        </button>
+        <div className="pill-group" style={{ marginLeft: 10 }}>
+          {PRESETS.map((p) => (
+            <button key={p.key} className={'pill' + (preset === p.key ? ' active' : '')} onClick={() => setPreset(p.key)}>{p.label}</button>
+          ))}
+        </div>
+      </div>
+      {preset === 'custom' && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          <input className="input" type="date" style={{ width: 160 }} value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input className="input" type="date" style={{ width: 160 }} value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+      )}
+
+      {!data ? <div className="app-loading"><span className="spinner" /></div> : (
+        <>
+          {!data.hasDefault && (
+            <div className="card card-pad pay-empty">
+              <b>No rates set yet.</b>
+              <span className="stat-sub">
+                Nothing here is guessed. Set the default card — a base, and what a shoot, a cut and a
+                design are each worth — and every person is worked out from it. Anybody paid differently
+                gets a card of their own on their row.
+              </span>
+              <button className="btn btn-primary btn-sm" onClick={() => openCard('default', 'everybody')}>Set the default rates</button>
+            </div>
+          )}
+
+          <div className="card card-pad rp-head">
+            <div className="rp-big">
+              <b>{money(total, cur)}</b>
+              <span className="rp-big-label">
+                the whole payroll for the period
+                <br /><span className="stat-sub">{range.from} → {range.to}</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="card table-wrap" style={{ marginTop: 14 }}>
+            <table className="tbl pay-tbl">
+              <thead><tr>
+                <th>Person</th><th>Delivered</th><th>On time</th><th>Base</th>
+                <th>Piecework</th><th>Bonus</th><th>Late</th><th>Pay</th><th />
+              </tr></thead>
+              <tbody>
+                {data.people.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar name={p.name} color={p.color} src={p.avatar} size="sm" />
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{p.name}</div>
+                          <div className="stat-sub">
+                            {p.source === 'own' ? 'own rates' : p.source === 'default' ? 'default rates' : 'no rates'}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <b>{p.delivered}</b>
+                      {p.lines.filter((l) => l.count > 0).length > 0 && (
+                        <div className="stat-sub">{p.lines.filter((l) => l.count > 0).map((l) => `${l.label} ${l.count}`).join(' · ')}</div>
+                      )}
+                    </td>
+                    <td>{p.onTimePct === null ? <span className="stat-sub">—</span>
+                      : <span className={p.onTimePct >= (p.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>{p.onTimePct}%</span>}</td>
+                    <td>{money(p.base, p.currency)}</td>
+                    <td>{money(p.piecework, p.currency)}</td>
+                    <td>{p.bonus ? <span className="pay-good">+{money(p.bonus, p.currency)}</span> : <span className="stat-sub">—</span>}</td>
+                    <td>{p.penalty ? <span className="pay-bad">−{money(p.penalty, p.currency)}</span> : <span className="stat-sub">—</span>}</td>
+                    <td><b>{money(p.total, p.currency)}</b></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="icon-btn" onClick={() => openCard(p.id, p.name)}
+                        data-tip={`${p.name}'s rates`} data-tip-left=""><Pencil size={14} /></button>
+                    </td>
+                  </tr>
+                ))}
+                {data.people.length === 0 && (
+                  <tr><td colSpan={9} className="empty">Nobody delivered anything in this period.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {card && (
+        <Modal
+          title={card.userId === 'default' ? 'Default rates' : `${card.name}'s rates`}
+          onClose={() => setCard(null)}
+          footer={<>
+            {card.userId !== 'default' && card.own && (
+              <button className="btn" onClick={dropCard} disabled={busy}><RotateCcw size={14} /> Use the default</button>
+            )}
+            <span className="spacer" />
+            <button className="btn" onClick={() => setCard(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveCard} disabled={busy}>Save rates</button>
+          </>}
+        >
+          {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
+          <div className="cm-hint" style={{ marginBottom: 12 }}>
+            {card.userId === 'default'
+              ? 'What everybody is paid on unless they have a card of their own. Leave a line at zero and it simply does not count.'
+              : card.own
+                ? `${card.name} is paid on these rates instead of the default ones.`
+                : `${card.name} is on the default rates. Change anything here and they get a card of their own.`}
+          </div>
+          <div className="field"><label>Currency</label>
+            <input className="input" style={{ maxWidth: 120 }} value={card.form.currency || ''}
+              onChange={(e) => setCard({ ...card, form: { ...card.form, currency: e.target.value } })} />
+          </div>
+          {RATE_ROWS.map((r) => (
+            <div className="field" key={r.key}>
+              <label>{r.label} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>— {r.hint}</span></label>
+              <input className="input" type="number" min="0" step="1000" style={{ maxWidth: 220 }}
+                value={card.form[r.key] ?? 0}
+                onChange={(e) => setCard({ ...card, form: { ...card.form, [r.key]: e.target.value } })} />
+            </div>
+          ))}
         </Modal>
       )}
     </>
@@ -1215,6 +1467,16 @@ function PipelineTab() {
 }
 
 /* ==================== REPORTS ==================== */
+// The five ways a person can have had a hand in a piece. Each is counted on
+// the day THEIR part was delivered, not on the day the piece went out.
+const HATS = [
+  { key: 'assignee', label: 'Ran it', icon: UserCheck, noun: 'piece', verb: 'published', tip: 'Whose piece it was — the planner who saw it out' },
+  { key: 'operator', label: 'Shot it', icon: Video, noun: 'shoot', verb: 'delivered', tip: 'Counted on the day the footage reached the editor' },
+  { key: 'editor', label: 'Cut it', icon: Scissors, noun: 'cut', verb: 'delivered', tip: 'Counted on the day the cut reached review' },
+  { key: 'designer', label: 'Designed it', icon: Palette, noun: 'piece', verb: 'designed', tip: 'Artwork has no handover of its own, so it counts when the piece goes out' },
+  { key: 'reviewer', label: 'Signed it off', icon: CheckSquare, noun: 'sign-off', verb: 'given', tip: 'Review is shared — every name on it is counted' },
+]
+
 function ReportsTab({ channel, setChannel }) {
   const { channels, byKey } = useChannels()
   const t = todayISO()
@@ -1235,6 +1497,8 @@ function ReportsTab({ channel, setChannel }) {
   const [preset, setPreset] = useState('month')
   const [from, setFrom] = useState(monthStart)
   const [to, setTo] = useState(t)
+  const [hat, setHat] = useState('assignee')
+  const [type, setType] = useState('')
   const [data, setData] = useState(null)
 
   const range = useMemo(() => {
@@ -1243,8 +1507,10 @@ function ReportsTab({ channel, setChannel }) {
   }, [preset, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.get(`/reports?from=${range.from}&to=${range.to}`).then(setData).catch(() => setData(null))
-  }, [range.from, range.to])
+    setData(null)
+    api.get(`/reports?from=${range.from}&to=${range.to}&hat=${hat}${type ? `&type=${type}` : ''}`)
+      .then(setData).catch(() => setData(null))
+  }, [range.from, range.to, hat, type])
 
   const colorOf = useMemo(() => Object.fromEntries(channels.map((c, i) => [c.key, deptColor(i)])), [channels])
   const chStats = channel !== 'all' ? data?.byChannel?.[channel] : null
@@ -1291,6 +1557,27 @@ function ReportsTab({ channel, setChannel }) {
         ))}
       </div>
 
+      {/* Whose work. The report counted only the ASSIGNEE — the planner —
+          which made the crew invisible: an editor who cut forty videos in a
+          month showed as nothing, because somebody else's name was on the
+          assignee line. Each hat is now counted on the day THAT person's work
+          left their hands. */}
+      <div className="rp-filters">
+        <div className="pill-group">
+          {HATS.map((h) => (
+            <button key={h.key} className={'pill' + (hat === h.key ? ' active' : '')}
+              onClick={() => setHat(h.key)} data-tip={h.tip}>
+              <h.icon size={13} /> {h.label}
+            </button>
+          ))}
+        </div>
+        <select className="select rp-type" value={type} onChange={(e) => setType(e.target.value)}
+          data-tip="Only one kind of piece">
+          <option value="">Every type</option>
+          {CONTENT_TYPES.map((c) => <option key={c.key} value={c.key}>{typeInfo(c.key).plan || c.label}</option>)}
+        </select>
+      </div>
+
       {!data ? (
         <div className="app-loading"><span className="spinner" /></div>
       ) : (
@@ -1300,7 +1587,7 @@ function ReportsTab({ channel, setChannel }) {
             <div className="rp-big">
               <b>{shownTotal}</b>
               <span className="rp-big-label">
-                task{shownTotal === 1 ? '' : 's'} completed
+                {HATS.find((h) => h.key === hat)?.noun || 'task'}{shownTotal === 1 ? '' : 's'} {HATS.find((h) => h.key === hat)?.verb || 'completed'}
                 {channel !== 'all' ? <> on <b style={{ color: colorOf[channel] }}>{byKey[channel]?.label || channel}</b></> : ''}
                 <br /><span className="stat-sub">{range.from} → {range.to}</span>
               </span>
@@ -1347,6 +1634,11 @@ function ReportsTab({ channel, setChannel }) {
                     <div className="rp-person-total">
                       <b>{n}</b>
                       <span>done</span>
+                      {r.late > 0 && (
+                        <span className="rp-late" data-tip="Delivered after the day they promised. A piece that arrived to them late is not counted against them.">
+                          {r.late} late
+                        </span>
+                      )}
                     </div>
                   </div>
                   {r.items.length > 0 && (
@@ -1356,7 +1648,10 @@ function ReportsTab({ channel, setChannel }) {
                         {r.items.map((it) => (
                           <div key={it.id} className="report-item">
                             <span>{it.title}</span>
-                            <span className="stat-sub">{byKey[it.channel]?.label || it.channel} · {tashkentDay(it.done_at)}</span>
+                            <span className="stat-sub">
+                              {byKey[it.channel]?.label || it.channel} · {it.day || (it.done_at ? tashkentDay(it.done_at) : '')}
+                              {it.late && <span className="rp-late" style={{ display: 'inline', marginLeft: 6 }}>late</span>}
+                            </span>
                           </div>
                         ))}
                       </div>

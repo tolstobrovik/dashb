@@ -1536,10 +1536,23 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             const holds = (u) => (u.crew_roles || []).includes(f.role)
             const bySort = (a, b) =>
               (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name)
-            // Specialists lead the list, but ANYBODY can take the hat — a
-            // one-time editor, a content head doing the filming.
-            const specialists = team.filter(holds).sort(bySort)
-            const everyoneElse = team.filter((u) => !holds(u)).sort(bySort)
+            // Only the people who work on THIS channel. Somebody scoped to
+            // two channels was previously offered on all nine, and the
+            // refusal came at save time, after the picking. Now they simply
+            // are not in the list. Nobody scoped is offered everywhere, as
+            // before. The person already holding the hat stays visible even
+            // if the channel later moves out from under them — a select whose
+            // value is not among its options renders blank while still
+            // holding the id, which is worse than showing it.
+            const here = (u) => {
+              if (u.id === form[f.key]) return true
+              const mine = u.crew_channels || []
+              if (!mine.length) return true
+              return form.channels.some((ch) => mine.includes(ch))
+            }
+            const pool = team.filter(here)
+            const specialists = pool.filter(holds).sort(bySort)
+            const everyoneElse = pool.filter((u) => !holds(u)).sort(bySort)
             // What the stage owes: a booked shoot needs its shooter, and
             // footage in hand needs the editor who will cut it. An idea owes
             // neither — the hats say "optional" until the work reaches them.

@@ -3110,6 +3110,59 @@ button.blame-person:hover { background: var(--surface-2); }
 /* ---- your own late work, on your own page --------------------------------
    Overdue work used to be an admin's wall of chips. It belongs to whoever is
    carrying it, with the three answers that actually exist. */
+/* ---------- pay ---------- */
+/* Money is read, not scanned: tabular numerals so columns line up, and the
+   good/bad pair reserved for on-time and late so a number never carries a
+   colour on its own. */
+.pay-good { color: var(--good-ink); font-weight: 600; }
+.pay-bad  { color: var(--critical); font-weight: 600; }
+.pay-tbl td, .pay-tbl th { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pay-tbl td .stat-sub { white-space: normal; }
+.pay-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 14px; border-left: 3px solid var(--warning); }
+.rp-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
+.rp-type { max-width: 200px; }
+.rp-late {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--critical);
+}
+
+.my-pay { margin-bottom: 14px; padding: 0; overflow: hidden; }
+.my-pay-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.my-pay-head:hover { background: var(--surface-2); }
+.my-pay-sum { display: flex; flex-direction: column; line-height: 1.25; }
+.my-pay-sum b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.my-pay-facts { margin-left: auto; display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); }
+.my-pay-facts b { font-variant-numeric: tabular-nums; }
+.my-pay-caret { transition: transform 0.15s ease; flex: none; color: var(--muted); }
+.my-pay-caret.open { transform: rotate(180deg); }
+.my-pay-lines { padding: 4px 18px 16px; border-top: 1px solid var(--hairline); }
+.my-pay-line {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px 0;
+  font-size: 13.5px;
+}
+.my-pay-line b { font-variant-numeric: tabular-nums; }
+.my-pay-line + .my-pay-line { border-top: 1px solid var(--hairline); }
+.my-pay-total { border-top: 2px solid var(--hairline-strong) !important; font-weight: 600; }
+.my-pay-lines .cm-hint { margin-top: 10px; }
+
 .my-late { border-left: 3px solid #A32D2D; display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .my-late-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .my-late-head svg { color: #A32D2D; flex-shrink: 0; }

@@ -12,6 +12,7 @@ import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel, can
 import ContentModal from '../components/ContentModal.jsx'
 import { celebrateIfFinished } from '../lib/celebrate.js'
 import MyLate from '../components/MyLate.jsx'
+import MyPay from '../components/MyPay.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { playDone } from '../lib/sound.js'
@@ -887,6 +888,11 @@ export default function Brief() {
           </button>
         </div>
 
+        {/* What the month is worth so far. Silent until an admin has set
+            rates — a card reading "0" says something about the person that
+            it does not mean. */}
+        <MyPay />
+
         {arranging && (
           <div className="card card-pad br-arrange">
             <div className="pc-check-head" style={{ marginBottom: 6 }}>
@@ -954,6 +960,8 @@ export default function Brief() {
           )}
         </h2>
       </div>
+
+      <MyPay />
 
       <div className="miss-filters">
         <div className="pill-group">

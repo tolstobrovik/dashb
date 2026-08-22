@@ -797,6 +797,32 @@ export async function initSchema() {
       updated_at TEXT    NOT NULL
     );
 
+    -- What people are paid, and on what.
+    --
+    -- The rates are DATA, not code: they differ per person, they change, and
+    -- baking a wage into a git repository turns a pay rise into a deploy. One
+    -- row with a NULL user_id is the default card everybody starts from; a row
+    -- with a user_id overrides it for that person. Everything is per period:
+    -- the base per month, the rest per piece delivered. The arithmetic lives
+    -- in server/routes/reports.js.
+    CREATE TABLE IF NOT EXISTS pay_rules (
+      id            ${ID},
+      user_id       INTEGER,                       -- NULL = the default card
+      currency      TEXT    NOT NULL DEFAULT 'UZS',
+      base          REAL    NOT NULL DEFAULT 0,    -- paid whatever the count
+      per_shoot     REAL    NOT NULL DEFAULT 0,
+      per_edit      REAL    NOT NULL DEFAULT 0,
+      per_design    REAL    NOT NULL DEFAULT 0,
+      per_publish   REAL    NOT NULL DEFAULT 0,
+      per_review    REAL    NOT NULL DEFAULT 0,
+      ontime_bonus  REAL    NOT NULL DEFAULT 0,    -- paid whole, or not at all
+      ontime_target REAL    NOT NULL DEFAULT 90,   -- the per cent that earns it
+      late_penalty  REAL    NOT NULL DEFAULT 0,    -- per piece delivered late
+      updated_by    INTEGER,
+      created_at    TEXT    NOT NULL,
+      updated_at    TEXT    NOT NULL
+    );
+
     -- Raising a hand. The crew could always deliver late; they had no way to
     -- say so in advance, so the first anybody knew was the deadline passing.
     -- A flag is the cheap early word: "I cannot take this" or "this will be
@@ -1065,6 +1091,11 @@ export async function initSchema() {
     -- single save. script_key is a fingerprint of the same normalisation the
     -- check uses, so the question is now one indexed lookup.
     CREATE INDEX IF NOT EXISTS idx_content_script_key ON content(script_key);
+
+    -- One card per person, and exactly one default (NULL user_id). SQLite and
+    -- Postgres both treat NULLs as distinct in a unique index, so the single
+    -- default row is kept by the route rather than by the index.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_rules_user ON pay_rules(user_id);
 
   `)
 }
