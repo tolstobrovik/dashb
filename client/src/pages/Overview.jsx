@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CalendarClock, Check, AlertCircle, Megaphone, Rows3, UserX, ArrowRight, Hand } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
+import { celebrateIfFinished } from '../lib/celebrate.js'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, isIdeaLabel, tashkentDay } from '../lib/constants.js'
 import { loadFailed, toast } from '../lib/toast.js'
@@ -198,6 +199,7 @@ export default function Overview() {
 
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
+    celebrateIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   const deleteContent = async (item) => {

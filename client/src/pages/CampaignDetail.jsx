@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import { api } from '../lib/api.js'
+import { celebrateIfFinished } from '../lib/celebrate.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { can, dateLabel } from '../lib/constants.js'
@@ -70,6 +71,7 @@ export default function CampaignDetail() {
 
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
+    celebrateIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   const createContent = async (payload) => {

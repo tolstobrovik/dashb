@@ -7,6 +7,7 @@ import {
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
 import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHref } from '../lib/text.js'
+import { useT } from '../lib/i18n.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { api } from '../lib/api.js'
@@ -108,6 +109,7 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
 export default function ContentModal({ item, statuses, defaults = {}, onClose, onCreate, onUpdate, onDelete }) {
   const { user } = useAuth()
   const { visible, byKey, reload } = useChannels()
+  const { t } = useT()
   const creating = !item
   const [err, setErr] = useState('')
   // Which field the refusal is ABOUT. A red banner at the top of a long form
@@ -901,7 +903,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         {!creating && canEdit && !crewViewer && (
           <button className="btn btn-ghost" onClick={duplicate} disabled={busy}
             data-tip="A fresh copy: brief, crew and platforms kept — dates and stage cleared">
-            <CopyPlus size={15} /> Duplicate
+            <CopyPlus size={15} /> {t('task.duplicate')}
           </button>
         )}
         {!creating && (
@@ -940,7 +942,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         <button className="btn" onClick={onClose}>Cancel</button>
         {!readOnly && (
           <button className="btn btn-primary" onClick={() => save()} disabled={busy || !form.title.trim()}>
-            {busy ? 'Saving…' : creating ? 'Create task' : 'Save changes'}
+            {busy ? t('task.saving') : creating ? t('task.create') : t('task.savechanges')}
           </button>
         )}
       </>}
@@ -997,7 +999,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* Stage — the pipeline, in its own colours */}
       <div className="cm-row">
-        <span className="cm-key">Stage</span>
+        <span className="cm-key">{t('task.stage')}</span>
         <div className="stage-chips">
           {statuses.map((s) => {
             const active = form.status_id === s.id
@@ -1025,7 +1027,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           Sits directly under the stage, because it is about to change it. */}
       {(openFlags.length > 0 || raising) && (
         <div className="cm-row cm-flags">
-          <span className="cm-key"><Hand size={13} style={{ verticalAlign: -2 }} /> Trouble</span>
+          <span className="cm-key"><Hand size={13} style={{ verticalAlign: -2 }} /> {t('task.trouble')}</span>
           <div className="flag-block">
             {openFlags.map((f) => (
               <div key={f.id} className={`flag-item flag-${f.kind}`}>
@@ -1069,7 +1071,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           blocks moving a task forward. Crew see it; only editors set it. */}
       {(hasRef || (canEdit && show.reference)) && (
         <div className={'cm-row cm-ref' + (badField === 'reference' ? ' field-bad' : '')} data-field="reference">
-          <span className="cm-key"><BookOpen size={13} style={{ verticalAlign: -2 }} /> Reference</span>
+          <span className="cm-key"><BookOpen size={13} style={{ verticalAlign: -2 }} /> {t('task.reference')}</span>
           <div className="ref-block">
             {briefEditable ? (
               <textarea className="input" rows={2} value={form.reference_text}
@@ -1120,7 +1122,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           the bytes are fetched on the click that opens one. */}
       {!creating && (docs.length > 0 || show.docs) && (
         <div className="cm-row">
-          <span className="cm-key"><Paperclip size={13} style={{ verticalAlign: -2 }} /> Documents</span>
+          <span className="cm-key"><Paperclip size={13} style={{ verticalAlign: -2 }} /> {t('task.documents')}</span>
           <div className="doc-block">
             {docs.map((d) => (
               <div key={d.id} className={`doc-row dk-${docKind(d.name)}`}>
@@ -1152,7 +1154,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           the crew read it. Folds behind the extras row unless demanded. */}
       {fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
         <div className={'cm-row' + (badField === 'script' ? ' field-bad' : '')} data-field="script">
-          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> Script{fReq('script') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
+          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}{fReq('script') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
           <textarea className="input cm-script" rows={6} disabled={detailsLocked}
             placeholder="The script / shot plan the crew works by…"
             value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
@@ -1160,7 +1162,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       )}
       {(crewViewer || !canEdit) && form.script && (
         <div className="cm-row">
-          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> Script</span>
+          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}</span>
           <div className="crew-script">{form.script}</div>
         </div>
       )}
@@ -1169,7 +1171,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           foot of the form — it is read at the same moment as the reference. */}
       {show.description && !crewViewer && (
         <div className={'cm-row' + (badField === 'description' ? ' field-bad' : '')} data-field="description">
-          <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> Description{fReq('description') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
+          <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> {t('task.description')}{fReq('description') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
           <textarea className="input" rows={2} disabled={detailsLocked} value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="References, links, notes…" />
         </div>
@@ -1179,7 +1181,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           or send it back to the crew with one note (Pravki). */}
       {atReady && (canReview || canRequest) && (
         <div className="cm-row cm-review">
-          <span className="cm-key">Review</span>
+          <span className="cm-key">{t('task.reviewer')}</span>
           <div className="review-block">
             {reviewLinks.length > 0 && (
               <div className="review-links">
@@ -1199,7 +1201,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 )}
                 {canRequest && (
                   <button type="button" className="btn" onClick={() => setPravki({ note: '', target: pravkiTargets[0].key, photo: null, photo_thumb: null })}>
-                    <RotateCcw size={14} /> Request changes
+                    <RotateCcw size={14} /> {t('task.requestchanges')}
                   </button>
                 )}
                 <span className="stat-sub">Waiting for review before it goes out.</span>
@@ -1226,7 +1228,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 )}
                 {pravkiTargets.length > 1 && (
                   <div className="pravki-target">
-                    <span className="crew-opt">Send back to:</span>
+                    <span className="crew-opt">{t('task.sendbackto')}</span>
                     {pravkiTargets.map((t) => (
                       <button key={t.key} type="button" className={'tchip' + (pravki.target === t.key ? ' on' : '')}
                         onClick={() => setPravki({ ...pravki, target: t.key })}>{t.label}</button>
@@ -1236,7 +1238,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <div className="pravki-actions">
                   <button type="button" className="btn btn-sm" onClick={() => setPravki(null)}>Cancel</button>
                   <button type="button" className="btn btn-sm btn-primary" disabled={!pravki.note.trim() || busy} onClick={submitPravki}>
-                    <RotateCcw size={13} /> Send back
+                    <RotateCcw size={13} /> {t('task.sendback')}
                   </button>
                 </div>
               </div>
@@ -1248,7 +1250,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* Revision history — a plain list: round, who asked, the note, the date. */}
       {revisions.length > 0 && (
         <div className="cm-row cm-revs">
-          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> Revisions</span>
+          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> {t('task.revisions')}</span>
           <div className="rev-list">
             {revisions.map((r) => (
               <div key={r.id} className={'rev-item' + (r.resolved_at ? ' rev-done' : '')}>
@@ -1274,7 +1276,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           admin should never have to hunt for a link that is plainly there. */}
       {!creating && deliveryLinks.length > 0 && (
         <div className="cm-row">
-          <span className="cm-key"><Link2 size={13} style={{ verticalAlign: -2 }} /> Files</span>
+          <span className="cm-key"><Link2 size={13} style={{ verticalAlign: -2 }} /> {t('task.files')}</span>
           <div className="file-links">
             {deliveryLinks.map((f) => {
               const Icon = f.icon
@@ -1291,7 +1293,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {!creating && (deliveryFields.length > 0 || (crewViewer && (myHats.operator || myHats.editor || myHats.designer))) && (
         <div className="cm-row">
-          <span className="cm-key">Your part</span>
+          <span className="cm-key">{t('task.yourpart')}</span>
           <div className="crew-do">
             {crewViewer && (myHats.operator || myHats.editor || myHats.designer) && (
               <div className="crew-ticks">
@@ -1300,7 +1302,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                     disabled={alreadyShot} data-tip="Filming is done"
                     onClick={() => tickMilestone('shot')}>
                     <span className="do-box">{(alreadyShot || milestone === 'shot') && <Check size={12} strokeWidth={3.5} />}</span>
-                    <Clapperboard size={13} /> {alreadyShot ? 'Shot' : 'Mark as shot'}
+                    <Clapperboard size={13} /> {alreadyShot ? t('task.shot') : t('task.markshot')}
                   </button>
                 )}
                 {myHats.editor && (
@@ -1308,7 +1310,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                     disabled={alreadyReady} data-tip="The cut is ready"
                     onClick={() => tickMilestone('edited')}>
                     <span className="do-box">{(alreadyReady || milestone === 'edited') && <Check size={12} strokeWidth={3.5} />}</span>
-                    <Scissors size={13} /> {alreadyReady ? 'Edited' : 'Mark as edited'}
+                    <Scissors size={13} /> {alreadyReady ? t('task.edited') : t('task.markedited')}
                   </button>
                 )}
                 {myHats.designer && (
@@ -1316,7 +1318,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                     disabled={alreadyReady} data-tip="The artwork is ready"
                     onClick={() => tickMilestone('designed')}>
                     <span className="do-box">{(alreadyReady || milestone === 'designed') && <Check size={12} strokeWidth={3.5} />}</span>
-                    <Palette size={13} /> {alreadyReady ? 'Designed' : 'Mark as designed'}
+                    <Palette size={13} /> {alreadyReady ? t('task.designed') : t('task.markdesigned')}
                   </button>
                 )}
               </div>
@@ -1378,7 +1380,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           small, especially on a phone. */}
       {crewViewer && !creating ? (
         <div className="cm-row">
-          <span className="cm-key">About</span>
+          <span className="cm-key">{t('task.about')}</span>
           <div className="crew-about">
             <span className={`chip ct-${form.type}`}>{typeInfo(form.type).label}</span>
             {form.format && <span className="chip chip-muted"><Layers size={11} /> {form.format}</span>}
@@ -1397,7 +1399,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       ) : (<>
       {/* What is it? The type binds the task to each platform's plan. */}
       <div className="cm-row">
-        <span className="cm-key">Type</span>
+        <span className="cm-key">{t('task.type')}</span>
         <div className="stage-chips">
           {CONTENT_TYPES.map((t) => {
             const Icon = t.icon
@@ -1420,7 +1422,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           whether they're demanded — Admin → Pipeline → The task form. */}
       {(fOn('format') || fOn('rubrika')) && (
         <div className="cm-row">
-          <span className="cm-key">Brief</span>
+          <span className="cm-key">{t('task.brief')}</span>
           {/* Own classes on purpose: these are brief fields, not crew hats —
               nothing that counts crew-fields may count these. */}
           <div className="brief-fields">
@@ -1461,7 +1463,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* Platforms — a task can go out on several at once */}
       <div className="cm-row">
-        <span className="cm-key">Platforms</span>
+        <span className="cm-key">{t('task.platforms')}</span>
         <div className="checkbox-row">
           {visible.map((c) => (
             <label key={c.key} className={'checkbox-chip chip-sm' + (form.channels.includes(c.key) ? ' on' : '')}>
@@ -1491,7 +1493,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           leaves the task to the whole channel. */}
       {user.role === 'admin' && (
         <div className="cm-row">
-          <span className="cm-key"><UserRound size={13} style={{ verticalAlign: -2 }} /> Assignees</span>
+          <span className="cm-key"><UserRound size={13} style={{ verticalAlign: -2 }} /> {t('task.assignees')}</span>
           <div className="assignee-multi">
             {form.assignee_ids.length === 0 && <span className="chip chip-muted">Unassigned — whole channel</span>}
             {form.assignee_ids.map((id) => {
@@ -1529,7 +1531,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           so it carries only the designer hat; filmed types carry all three.
           Hidden hats keep their person, so flipping the type loses nothing. */}
       <div className="cm-row" data-field={badField === 'operator_id' ? 'operator_id' : badField === 'editor_id' ? 'editor_id' : undefined}>
-        <span className="cm-key">Crew</span>
+        <span className="cm-key">{t('task.crew')}</span>
         <div className="crew-row">
           {(isDesign ? [
             { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs this post' },
@@ -1594,7 +1596,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* Review can be shared — several names, all of them on the hook for the
           same date. Kept apart from the single-hat crew pickers above. */}
       <div className="cm-row">
-        <span className="cm-key">Review</span>
+        <span className="cm-key">{t('task.reviewer')}</span>
         <div className="rev-picker">
           {team.map((u) => {
             const on = form.reviewer_ids.includes(u.id)
@@ -1617,7 +1619,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           happened to the task, not by anything typed here. */}
       {!creating && phases.some((p) => p.state !== 'none') && (
         <div className="cm-row">
-          <span className="cm-key">Deadlines</span>
+          <span className="cm-key">{t('task.deadlines')}</span>
           <div className="phases">
             {phases.filter((p) => p.state !== 'none').map((p) => {
               const who = (p.owner_ids || [p.owner_id]).filter(Boolean)
@@ -1647,7 +1649,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* Campaign — one dropdown, so campaign progress follows the kanban */}
       <div className="cm-row">
-        <span className="cm-key">Campaign</span>
+        <span className="cm-key">{t('task.campaign')}</span>
         <select
           className="select"
           style={{ maxWidth: 280 }}
@@ -1710,7 +1712,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* The asks themselves: what is waiting, and what was decided and why. */}
       {dateReqs.length > 0 && (
         <div className="cm-row cm-asks">
-          <span className="cm-key"><CalendarClock size={13} style={{ verticalAlign: -2 }} /> Day moves</span>
+          <span className="cm-key"><CalendarClock size={13} style={{ verticalAlign: -2 }} /> {t('task.daymoves')}</span>
           <div className="ask-list">
             {dateReqs.map((r) => (
               <div key={r.id} className={`ask-item ask-${r.state}`}>
@@ -1798,7 +1800,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           bell carries each line to the rest. */}
       {!creating && (
         <div className="cm-row cm-comments">
-          <span className="cm-key"><MessageSquare size={13} style={{ verticalAlign: -2 }} /> Talk{comments.length > 0 && <span className="count"> · {comments.length}</span>}</span>
+          <span className="cm-key"><MessageSquare size={13} style={{ verticalAlign: -2 }} /> {t('task.talk')}{comments.length > 0 && <span className="count"> · {comments.length}</span>}</span>
           <div className="cmt-block">
             {comments.map((c) => (
               <div key={c.id} className="cmt-row">
@@ -1829,7 +1831,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           the whole story on request. */}
       {!creating && activity.length > 0 && (
         <div className="cm-row cm-history">
-          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> History<span className="count"> · {activity.length}</span></span>
+          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> {t('task.history')}<span className="count"> · {activity.length}</span></span>
           <div className="hist-block">
             {(allLog ? activity : activity.slice(0, 3)).map((a) => (
               <div key={a.id} className="cmt-row hist-row">

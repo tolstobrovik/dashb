@@ -8,6 +8,7 @@ import NotificationsBell from './NotificationsBell.jsx'
 import Logo from './Logo.jsx'
 import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
+import { useT } from '../lib/i18n.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAutoUpdate } from '../lib/useAutoUpdate.js'
@@ -34,6 +35,7 @@ function WeakPasswordBanner({ user }) {
 export default function Layout() {
   const { user, logout } = useAuth()
   const { visible, byKey } = useChannels()
+  const { t } = useT()
   const location = useLocation()
   const [open, setOpen] = useState(false)
   // Ctrl/Cmd-K quick find — reach any task or page from anywhere.
@@ -57,19 +59,21 @@ export default function Layout() {
 
   useEffect(() => setOpen(false), [location.pathname])
 
+  // The channel's own name is never translated — it is what the team called
+  // it, in whichever language they called it.
   let title = ''
-  if (location.pathname.startsWith('/admin')) title = 'Admin Panel'
-  else if (location.pathname.startsWith('/overview')) title = 'Overview'
-  else if (location.pathname.startsWith('/brief')) title = 'My Day'
-  else if (location.pathname.startsWith('/todo')) title = 'To-Do'
-  else if (location.pathname.startsWith('/missed-tasks')) title = 'Missed tasks'
-  else if (location.pathname.startsWith('/missed')) title = 'Statistics'
-  else if (location.pathname.startsWith('/crew')) title = 'Post Production'
-  else if (location.pathname.startsWith('/team')) title = 'Team & hiring'
-  else if (location.pathname.startsWith('/docs')) title = 'Docs & KPIs'
-  else if (location.pathname.startsWith('/profile')) title = 'My Profile'
-  else if (location.pathname.startsWith('/projects') || location.pathname.startsWith('/campaigns')) title = 'Projects & Campaigns'
-  else if (location.pathname.startsWith('/dept/')) title = byKey[location.pathname.split('/')[2]]?.label || 'Channel'
+  if (location.pathname.startsWith('/admin')) title = t('nav.adminpanel')
+  else if (location.pathname.startsWith('/overview')) title = t('nav.overview')
+  else if (location.pathname.startsWith('/brief')) title = t('nav.brief')
+  else if (location.pathname.startsWith('/todo')) title = t('nav.todo')
+  else if (location.pathname.startsWith('/missed-tasks')) title = t('nav.missedtasks')
+  else if (location.pathname.startsWith('/missed')) title = t('nav.stats')
+  else if (location.pathname.startsWith('/crew')) title = t('nav.crew')
+  else if (location.pathname.startsWith('/team')) title = t('nav.team')
+  else if (location.pathname.startsWith('/docs')) title = t('nav.docs')
+  else if (location.pathname.startsWith('/profile')) title = t('nav.myprofilepage')
+  else if (location.pathname.startsWith('/projects') || location.pathname.startsWith('/campaigns')) title = t('nav.projectspage')
+  else if (location.pathname.startsWith('/dept/')) title = byKey[location.pathname.split('/')[2]]?.label || t('nav.channel')
 
   // A member with a single channel doesn't need a sidebar at all —
   // everything fits in the top bar.
@@ -81,13 +85,13 @@ export default function Layout() {
     return (
       <div className="main solo">
         <header className="topbar solo-bar">
-          <Link to="/" className="logo-link" data-tip="Home" aria-label="Home">
+          <Link to="/" className="logo-link" data-tip={t('nav.home')} aria-label={t('nav.home')}>
             <Logo size={30} tone="var(--brand-500)" />
           </Link>
           <h1>{title}</h1>
           <div className="topbar-spacer" />
           <NavLink to="/brief" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <Sun size={16} /> My Day
+            <Sun size={16} /> {t('nav.brief')}
           </NavLink>
           {soloChannel && (
             <NavLink to={`/dept/${soloChannel.key}`} className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
@@ -95,21 +99,21 @@ export default function Layout() {
             </NavLink>
           )}
           <NavLink to="/todo" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <ListChecks size={16} /> To-Do
+            <ListChecks size={16} /> {t('nav.todo')}
           </NavLink>
           <NavLink to="/missed" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <BarChart3 size={16} /> Statistics
+            <BarChart3 size={16} /> {t('nav.stats')}
           </NavLink>
           <NavLink to="/missed-tasks" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <AlertTriangle size={16} /> Missed tasks
+            <AlertTriangle size={16} /> {t('nav.missedtasks')}
           </NavLink>
           <NavLink to="/docs" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <ScrollText size={16} /> Docs & KPIs
+            <ScrollText size={16} /> {t('nav.docs')}
           </NavLink>
-          <button className="icon-btn" onClick={() => setFinding(true)} data-tip="Find anything — Ctrl K" aria-label="Quick find"><Search size={17} /></button>
+          <button className="icon-btn" onClick={() => setFinding(true)} data-tip={t('nav.find')} aria-label={t('nav.quickfind')}><Search size={17} /></button>
           <NotificationsBell user={user} />
           <ThemeToggle />
-          <NavLink to="/profile" className="solo-avatar" data-tip="My profile — photo, appearance, password" data-tip-left="" aria-label="My profile">
+          <NavLink to="/profile" className="solo-avatar" data-tip={t('nav.myprofile')} data-tip-left="" aria-label={t('nav.myprofilepage')}>
             <Avatar name={user.name} color={user.color} src={user.avatar} size="sm" />
           </NavLink>
           <button className="icon-btn" onClick={logout} data-tip="Sign out" data-tip-left="" aria-label="Sign out"><LogOut size={17} /></button>
@@ -133,12 +137,12 @@ export default function Layout() {
 
       <div className="main">
         <header className="topbar">
-          <button className="hamburger" onClick={() => setOpen(true)} data-tip="Menu" aria-label="Open menu">
+          <button className="hamburger" onClick={() => setOpen(true)} data-tip={t('nav.menu')} aria-label={t('nav.openmenu')}>
             <Menu size={22} />
           </button>
           <button className="side-toggle" onClick={toggleSide}
-            data-tip={sideOff ? 'Show the sidebar' : 'Hide the sidebar — full screen for this page'}
-            aria-label={sideOff ? 'Show sidebar' : 'Hide sidebar'}>
+            data-tip={sideOff ? t('nav.showside') : t('nav.hideside')}
+            aria-label={sideOff ? t('nav.showside') : t('nav.hideside')}>
             {sideOff ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
           </button>
           <div>
@@ -146,7 +150,7 @@ export default function Layout() {
           </div>
           <span className="topbar-spacer" />
           <button className="icon-btn topbar-find" onClick={() => setFinding(true)}
-            data-tip="Find anything — Ctrl K" data-tip-left="" aria-label="Quick find">
+            data-tip={t('nav.find')} data-tip-left="" aria-label={t('nav.quickfind')}>
             <Search size={18} />
           </button>
           <NotificationsBell user={user} />

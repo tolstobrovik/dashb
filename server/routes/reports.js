@@ -111,6 +111,11 @@ router.use(authRequired)
 // declared, so this route escapes `adminOnly` and the rest do not.
 router.get('/pay/mine', wrap(async (req, res) => {
   const { from, to } = req.query
+  // This runs on every dashboard load, for everybody. Until somebody has set
+  // rates there is nothing to work out and nothing to show, so it answers
+  // without reading the board at all — the card stays hidden either way.
+  const { pick } = await rateCards()
+  if (pick(req.user.id).source === 'none') return res.json({ source: 'none' })
   const runOut = await payRun({ from, to, only: req.user.id })
   res.json(runOut.people[0] || null)
 }))

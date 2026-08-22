@@ -314,6 +314,10 @@ button { font-family: inherit; }
   color: var(--muted);
 }
 .lang-opt.on .lang-code { background: var(--brand-500); color: #fff; }
+/* On the sign-in card the menu has nothing above it to open into, so it
+   drops down instead of up. */
+.login-lang { display: flex; justify-content: center; margin-top: 16px; }
+.login-lang .lang-menu { bottom: auto; top: calc(100% + 8px); }
 
 /* ---------- main ---------- */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }

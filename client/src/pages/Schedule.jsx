@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Send, Clapperboard, AlertCircle, CalendarDays, Download } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
+import { celebrateIfFinished } from '../lib/celebrate.js'
 import { toast, loadFailed } from '../lib/toast.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -187,6 +188,7 @@ export default function Schedule({ mode }) {
 
   const updateContent = async (item, payload) => {
     const c = await api.patch(`/content/${item.id}`, payload)
+    celebrateIfFinished(item, c)
     setItems((prev) => prev.map((x) => (x.id === item.id ? c : x)))
   }
   const deleteContent = async (item) => {
