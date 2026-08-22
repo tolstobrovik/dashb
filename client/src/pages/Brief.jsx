@@ -10,9 +10,10 @@ import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel, can, tashkentDay } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
-import { celebrateIfFinished } from '../lib/celebrate.js'
+import { rewardIfFinished } from '../lib/reward.js'
 import MyLate from '../components/MyLate.jsx'
 import MyPay from '../components/MyPay.jsx'
+import Streak from '../components/Streak.jsx'
 import { deliveryHref, splitDelivery } from '../lib/text.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
@@ -611,7 +612,7 @@ export default function Brief() {
   }
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
-    celebrateIfFinished(item, u)
+    rewardIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   const deleteContent = async (item) => {
@@ -895,6 +896,11 @@ export default function Brief() {
           </button>
         </div>
 
+        {/* What they have DONE, before what they owe. Every other line on
+            this page is a deadline or a miss; this is the only one that says
+            somebody has been getting on with it. */}
+        <Streak />
+
         {/* What the month is worth so far. Silent until an admin has set
             rates — a card reading "0" says something about the person that
             it does not mean. */}
@@ -968,6 +974,7 @@ export default function Brief() {
         </h2>
       </div>
 
+      <Streak />
       <MyPay />
 
       <div className="miss-filters">

@@ -3135,6 +3135,90 @@ button.blame-person:hover { background: var(--surface-2); }
   color: var(--critical);
 }
 
+/* ---------- the reward moment ---------- */
+/* A card, not a dialog: it cannot be clicked, it cannot be dismissed, and it
+   leaves by itself. Sits above everything including modals, because the thing
+   being celebrated is usually finished from inside one. */
+.reward-pop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 10000;
+}
+.reward-card {
+  text-align: center;
+  padding: 22px 34px 20px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-lg);
+  animation: reward-in 340ms cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.reward-pop.out .reward-card { animation: reward-out 240ms ease forwards; }
+.reward-big { font-size: 44px; line-height: 1; }
+.reward-say {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 22px;
+  margin-top: 8px;
+  color: var(--ink);
+}
+.reward-lines {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.reward-lines span {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--brand-50);
+  color: var(--brand-700);
+}
+@keyframes reward-in {
+  from { opacity: 0; transform: scale(.82) translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes reward-out {
+  to { opacity: 0; transform: scale(.96) translateY(-6px); }
+}
+/* Somebody who asked their system for less motion gets the card without the
+   bounce — the words are the point, the spring is decoration. */
+@media (prefers-reduced-motion: reduce) {
+  .reward-card, .reward-pop.out .reward-card { animation: none; }
+}
+
+/* The standing, always on view: what you have done, not what you owe. */
+.streak-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-left: 3px solid var(--warning);
+}
+.streak-flame { font-size: 20px; line-height: 1; }
+.streak-main { display: flex; flex-direction: column; line-height: 1.25; }
+.streak-main b { font-size: 15px; }
+.streak-facts { margin-left: auto; display: flex; gap: 18px; text-align: right; }
+.streak-facts div { display: flex; flex-direction: column; line-height: 1.2; }
+.streak-facts b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.streak-facts span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.streak-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--track-soft);
+  overflow: hidden;
+  margin-top: 5px;
+  width: 128px;
+}
+.streak-bar i { display: block; height: 100%; background: var(--brand-500); border-radius: 999px; }
+
 .my-pay { margin-bottom: 14px; padding: 0; overflow: hidden; }
 .my-pay-head {
   display: flex;

@@ -14,7 +14,7 @@ import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
 import { activityLine } from '../lib/activity.js'
-import { celebrate } from '../lib/celebrate.js'
+import { rewardFinish } from '../lib/reward.js'
 import { VoiceRecorder, VoicePlayer, canRecord } from './VoiceNote.jsx'
 
 // Documents a task can carry. The cap is deliberate and low: every byte is
@@ -816,7 +816,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       // Reaching the last stage is the moment a piece is FINISHED, however it
       // was reached — the stage chips, the done tick, or the Publish button.
       if (!creating && finalStatusObj && payload.status_id === finalStatusObj.id
-          && item.status_id !== finalStatusObj.id) celebrate()
+          && item.status_id !== finalStatusObj.id) rewardFinish()
       // Learn from the confirmed save: these picks float up next time.
       bumpPick(payload.operator_id, payload.editor_id, payload.designer_id, ...(payload.assignee_ids || []))
       toast(creating ? 'Task added — synced' : 'Task saved — synced')
@@ -874,7 +874,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const publish = async () => {
     if (busy || !finalStatusObj) return
     setBusy(true); setErr('')
-    try { await onUpdate(item, { status_id: finalStatusObj.id }); celebrate(); toast('Published — synced'); onClose() }
+    try { await onUpdate(item, { status_id: finalStatusObj.id }); rewardFinish(); toast('Published — synced'); onClose() }
     catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   // Request changes (Pravki): one note, sent back to the chosen crew stage.

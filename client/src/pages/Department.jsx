@@ -23,7 +23,7 @@ import CompareCard from '../components/CompareCard.jsx'
 import Avatar from '../components/Avatar.jsx'
 import { CampaignRow } from '../components/ProjectBits.jsx'
 import ProgramsGantt, { PLATFORMS } from '../components/ProgramsGantt.jsx'
-import { celebrateIfFinished } from '../lib/celebrate.js'
+import { rewardIfFinished } from '../lib/reward.js'
 
 // The Target team's lens: what platform's work to look at. Tasks and
 // campaigns classify themselves by their co-channels (a task also tagged
@@ -360,7 +360,7 @@ export default function Department() {
   }
   const updateContent = async (item, payload) => {
     const c = await api.patch(`/content/${item.id}`, payload)
-    celebrateIfFinished(item, c)
+    rewardIfFinished(item, c)
     setContent((prev) => prev.map((x) => (x.id === item.id ? c : x)).filter((x) => x.channels.includes(key)))
     refreshTrackers() // completing / moving a task changes the plan numbers
   }

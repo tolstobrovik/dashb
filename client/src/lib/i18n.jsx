@@ -180,6 +180,13 @@ const EN = {
   'admin.crewchannels': 'Channels they work on',
   'admin.crewchannelshint': 'Nothing ticked means every channel.',
   'admin.drivefolder': 'Shared Drive folder',
+  'reward.streak': '{n} days in a row',
+  'reward.delivered': '{n} delivered',
+  'reward.tonext': '{n} more to {m}',
+  'reward.allthere': 'Every rung passed',
+  'reward.thisweek': 'this week',
+  'reward.thismonth': 'this month',
+  'reward.ontime': 'on time',
 }
 
 const RU = {
@@ -336,6 +343,13 @@ const RU = {
   'admin.crewchannels': 'Каналы, где он работает',
   'admin.crewchannelshint': 'Если ничего не отмечено — все каналы.',
   'admin.drivefolder': 'Общая папка на Диске',
+  'reward.streak': '{n} дн. подряд',
+  'reward.delivered': 'сдано: {n}',
+  'reward.tonext': 'ещё {n} до {m}',
+  'reward.allthere': 'Все рубежи взяты',
+  'reward.thisweek': 'за неделю',
+  'reward.thismonth': 'за месяц',
+  'reward.ontime': 'в срок',
 }
 
 const UZ = {
@@ -492,6 +506,13 @@ const UZ = {
   'admin.crewchannels': 'U ishlaydigan kanallar',
   'admin.crewchannelshint': 'Hech biri belgilanmasa — barcha kanallar.',
   'admin.drivefolder': 'Umumiy Drive papkasi',
+  'reward.streak': 'ketma-ket {n} kun',
+  'reward.delivered': 'topshirildi: {n}',
+  'reward.tonext': '{m} gacha yana {n} ta',
+  'reward.allthere': 'Barcha bosqichlar bosib o‘tildi',
+  'reward.thisweek': 'shu hafta',
+  'reward.thismonth': 'shu oy',
+  'reward.ontime': 'muddatida',
 }
 
 export const DICTS = { en: EN, ru: RU, uz: UZ }

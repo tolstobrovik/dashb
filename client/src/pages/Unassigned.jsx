@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { UserX, CalendarX2, CalendarRange, Clapperboard, Scissors, Palette, User, Send } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
-import { celebrateIfFinished } from '../lib/celebrate.js'
+import { rewardIfFinished } from '../lib/reward.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, isIdeaLabel } from '../lib/constants.js'
@@ -245,7 +245,7 @@ export default function Unassigned() {
 
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
-    celebrateIfFinished(item, u)
+    rewardIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   const deleteContent = async (item) => {

@@ -11,7 +11,7 @@ import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
-import { celebrateIfFinished } from '../lib/celebrate.js'
+import { rewardIfFinished } from '../lib/reward.js'
 
 // Post Production — the admin's view of everyone who MAKES the content, in
 // two sub-pages:
@@ -228,7 +228,7 @@ export default function Crew() {
 
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
-    celebrateIfFinished(item, u)
+    rewardIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   // Right-click a shoot or edit block: the quick verbs.

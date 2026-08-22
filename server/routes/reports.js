@@ -47,7 +47,7 @@ function wearers(row, hat) {
 
 // Every task, once, with the columns any hat might need. Kept in one place so
 // the report and the pay run can never disagree about what happened.
-async function contributions({ from, to, channel, type }) {
+export async function contributions({ from, to, channel, type }) {
   const statuses = await all('SELECT * FROM statuses')
   const resolved = resolveGates(statuses)
   const rows = (await all(`

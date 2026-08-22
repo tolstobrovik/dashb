@@ -20,6 +20,7 @@ import notificationRoutes from './routes/notifications.js'
 import trackerRoutes from './routes/trackers.js'
 import contentRoutes, { autoFlagSilentlyLate } from './routes/content.js'
 import reportRoutes from './routes/reports.js'
+import rewardRoutes from './routes/rewards.js'
 import campaignRoutes from './routes/campaigns.js'
 import projectRoutes from './routes/projects.js'
 import boardRoutes from './routes/boards.js'
@@ -97,6 +98,7 @@ app.use('/api/notifications', notificationRoutes)
 app.use('/api/trackers', trackerRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/reports', reportRoutes)
+app.use('/api/rewards', rewardRoutes)
 app.use('/api/campaigns', campaignRoutes)
 app.use('/api/projects', projectRoutes)
 app.use('/api/boards', boardRoutes)
