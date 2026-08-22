@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, Video, Scissors, Eye, Link2, CalendarClock, Check } from 'lucide-react'
 import { api } from '../lib/api.js'
 import Modal from './Modal.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // The handover window.
 //
@@ -65,15 +66,15 @@ export default function StageGate({ item, statusId, statusLabel, initialGates = 
 
   if (fatal) {
     return (
-      <Modal title="This move can’t be made" onClose={onCancel}>
+      <Modal title={tx("This move can’t be made")} onClose={onCancel}>
         <p className="gate-fatal"><AlertTriangle size={16} /> {fatal}</p>
       </Modal>
     )
   }
   if (!gates) {
-    return <Modal title={`Moving to «${statusLabel}»`} onClose={onCancel}><p className="muted">Checking the handover…</p></Modal>
+    return <Modal title={`Moving to «${statusLabel}»`} onClose={onCancel}><p className="muted">{tx("Checking the handover…")}</p></Modal>
   }
-  if (gates.length === 0) { submit(); return <Modal title={`Moving to «${statusLabel}»`} onClose={() => {}}><p className="muted">Moving…</p></Modal> }
+  if (gates.length === 0) { submit(); return <Modal title={`Moving to «${statusLabel}»`} onClose={() => {}}><p className="muted">{tx("Moving…")}</p></Modal> }
 
   const g = gates[Math.min(step, gates.length - 1)]
   const Icon = ICON[g.role] || Eye
@@ -136,10 +137,10 @@ export default function StageGate({ item, statusId, statusLabel, initialGates = 
         )}
 
         <div className="gate-foot">
-          {step > 0 && <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setStep(step - 1)}>Back</button>}
+          {step > 0 && <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setStep(step - 1)}>{tx("Back")}</button>}
           <button type="button" className="btn btn-primary" disabled={busy || !ready(g, draft, chosen)}
             onClick={() => advance()}>
-            {busy ? 'Moving…' : last ? <> <Check size={15} /> Hand over and move</> : 'Next'}
+            {busy ? 'Moving…' : last ? <> <Check size={15} />{' '}{tx("Hand over and move")}</> : 'Next'}
           </button>
         </div>
       </div>

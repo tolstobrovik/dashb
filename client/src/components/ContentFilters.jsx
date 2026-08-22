@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Filter, X, UserRound } from 'lucide-react'
 import { CONTENT_TYPES } from '../lib/constants.js'
 import { useAuth } from '../lib/auth.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Narrowing the content workspace: who it belongs to, what kind of thing it
 // is, which stage it sits at. One row of plain selects above the board and
@@ -72,25 +73,25 @@ export default function ContentFilters({ filter, onChange, items, shown, statuse
         <UserRound size={12} /> Mine
       </button>
       <select className="select cf-sel" value={filter.person} onChange={(e) => set({ person: e.target.value })}
-        data-tip="Only work this person is on — assigned, filming, editing or designing">
-        <option value="">Anyone</option>
-        <option value="none">Nobody yet</option>
+        data-tip={tx("Only work this person is on — assigned, filming, editing or designing")}>
+        <option value="">{tx("Anyone")}</option>
+        <option value="none">{tx("Nobody yet")}</option>
         {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
       <select className="select cf-sel" value={filter.type} onChange={(e) => set({ type: e.target.value })}
-        data-tip="Only one kind of content">
-        <option value="">Any type</option>
+        data-tip={tx("Only one kind of content")}>
+        <option value="">{tx("Any type")}</option>
         {types.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
       </select>
       <select className="select cf-sel" value={filter.stage} onChange={(e) => set({ stage: e.target.value })}
-        data-tip="Only one stage of the pipeline">
-        <option value="">Any stage</option>
+        data-tip={tx("Only one stage of the pipeline")}>
+        <option value="">{tx("Any stage")}</option>
         {stages.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
       </select>
       {on && (
         <>
           <span className="cf-count">showing {shown} of {items.length}</span>
-          <button className="cf-clear" onClick={() => onChange({ ...BLANK_FILTER })} data-tip="Show everything again">
+          <button className="cf-clear" onClick={() => onChange({ ...BLANK_FILTER })} data-tip={tx("Show everything again")}>
             <X size={12} /> Clear
           </button>
         </>

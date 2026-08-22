@@ -7,6 +7,7 @@ import { todayISO, addDaysISO, dateLabel } from '../lib/constants.js'
 import { PcChecklist, scalePhoto } from './ProjectBits.jsx'
 import { playLaunch, playHalt, playDone } from '../lib/sound.js'
 import { toast } from '../lib/toast.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Launch programs on a timeline — built for the Target team. Each program is
 // a bar: blue while planned, green while running, amber when halted, gray
@@ -142,7 +143,7 @@ function ProgramForm({ program, channel, isAdmin, onClose, onSaved, onDeleted })
   }
   const del = async () => {
     if (!confirm(`Delete the program “${program.name}”?`)) return
-    try { await api.del(`/programs/${program.id}`); toast('Program deleted'); onDeleted(program); onClose() } catch (e) { setErr(e.message) }
+    try { await api.del(`/programs/${program.id}`); toast(tx('Program deleted')); onDeleted(program); onClose() } catch (e) { setErr(e.message) }
   }
   return (
     <Modal
@@ -275,7 +276,7 @@ export default function ProgramsGantt({ channel, canManage, isAdmin = false, len
     try {
       await api.del(`/programs/${prog.id}`)
       setPrograms((prev) => prev.filter((x) => x.id !== prog.id))
-      toast('Program deleted')
+      toast(tx('Program deleted'))
     } catch (e) { alert(e.message) }
   }
   const rowMenu = (e, prog) => canManage && openMenu(e, [

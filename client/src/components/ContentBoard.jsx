@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors, Plus, MessageSquare } from 'lucide-react'
 import { dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Simple kanban: one column per pipeline stage, drag a card to move it.
 // Dragging into the final stage completes the task and fills its plan.
@@ -50,7 +51,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
             <div className="board-col-head">
               <span className="status-dot" style={{ background: s.color }} />
               {s.label}
-              {myStages.includes(s.id) && <span className="my-col-tag">yours</span>}
+              {myStages.includes(s.id) && <span className="my-col-tag">{tx("yours")}</span>}
               <span className="count">{list.length}</span>
             </div>
             <div className="board-col-body">
@@ -83,10 +84,10 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                         <span className="chip chip-muted"><Send size={10} /> {dateLabel(item.release_date)}</span>
                       )}
                       {item.operator_id && teamById[item.operator_id] && (
-                        <span className="chip chip-muted" data-tip="Operator — films it"><Video size={10} /> {teamById[item.operator_id].name.split(' ')[0]}</span>
+                        <span className="chip chip-muted" data-tip={tx("Operator — films it")}><Video size={10} /> {teamById[item.operator_id].name.split(' ')[0]}</span>
                       )}
                       {item.editor_id && teamById[item.editor_id] && (
-                        <span className="chip chip-muted" data-tip="Editor — cuts it"><Scissors size={10} /> {teamById[item.editor_id].name.split(' ')[0]}</span>
+                        <span className="chip chip-muted" data-tip={tx("Editor — cuts it")}><Scissors size={10} /> {teamById[item.editor_id].name.split(' ')[0]}</span>
                       )}
                       {item.campaign_id && campaignsById[item.campaign_id] && (
                         <span className="chip chip-camp"><Megaphone size={10} /> {campaignsById[item.campaign_id].name}</span>
@@ -95,7 +96,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                         <span className="chip chip-muted"><CheckSquare size={10} /> {done}/{checks.length}</span>
                       )}
                       {(item.comment_count || 0) > 0 && (
-                        <span className="chip chip-muted" data-tip="The task's thread"><MessageSquare size={10} /> {item.comment_count}</span>
+                        <span className="chip chip-muted" data-tip={tx("The task's thread")}><MessageSquare size={10} /> {item.comment_count}</span>
                       )}
                       {!!(item.has_photo || item.has_thumb || item.photo) && !item.photo_thumb && <span className="chip chip-muted"><ImageIcon size={10} /></span>}
                       {others.map((c) => (
@@ -109,7 +110,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
               {/* You plan work, you don't create it published or deleted. */}
               {onQuickAdd && !isDeletedLabel(s.label) && !s.is_final && (
                 addCol === s.id ? (
-                  <input className="input board-quick-input" autoFocus placeholder="Title — Enter adds it"
+                  <input className="input board-quick-input" autoFocus placeholder={tx("Title — Enter adds it")}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => {

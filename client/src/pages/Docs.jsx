@@ -10,6 +10,7 @@ import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast } from '../lib/toast.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Docs & KPIs — the paperwork shelf between the company and each person.
 // The admin picks anyone; a member lands straight on their own page. SOPs and
@@ -91,7 +92,7 @@ export default function Docs() {
       const title = f.name.replace(/\.[^.]+$/, '')
       const doc = await api.post('/docs', { user_id: who, kind: upKind, title, file_name: f.name, data })
       setDocs((prev) => [doc, ...(prev || [])])
-      toast('Document uploaded — synced')
+      toast(tx('Document uploaded — synced'))
     } catch (ex) { setErr(ex.message) } finally { setBusyUp(false) }
   }
 
@@ -116,7 +117,7 @@ export default function Docs() {
     try {
       await api.del(`/docs/${d.id}`)
       setDocs((prev) => prev.filter((x) => x.id !== d.id))
-      toast('Document deleted')
+      toast(tx('Document deleted'))
     } catch (ex) { setErr(ex.message) }
   }
 
@@ -125,7 +126,7 @@ export default function Docs() {
       const upd = await api.patch(`/docs/${renaming.id}`, { title: renaming.title, kind: renaming.kind })
       setDocs((prev) => prev.map((x) => (x.id === upd.id ? upd : x)))
       setRenaming(null)
-      toast('Document saved — synced')
+      toast(tx('Document saved — synced'))
     } catch (ex) { setErr(ex.message) }
   }
 
@@ -150,7 +151,7 @@ export default function Docs() {
         setKpis((prev) => [...(prev || []), made])
       }
       setKpiEdit(null)
-      toast('KPI saved — synced')
+      toast(tx('KPI saved — synced'))
     } catch (ex) { setErr(ex.message) }
   }
   const removeKpi = async (k) => {
@@ -158,7 +159,7 @@ export default function Docs() {
     try {
       await api.del(`/kpis/${k.id}`)
       setKpis((prev) => prev.filter((x) => x.id !== k.id))
-      toast('KPI deleted')
+      toast(tx('KPI deleted'))
     } catch (ex) { setErr(ex.message) }
   }
   const kpiMenu = (e, k) => isAdmin && openMenu(e, [
@@ -174,9 +175,9 @@ export default function Docs() {
       <div className="docs-head">
         {isAdmin ? (
           <label className="docs-who">
-            <span className="crew-label">Person</span>
+            <span className="crew-label">{tx("Person")}</span>
             <select className="select" value={who} onChange={(e) => setWho(Number(e.target.value))}>
-              <option value={0}>All people — every document</option>
+              <option value={0}>{tx("All people — every document")}</option>
               {[...team].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                 <option key={u.id} value={u.id}>{u.name}{u.role === 'admin' ? ' (admin)' : ''}</option>
               ))}
@@ -187,7 +188,7 @@ export default function Docs() {
             <Avatar name={user.name} color={user.color} src={user.avatar} size="sm" />
             <div>
               <b>{user.name}</b>
-              <span className="brief-note">Your documents and KPIs — always here.</span>
+              <span className="brief-note">{tx("Your documents and KPIs — always here.")}</span>
             </div>
           </div>
         )}
@@ -197,7 +198,7 @@ export default function Docs() {
       {/* documents */}
       <div className="card docs-card">
         <div className="docs-sec-head">
-          <h2><ScrollText size={17} /> Documents</h2>
+          <h2><ScrollText size={17} />{' '}{tx("Documents")}</h2>
           {!allMode && (
             <div className="docs-up">
               <div className="seg">
@@ -220,9 +221,9 @@ export default function Docs() {
             : `SOPs and responsibility sheets${person ? ` for ${person.name}` : ''} — stored for good, visible to ${isAdmin ? 'them and every admin' : 'you and the admins'}.`}
         </div>
         {docs === null ? (
-          <div className="empty">Loading…</div>
+          <div className="empty">{tx("Loading…")}</div>
         ) : docs.length === 0 ? (
-          <div className="empty">Nothing here yet — upload the first document.</div>
+          <div className="empty">{tx("Nothing here yet — upload the first document.")}</div>
         ) : (
           <div className="doc-grid">
             {docs.map((d) => {
@@ -250,7 +251,7 @@ export default function Docs() {
       {/* KPIs */}
       <div className="card docs-card">
         <div className="docs-sec-head">
-          <h2><Target size={17} /> KPIs</h2>
+          <h2><Target size={17} />{' '}{tx("KPIs")}</h2>
           {isAdmin && !allMode && (
             <button className="btn btn-primary" onClick={() => setKpiEdit({ name: '', target: '', current: '', unit: '', notes: '' })}>
               <Plus size={15} /> Add KPI
@@ -263,14 +264,14 @@ export default function Docs() {
             : 'Every KPI in one place — the target, where it stands, and who updated it last.'}
         </div>
         {kpis === null ? (
-          <div className="empty">Loading…</div>
+          <div className="empty">{tx("Loading…")}</div>
         ) : kpis.length === 0 ? (
           <div className="empty">No KPIs set{isAdmin ? ' — add the first one.' : ' yet.'}</div>
         ) : (
           <div className={'kpi-table' + (allMode ? ' kpi-all' : '')}>
             <div className="kpi-row kpi-head">
-              {allMode && <span>Person</span>}
-              <span>KPI</span><span>Target</span><span>Current</span><span>Notes</span><span>Updated</span>
+              {allMode && <span>{tx("Person")}</span>}
+              <span>KPI</span><span>{tx("Target")}</span><span>{tx("Current")}</span><span>{tx("Notes")}</span><span>{tx("Updated")}</span>
             </div>
             {kpis.map((k) => (
               <div key={k.id} className="kpi-row" onContextMenu={(e) => kpiMenu(e, k)}
@@ -286,19 +287,19 @@ export default function Docs() {
           </div>
         )}
         {isAdmin && kpis?.length > 0 && (
-          <div className="brief-note docs-note">Double-click a row (or right-click) to update it.</div>
+          <div className="brief-note docs-note">{tx("Double-click a row (or right-click) to update it.")}</div>
         )}
       </div>
 
       {/* rename / rekind a document */}
       {renaming && (
-        <Modal title="Document" onClose={() => setRenaming(null)}
+        <Modal title={tx("Document")} onClose={() => setRenaming(null)}
           footer={<>
             <div style={{ flex: 1 }} />
-            <button className="btn" onClick={() => setRenaming(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={saveRename}>Save</button>
+            <button className="btn" onClick={() => setRenaming(null)}>{tx("Cancel")}</button>
+            <button className="btn btn-primary" onClick={saveRename}>{tx("Save")}</button>
           </>}>
-          <div className="field"><label>Title</label>
+          <div className="field"><label>{tx("Title")}</label>
             <input className="input" autoFocus value={renaming.title}
               onChange={(e) => setRenaming({ ...renaming, title: e.target.value })}
               onKeyDown={(e) => { if (e.key === 'Enter') saveRename() }} />
@@ -317,29 +318,29 @@ export default function Docs() {
         <Modal title={kpiEdit.id ? 'KPI' : 'New KPI'} onClose={() => setKpiEdit(null)}
           footer={<>
             <div style={{ flex: 1 }} />
-            <button className="btn" onClick={() => setKpiEdit(null)}>Cancel</button>
+            <button className="btn" onClick={() => setKpiEdit(null)}>{tx("Cancel")}</button>
             <button className="btn btn-primary" onClick={saveKpi}>{kpiEdit.id ? 'Save' : 'Add KPI'}</button>
           </>}>
-          <div className="field"><label>Name</label>
-            <input className="input" autoFocus placeholder="e.g. Reels published per week" value={kpiEdit.name}
+          <div className="field"><label>{tx("Name")}</label>
+            <input className="input" autoFocus placeholder={tx("e.g. Reels published per week")} value={kpiEdit.name}
               onChange={(e) => setKpiEdit({ ...kpiEdit, name: e.target.value })} />
           </div>
           <div className="kpi-form-row">
-            <div className="field"><label>Target</label>
-              <input className="input" placeholder="e.g. 4" value={kpiEdit.target}
+            <div className="field"><label>{tx("Target")}</label>
+              <input className="input" placeholder={tx("e.g. 4")} value={kpiEdit.target}
                 onChange={(e) => setKpiEdit({ ...kpiEdit, target: e.target.value })} />
             </div>
-            <div className="field"><label>Current</label>
-              <input className="input" placeholder="e.g. 3" value={kpiEdit.current}
+            <div className="field"><label>{tx("Current")}</label>
+              <input className="input" placeholder={tx("e.g. 3")} value={kpiEdit.current}
                 onChange={(e) => setKpiEdit({ ...kpiEdit, current: e.target.value })} />
             </div>
-            <div className="field"><label>Unit</label>
-              <input className="input" placeholder="reels / %…" value={kpiEdit.unit}
+            <div className="field"><label>{tx("Unit")}</label>
+              <input className="input" placeholder={tx("reels / %…")} value={kpiEdit.unit}
                 onChange={(e) => setKpiEdit({ ...kpiEdit, unit: e.target.value })} />
             </div>
           </div>
-          <div className="field"><label><StickyNote size={12} style={{ verticalAlign: -2 }} /> Notes</label>
-            <textarea className="input" rows={3} placeholder="How it’s measured, agreements, context…" value={kpiEdit.notes}
+          <div className="field"><label><StickyNote size={12} style={{ verticalAlign: -2 }} />{' '}{tx("Notes")}</label>
+            <textarea className="input" rows={3} placeholder={tx("How it’s measured, agreements, context…")} value={kpiEdit.notes}
               onChange={(e) => setKpiEdit({ ...kpiEdit, notes: e.target.value })} />
           </div>
         </Modal>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clapperboard, Send, Plus } from 'lucide-react'
 import { WEEKDAYS, MONTHS, localISO, todayISO, addDaysISO, typeInfo, onColor, statusIcon, isDeletedLabel } from '../lib/constants.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1)
@@ -219,13 +220,13 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
   return (
     <div className="card cal">
       <div className="cal-head">
-        <button className="icon-btn" onClick={() => shift(-1)} data-tip="Previous" aria-label="Previous"><ChevronLeft size={18} /></button>
+        <button className="icon-btn" onClick={() => shift(-1)} data-tip={tx("Previous")} aria-label={tx("Previous")}><ChevronLeft size={18} /></button>
         <h3>{title}</h3>
-        <button className="icon-btn" onClick={() => shift(1)} data-tip="Next" aria-label="Next"><ChevronRight size={18} /></button>
-        <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={goToday} data-tip="Jump back to today">Today</button>
+        <button className="icon-btn" onClick={() => shift(1)} data-tip={tx("Next")} aria-label={tx("Next")}><ChevronRight size={18} /></button>
+        <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={goToday} data-tip={tx("Jump back to today")}>{tx("Today")}</button>
         <div className="pill-group cal-scale">
-          <button className={'pill' + (scale === 'month' ? ' active' : '')} onClick={() => setScale('month')} data-tip="Whole month at a glance">Month</button>
-          <button className={'pill' + (scale === 'week' ? ' active' : '')} onClick={() => setScale('week')} data-tip="One week with full task cards">Week</button>
+          <button className={'pill' + (scale === 'month' ? ' active' : '')} onClick={() => setScale('month')} data-tip={tx("Whole month at a glance")}>{tx("Month")}</button>
+          <button className={'pill' + (scale === 'week' ? ' active' : '')} onClick={() => setScale('week')} data-tip={tx("One week with full task cards")}>{tx("Week")}</button>
         </div>
 
       </div>
@@ -257,16 +258,16 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   <span className={`chip ct-${it.type} tray-type`}>{typeInfo(it.type).label}</span>
                   {canMove && (
                     <span className="tray-quick">
-                      <button type="button" className="qbtn" data-tip="Schedule for today"
-                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, todayISO()) }}>Today</button>
-                      <button type="button" className="qbtn" data-tip="Schedule for tomorrow"
-                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, addDaysISO(todayISO(), 1)) }}>Tmrw</button>
+                      <button type="button" className="qbtn" data-tip={tx("Schedule for today")}
+                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, todayISO()) }}>{tx("Today")}</button>
+                      <button type="button" className="qbtn" data-tip={tx("Schedule for tomorrow")}
+                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, addDaysISO(todayISO(), 1)) }}>{tx("Tmrw")}</button>
                     </span>
                   )}
                 </div>
               )
             })}
-            {trayItems.length === 0 && <span className="tt-none">drop here to unschedule</span>}
+            {trayItems.length === 0 && <span className="tt-none">{tx("drop here to unschedule")}</span>}
           </div>
         </div>
       )}
@@ -289,7 +290,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   {dayItems.length > 0 && <span className="wk-count">{dayItems.length}</span>}
                   <span style={{ flex: 1 }} />
                   {onAddAt && (
-                    <button className="icon-btn wk-add" data-tip="New task on this day" aria-label="New task on this day"
+                    <button className="icon-btn wk-add" data-tip={tx("New task on this day")} aria-label={tx("New task on this day")}
                       onClick={(e) => { e.stopPropagation(); onAddAt(iso) }}>
                       <Plus size={14} />
                     </button>

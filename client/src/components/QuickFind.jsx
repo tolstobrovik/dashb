@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { typeInfo, onColor } from '../lib/constants.js'
 import ContentModal from './ContentModal.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Ctrl/Cmd-K quick find: one box that reaches anything from anywhere —
 // pages by name, tasks by title. Enter takes the highlighted row; a task
@@ -89,18 +90,18 @@ export default function QuickFind({ onClose }) {
     <>
       {!openItem && (
         <div className="qf-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-          <div className="qf card" role="dialog" aria-label="Quick find">
+          <div className="qf card" role="dialog" aria-label={tx("Quick find")}>
             <div className="qf-box">
               <Search size={16} />
               <input
                 ref={inputRef}
                 className="qf-input"
                 value={q}
-                placeholder="Find a task or page…"
+                placeholder={tx("Find a task or page…")}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={onKey}
               />
-              <span className="qf-esc">esc</span>
+              <span className="qf-esc">{tx("esc")}</span>
             </div>
             {needle && (
               <div className="qf-list">
@@ -110,7 +111,7 @@ export default function QuickFind({ onClose }) {
                     return (
                       <button key={`p${r.to}`} className={'qf-row' + (i === sel ? ' on' : '')}
                         onMouseEnter={() => setSel(i)} onClick={() => go(r)}>
-                        <span className="qf-kind">Page</span>
+                        <span className="qf-kind">{tx("Page")}</span>
                         <span className="qf-title">{r.label}</span>
                         <span className="spacer" />
                         {i === sel && <CornerDownLeft size={13} className="qf-enter" />}

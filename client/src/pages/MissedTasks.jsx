@@ -4,6 +4,7 @@ import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { typeInfo } from '../lib/constants.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Every missed deadline on the team, one row per person who owes it.
 //
@@ -59,7 +60,7 @@ export default function MissedTasks() {
   const anyFilter = ch || who || role || type
   const nameOf = (id) => team.find((u) => u.id === id)?.name || (id ? `#${id}` : 'nobody')
 
-  if (!rows) return <div className="card card-pad empty">Loading…</div>
+  if (!rows) return <div className="card card-pad empty">{tx("Loading…")}</div>
 
   return (
     <div>
@@ -72,26 +73,26 @@ export default function MissedTasks() {
       <div className="card card-pad" style={{ marginBottom: 12 }}>
         <div className="mt-filters">
           <select className="select" value={ch} onChange={(e) => setCh(e.target.value)}>
-            <option value="">Every page</option>
+            <option value="">{tx("Every page")}</option>
             {channels.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
 
           {isAdmin && (
             <select className="select" value={who} onChange={(e) => setWho(e.target.value)}>
-              <option value="">Anyone</option>
+              <option value="">{tx("Anyone")}</option>
               {team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
 
           <select className="select" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="">Any stage</option>
-            <option value="operator">Shooting</option>
-            <option value="editor">Editing</option>
-            <option value="reviewer">Review &amp; publish</option>
+            <option value="">{tx("Any stage")}</option>
+            <option value="operator">{tx("Shooting")}</option>
+            <option value="editor">{tx("Editing")}</option>
+            <option value="reviewer">{tx("Review & publish")}</option>
           </select>
 
           <select className="select" value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="">Any type</option>
+            <option value="">{tx("Any type")}</option>
             {['post', 'reel', 'story', 'video', 'target', 'other'].map((t) =>
               <option key={t} value={t}>{typeInfo(t).label}</option>)}
           </select>
@@ -126,7 +127,7 @@ export default function MissedTasks() {
                 <span className={`mt-role ${r.cls}`}><Icon size={11} /> {r.label}</span>
                 <span className="mt-title">
                   {w.title}
-                  {twice && <span className="mt-twice" data-tip="This task was missed at more than one stage">also missed elsewhere</span>}
+                  {twice && <span className="mt-twice" data-tip={tx("This task was missed at more than one stage")}>{tx("also missed elsewhere")}</span>}
                 </span>
                 <span className="mt-who">{nameOf(w.owner_id)}</span>
                 <span className="mt-meta">

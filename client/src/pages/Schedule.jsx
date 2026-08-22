@@ -11,6 +11,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
 import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // How many overdue chips the strip shows before it stops being a strip.
 const LATE_SHOWN = 8
@@ -243,7 +244,7 @@ export default function Schedule({ mode }) {
   }, [dated, late, span, byWhen, M])
 
   const exportCsv = () => {
-    if (exportRows.length === 0) { toast('Nothing to export yet', 'err'); return }
+    if (exportRows.length === 0) { toast(tx('Nothing to export yet'), 'err'); return }
     saveText(`${M.file}-${today}.csv`, csvOf(exportRows.map((t) => [
       t[M.dateField], t[M.timeField] || '', t.title, typeInfo(t.type).label,
       (t.channels || []).map((c) => byKey[c]?.label || c).join(' / '),
@@ -275,11 +276,11 @@ export default function Schedule({ mode }) {
         <span className="stat-sub" style={{ fontWeight: 500 }}>{M.lead}</span>
         <span className="spacer" />
         <select className="select cf-sel" value={channel} onChange={(e) => setParam('channel', e.target.value)}
-          data-tip="One channel only">
-          <option value="">All channels</option>
+          data-tip={tx("One channel only")}>
+          <option value="">{tx("All channels")}</option>
           {channelList.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
-        <button className="btn btn-sm sch-export" onClick={exportCsv} data-tip="Download exactly what is shown">
+        <button className="btn btn-sm sch-export" onClick={exportCsv} data-tip={tx("Download exactly what is shown")}>
           <Download size={13} /> CSV
         </button>
       </div>
@@ -319,8 +320,8 @@ export default function Schedule({ mode }) {
                   <span className="ev-txt">{t.title}</span>
                   {canMove && (
                     <span className="tray-quick">
-                      <button type="button" className="qbtn" data-tip="Move to today"
-                        onClick={(e) => { e.stopPropagation(); setDay(t, M.dateField, today, false) }}>Today</button>
+                      <button type="button" className="qbtn" data-tip={tx("Move to today")}
+                        onClick={(e) => { e.stopPropagation(); setDay(t, M.dateField, today, false) }}>{tx("Today")}</button>
                     </span>
                   )}
                 </div>

@@ -9,6 +9,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { rewardIfFinished } from '../lib/reward.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Missed deadlines — two clocks per task, each unforgiving:
 //   release    — the channel's deadline (release_date, resolved by done)
@@ -133,7 +134,7 @@ function PipelineBlame() {
                   </button>
                   {isOpen && (
                     <div className="blame-tasks">
-                      {mine.length === 0 && <div className="muted">No open items to show.</div>}
+                      {mine.length === 0 && <div className="muted">{tx("No open items to show.")}</div>}
                       {mine.map((w) => (
                         <div className="blame-task" key={`${w.content_id}-${w.phase}`}>
                           <span className="blame-task-title">{w.title}</span>
@@ -181,10 +182,10 @@ function MissRow({ entry, today, byKey, usersById, isAdmin, onOpen, onMenu }) {
       </span>
       <span className="ov-chips">
         {kind === 'edit'
-          ? <span className="chip miss-kind-edit"><Scissors size={11} /> edit deadline</span>
+          ? <span className="chip miss-kind-edit"><Scissors size={11} />{' '}{tx("edit deadline")}</span>
           : kind === 'design'
-            ? <span className="chip miss-kind-edit"><Palette size={11} /> design deadline</span>
-            : <span className="chip miss-kind-rel"><Send size={11} /> release</span>}
+            ? <span className="chip miss-kind-edit"><Palette size={11} />{' '}{tx("design deadline")}</span>
+            : <span className="chip miss-kind-rel"><Send size={11} />{' '}{tx("release")}</span>}
         <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
         {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
         {isAdmin && who.map((n) => <span key={n} className="chip chip-danger">{n}</span>)}
@@ -474,7 +475,7 @@ export default function Missed() {
   const { openMenu } = useContextMenu()
   const rowMenu = (e, item) => openMenu(e, [
     { label: 'Open', icon: PenLine, onClick: () => setOpenItem(item) },
-    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: CheckCircle2, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast('Saved — synced')).catch((err) => alert(err.message)) },
+    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: CheckCircle2, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast(tx('Saved — synced'))).catch((err) => alert(err.message)) },
     { sep: true },
     { label: 'Delete', icon: Trash2, danger: true, onClick: () => { if (confirm(`Delete “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) } },
   ])
@@ -487,7 +488,7 @@ export default function Missed() {
   return (
     <>
       <div className="card card-pad brief-hero">
-        <div className="brief-hello"><BarChart3 size={17} /> Statistics</div>
+        <div className="brief-hello"><BarChart3 size={17} />{' '}{tx("Statistics")}</div>
         <h2 className="brief-title">
           {isAdmin ? 'The whole team: ' : ''}
           {missed.length === 0
@@ -503,7 +504,7 @@ export default function Missed() {
       {/* ---- the numbers: one window, four honest counts ---- */}
       <div className="card card-pad stats-card">
         <div className="docs-sec-head">
-          <h2><BarChart3 size={17} /> The numbers</h2>
+          <h2><BarChart3 size={17} />{' '}{tx("The numbers")}</h2>
           <div className="docs-up">
             <div className="pill-group">
               {STAT_RANGES.map((r) => (
@@ -524,34 +525,34 @@ export default function Missed() {
         {(isAdmin || projectChoices.length > 0) && (
           <div className="stats-filters">
             {isAdmin && (
-              <select className="select" value={person} data-tip="Only this person's work"
+              <select className="select" value={person} data-tip={tx("Only this person's work")}
                 onChange={(e) => setPerson(Number(e.target.value))}>
-                <option value={0}>Everyone</option>
+                <option value={0}>{tx("Everyone")}</option>
                 {[...users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
             )}
             {projectChoices.length > 0 && (
-              <select className="select" value={project} data-tip="Only tasks tied to this project's campaigns"
+              <select className="select" value={project} data-tip={tx("Only tasks tied to this project's campaigns")}
                 onChange={(e) => setProject(Number(e.target.value))}>
-                <option value={0}>All projects</option>
+                <option value={0}>{tx("All projects")}</option>
                 {projectChoices.map((pr) => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
               </select>
             )}
           </div>
         )}
         <div className="miss-stats">
-          <div className="miss-stat stat-done"><b>{stats.done}</b><span>done</span></div>
-          <div className="miss-stat stat-up"><b>{stats.upcoming}</b><span>upcoming</span></div>
-          <div className="miss-stat stat-missed"><b style={stats.missedN ? { color: '#A32D2D' } : undefined}>{stats.missedN}</b><span>missed</span></div>
-          <div className="miss-stat"><b>{stats.openNow}</b><span>open now</span></div>
+          <div className="miss-stat stat-done"><b>{stats.done}</b><span>{tx("done")}</span></div>
+          <div className="miss-stat stat-up"><b>{stats.upcoming}</b><span>{tx("upcoming")}</span></div>
+          <div className="miss-stat stat-missed"><b style={stats.missedN ? { color: '#A32D2D' } : undefined}>{stats.missedN}</b><span>{tx("missed")}</span></div>
+          <div className="miss-stat"><b>{stats.openNow}</b><span>{tx("open now")}</span></div>
         </div>
 
         {/* Published, by channel — same window as the tiles above; only the
             content type is its own little filter. */}
         <div className="pub-head">
-          <h3><Send size={14} /> Published by channel</h3>
+          <h3><Send size={14} />{' '}{tx("Published by channel")}</h3>
           <div className="pub-types">
             {PUB_TYPES.map((t) => (
               <button key={t.key} className={'pill' + (pubType === t.key ? ' active' : '')} onClick={() => setPubType(t.key)}>
@@ -561,7 +562,7 @@ export default function Missed() {
           </div>
         </div>
         {published.total === 0 ? (
-          <div className="tt-none" style={{ padding: '4px 0 0' }}>Nothing published in this window.</div>
+          <div className="tt-none" style={{ padding: '4px 0 0' }}>{tx("Nothing published in this window.")}</div>
         ) : (
           <div className="pub-list">
             {published.list.map((r) => (
@@ -581,12 +582,12 @@ export default function Missed() {
       {isAdmin && <PipelineBlame />}
 
       <div className="section-head" style={{ marginTop: 6 }}>
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} /> Missed deadlines</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} />{' '}{tx("Missed deadlines")}</h2>
       </div>
 
       {/* Period: a day, a week, a month, or any dates you pick */}
       <div className="miss-filters">
-        <span className="miss-f-label"><CalendarRange size={14} /> Period</span>
+        <span className="miss-f-label"><CalendarRange size={14} />{' '}{tx("Period")}</span>
         <div className="pill-group">
           {RANGES.map((r) => (
             <button key={r.key} className={'pill' + (range === r.key ? ' active' : '')} onClick={() => setRange(r.key)}>
@@ -606,7 +607,7 @@ export default function Missed() {
       {/* Where and who — live counts on every pill; every channel is listed */}
       {(allChans.length > 1 || chan !== 'all') && (
         <div className="miss-filters">
-          <span className="miss-f-label">Channel</span>
+          <span className="miss-f-label">{tx("Channel")}</span>
           <div className="pill-group">
             <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')}>
               All <b className="pill-n">{inRange.filter((e) => !person || e.who.includes(person)).length}</b>
@@ -622,9 +623,9 @@ export default function Missed() {
       )}
       {isAdmin && (activePeople.length > 0 || person !== 0) && (
         <div className="miss-filters">
-          <span className="miss-f-label">Person</span>
+          <span className="miss-f-label">{tx("Person")}</span>
           <div className="pill-group">
-            <button className={'pill' + (person === 0 ? ' active' : '')} onClick={() => setPerson(0)}>Everyone</button>
+            <button className={'pill' + (person === 0 ? ' active' : '')} onClick={() => setPerson(0)}>{tx("Everyone")}</button>
             {activePeople.map((id) => {
               const u = usersById[id]
               if (!u) return null
@@ -646,10 +647,10 @@ export default function Missed() {
       <div className="miss-stats">
         <div className="miss-stat">
           <b>{missed.length}</b>
-          <span>missed in this period</span>
+          <span>{tx("missed in this period")}</span>
         </div>
         {worst && worst.n > 0 && (
-          <button className="miss-stat miss-stat-btn" data-tip="See exactly which ones, below"
+          <button className="miss-stat miss-stat-btn" data-tip={tx("See exactly which ones, below")}
             onClick={() => setOpenPerson(openPerson === worst.id ? 0 : worst.id)}>
             <b>{worst.name}</b>
             <span>most misses · {worst.n}</span>
@@ -661,7 +662,7 @@ export default function Missed() {
       {isAdmin && activePeople.length > 0 && (
         <div className="card card-pad miss-report">
           <div className="pc-check-head" style={{ marginBottom: 8 }}>
-            <h3>Misses by person</h3>
+            <h3>{tx("Misses by person")}</h3>
             <span className="stat-sub">
               {range === 'custom'
                 ? `${from || 'start'} → ${to || 'today'}`
@@ -715,11 +716,11 @@ export default function Missed() {
 
       <div className="section-head">
         <AlertTriangle size={17} style={{ color: '#A32D2D' }} />
-        <h2 style={{ color: '#A32D2D' }}>Still not done</h2>
+        <h2 style={{ color: '#A32D2D' }}>{tx("Still not done")}</h2>
         <span className="count">· {open.length}</span>
       </div>
       {open.length === 0 ? (
-        <div className="card card-pad empty">Nothing overdue and undone. Keep it that way.</div>
+        <div className="card card-pad empty">{tx("Nothing overdue and undone. Keep it that way.")}</div>
       ) : (
         <div className="card card-pad brief-list">
           {open.map((e) => (
@@ -730,11 +731,11 @@ export default function Missed() {
 
       <div className="section-head">
         <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
-        <h2>Finished, but late</h2>
+        <h2>{tx("Finished, but late")}</h2>
         <span className="count">· {late.length}</span>
       </div>
       {late.length === 0 ? (
-        <div className="card card-pad empty">No late finishes on record.</div>
+        <div className="card card-pad empty">{tx("No late finishes on record.")}</div>
       ) : (
         <div className="card card-pad brief-list">
           {late.map((e) => (

@@ -16,6 +16,7 @@ const DAY_LABEL = {
   design_ready_date: 'the day the artwork is due', release_date: 'the release day',
 }
 import { gapsOf, stageRankOf, DUE_SOON_DAYS, nearestOf } from './Unassigned.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // The admin's landing view: every department's process on one screen —
 // plan meters, the pipeline as a colored strip, overdue counts — plus a
@@ -29,7 +30,7 @@ function CampRow({ c, navigate, byKey, colorOf }) {
     <button className="ov-camp" onClick={() => navigate(`/campaigns/${c.id}`)}>
       <span className="ov-camp-name">{c.name}</span>
       <span className="ov-camp-sub">
-        {c.owner_name || <span className="pc-red">no owner</span>}
+        {c.owner_name || <span className="pc-red">{tx("no owner")}</span>}
         {c.project_name ? <> · <b>{c.project_name}</b></> : <span className="pc-red"> · no project</span>}
       </span>
       <span className="ov-camp-when">
@@ -219,21 +220,21 @@ export default function Overview() {
           <div className="ov-camps-col">
             <div className="section-head" style={{ marginBottom: 8 }}>
               <Megaphone size={15} style={{ color: PC.green }} />
-              <h2>Live campaigns</h2>
+              <h2>{tx("Live campaigns")}</h2>
               <span className="count">· {liveCamps.length}</span>
             </div>
             {liveCamps.length === 0
-              ? <div className="card card-pad" style={{ color: PC.red, fontWeight: 700 }}>Nothing live. The plan is standing still.</div>
+              ? <div className="card card-pad" style={{ color: PC.red, fontWeight: 700 }}>{tx("Nothing live. The plan is standing still.")}</div>
               : liveCamps.map((c) => <CampRow key={c.id} c={c} navigate={navigate} byKey={byKey} colorOf={colorOf} />)}
           </div>
           <div className="ov-camps-col">
             <div className="section-head" style={{ marginBottom: 8 }}>
               <CalendarClock size={15} style={{ color: '#2a78d6' }} />
-              <h2>Upcoming campaigns</h2>
+              <h2>{tx("Upcoming campaigns")}</h2>
               <span className="count">· {upcomingCamps.length}</span>
             </div>
             {upcomingCamps.length === 0
-              ? <div className="card card-pad empty">Nothing scheduled next.</div>
+              ? <div className="card card-pad empty">{tx("Nothing scheduled next.")}</div>
               : upcomingCamps.map((c) => <CampRow key={c.id} c={c} navigate={navigate} byKey={byKey} colorOf={colorOf} />)}
           </div>
         </div>
@@ -259,8 +260,8 @@ export default function Overview() {
                 <span className="ov-ask-why">“{a.reason}” — {a.asked_name}</span>
               </button>
               <span className="ov-ask-do">
-                <button className="btn btn-sm" disabled={busyAsk === a.id} onClick={() => answer(a, false)}>Keep</button>
-                <button className="btn btn-sm btn-primary" disabled={busyAsk === a.id} onClick={() => answer(a, true)}>Move it</button>
+                <button className="btn btn-sm" disabled={busyAsk === a.id} onClick={() => answer(a, false)}>{tx("Keep")}</button>
+                <button className="btn btn-sm btn-primary" disabled={busyAsk === a.id} onClick={() => answer(a, true)}>{tx("Move it")}</button>
               </span>
             </div>
           ))}
@@ -311,7 +312,7 @@ export default function Overview() {
                 <span style={{ flex: 1 }} />
                 {c.head_name
                   ? <Avatar name={c.head_name} color={c.head_color} src={c.head_avatar} size="sm" />
-                  : <span className="no-owner-badge" data-tip="Nobody owns this channel — assign a head or hire one" data-tip-left="">no owner</span>}
+                  : <span className="no-owner-badge" data-tip={tx("Nobody owns this channel — assign a head or hire one")} data-tip-left="">{tx("no owner")}</span>}
               </div>
 
               {/* the pipeline, labeled — the stage name rides ON its color,
@@ -325,11 +326,11 @@ export default function Overview() {
                   ))}
                 </div>
               ) : (
-                <div className="ov-stages"><span className="ov-stage ov-stage-empty">no open tasks</span></div>
+                <div className="ov-stages"><span className="ov-stage ov-stage-empty">{tx("no open tasks")}</span></div>
               )}
 
               <div className="ov-counts">
-                <span><b>{open.length}</b> open</span>
+                <span><b>{open.length}</b>{' '}{tx("open")}</span>
                 <span style={{ color: 'var(--good-ink, #0ca30c)' }}><Check size={12} /> {doneWeek.length} done · 7d</span>
                 {overdue.length > 0 && (
                   <span className="pc-red"><AlertCircle size={12} /> {overdue.length} overdue</span>
@@ -348,7 +349,7 @@ export default function Overview() {
                   </div>
                 )
               })}
-              {open.length === 0 && meters.length === 0 && <div className="stat-sub">Nothing in flight.</div>}
+              {open.length === 0 && meters.length === 0 && <div className="stat-sub">{tx("Nothing in flight.")}</div>}
             </button>
           )
         })}
@@ -357,15 +358,15 @@ export default function Overview() {
       {/* ---- timeline: what's coming, what's done — closest first ---- */}
       <div className="section-head" style={{ marginTop: 20 }}>
         <CalendarClock size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Timeline</h2>
+        <h2>{tx("Timeline")}</h2>
         <span className="spacer" />
         <div className="pill-group">
           <button className={'pill' + (tab === 'upcoming' ? ' active' : '')} onClick={() => setTab('upcoming')}
-            data-tip="Open tasks by date — overdue and today on top">Upcoming · {upcoming.length}</button>
+            data-tip={tx("Open tasks by date — overdue and today on top")}>Upcoming · {upcoming.length}</button>
           <button className={'pill' + (tab === 'done' ? ' active' : '')} onClick={() => setTab('done')}
-            data-tip="Recently completed, newest first">Done · {done.length}</button>
+            data-tip={tx("Recently completed, newest first")}>Done · {done.length}</button>
           <button className={'pill' + (tab === 'lanes' ? ' active' : '')} onClick={() => setTab('lanes')}
-            data-tip="Two weeks, one lane per department — the same tasks as the channel calendars" data-tip-left="">
+            data-tip={tx("Two weeks, one lane per department — the same tasks as the channel calendars")} data-tip-left="">
             <Rows3 size={13} /> By department
           </button>
         </div>
@@ -386,7 +387,7 @@ export default function Overview() {
               {lanes.map(({ c, color, byDay }) => (
                 <div key={c.key} className="lane">
                   <button className="lane-label" style={{ borderLeft: `4px solid ${color}` }} onClick={() => navigate(`/dept/${c.key}`)}
-                    data-tip="Open this channel's calendar">
+                    data-tip={tx("Open this channel's calendar")}>
                     {c.label}
                   </button>
                   {laneDays.map((d) => (
@@ -425,7 +426,7 @@ export default function Overview() {
                 ))}
                 <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
                 {tab === 'done'
-                  ? <span className="chip" style={{ background: '#1D9E75', color: '#fff' }}><Check size={10} /> Done</span>
+                  ? <span className="chip" style={{ background: '#1D9E75', color: '#fff' }}><Check size={10} />{' '}{tx("Done")}</span>
                   : st && <span className="chip" style={{ background: st.color, color: onColor(st.color) }}>{st.label}</span>}
               </span>
             </button>

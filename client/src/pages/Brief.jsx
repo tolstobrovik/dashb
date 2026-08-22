@@ -18,6 +18,7 @@ import { deliveryHref, splitDelivery } from '../lib/text.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { playDone } from '../lib/sound.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // My Day — the deadline-first landing page, in two shapes:
 //   crew (operator / editor / both): what to shoot at which hour, the editing
@@ -93,10 +94,10 @@ function CrewCalendar({ tasks, userId, today, byKey, onOpen }) {
   return (
     <div className="card card-pad">
       <div className="cc-nav">
-        <button className="icon-btn" onClick={() => move(-1)} aria-label="Previous month"><ChevronLeft size={16} /></button>
+        <button className="icon-btn" onClick={() => move(-1)} aria-label={tx("Previous month")}><ChevronLeft size={16} /></button>
         <b>{monthName}</b>
-        <button className="icon-btn" onClick={() => move(1)} aria-label="Next month"><ChevronRight size={16} /></button>
-        {month !== today.slice(0, 7) && <button className="lnk" onClick={() => setMonth(today.slice(0, 7))}>today</button>}
+        <button className="icon-btn" onClick={() => move(1)} aria-label={tx("Next month")}><ChevronRight size={16} /></button>
+        {month !== today.slice(0, 7) && <button className="lnk" onClick={() => setMonth(today.slice(0, 7))}>{tx("today")}</button>}
       </div>
       <div className="cc-grid cc-headrow">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} className="cc-head">{d}</div>)}
@@ -137,13 +138,13 @@ function BriefRow({ item, when, time, late = false, done = false, work = null, b
     <button className="ov-row" onClick={() => onOpen(item)}
       onContextMenu={onMenu ? (e) => onMenu(e, item) : undefined}>
       <span className={'brief-when' + (late ? ' late' : '')}>
-        {time ? <b>{time}</b> : <span className="brief-anytime">any time</span>}
+        {time ? <b>{time}</b> : <span className="brief-anytime">{tx("any time")}</span>}
         {when && <span className="brief-when-sub">{when}</span>}
       </span>
       <span className="brief-main">
         <span className={'ov-title' + (done ? ' done-txt' : '')}>{item.title}</span>
         {item.description && !done && (
-          <span className="brief-note" data-tip="Notes for shooting / editing — open the task for the full text">
+          <span className="brief-note" data-tip={tx("Notes for shooting / editing — open the task for the full text")}>
             <StickyNote size={11} /> {item.description}
           </span>
         )}
@@ -279,7 +280,7 @@ function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
   // (red, open by default) and goes calm — "read" — the moment it hits zero.
   const MissedSec = ({ laneKey, items }) => {
     if (items.length === 0) {
-      return <div className="cb-sec cb-clear"><CheckCircle2 size={13} /> Nothing overdue — all clear</div>
+      return <div className="cb-sec cb-clear"><CheckCircle2 size={13} />{' '}{tx("Nothing overdue — all clear")}</div>
     }
     const k = `${laneKey}:missed`
     const open = unfolded[k] === undefined ? true : unfolded[k]
@@ -365,7 +366,7 @@ function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
           {rev.rubrika && <span className="chip chip-muted">#{rev.rubrika}</span>}
           {rev.script && (
             <details className="pravki-extra">
-              <summary>The script / ТЗ</summary>
+              <summary>{tx("The script / ТЗ")}</summary>
               <div className="crew-script">{rev.script}</div>
             </details>
           )}
@@ -385,17 +386,17 @@ function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
         </details>
       )}
       <div className="pravki-fix">
-        <input className="input" placeholder="Link to the NEW file…" value={link} onChange={(e) => setLink(e.target.value)} />
+        <input className="input" placeholder={tx("Link to the NEW file…")} value={link} onChange={(e) => setLink(e.target.value)} />
         {deliveryHref(rev[relCol]) && (
           <a className="btn btn-sm" href={deliveryHref(rev[relCol])} target="_blank" rel="noreferrer"
-            data-tip="Open the file that was sent back" aria-label="Open the file that was sent back"><ExternalLink size={14} /></a>
+            data-tip={tx("Open the file that was sent back")} aria-label={tx("Open the file that was sent back")}><ExternalLink size={14} /></a>
         )}
         <button className="btn btn-sm btn-primary" disabled={busy || !link.trim() || link.trim() === (rev[relCol] || '')}
           data-tip={link.trim() && link.trim() === (rev[relCol] || '') ? 'That is the file that was sent back' : 'Deliver the fix'}
-          onClick={fix}><Check size={14} /> Fixed</button>
+          onClick={fix}><Check size={14} />{' '}{tx("Fixed")}</button>
       </div>
       {link.trim() && link.trim() === (rev[relCol] || '') && (
-        <div className="pravki-same">That is the same file that was sent back — upload the new one.</div>
+        <div className="pravki-same">{tx("That is the same file that was sent back — upload the new one.")}</div>
       )}
     </div>
   )
@@ -625,7 +626,7 @@ export default function Brief() {
       const r = await api.post(`/content/revisions/${rev.id}/resolve`, link ? { link } : {})
       if (r.task) setContent((prev) => prev.map((x) => (x.id === r.task.id ? r.task : x)))
       setPravki((prev) => prev.filter((x) => x.id !== rev.id))
-      toast('Fixed — back to the SMM')
+      toast(tx('Fixed — back to the SMM'))
     } catch (e) { alert(e.message) }
   }
   const openByContentId = (cid) => { const t = content.find((x) => x.id === cid); if (t) setOpenItem(t) }
@@ -634,7 +635,7 @@ export default function Brief() {
   const { openMenu } = useContextMenu()
   const rowMenu = (e, item) => openMenu(e, [
     { label: 'Open', icon: PenLine, onClick: () => setOpenItem(item) },
-    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast('Saved — synced')).catch((err) => alert(err.message)) },
+    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast(tx('Saved — synced'))).catch((err) => alert(err.message)) },
     { sep: true },
     { label: 'Delete', icon: Trash2, danger: true, onClick: () => { if (confirm(`Delete “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) } },
   ])
@@ -651,7 +652,7 @@ export default function Brief() {
         <h2 style={{ color: '#A32D2D' }}>{isCrew ? 'Needs attention' : 'Missing'}</h2>
         <span className="count">· past the deadline</span>
         <span className="spacer" />
-        <Link className="btn btn-sm" to="/missed">All missed deadlines →</Link>
+        <Link className="btn btn-sm" to="/missed">{tx("All missed deadlines →")}</Link>
       </div>
       <div className="card card-pad brief-list">
         {overdue.map((t) => (
@@ -669,7 +670,7 @@ export default function Brief() {
     try {
       playDone()
       await updateContent(t, { status_id: fin.id })
-      toast('Published — synced')
+      toast(tx('Published — synced'))
     } catch (e) { alert(e.message) }
   }
 
@@ -677,7 +678,7 @@ export default function Brief() {
     <>
       <div className="section-head">
         <Send size={17} style={{ color: '#2a78d6' }} />
-        <h2 style={{ color: '#2a78d6' }}>Waiting for your review</h2>
+        <h2 style={{ color: '#2a78d6' }}>{tx("Waiting for your review")}</h2>
         <span className="count">· {reviewQueue.length}</span>
       </div>
       <div className="card card-pad brief-list">
@@ -688,7 +689,7 @@ export default function Brief() {
             <span className="brief-when">
               {t.release_date
                 ? <span className="brief-when-sub">{dateLabel(t.release_date)}{t.release_time ? ` · ${t.release_time.slice(0, 5)}` : ''}</span>
-                : <span className="brief-anytime">no date</span>}
+                : <span className="brief-anytime">{tx("no date")}</span>}
             </span>
             <span className="brief-main"><span className="ov-title">{t.title}</span></span>
             <span className="ov-chips">
@@ -699,7 +700,7 @@ export default function Brief() {
                   {deliveryHref(t.ready_link || t.design_link) && (
                     <a className="btn btn-sm rq-open" href={deliveryHref(t.ready_link || t.design_link)}
                       target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
-                      data-tip="Watch the finished file before releasing it">
+                      data-tip={tx("Watch the finished file before releasing it")}>
                       <ExternalLink size={13} /> {t.ready_link ? 'Cut' : 'Design'}
                       {splitDelivery(t.ready_link || t.design_link).note
                         ? ` · ${splitDelivery(t.ready_link || t.design_link).note}` : ''}
@@ -709,17 +710,17 @@ export default function Brief() {
                     onClick={(e) => {
                       e.stopPropagation()
                       navigator.clipboard?.writeText(t.ready_link || t.design_link)
-                        .then(() => toast('Delivery link copied — paste it into the platform'))
+                        .then(() => toast(tx('Delivery link copied — paste it into the platform')))
                         .catch(() => {})
                     }}
-                    data-tip="Copy the finished file's link" aria-label="Copy delivery link">
+                    data-tip={tx("Copy the finished file's link")} aria-label={tx("Copy delivery link")}>
                     <Link2 size={14} />
                   </button>
                 </>
               )}
               <button className="btn btn-sm btn-primary rq-pub"
                 onClick={(e) => { e.stopPropagation(); publishNow(t) }}
-                data-tip="Release it — Ready → Published">
+                data-tip={tx("Release it — Ready → Published")}>
                 <Send size={13} /> Publish
               </button>
             </span>
@@ -734,7 +735,7 @@ export default function Brief() {
     <>
       <div className="section-head">
         <RotateCcw size={17} style={{ color: '#b5324a' }} />
-        <h2 style={{ color: '#b5324a' }}>Pravki — changes to make</h2>
+        <h2 style={{ color: '#b5324a' }}>{tx("Pravki — changes to make")}</h2>
         <span className="count">· {pravki.length}</span>
       </div>
       <div className="pravki-lane">
@@ -749,13 +750,13 @@ export default function Brief() {
     <>
       <div className="section-head">
         <CheckCircle2 size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Also on your list</h2>
+        <h2>{tx("Also on your list")}</h2>
         <span className="count">· {personalToday.length}</span>
       </div>
       <div className="card card-pad brief-list">
         {personalToday.map((p) => (
           <div key={p.id} className="ov-row" style={{ cursor: 'default' }}>
-            <button className="todo-check" onClick={() => togglePersonal(p)} data-tip="Mark as done" aria-label="Complete">
+            <button className="todo-check" onClick={() => togglePersonal(p)} data-tip={tx("Mark as done")} aria-label={tx("Complete")}>
               {p.done_at && <Check size={15} strokeWidth={3.5} />}
             </button>
             <span className="ov-title">{p.title}</span>
@@ -773,7 +774,7 @@ export default function Brief() {
     <>
       <div className="section-head">
         <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
-        <h2>What you’ve done</h2>
+        <h2>{tx("What you’ve done")}</h2>
         <span className="count">· last {doneRows.length}</span>
       </div>
       {doneRows.length > 0 && (
@@ -795,7 +796,7 @@ export default function Brief() {
       <>
         <div className="section-head">
           <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>To do today</h2>
+          <h2>{tx("To do today")}</h2>
           <span className="count">· {dueToday.length}</span>
         </div>
         <div className="card card-pad brief-list">
@@ -811,14 +812,14 @@ export default function Brief() {
       <>
         <div className="section-head">
           <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Coming up</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>tomorrow · 3 days · 7 days · your dates</span>
+          <h2>{tx("Coming up")}</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("tomorrow · 3 days · 7 days · your dates")}</span>
         </div>
         <div className="card card-pad brief-list">
           {/* Only horizons that hold work render — a quiet week is one calm
               line, not four headed blocks of dashes. */}
           {horizons.every((b) => b.items.length === 0) && (
-            <div className="tt-none" style={{ padding: '2px 0 6px' }}>Nothing scheduled in the next 7 days.</div>
+            <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("Nothing scheduled in the next 7 days.")}</div>
           )}
           {horizons.filter((b) => b.items.length > 0).map((b) => (
             <div key={b.key} className="brief-horizon">
@@ -850,9 +851,9 @@ export default function Brief() {
                   {customItems && <span className="count">· {customItems.length}</span>}
                 </div>
                 {customItems === null ? (
-                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>pick dates to see that stretch</div>
+                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("pick dates to see that stretch")}</div>
                 ) : customItems.length === 0 ? (
-                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>nothing in those dates</div>
+                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("nothing in those dates")}</div>
                 ) : customItems.map((t) => (
                   <BriefRow key={`${t.id}-c`} item={t} when={dateLabel(t._next)} time={null} work={workOnDate(t, t._next)}
                     byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
@@ -891,7 +892,7 @@ export default function Brief() {
           </h2>
           <button className={'icon-btn brief-arrange' + (arranging ? ' on' : '')}
             onClick={() => setArranging((v) => !v)}
-            data-tip="Arrange your day — order and hide sections" data-tip-left="" aria-label="Arrange sections">
+            data-tip={tx("Arrange your day — order and hide sections")} data-tip-left="" aria-label={tx("Arrange sections")}>
             <SlidersHorizontal size={15} />
           </button>
         </div>
@@ -909,8 +910,8 @@ export default function Brief() {
         {arranging && (
           <div className="card card-pad br-arrange">
             <div className="pc-check-head" style={{ marginBottom: 6 }}>
-              <h3>Arrange your day</h3>
-              <span className="stat-sub">order and visibility — saved to this account</span>
+              <h3>{tx("Arrange your day")}</h3>
+              <span className="stat-sub">{tx("order and visibility — saved to this account")}</span>
             </div>
             {orderedKeys.map((k) => {
               const off = dayPrefs.hidden.includes(k)
@@ -928,8 +929,8 @@ export default function Brief() {
               )
             })}
             <div className="br-arr-foot">
-              {customized && <button className="btn btn-sm" onClick={resetDayPrefs}><RotateCcw size={13} /> Reset</button>}
-              <button className="btn btn-sm btn-primary" onClick={() => setArranging(false)}><Check size={14} /> Done</button>
+              {customized && <button className="btn btn-sm" onClick={resetDayPrefs}><RotateCcw size={13} />{' '}{tx("Reset")}</button>}
+              <button className="btn btn-sm btn-primary" onClick={() => setArranging(false)}><Check size={14} />{' '}{tx("Done")}</button>
             </div>
           </div>
         )}

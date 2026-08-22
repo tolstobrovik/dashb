@@ -15,6 +15,7 @@ import { todayISO, dateLabel, addDaysISO, can, CONTENT_TYPES, typeInfo, isDelete
 import ContentModal from '../components/ContentModal.jsx'
 import PersonalModal from '../components/PersonalModal.jsx'
 import { rewardIfFinished } from '../lib/reward.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 const keyOf = (it) => (it.personal ? 'p' : 'c') + it.id
 
@@ -50,24 +51,24 @@ function Row({ item, ctx }) {
         canDelete && { label: 'Delete', icon: Trash2, danger: true, onClick: () => removeTask(item) },
       ])}
     >
-      {!isDone && <span className="todo-grip" data-tip="Drag to reorder"><GripVertical size={14} /></span>}
+      {!isDone && <span className="todo-grip" data-tip={tx("Drag to reorder")}><GripVertical size={14} /></span>}
       <button
         className={`todo-check${isDone ? ' on' : ''}`}
         onClick={() => canComplete && toggle(item)}
         disabled={!canComplete}
         data-tip={!canComplete ? 'Only the assignee can complete this' : isDone ? 'Mark as not done' : 'Mark as done'}
-        aria-label="Complete"
+        aria-label={tx("Complete")}
       >
         {isDone && <Check size={15} strokeWidth={3.5} />}
       </button>
-      <button className="todo-main" onClick={() => setOpenItem(item)} data-tip="Open the task">
+      <button className="todo-main" onClick={() => setOpenItem(item)} data-tip={tx("Open the task")}>
         <span className={`todo-title${isDone ? ' done-txt' : ''}`}>{item.title}</span>
         <span className="todo-meta">
           {item.personal ? (
             <>
-              <span className="chip chip-personal"><Lock size={10} /> Personal</span>
+              <span className="chip chip-personal"><Lock size={10} />{' '}{tx("Personal")}</span>
               {item.due_date && <span className="chip chip-muted"><CalendarDays size={10} /> {dateLabel(item.due_date)}</span>}
-              {item.note && <span className="chip chip-muted"><StickyNote size={10} /> Note</span>}
+              {item.note && <span className="chip chip-muted"><StickyNote size={10} />{' '}{tx("Note")}</span>}
             </>
           ) : (
             <>
@@ -88,13 +89,13 @@ function Row({ item, ctx }) {
                 )
               })()}
               {item.operator_id && teamById[item.operator_id] && (
-                <span className="chip chip-muted" data-tip="Operator — films it"><Video size={10} /> {teamById[item.operator_id].name.split(' ')[0]}</span>
+                <span className="chip chip-muted" data-tip={tx("Operator — films it")}><Video size={10} /> {teamById[item.operator_id].name.split(' ')[0]}</span>
               )}
               {item.editor_id && teamById[item.editor_id] && (
-                <span className="chip chip-muted" data-tip="Editor — cuts it"><Scissors size={10} /> {teamById[item.editor_id].name.split(' ')[0]}</span>
+                <span className="chip chip-muted" data-tip={tx("Editor — cuts it")}><Scissors size={10} /> {teamById[item.editor_id].name.split(' ')[0]}</span>
               )}
               {item.designer_id && teamById[item.designer_id] && (
-                <span className="chip chip-muted" data-tip="Designer — designs it"><Palette size={10} /> {teamById[item.designer_id].name.split(' ')[0]}</span>
+                <span className="chip chip-muted" data-tip={tx("Designer — designs it")}><Palette size={10} /> {teamById[item.designer_id].name.split(' ')[0]}</span>
               )}
             </>
           )}
@@ -105,8 +106,8 @@ function Row({ item, ctx }) {
           <button
             className="icon-btn"
             onClick={() => rescheduleToday(item)}
-            aria-label="Move to today"
-            data-tip="Overdue — move it to today"
+            aria-label={tx("Move to today")}
+            data-tip={tx("Overdue — move it to today")}
             data-tip-left=""
           >
             <CalendarClock size={14} />
@@ -127,8 +128,8 @@ function Row({ item, ctx }) {
           <button
             className="icon-btn del-btn"
             onClick={() => removeTask(item)}
-            aria-label="Delete task"
-            data-tip="Delete this task"
+            aria-label={tx("Delete task")}
+            data-tip={tx("Delete this task")}
             data-tip-left=""
           >
             <Trash2 size={14} />
@@ -211,27 +212,27 @@ function QuickAdd({ visible, canTeamAdd, isAdmin, team, chan, viewUser, onAddCon
     <form className="card card-pad" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }} onSubmit={submit}>
       <input className="input" style={{ flex: '2 1 200px' }} placeholder={channel === '__personal' ? 'Add a personal task…' : 'Add a task…'} value={title} onChange={(e) => setTitle(e.target.value)} />
       {channel !== '__personal' && (
-        <select className="select" style={{ flex: '0 1 110px' }} value={type} onChange={(e) => setType(e.target.value)} data-tip="Task type — counts toward that plan">
+        <select className="select" style={{ flex: '0 1 110px' }} value={type} onChange={(e) => setType(e.target.value)} data-tip={tx("Task type — counts toward that plan")}>
           {CONTENT_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
         </select>
       )}
-      <select className="select" style={{ flex: '1 1 140px' }} value={channel} onChange={(e) => setChannel(e.target.value)} data-tip="Where the task goes — a channel, or your private list">
+      <select className="select" style={{ flex: '1 1 140px' }} value={channel} onChange={(e) => setChannel(e.target.value)} data-tip={tx("Where the task goes — a channel, or your private list")}>
         {canTeamAdd && visible.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-        <option value="__personal">Personal — only me</option>
+        <option value="__personal">{tx("Personal — only me")}</option>
       </select>
       {isAdmin && channel !== '__personal' && (
-        <select className="select" style={{ flex: '1 1 130px' }} value={assign} onChange={(e) => setAssign(e.target.value)} data-tip="Who this task is for">
-          <option value="">For: whole channel</option>
+        <select className="select" style={{ flex: '1 1 130px' }} value={assign} onChange={(e) => setAssign(e.target.value)} data-tip={tx("Who this task is for")}>
+          <option value="">{tx("For: whole channel")}</option>
           {[...team].sort((a, b) => (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name))
             .map((u) => <option key={u.id} value={u.id}>For: {u.name}</option>)}
         </select>
       )}
       <input className="input" type="date" style={{ flex: '0 1 150px' }} value={date} onChange={(e) => setDate(e.target.value)} data-tip={channel === '__personal' ? 'Due date (optional)' : 'Release date'} />
-      <button className="btn btn-primary" type="submit" data-tip="Add the task" data-tip-left=""><Plus size={16} /> Add</button>
+      <button className="btn btn-primary" type="submit" data-tip={tx("Add the task")} data-tip-left=""><Plus size={16} />{' '}{tx("Add")}</button>
       {/* One task can land on several boards at once */}
       {canTeamAdd && channel !== '__personal' && visible.length > 1 && (
         <div className="qa-extras">
-          <span className="stat-sub">also on:</span>
+          <span className="stat-sub">{tx("also on:")}</span>
           {visible.filter((c) => c.key !== channel).map((c) => (
             <label key={c.key} className={'checkbox-chip' + (extra.includes(c.key) ? ' on' : '')}>
               <input type="checkbox" checked={extra.includes(c.key)}
@@ -390,12 +391,12 @@ export default function Todo() {
   const addContent = async (payload) => {
     const c = await api.post('/content', payload)
     setItems((prev) => [c, ...prev])
-    toast('Task added — synced')
+    toast(tx('Task added — synced'))
   }
   const addPersonal = async (payload) => {
     const p = await api.post('/personal', payload)
     setPersonal((prev) => [p, ...prev])
-    toast('Personal task added — synced')
+    toast(tx('Personal task added — synced'))
   }
 
   const updateContent = async (item, payload) => {
@@ -433,7 +434,7 @@ export default function Todo() {
     try {
       await api.del(`${apiBase(item)}/${item.id}`)
       setList(item)((prev) => prev.filter((x) => x.id !== item.id))
-      toast('Task deleted')
+      toast(tx('Task deleted'))
     } catch (e) { alert(e.message) }
   }
   const deleteContent = async (item) => {
@@ -456,7 +457,7 @@ export default function Todo() {
         ...(user.role === 'admin' ? { assignee_ids: t.assignees?.length ? t.assignees : t.assignee_id ? [t.assignee_id] : [] } : {}),
       })
       setItems((prev) => [u, ...prev])
-      toast('Duplicated — brief kept, dates cleared')
+      toast(tx('Duplicated — brief kept, dates cleared'))
     } catch (e) { alert(e.message) }
   }
 
@@ -475,7 +476,7 @@ export default function Todo() {
     linkOpened.current = location.search
     const t = items.find((x) => x.id === id)
     if (t) setOpenItem(t)
-    else toast('That task isn’t in your list — it may be deleted or off your channels', 'err')
+    else toast(tx('That task isn’t in your list — it may be deleted or off your channels'), 'err')
   }, [loading, items, location.search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
@@ -485,15 +486,15 @@ export default function Todo() {
 
   return (
     <>
-      {celebrate && <div className="celebrate"><PartyPopper size={18} /> Nice work!</div>}
+      {celebrate && <div className="celebrate"><PartyPopper size={18} />{' '}{tx("Nice work!")}</div>}
 
       {/* One list per channel, plus your private Personal list */}
       <div className="pill-group" style={{ marginBottom: 14, alignItems: 'center' }}>
-        <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')} data-tip="Every task you can see">All</button>
+        <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')} data-tip={tx("Every task you can see")}>{tx("All")}</button>
         {visible.length > 1 && visible.map((c) => (
           <button key={c.key} className={'pill' + (chan === c.key ? ' active' : '')} onClick={() => setChan(c.key)} data-tip={`Only ${c.label} tasks`}>{c.label}</button>
         ))}
-        <button className={'pill' + (chan === 'personal' ? ' active' : '')} onClick={() => setChan('personal')} data-tip="Your private tasks — only you can see them">
+        <button className={'pill' + (chan === 'personal' ? ' active' : '')} onClick={() => setChan('personal')} data-tip={tx("Your private tasks — only you can see them")}>
           <Lock size={13} /> Personal
         </button>
         <span style={{ flex: 1 }} />
@@ -502,13 +503,13 @@ export default function Todo() {
             className="select member-view"
             value={viewUser}
             onChange={(e) => setViewUser(e.target.value)}
-            data-tip="Focus on one member's work tasks — new tasks go to them"
+            data-tip={tx("Focus on one member's work tasks — new tasks go to them")}
           >
-            <option value="all">Everyone</option>
+            <option value="all">{tx("Everyone")}</option>
             {team.map((u) => <option key={u.id} value={u.id}>{u.name}{u.id === user.id ? ' (me)' : ''}</option>)}
           </select>
         )}
-        <button className={'pill' + (mineOnly ? ' active' : '')} onClick={() => setMineOnly(!mineOnly)} data-tip="Show only tasks assigned to me" data-tip-left="">
+        <button className={'pill' + (mineOnly ? ' active' : '')} onClick={() => setMineOnly(!mineOnly)} data-tip={tx("Show only tasks assigned to me")} data-tip-left="">
           <UserRound size={13} /> Only mine
         </button>
       </div>

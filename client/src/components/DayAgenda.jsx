@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { ArrowLeft, Plus, Clapperboard, Send } from 'lucide-react'
 import { MONTHS, typeInfo, onColor } from '../lib/constants.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // A clean, simple day view: everything happening that day in time order —
 // recordings and releases side by side, no hour grid to decipher.
@@ -20,10 +21,10 @@ export default function DayAgenda({ date, items, statusesById, canEdit, onOpen, 
   return (
     <div className="card planner">
       <div className="planner-head">
-        <button className="btn btn-sm" onClick={onBack}><ArrowLeft size={15} /> Month</button>
+        <button className="btn btn-sm" onClick={onBack}><ArrowLeft size={15} />{' '}{tx("Month")}</button>
         <h3>{heading}</h3>
         <div style={{ flex: 1 }} />
-        {canEdit && <button className="btn btn-primary btn-sm" onClick={() => onAdd(date)}><Plus size={15} /> Add</button>}
+        {canEdit && <button className="btn btn-primary btn-sm" onClick={() => onAdd(date)}><Plus size={15} />{' '}{tx("Add")}</button>}
       </div>
 
       {entries.length === 0 ? (

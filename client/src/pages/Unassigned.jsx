@@ -7,6 +7,7 @@ import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, isIdeaLabel } from '../lib/constants.js'
 import { loadFailed } from '../lib/toast.js'
 import ContentModal from '../components/ContentModal.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // The planning gaps, on one page: every live task that nobody owns yet —
 // no main assignee, no operator/editor on filmed work, no designer on a
@@ -264,7 +265,7 @@ export default function Unassigned() {
   return (
     <>
       <div className="card card-pad brief-hero">
-        <div className="brief-hello"><UserX size={17} /> Unassigned</div>
+        <div className="brief-hello"><UserX size={17} />{' '}{tx("Unassigned")}</div>
         <h2 className="brief-title">
           {total === 0
             ? (rows.length > 0
@@ -280,7 +281,7 @@ export default function Unassigned() {
       {rows.length > 0 && (
         <>
           <div className="miss-filters">
-            <span className="miss-f-label"><CalendarRange size={14} /> Date</span>
+            <span className="miss-f-label"><CalendarRange size={14} />{' '}{tx("Date")}</span>
             <div className="pill-group">
               {RANGES.map((r) => (
                 <button key={r.key} className={'pill' + (range === r.key ? ' active' : '')} onClick={() => setRange(r.key)}>
@@ -298,10 +299,10 @@ export default function Unassigned() {
           </div>
           {users.length > 0 && (
             <div className="miss-filters">
-              <span className="miss-f-label"><User size={14} /> Person</span>
-              <select className="select gap-person" value={person} data-tip="Only tasks this person is on"
+              <span className="miss-f-label"><User size={14} />{' '}{tx("Person")}</span>
+              <select className="select gap-person" value={person} data-tip={tx("Only tasks this person is on")}
                 onChange={(e) => setPerson(Number(e.target.value))}>
-                <option value={0}>Everyone</option>
+                <option value={0}>{tx("Everyone")}</option>
                 {[...users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
@@ -309,9 +310,9 @@ export default function Unassigned() {
             </div>
           )}
           <div className="miss-filters">
-            <span className="miss-f-label">Channel</span>
+            <span className="miss-f-label">{tx("Channel")}</span>
             <div className="pill-group">
-              <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')}>All</button>
+              <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')}>{tx("All")}</button>
               {channels.map((c) => (
                 <button key={c.key}
                   className={'pill' + (chan === c.key ? ' active' : '') + (chanCounts[c.key] ? '' : ' pill-zero')}
@@ -322,7 +323,7 @@ export default function Unassigned() {
             </div>
           </div>
           <div className="miss-filters">
-            <span className="miss-f-label">Needs</span>
+            <span className="miss-f-label">{tx("Needs")}</span>
             <div className="pill-group">
               {GAP_KINDS.map((k) => {
                 const st = needs[k.key]
@@ -336,7 +337,7 @@ export default function Unassigned() {
                 )
               })}
               {filtered && (
-                <button className="pill pill-clear" onClick={clearFilters}>Clear ×</button>
+                <button className="pill pill-clear" onClick={clearFilters}>{tx("Clear ×")}</button>
               )}
             </div>
           </div>
@@ -346,7 +347,7 @@ export default function Unassigned() {
       {total > 0 && shown.length === 0 && (
         <div className="card card-pad empty">
           Nothing matches these filters.{' '}
-          <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={clearFilters}>Clear filters</button>
+          <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={clearFilters}>{tx("Clear filters")}</button>
         </div>
       )}
 
@@ -354,7 +355,7 @@ export default function Unassigned() {
         <>
           <div className="section-head">
             <UserX size={17} style={{ color: '#A32D2D' }} />
-            <h2>Nobody owns these</h2>
+            <h2>{tx("Nobody owns these")}</h2>
             <span className="count">· {unowned.length}</span>
           </div>
           <div className="card card-pad brief-list">
@@ -367,7 +368,7 @@ export default function Unassigned() {
         <>
           <div className="section-head">
             <CalendarX2 size={17} style={{ color: 'var(--brand-500)' }} />
-            <h2>No dates yet</h2>
+            <h2>{tx("No dates yet")}</h2>
             <span className="count">· {undated.length}</span>
           </div>
           <div className="card card-pad brief-list">

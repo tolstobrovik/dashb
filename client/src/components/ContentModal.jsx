@@ -7,7 +7,7 @@ import {
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
 import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHref } from '../lib/text.js'
-import { useT } from '../lib/i18n.jsx'
+import { useT, tr as tx } from '../lib/i18n.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { api } from '../lib/api.js'
@@ -79,10 +79,10 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
       )}
       {!disabled && !promised && (
         <span className="drow-quick">
-          <button type="button" className="qbtn" onClick={() => setDate(todayISO())}>Today</button>
-          <button type="button" className="qbtn" onClick={() => setDate(addDaysISO(todayISO(), 1))}>Tomorrow</button>
+          <button type="button" className="qbtn" onClick={() => setDate(todayISO())}>{tx("Today")}</button>
+          <button type="button" className="qbtn" onClick={() => setDate(addDaysISO(todayISO(), 1))}>{tx("Tomorrow")}</button>
           {form[dateKey] && (
-            <button type="button" className="qbtn" data-tip="Clear this date" aria-label="Clear date"
+            <button type="button" className="qbtn" data-tip={tx("Clear this date")} aria-label={tx("Clear date")}
               onClick={() => setForm({ ...form, [dateKey]: '', ...(timeKey ? { [timeKey]: '' } : {}), ...(endKey ? { [endKey]: '' } : {}) })}>✕</button>
           )}
         </span>
@@ -93,7 +93,7 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
         // time is how "Ask to move" became four lines tall.
         <span className="drow-ask">
           {onAskMove && (
-            <button type="button" className="qbtn qbtn-ask" onClick={() => onAskMove(dateKey)}>Ask to move</button>
+            <button type="button" className="qbtn qbtn-ask" onClick={() => onAskMove(dateKey)}>{tx("Ask to move")}</button>
           )}
           <span className="drow-promised">
             This day is promised — only an admin moves it{onAskMove ? ', and only on a reason.' : '.'}
@@ -275,7 +275,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       })
       const doc = await api.post(`/content/${item.id}/files`, { name: file.name, data })
       setDocs((prev) => [...prev, doc])
-      toast('Document attached — synced')
+      toast(tx('Document attached — synced'))
     } catch (e2) { setErr(e2.message) } finally { setDocBusy(false) }
   }
   // Asking to open one gets a short-lived link back; the browser then fetches
@@ -509,7 +509,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       })
       setDateReqs((prev) => [made, ...prev])
       setAsking(null)
-      toast('Asked — the admins have it')
+      toast(tx('Asked — the admins have it'))
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   const decide = async (reqId, approve) => {
@@ -551,7 +551,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       const made = await api.post(`/content/${item.id}/flags`, { kind: raising.kind, reason: raising.reason.trim() })
       setFlags((prev) => [made, ...prev])
       setRaising(null)
-      toast('Said early — the people who plan have it')
+      toast(tx('Said early — the people who plan have it'))
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   const lowerHand = async (id) => {
@@ -836,7 +836,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   }
   const del = async () => {
     if (!confirm('Delete this task?')) return
-    try { await onDelete(item); toast('Task deleted'); onClose() } catch (e) { setErr(e.message) }
+    try { await onDelete(item); toast(tx('Task deleted')); onClose() } catch (e) { setErr(e.message) }
   }
   // One press spawns the recurring piece: brief, crew and platforms ride
   // along; dates, stage and delivery start clean.
@@ -859,7 +859,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         campaign_id: form.campaign_id,
         ...(user.role === 'admin' && form.assignee_ids ? { assignee_ids: form.assignee_ids } : {}),
       })
-      toast('Duplicated — brief kept, dates cleared')
+      toast(tx('Duplicated — brief kept, dates cleared'))
       onClose()
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
@@ -867,14 +867,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const copyLink = () => {
     const url = `${window.location.origin}/todo?task=${item.id}`
     navigator.clipboard?.writeText(url)
-      .then(() => toast('Link copied — paste it anywhere'))
+      .then(() => toast(tx('Link copied — paste it anywhere')))
       .catch(() => toast(url, 'err'))
   }
   // The reviewer's release: move Ready → Published.
   const publish = async () => {
     if (busy || !finalStatusObj) return
     setBusy(true); setErr('')
-    try { await onUpdate(item, { status_id: finalStatusObj.id }); rewardFinish(); toast('Published — synced'); onClose() }
+    try { await onUpdate(item, { status_id: finalStatusObj.id }); rewardFinish(); toast(tx('Published — synced')); onClose() }
     catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   // Request changes (Pravki): one note, sent back to the chosen crew stage.
@@ -888,7 +888,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         ...(pravki.clip ? { voice: pravki.clip.data, voice_secs: pravki.clip.secs } : {}),
       })
       await onUpdate(item, {}) // pull the moved-back row into the parent list
-      toast('Sent back to the crew — synced')
+      toast(tx('Sent back to the crew — synced'))
       onClose()
     } catch (e) { setErr(e.message); setBusy(false) }
   }
@@ -899,15 +899,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       title={creating ? 'New task' : 'Task'}
       onClose={onClose}
       footer={<>
-        {!creating && canEdit && <button className="btn btn-danger" onClick={del}><Trash2 size={15} /> Delete</button>}
+        {!creating && canEdit && <button className="btn btn-danger" onClick={del}><Trash2 size={15} />{' '}{tx("Delete")}</button>}
         {!creating && canEdit && !crewViewer && (
           <button className="btn btn-ghost" onClick={duplicate} disabled={busy}
-            data-tip="A fresh copy: brief, crew and platforms kept — dates and stage cleared">
+            data-tip={tx("A fresh copy: brief, crew and platforms kept — dates and stage cleared")}>
             <CopyPlus size={15} /> {t('task.duplicate')}
           </button>
         )}
         {!creating && (
-          <button className="btn btn-ghost btn-icon" onClick={copyLink} data-tip="Copy a link to this task" aria-label="Copy link">
+          <button className="btn btn-ghost btn-icon" onClick={copyLink} data-tip={tx("Copy a link to this task")} aria-label={tx("Copy link")}>
             <Link2 size={15} />
           </button>
         )}
@@ -922,9 +922,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           ) : (
             <span className="crew-peek">
               <Eye size={15} />
-              <select className="select" value="" data-tip="See this task the way the person doing it sees it"
+              <select className="select" value="" data-tip={tx("See this task the way the person doing it sees it")}
                 onChange={(e) => e.target.value && setAsCrew(e.target.value)}>
-                <option value="">See it as…</option>
+                <option value="">{tx("See it as…")}</option>
                 {crewHats.map((h) => (
                   <option key={h.key} value={h.key}>{h.label}{h.name ? ` · ${h.name.split(' ')[0]}` : ''}</option>
                 ))}
@@ -934,12 +934,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         )}
         {canRaise && !raising && openFlags.length === 0 && (
           <button className="btn btn-ghost" onClick={() => setRaising({ kind: 'at_risk', reason: '' })}
-            data-tip="Say early that this is in trouble">
+            data-tip={tx("Say early that this is in trouble")}>
             <Hand size={15} /> Raise a hand
           </button>
         )}
         <div style={{ flex: 1 }} />
-        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
         {!readOnly && (
           <button className="btn btn-primary" onClick={() => save()} disabled={busy || !form.title.trim()}>
             {busy ? t('task.saving') : creating ? t('task.create') : t('task.savechanges')}
@@ -974,13 +974,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           <div className="conflict-actions">
             {conflict.can_force ? (
               <>
-                <span className="stat-sub">You’re the admin — you can book it anyway.</span>
+                <span className="stat-sub">{tx("You’re the admin — you can book it anyway.")}</span>
                 <button type="button" className="btn btn-sm btn-danger" disabled={busy} onClick={() => save(true)}>
                   Schedule anyway
                 </button>
               </>
             ) : (
-              <span className="stat-sub">Pick another time — only an admin can double-book an operator.</span>
+              <span className="stat-sub">{tx("Pick another time — only an admin can double-book an operator.")}</span>
             )}
           </div>
         </div>
@@ -994,7 +994,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         value={form.title}
         onChange={(e) => setForm({ ...form, title: e.target.value })}
         onKeyDown={(e) => { if (e.key === 'Enter') save() }}
-        placeholder="Task title"
+        placeholder={tx("Task title")}
       />
 
       {/* Stage — the pipeline, in its own colours */}
@@ -1052,10 +1052,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 </div>
                 <textarea className="input" rows={2} autoFocus value={raising.reason}
                   onChange={(e) => setRaising({ ...raising, reason: e.target.value })}
-                  placeholder="What is in the way? The other shoot overran, the location fell through…" />
+                  placeholder={tx("What is in the way? The other shoot overran, the location fell through…")} />
                 <div className="pravki-actions">
-                  <span className="stat-sub">Said now, it can still be planned around.</span>
-                  <button type="button" className="btn btn-sm" onClick={() => setRaising(null)}>Cancel</button>
+                  <span className="stat-sub">{tx("Said now, it can still be planned around.")}</span>
+                  <button type="button" className="btn btn-sm" onClick={() => setRaising(null)}>{tx("Cancel")}</button>
                   <button type="button" className="btn btn-sm btn-primary" disabled={busy || !raising.reason.trim()} onClick={raiseHand}>
                     <Hand size={13} /> Say it now
                   </button>
@@ -1076,7 +1076,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {briefEditable ? (
               <textarea className="input" rows={2} value={form.reference_text}
                 onChange={(e) => setForm({ ...form, reference_text: e.target.value })}
-                placeholder="Style, mood, length, format… (optional)" />
+                placeholder={tx("Style, mood, length, format… (optional)")} />
             ) : form.reference_text ? <p className="ref-text">{form.reference_text}</p> : null}
 
             {briefEditable ? (
@@ -1085,10 +1085,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   <div key={i} className="ref-link-row">
                     <input className="input" value={url} placeholder="https://… reference video or post"
                       onChange={(e) => setRefLink(i, e.target.value)} />
-                    <button type="button" className="icon-btn" aria-label="Remove link" onClick={() => removeRefLink(i)}><X size={13} /></button>
+                    <button type="button" className="icon-btn" aria-label={tx("Remove link")} onClick={() => removeRefLink(i)}><X size={13} /></button>
                   </div>
                 ))}
-                <button type="button" className="extra-btn" onClick={addRefLink}><Plus size={13} /> Example link</button>
+                <button type="button" className="extra-btn" onClick={addRefLink}><Plus size={13} />{' '}{tx("Example link")}</button>
               </div>
             ) : form.reference_links.length > 0 ? (
               <div className="ref-links-view">
@@ -1103,11 +1103,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {(form.photo || form.photo_thumb) ? (
               <div className="photo-wrap ref-photo">
                 <img src={form.photo || form.photo_thumb} alt="reference" />
-                {briefEditable && <button className="photo-remove" data-tip="Remove the photo" data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label="Remove photo"><X size={14} /></button>}
+                {briefEditable && <button className="photo-remove" data-tip={tx("Remove the photo")} data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label={tx("Remove photo")}><X size={14} /></button>}
               </div>
             ) : briefEditable ? (
-              <label className="photo-pick ref-photo-pick" data-tip="Pick a file — or just press Ctrl+V with a screenshot on the clipboard">
-                <ImagePlus size={15} /> Reference photo <span className="crew-opt">or paste it — Ctrl+V</span>
+              <label className="photo-pick ref-photo-pick" data-tip={tx("Pick a file — or just press Ctrl+V with a screenshot on the clipboard")}>
+                <ImagePlus size={15} /> Reference photo <span className="crew-opt">{tx("or paste it — Ctrl+V")}</span>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPhoto} />
               </label>
             ) : null}
@@ -1128,16 +1128,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <div key={d.id} className={`doc-row dk-${docKind(d.name)}`}>
                 <FileType2 size={15} className="doc-ico" />
                 <button type="button" className="doc-name" onClick={() => openDoc(d)}
-                  data-tip="Download this document">{d.name}</button>
+                  data-tip={tx("Download this document")}>{d.name}</button>
                 <span className="doc-meta">
                   {docSize(d.size)}
                   {d.uploader && <span className="doc-who"> · {d.uploader.split(' ')[0]}</span>}
                 </span>
-                <button type="button" className="icon-btn doc-get" onClick={() => openDoc(d)} aria-label="Download"
-                  data-tip="Download"><Download size={14} /></button>
+                <button type="button" className="icon-btn doc-get" onClick={() => openDoc(d)} aria-label={tx("Download")}
+                  data-tip={tx("Download")}><Download size={14} /></button>
                 {(user.role === 'admin' || d.uploaded_by === user.id) && (
-                  <button type="button" className="icon-btn" onClick={() => removeDoc(d)} aria-label="Remove"
-                    data-tip="Remove this document" data-tip-left=""><X size={14} /></button>
+                  <button type="button" className="icon-btn" onClick={() => removeDoc(d)} aria-label={tx("Remove")}
+                    data-tip={tx("Remove this document")} data-tip-left=""><X size={14} /></button>
                 )}
               </div>
             ))}
@@ -1145,7 +1145,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <Paperclip size={14} /> {docBusy ? 'Uploading…' : 'Attach a document'}
               <input type="file" accept={DOC_ACCEPT} style={{ display: 'none' }} disabled={docBusy} onChange={pickDoc} />
             </label>
-            <span className="doc-hint">Word, PDF, Excel, PowerPoint or text — up to 4 MB each.</span>
+            <span className="doc-hint">{tx("Word, PDF, Excel, PowerPoint or text — up to 4 MB each.")}</span>
           </div>
         </div>
       )}
@@ -1154,9 +1154,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           the crew read it. Folds behind the extras row unless demanded. */}
       {fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
         <div className={'cm-row' + (badField === 'script' ? ' field-bad' : '')} data-field="script">
-          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}{fReq('script') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
+          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}{fReq('script') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
           <textarea className="input cm-script" rows={6} disabled={detailsLocked}
-            placeholder="The script / shot plan the crew works by…"
+            placeholder={tx("The script / shot plan the crew works by…")}
             value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
         </div>
       )}
@@ -1171,9 +1171,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           foot of the form — it is read at the same moment as the reference. */}
       {show.description && !crewViewer && (
         <div className={'cm-row' + (badField === 'description' ? ' field-bad' : '')} data-field="description">
-          <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> {t('task.description')}{fReq('description') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
+          <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> {t('task.description')}{fReq('description') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
           <textarea className="input" rows={2} disabled={detailsLocked} value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="References, links, notes…" />
+            onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={tx("References, links, notes…")} />
         </div>
       )}
 
@@ -1204,7 +1204,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                     <RotateCcw size={14} /> {t('task.requestchanges')}
                   </button>
                 )}
-                <span className="stat-sub">Waiting for review before it goes out.</span>
+                <span className="stat-sub">{tx("Waiting for review before it goes out.")}</span>
               </div>
             )}
             {pravki && (
@@ -1212,7 +1212,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <textarea className="input" rows={3} autoFocus value={pravki.note}
                   onPaste={pravkiPaste}
                   onChange={(e) => setPravki({ ...pravki, note: e.target.value })}
-                  placeholder="Write everything that needs changing, in one go… (Ctrl+V pastes the screenshot)" />
+                  placeholder={tx("Write everything that needs changing, in one go… (Ctrl+V pastes the screenshot)")} />
                 <div className="pravki-voice">
                   {canRecord() && <VoiceRecorder key={`p${clipNonce}`} onClip={(c) => setPravki((p) => (p ? { ...p, clip: c } : p))} disabled={busy} />}
                   <span className="stat-sub">Say it out loud if it is quicker — the note still goes in writing, so it can be skimmed later.</span>
@@ -1220,11 +1220,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 {pravki.photo ? (
                   <div className="photo-wrap pravki-shot">
                     <img src={pravki.photo_thumb || pravki.photo} alt="what needs changing" />
-                    <button className="photo-remove" aria-label="Remove screenshot" data-tip="Remove the screenshot" data-tip-left=""
+                    <button className="photo-remove" aria-label={tx("Remove screenshot")} data-tip={tx("Remove the screenshot")} data-tip-left=""
                       onClick={() => setPravki({ ...pravki, photo: null, photo_thumb: null })}><X size={14} /></button>
                   </div>
                 ) : (
-                  <span className="doc-hint"><ImagePlus size={12} /> Press Ctrl+V to paste the frame you mean.</span>
+                  <span className="doc-hint"><ImagePlus size={12} />{' '}{tx("Press Ctrl+V to paste the frame you mean.")}</span>
                 )}
                 {pravkiTargets.length > 1 && (
                   <div className="pravki-target">
@@ -1236,7 +1236,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   </div>
                 )}
                 <div className="pravki-actions">
-                  <button type="button" className="btn btn-sm" onClick={() => setPravki(null)}>Cancel</button>
+                  <button type="button" className="btn btn-sm" onClick={() => setPravki(null)}>{tx("Cancel")}</button>
                   <button type="button" className="btn btn-sm btn-primary" disabled={!pravki.note.trim() || busy} onClick={submitPravki}>
                     <RotateCcw size={13} /> {t('task.sendback')}
                   </button>
@@ -1299,7 +1299,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <div className="crew-ticks">
                 {myHats.operator && (
                   <button type="button" className={'do-tick' + ((alreadyShot || milestone === 'shot') ? ' on' : '')}
-                    disabled={alreadyShot} data-tip="Filming is done"
+                    disabled={alreadyShot} data-tip={tx("Filming is done")}
                     onClick={() => tickMilestone('shot')}>
                     <span className="do-box">{(alreadyShot || milestone === 'shot') && <Check size={12} strokeWidth={3.5} />}</span>
                     <Clapperboard size={13} /> {alreadyShot ? t('task.shot') : t('task.markshot')}
@@ -1307,7 +1307,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 )}
                 {myHats.editor && (
                   <button type="button" className={'do-tick' + ((alreadyReady || milestone === 'edited') ? ' on' : '')}
-                    disabled={alreadyReady} data-tip="The cut is ready"
+                    disabled={alreadyReady} data-tip={tx("The cut is ready")}
                     onClick={() => tickMilestone('edited')}>
                     <span className="do-box">{(alreadyReady || milestone === 'edited') && <Check size={12} strokeWidth={3.5} />}</span>
                     <Scissors size={13} /> {alreadyReady ? t('task.edited') : t('task.markedited')}
@@ -1315,7 +1315,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 )}
                 {myHats.designer && (
                   <button type="button" className={'do-tick' + ((alreadyReady || milestone === 'designed') ? ' on' : '')}
-                    disabled={alreadyReady} data-tip="The artwork is ready"
+                    disabled={alreadyReady} data-tip={tx("The artwork is ready")}
                     onClick={() => tickMilestone('designed')}>
                     <span className="do-box">{(alreadyReady || milestone === 'designed') && <Check size={12} strokeWidth={3.5} />}</span>
                     <Palette size={13} /> {alreadyReady ? t('task.designed') : t('task.markdesigned')}
@@ -1353,7 +1353,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                         the folder is the same forty times a week and the file
                         is the part people leave out. */}
                     {sharedFolder && !/^https?:\/\//i.test(form[f.col] || '') ? (
-                      <input className="input" placeholder="which file? e.g. 1-3, or “reel 14”"
+                      <input className="input" placeholder={tx("which file? e.g. 1-3, or “reel 14”")}
                         disabled={!editable}
                         value={form[f.file] || ''}
                         onChange={(e) => setForm({ ...form, [f.file]: e.target.value })} />
@@ -1364,7 +1364,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                         onChange={(e) => setForm({ ...form, [f.col]: e.target.value })} />
                     )}
                     {deliveryHref(form[f.col]) && (
-                      <a className="btn btn-sm" href={deliveryHref(form[f.col])} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open</a>
+                      <a className="btn btn-sm" href={deliveryHref(form[f.col])} target="_blank" rel="noreferrer"><ExternalLink size={14} />{' '}{tx("Open")}</a>
                     )}
                   </span>
                 </label>
@@ -1429,8 +1429,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {fOn('format') && (
               <label className={'brief-field' + (badField === 'format' ? ' field-bad' : '')} data-field="format">
                 <span className="brief-label"><Layers size={12} /> Format {fReq('format')
-                  ? <b className="req-star" data-tip="The admin made this required">*</b>
-                  : <span className="crew-opt">optional</span>}</span>
+                  ? <b className="req-star" data-tip={tx("The admin made this required")}>*</b>
+                  : <span className="crew-opt">{tx("optional")}</span>}</span>
                 <select className="select" disabled={detailsLocked} value={form.format}
                   onChange={(e) => setForm({ ...form, format: e.target.value })}>
                   <option value="">— pick a format —</option>
@@ -1442,8 +1442,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {fOn('rubrika') && (
               <label className={'brief-field' + (badField === 'rubrika' ? ' field-bad' : '')} data-field="rubrika">
                 <span className="brief-label"><Hash size={12} /> Rubrika {fReq('rubrika')
-                  ? <b className="req-star" data-tip="The admin made this required">*</b>
-                  : <span className="crew-opt">optional</span>}</span>
+                  ? <b className="req-star" data-tip={tx("The admin made this required")}>*</b>
+                  : <span className="crew-opt">{tx("optional")}</span>}</span>
                 {(fieldRules.rubrika.options || []).length > 0 ? (
                   <select className="select" disabled={detailsLocked} value={form.rubrika}
                     onChange={(e) => setForm({ ...form, rubrika: e.target.value })}>
@@ -1452,7 +1452,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                       .map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 ) : (
-                  <input className="input" disabled={detailsLocked} placeholder="e.g. SU events"
+                  <input className="input" disabled={detailsLocked} placeholder={tx("e.g. SU events")}
                     value={form.rubrika} onChange={(e) => setForm({ ...form, rubrika: e.target.value })} />
                 )}
               </label>
@@ -1473,16 +1473,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           ))}
           {user.role === 'admin' && !detailsLocked && (
             newDept === null ? (
-              <button type="button" className="checkbox-chip chip-sm chip-add" data-tip="Create a new department right here"
+              <button type="button" className="checkbox-chip chip-sm chip-add" data-tip={tx("Create a new department right here")}
                 onClick={() => setNewDept('')}>
                 <Plus size={12} /> New
               </button>
             ) : (
               <span className="chip-add-form">
-                <input className="input pc-mini" autoFocus placeholder="Department name…" value={newDept}
+                <input className="input pc-mini" autoFocus placeholder={tx("Department name…")} value={newDept}
                   onChange={(e) => setNewDept(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); createDept() } if (e.key === 'Escape') setNewDept(null) }} />
-                <button type="button" className="btn btn-sm" onClick={createDept}>Add</button>
+                <button type="button" className="btn btn-sm" onClick={createDept}>{tx("Add")}</button>
               </span>
             )
           )}
@@ -1495,13 +1495,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         <div className="cm-row">
           <span className="cm-key"><UserRound size={13} style={{ verticalAlign: -2 }} /> {t('task.assignees')}</span>
           <div className="assignee-multi">
-            {form.assignee_ids.length === 0 && <span className="chip chip-muted">Unassigned — whole channel</span>}
+            {form.assignee_ids.length === 0 && <span className="chip chip-muted">{tx("Unassigned — whole channel")}</span>}
             {form.assignee_ids.map((id) => {
               const u = team.find((x) => x.id === id)
               return (
                 <span key={id} className="chip assignee-chip">
                   {u?.name || '…'}
-                  <button type="button" className="chip-x" aria-label="Remove"
+                  <button type="button" className="chip-x" aria-label={tx("Remove")}
                     onClick={() => setForm({ ...form, assignee_ids: form.assignee_ids.filter((x) => x !== id) })}>×</button>
                 </span>
               )
@@ -1509,7 +1509,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <select
               className="select assignee-add"
               value=""
-              data-tip="Add another person to this task"
+              data-tip={tx("Add another person to this task")}
               onChange={(e) => {
                 const id = Number(e.target.value)
                 if (id && !form.assignee_ids.includes(id)) setForm({ ...form, assignee_ids: [...form.assignee_ids, id] })
@@ -1569,8 +1569,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <span className="crew-label">
                   {f.label}{' '}
                   {mustHave
-                    ? <span className="crew-req">required</span>
-                    : <span className="crew-opt">optional</span>}
+                    ? <span className="crew-req">{tx("required")}</span>
+                    : <span className="crew-opt">{tx("optional")}</span>}
                 </span>
                 <select className="select" disabled={detailsLocked} value={form[f.key] ?? ''}
                   data-tip={mustHave ? `${f.label} — this stage can’t go on without one` : f.tip}
@@ -1611,7 +1611,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               </button>
             )
           })}
-          {form.reviewer_ids.length === 0 && <span className="cm-hint">Nobody signs this off yet.</span>}
+          {form.reviewer_ids.length === 0 && <span className="cm-hint">{tx("Nobody signs this off yet.")}</span>}
         </div>
       </div>
 
@@ -1655,10 +1655,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           style={{ maxWidth: 280 }}
           disabled={detailsLocked}
           value={form.campaign_id ?? ''}
-          data-tip="Tags this card to a campaign — its board fills itself"
+          data-tip={tx("Tags this card to a campaign — its board fills itself")}
           onChange={(e) => setForm({ ...form, campaign_id: e.target.value === '' ? null : Number(e.target.value) })}
         >
-          <option value="">No campaign</option>
+          <option value="">{tx("No campaign")}</option>
           {campaigns.map((cp) => <option key={cp.id} value={cp.id}>{cp.name}</option>)}
         </select>
       </div>
@@ -1698,10 +1698,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           </div>
           <textarea className="input" rows={2} autoFocus value={asking.reason}
             onChange={(e) => setAsking({ ...asking, reason: e.target.value })}
-            placeholder="What happened? The shoot was rained off, the location fell through…" />
+            placeholder={tx("What happened? The shoot was rained off, the location fell through…")} />
           <div className="ask-actions">
-            <span className="stat-sub">They see it in the bell and in Telegram. The day does not move until they say yes.</span>
-            <button type="button" className="btn btn-sm" onClick={() => setAsking(null)}>Cancel</button>
+            <span className="stat-sub">{tx("They see it in the bell and in Telegram. The day does not move until they say yes.")}</span>
+            <button type="button" className="btn btn-sm" onClick={() => setAsking(null)}>{tx("Cancel")}</button>
             <button type="button" className="btn btn-sm btn-primary" disabled={busy || !asking.reason.trim()} onClick={sendAsk}>
               <Send size={13} /> Ask
             </button>
@@ -1733,7 +1733,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 )}
                 {r.state === 'open' && isAdmin && (
                   <span className="ask-decide">
-                    <button type="button" className="btn btn-sm" disabled={busy} onClick={() => decide(r.id, false)}>Keep the day</button>
+                    <button type="button" className="btn btn-sm" disabled={busy} onClick={() => decide(r.id, false)}>{tx("Keep the day")}</button>
                     <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => decide(r.id, true)}>
                       <Check size={13} /> Move it
                     </button>
@@ -1761,12 +1761,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {!detailsLocked && (!show.checklist || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !show.docs && docs.length === 0) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
         <div className="extra-btns">
           {!creating && !show.docs && docs.length === 0 && (
-            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, docs: true })}><Paperclip size={14} /> Documents</button>
+            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, docs: true })}><Paperclip size={14} />{' '}{tx("Documents")}</button>
           )}
-          {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, script: true })}><FileText size={14} /> Script</button>}
-          {!show.checklist && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, checklist: true })}><CheckSquare size={14} /> Checklist</button>}
+          {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, script: true })}><FileText size={14} />{' '}{tx("Script")}</button>}
+          {!show.checklist && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, checklist: true })}><CheckSquare size={14} />{' '}{tx("Checklist")}</button>}
           {!creating && !crewViewer && canEdit && !show.delivery && (
-            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, delivery: true })}><Link2 size={14} /> Delivery links</button>
+            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, delivery: true })}><Link2 size={14} />{' '}{tx("Delivery links")}</button>
           )}
         </div>
       )}
@@ -1781,14 +1781,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   {c.done && <Check size={12} strokeWidth={3} />}
                 </button>
                 <span className={c.done ? 'done-txt' : ''} style={{ flex: 1 }}>{c.text}</span>
-                {!checklistLocked && <button className="icon-btn" style={{ padding: 2 }} data-tip="Remove this item" data-tip-left="" onClick={() => removeCheck(i)} aria-label="Remove"><X size={13} /></button>}
+                {!checklistLocked && <button className="icon-btn" style={{ padding: 2 }} data-tip={tx("Remove this item")} data-tip-left="" onClick={() => removeCheck(i)} aria-label={tx("Remove")}><X size={13} /></button>}
               </div>
             ))}
           </div>
           {!checklistLocked && (
             <div className="add-inline" style={{ padding: '6px 0 0' }}>
               <input className="input" value={subText} onChange={(e) => setSubText(e.target.value)}
-                placeholder="Add an item, press Enter…" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCheck() } }} />
+                placeholder={tx("Add an item, press Enter…")} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCheck() } }} />
               <button className="btn btn-sm" onClick={addCheck}><Plus size={14} /></button>
             </div>
           )}
@@ -1806,19 +1806,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <div key={c.id} className="cmt-row">
                 <b className="cmt-who">{(c.author || '?').split(' ')[0]}</b>
                 <span className="cmt-text">
-                  {c.text ? withMentions(c.text) : <span className="muted">voice note</span>}
+                  {c.text ? withMentions(c.text) : <span className="muted">{tx("voice note")}</span>}
                   {c.voice_id ? <VoicePlayer id={c.voice_id} secs={c.voice_secs} mine={c.user_id === user.id} /> : null}
                 </span>
                 <span className="cmt-when">{cmtWhen(c.created_at)}</span>
               </div>
             ))}
-            {comments.length === 0 && <div className="tt-none" style={{ padding: '0 0 6px' }}>Nothing said yet — better here than lost in Telegram.</div>}
+            {comments.length === 0 && <div className="tt-none" style={{ padding: '0 0 6px' }}>{tx("Nothing said yet — better here than lost in Telegram.")}</div>}
             <div className="add-inline cmt-input">
-              <input className="input" value={cmtDraft} placeholder="Say it where the task lives… @name reaches them"
+              <input className="input" value={cmtDraft} placeholder={tx("Say it where the task lives… @name reaches them")}
                 onChange={(e) => setCmtDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); sendComment() } }} />
               {canRecord() && <VoiceRecorder key={clipNonce} onClip={setCmtClip} disabled={cmtBusy} />}
-              <button className="btn btn-sm" onClick={sendComment} disabled={cmtBusy || (!cmtDraft.trim() && !cmtClip)} aria-label="Send comment">
+              <button className="btn btn-sm" onClick={sendComment} disabled={cmtBusy || (!cmtDraft.trim() && !cmtClip)} aria-label={tx("Send comment")}>
                 <Send size={14} />
               </button>
             </div>

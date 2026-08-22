@@ -12,6 +12,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { rewardIfFinished } from '../lib/reward.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Post Production — the admin's view of everyone who MAKES the content, in
 // two sub-pages:
@@ -108,7 +109,7 @@ function ScheduleModal({ member, onClose, onSaved }) {
       const u = await api.patch(`/users/${member.id}`, {
         work_start: start || null, work_end: end || null, work_days: days.length ? days : null,
       })
-      toast('Schedule saved — synced')
+      toast(tx('Schedule saved — synced'))
       onSaved(u)
       onClose()
     } catch (e) { setErr(e.message) }
@@ -117,8 +118,8 @@ function ScheduleModal({ member, onClose, onSaved }) {
     <Modal title={`${member.name} — working schedule`} onClose={onClose}
       footer={<>
         <div style={{ flex: 1 }} />
-        <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={save}><Check size={15} /> Save schedule</button>
+        <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
+        <button className="btn btn-primary" onClick={save}><Check size={15} />{' '}{tx("Save schedule")}</button>
       </>}>
       {err && <div className="form-error">{err}</div>}
       <div className="stat-sub" style={{ marginBottom: 10 }}>
@@ -285,7 +286,7 @@ export default function Crew() {
       toast(drag.kind === 'shoot' ? 'Shoot rebooked — synced' : drag.kind === 'design' ? 'Design deadline moved — synced' : 'Edit deadline moved — synced', 'ok', {
         label: 'Undo',
         onClick: () => updateContent(t, before)
-          .then(() => toast('Put back — synced'))
+          .then(() => toast(tx('Put back — synced')))
           .catch((e) => alert(e.message)),
       })
     } catch (e) { alert(e.message) }
@@ -367,7 +368,7 @@ export default function Crew() {
         )}
         {(tab === 'video' ? crewAll : designersAll).length > 0 && (
           <div className="pill-group">
-            <button className={'pill' + (who === 0 ? ' active' : '')} onClick={() => setWho(0)}>Everyone</button>
+            <button className={'pill' + (who === 0 ? ' active' : '')} onClick={() => setWho(0)}>{tx("Everyone")}</button>
             {(tab === 'video' ? crewAll : designersAll).map((u) => (
               <button key={u.id} className={'pill pill-person' + (who === u.id ? ' active' : '')}
                 onClick={() => setWho(who === u.id ? 0 : u.id)}>
@@ -391,7 +392,7 @@ export default function Crew() {
               </div>
               {w.overdue.length > 0
                 ? <span className="load-badge load-hot">{w.overdue.length} overdue</span>
-                : <span className="load-badge load-free">On schedule</span>}
+                : <span className="load-badge load-free">{tx("On schedule")}</span>}
             </div>
             <div className="crew-nums">
               <span className="crew-num"><Palette size={13} /> {w.open.length} in work</span>
@@ -412,7 +413,7 @@ export default function Crew() {
                       <span className="ov-title">{t.title}</span>
                       <span className="ov-chips">
                         {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
-                        {late && <span className="chip chip-danger">late</span>}
+                        {late && <span className="chip chip-danger">{tx("late")}</span>}
                       </span>
                     </button>
                   )
@@ -423,7 +424,7 @@ export default function Crew() {
         )
       })}
       {tab === 'design' && designers.length === 0 && (
-        <div className="card card-pad empty">Nobody to show.</div>
+        <div className="card card-pad empty">{tx("Nobody to show.")}</div>
       )}
 
       {/* ---- The design week: designers × days, every card draggable ----
@@ -440,7 +441,7 @@ export default function Crew() {
           <>
             {lateDesigns.length > 0 && (
               <div className="cal-tray crew-late-tray">
-                <span className="cal-tray-label"><AlertTriangle size={13} /> Late — drag onto a day to rebook</span>
+                <span className="cal-tray-label"><AlertTriangle size={13} />{' '}{tx("Late — drag onto a day to rebook")}</span>
                 <div className="cal-tray-items">
                   {lateDesigns.map((t) => (
                     <div key={`ld${t.id}`} className="cal-tray-chip" draggable
@@ -488,12 +489,12 @@ export default function Crew() {
                               onDragOver={(e) => overCell(e, cellKey)}
                               onDragLeave={() => { if (dropCell === cellKey) setDropCell(null) }}
                               onDrop={(e) => { e.preventDefault(); dropTask(u.id, iso) }}>
-                              {!working && dues.length === 0 && <span className="tt-off-txt">off</span>}
+                              {!working && dues.length === 0 && <span className="tt-off-txt">{tx("off")}</span>}
                               {dues.map((t) => (
                                 <button key={`d${t.id}`} className="tt-shoot tt-design" draggable
                                   onDragStart={(e) => startDrag(e, t, 'design')} onDragEnd={endDrag}
                                   onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)} title={t.title}>
-                                  <b><Palette size={11} /> Design due</b>
+                                  <b><Palette size={11} />{' '}{tx("Design due")}</b>
                                   <span>{t.title}</span>
                                   <i className="tt-ch">{t.channels.map((c) => byKey[c]?.label || c).join(' · ')}</i>
                                 </button>
@@ -524,12 +525,12 @@ export default function Crew() {
                 <b>{u.name}</b>
                 <span className="stat-sub">
                   {[u.position || crewWord(u) || 'Member', sched].filter(Boolean).join(' · ')}
-                  {!sched && <button className="lnk" onClick={() => setSchedFor(u)}>set the schedule</button>}
+                  {!sched && <button className="lnk" onClick={() => setSchedFor(u)}>{tx("set the schedule")}</button>}
                 </span>
               </div>
               <span className={`load-badge ${lv.cls}`}>{lv.label}</span>
               {user.role === 'admin' && (
-                <button className="icon-btn" data-tip="Working schedule" data-tip-left="" aria-label="Edit schedule"
+                <button className="icon-btn" data-tip={tx("Working schedule")} data-tip-left="" aria-label={tx("Edit schedule")}
                   onClick={() => setSchedFor(u)}><Pencil size={14} /></button>
               )}
             </div>
@@ -570,7 +571,7 @@ export default function Crew() {
           <>
             {(lateShoots.length > 0 || lateCuts.length > 0) && (
               <div className="cal-tray crew-late-tray">
-                <span className="cal-tray-label"><AlertTriangle size={13} /> Late — drag onto a day to rebook</span>
+                <span className="cal-tray-label"><AlertTriangle size={13} />{' '}{tx("Late — drag onto a day to rebook")}</span>
                 <div className="cal-tray-items">
                   {lateShoots.map((t) => (
                     <div key={`ls${t.id}`} className="cal-tray-chip" draggable
@@ -616,7 +617,7 @@ export default function Crew() {
                           <small>{u.work_start && u.work_end
                             ? `${u.work_start}–${u.work_end}`
                             : user.role === 'admin'
-                              ? <button className="lnk" onClick={() => setSchedFor(u)}>set hours</button>
+                              ? <button className="lnk" onClick={() => setSchedFor(u)}>{tx("set hours")}</button>
                               : 'no hours set'}</small>
                         </span>
                       </span>
@@ -630,7 +631,7 @@ export default function Crew() {
                           onDragOver={(e) => overCell(e, cellKey)}
                           onDragLeave={() => { if (dropCell === cellKey) setDropCell(null) }}
                           onDrop={(e) => { e.preventDefault(); dropTask(u.id, d.iso) }}>
-                          {!d.working && d.shoots.length === 0 && cuts.length === 0 && <span className="tt-off-txt">off</span>}
+                          {!d.working && d.shoots.length === 0 && cuts.length === 0 && <span className="tt-off-txt">{tx("off")}</span>}
                           {d.shoots.map((s) => (
                             <button key={`s${s.id}`} className="tt-shoot" draggable
                               onDragStart={(e) => startDrag(e, s, 'shoot')} onDragEnd={endDrag}
@@ -644,7 +645,7 @@ export default function Crew() {
                             <button key={`e${t.id}`} className="tt-shoot tt-edit" draggable
                               onDragStart={(e) => startDrag(e, t, 'edit')} onDragEnd={endDrag}
                               onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)} title={t.title}>
-                              <b><Scissors size={11} /> Edit due</b>
+                              <b><Scissors size={11} />{' '}{tx("Edit due")}</b>
                               <span>{t.title}</span>
                               <i className="tt-ch">{t.channels.map((c) => byKey[c]?.label || c).join(' · ')}</i>
                             </button>
@@ -657,7 +658,7 @@ export default function Crew() {
               })}
             </tbody>
           </table>
-          {crew.length === 0 && <div className="empty">Nobody to show.</div>}
+          {crew.length === 0 && <div className="empty">{tx("Nobody to show.")}</div>}
         </div>
           </>
         )
@@ -697,7 +698,7 @@ export default function Crew() {
                   <button key={`c${t.id}`} className="ov-row" draggable
                     onDragStart={(e) => startDrag(e, t, 'edit')} onDragEnd={endDrag}
                     onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)}>
-                    <span className="crew-list-time crew-list-edit"><Scissors size={13} /> Edit due</span>
+                    <span className="crew-list-time crew-list-edit"><Scissors size={13} />{' '}{tx("Edit due")}</span>
                     <span className="ov-title">{t.title}</span>
                     <span className="ov-chips">
                       <span className="chip chip-muted">{u.name.split(' ')[0]}</span>
@@ -710,7 +711,7 @@ export default function Crew() {
           })}
           {crew.every((u) => loads.get(u.id).days.every((d) => d.shoots.length === 0)) &&
             crew.every((u) => loads.get(u.id).edits.every((t) => !week.includes(t.release_date))) && (
-            <div className="empty">Nothing booked this week.</div>
+            <div className="empty">{tx("Nothing booked this week.")}</div>
           )}
         </div>
       )}

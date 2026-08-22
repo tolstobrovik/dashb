@@ -24,6 +24,7 @@ import Avatar from '../components/Avatar.jsx'
 import { CampaignRow } from '../components/ProjectBits.jsx'
 import ProgramsGantt, { PLATFORMS } from '../components/ProgramsGantt.jsx'
 import { rewardIfFinished } from '../lib/reward.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // The Target team's lens: what platform's work to look at. Tasks and
 // campaigns classify themselves by their co-channels (a task also tagged
@@ -77,7 +78,7 @@ function parseDash(raw) {
 /* ---- The optional boards (module-level so poll ticks don't remount them) ---- */
 
 function DeptCampaigns({ camps, byKey, navigate }) {
-  if (camps.length === 0) return <div className="card card-pad empty">No campaigns touch this channel yet.</div>
+  if (camps.length === 0) return <div className="card card-pad empty">{tx("No campaigns touch this channel yet.")}</div>
   return (
     <div className="pc-camp-list">
       {camps.map((c) => <CampaignRow key={c.id} c={c} byKey={byKey} onOpen={(x) => navigate(`/campaigns/${x.id}`)} />)}
@@ -377,7 +378,7 @@ export default function Department() {
       const c = await api.post(`/content/${id}/undo`)
       setContent((prev) => prev.map((x) => (x.id === c.id ? c : x)).filter((x) => x.channels.includes(key)))
       refreshTrackers()
-      toast('Move taken back')
+      toast(tx('Move taken back'))
     } catch (e) { toast(e.message, 'err') }
   }
   const movedToast = (saved, statusId) =>
@@ -423,7 +424,7 @@ export default function Department() {
   const quickAdd = async (title, statusId) => {
     const c = await api.post('/content', { title, status_id: statusId, channels: [key] })
     setContent((prev) => [c, ...prev])
-    toast('Added — synced')
+    toast(tx('Added — synced'))
   }
 
   // ---- customizable dashboard + channel settings ----
@@ -478,12 +479,12 @@ export default function Department() {
   }
 
   if (channels.length === 0 || loading) return <div className="app-loading"><span className="spinner" /></div>
-  if (!dept) return <div className="empty">Unknown channel.</div>
+  if (!dept) return <div className="empty">{tx("Unknown channel.")}</div>
   if (!hasAccess)
     return (
       <div className="card card-pad empty">
         <Lock size={30} />
-        <div style={{ fontWeight: 600, color: 'var(--ink-2)' }}>You don&apos;t have access to this channel.</div>
+        <div style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{tx("You don't have access to this channel.")}</div>
       </div>
     )
 
@@ -509,11 +510,11 @@ export default function Department() {
       <div className={'fs-wrap' + (fsProg ? ' on' : '')}>
         <div className="section-head">
           <Rocket size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Programs</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>every launch on the timeline</span>
+          <h2>{tx("Programs")}</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("every launch on the timeline")}</span>
           <span className="spacer" />
           <button className="icon-btn" onClick={() => setFsProg(!fsProg)}
-            data-tip={fsProg ? 'Exit full screen (Esc)' : 'Full screen — the timeline fills the display'} data-tip-left="" aria-label="Full screen">
+            data-tip={fsProg ? 'Exit full screen (Esc)' : 'Full screen — the timeline fills the display'} data-tip-left="" aria-label={tx("Full screen")}>
             {fsProg ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
         </div>
@@ -525,7 +526,7 @@ export default function Department() {
       <>
         <div className="section-head">
           <LineChart size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Growth</h2>
+          <h2>{tx("Growth")}</h2>
         </div>
         <CompareCard trackers={trackers} history={history} />
       </>
@@ -534,7 +535,7 @@ export default function Department() {
       <>
         <div className="section-head">
           <Megaphone size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Campaigns</h2>
+          <h2>{tx("Campaigns")}</h2>
           <span className="count">· {deptCampaigns.length}</span>
         </div>
         <DeptCampaigns camps={deptCampaigns} byKey={byKey} navigate={navigate} />
@@ -544,14 +545,14 @@ export default function Department() {
       <>
         <div className="section-head">
           <Send size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Releasing</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>the next 7 days</span>
+          <h2>{tx("Releasing")}</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>
         </div>
         <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="release" />
         <div className="section-head" style={{ marginTop: 14 }}>
           <Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Shooting</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>the next 7 days</span>
+          <h2>{tx("Shooting")}</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>
         </div>
         <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="recording" />
       </>
@@ -560,7 +561,7 @@ export default function Department() {
       <>
         <div className="section-head">
           <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Upcoming</h2>
+          <h2>{tx("Upcoming")}</h2>
           <span className="count">· {upcomingRows.length}</span>
         </div>
         <DeptTaskList rows={upcomingRows} empty="Nothing dated yet." onOpen={setOpenItem} />
@@ -570,7 +571,7 @@ export default function Department() {
       <>
         <div className="section-head">
           <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
-          <h2>Done</h2>
+          <h2>{tx("Done")}</h2>
           <span className="count">· {doneRows.length}</span>
         </div>
         <DeptTaskList rows={doneRows} empty="Nothing completed yet." onOpen={setOpenItem} done />
@@ -593,12 +594,12 @@ export default function Department() {
                   <span className="hm-label"><Pin size={13} /> {t.label}</span>
                   <span className="spacer" />
                   {(editValues || manageMetrics) && (
-                    <button className="icon-btn hm-unpin" data-tip={manageMetrics ? 'Edit this metric' : 'Update the value'} onClick={() => openMetric(t)} aria-label="Edit">
+                    <button className="icon-btn hm-unpin" data-tip={manageMetrics ? 'Edit this metric' : 'Update the value'} onClick={() => openMetric(t)} aria-label={tx("Edit")}>
                       <Pencil size={15} />
                     </button>
                   )}
                   {manageLayout && (
-                    <button className="icon-btn hm-unpin" data-tip="Unpin from the headline row" data-tip-left="" onClick={() => setPin(t, false)} aria-label="Unpin">
+                    <button className="icon-btn hm-unpin" data-tip={tx("Unpin from the headline row")} data-tip-left="" onClick={() => setPin(t, false)} aria-label={tx("Unpin")}>
                       <PinOff size={15} />
                     </button>
                   )}
@@ -613,11 +614,11 @@ export default function Department() {
                 <div className="hm-foot">
                   <span className={`hm-pct${pct >= 100 ? ' done' : ''}`}>{pct}% of {t.content_type ? 'plan' : 'target'}</span>
                   {t.content_type ? (
-                    <span className="hm-auto" data-tip="Counts itself: creating a task raises the plan, completing one fills it">auto · from tasks</span>
+                    <span className="hm-auto" data-tip={tx("Counts itself: creating a task raises the plan, completing one fills it")}>{tx("auto · from tasks")}</span>
                   ) : editValues && (
                     <div className="meter-adjust">
-                      <button className="step-btn" onClick={() => step(t, -1)} disabled={t.current <= 0} data-tip="Decrease by 1" aria-label="Decrease"><Minus size={15} /></button>
-                      <button className="step-btn" onClick={() => step(t, 1)} data-tip="Increase by 1" aria-label="Increase"><Plus size={15} /></button>
+                      <button className="step-btn" onClick={() => step(t, -1)} disabled={t.current <= 0} data-tip={tx("Decrease by 1")} aria-label={tx("Decrease")}><Minus size={15} /></button>
+                      <button className="step-btn" onClick={() => step(t, 1)} data-tip={tx("Increase by 1")} aria-label={tx("Increase")}><Plus size={15} /></button>
                     </div>
                   )}
                 </div>
@@ -626,7 +627,7 @@ export default function Department() {
           })}
           {/* Right under the headline number — the way to add the next one */}
           {manageMetrics && (
-            <button className="add-metric-tile" onClick={() => openMetric(null)} data-tip="Create another metric for this channel">
+            <button className="add-metric-tile" onClick={() => openMetric(null)} data-tip={tx("Create another metric for this channel")}>
               <Plus size={16} /> Add another metric
             </button>
           )}
@@ -636,10 +637,10 @@ export default function Department() {
       {/* Metrics grid */}
       <div className="section-head">
         <Gauge size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Metrics</h2>
-        <span className="icon-btn" data-tip="Plans count completed tasks · other numbers use +/−" aria-label="How metrics fill" style={{ cursor: 'help' }}><AlertCircle size={13} /></span>
+        <h2>{tx("Metrics")}</h2>
+        <span className="icon-btn" data-tip={tx("Plans count completed tasks · other numbers use +/−")} aria-label={tx("How metrics fill")} style={{ cursor: 'help' }}><AlertCircle size={13} /></span>
         <span className="spacer" />
-        {manageMetrics && <button className="btn btn-primary btn-sm" onClick={() => openMetric(null)}><Plus size={15} /> Add metric</button>}
+        {manageMetrics && <button className="btn btn-primary btn-sm" onClick={() => openMetric(null)}><Plus size={15} />{' '}{tx("Add metric")}</button>}
       </div>
       {gridMetrics.length === 0 ? (
         <div className="card card-pad empty">{pinned.length > 0 ? 'All metrics are pinned above.' : 'No metrics yet.'}</div>
@@ -656,13 +657,13 @@ export default function Department() {
             >
               {(manageLayout || manageMetrics || editValues) && (
                 <div className="metric-top">
-                  {manageLayout && <span className="drag-handle" data-tip="Drag to reorder"><GripVertical size={15} /></span>}
+                  {manageLayout && <span className="drag-handle" data-tip={tx("Drag to reorder")}><GripVertical size={15} /></span>}
                   <span className="spacer" />
                   {manageLayout && (
-                    <button className="icon-btn" data-tip="Pin as a headline metric" onClick={() => setPin(t, true)} aria-label="Pin"><Pin size={14} /></button>
+                    <button className="icon-btn" data-tip={tx("Pin as a headline metric")} onClick={() => setPin(t, true)} aria-label={tx("Pin")}><Pin size={14} /></button>
                   )}
                   {(editValues || manageMetrics) && (
-                    <button className="icon-btn" data-tip={manageMetrics ? 'Edit this metric' : 'Update the value'} data-tip-left="" onClick={() => openMetric(t)} aria-label="Edit"><Pencil size={14} /></button>
+                    <button className="icon-btn" data-tip={manageMetrics ? 'Edit this metric' : 'Update the value'} data-tip-left="" onClick={() => openMetric(t)} aria-label={tx("Edit")}><Pencil size={14} /></button>
                   )}
                 </div>
               )}
@@ -680,7 +681,7 @@ export default function Department() {
     <div className={'fs-wrap' + (fs ? ' on' : '')}>
       <div className="section-head">
         <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Content</h2>
+        <h2>{tx("Content")}</h2>
         <span className="spacer" />
         <div className="pill-group">
           {VIEWS.map((v) => {
@@ -694,7 +695,7 @@ export default function Department() {
           })}
         </div>
         <button className="icon-btn" onClick={() => setFs(!fs)}
-          data-tip={fs ? 'Exit full screen (Esc)' : 'Full screen — board & calendars fill the display'} aria-label="Full screen">
+          data-tip={fs ? 'Exit full screen (Esc)' : 'Full screen — board & calendars fill the display'} aria-label={tx("Full screen")}>
           {fs ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
         {manageContent && (
@@ -757,18 +758,18 @@ export default function Department() {
             <span className="dept-head-label">Head of {dept.label}</span>
           </>
         ) : isAdmin ? (
-          <button className="no-owner-badge no-owner-btn" data-tip="Nobody owns this channel — click to assign a head"
+          <button className="no-owner-badge no-owner-btn" data-tip={tx("Nobody owns this channel — click to assign a head")}
             onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }}>
             no owner — assign one
           </button>
         ) : (
-          <span className="no-owner-badge">no owner yet</span>
+          <span className="no-owner-badge">{tx("no owner yet")}</span>
         )}
         <span className="spacer" />
         {hasLens && (
           <div className="pill-group" style={{ marginRight: 4 }}>
             <button className={'pill' + (lens === 'all' ? ' active' : '')} onClick={() => setLens('all')}
-              data-tip="Everything on this channel">All</button>
+              data-tip={tx("Everything on this channel")}>{tx("All")}</button>
             {PLATFORMS.filter((pl) => pl.key !== 'both').map((pl) => (
               <button key={pl.key} className={'pill' + (lens === pl.key ? ' active' : '')} onClick={() => setLens(pl.key)}
                 data-tip={`Only ${pl.label} work — programs, tasks and campaigns`}>
@@ -778,13 +779,13 @@ export default function Department() {
           </div>
         )}
         {canCustomize && (
-          <button className="btn btn-sm" onClick={openDash} data-tip="Choose which sections this page shows, and their order">
+          <button className="btn btn-sm" onClick={openDash} data-tip={tx("Choose which sections this page shows, and their order")}>
             <SlidersHorizontal size={14} /> Customize
           </button>
         )}
         {isAdmin && (
-          <button className="icon-btn" data-tip="Channel settings — rename, head, delete" data-tip-left=""
-            onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }} aria-label="Channel settings">
+          <button className="icon-btn" data-tip={tx("Channel settings — rename, head, delete")} data-tip-left=""
+            onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }} aria-label={tx("Channel settings")}>
             <Settings size={16} />
           </button>
         )}
@@ -796,11 +797,11 @@ export default function Department() {
       {/* Customize modal — toggle sections, reorder with arrows */}
       {dash && (
         <Modal
-          title="Customize this dashboard"
+          title={tx("Customize this dashboard")}
           onClose={() => setDash(null)}
           footer={<>
-            <button className="btn" onClick={() => setDash(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={saveDash}>Save layout</button>
+            <button className="btn" onClick={() => setDash(null)}>{tx("Cancel")}</button>
+            <button className="btn btn-primary" onClick={saveDash}>{tx("Save layout")}</button>
           </>}
         >
           {dashErr && <div className="form-error"><AlertCircle size={16} /> {dashErr}</div>}
@@ -820,8 +821,8 @@ export default function Department() {
                   </span>
                 </label>
                 <span className="spacer" />
-                <button className="icon-btn" disabled={i === 0} onClick={() => moveDashRow(i, -1)} data-tip="Move up" aria-label="Move up"><ArrowUp size={14} /></button>
-                <button className="icon-btn" disabled={i === dash.length - 1} onClick={() => moveDashRow(i, 1)} data-tip="Move down" data-tip-left="" aria-label="Move down"><ArrowDown size={14} /></button>
+                <button className="icon-btn" disabled={i === 0} onClick={() => moveDashRow(i, -1)} data-tip={tx("Move up")} aria-label={tx("Move up")}><ArrowUp size={14} /></button>
+                <button className="icon-btn" disabled={i === dash.length - 1} onClick={() => moveDashRow(i, 1)} data-tip={tx("Move down")} data-tip-left="" aria-label={tx("Move down")}><ArrowDown size={14} /></button>
               </div>
             )
           })}
@@ -831,21 +832,21 @@ export default function Department() {
       {/* Channel settings — rename, reassign the head, or delete the channel */}
       {chanEdit && (
         <Modal
-          title="Channel settings"
+          title={tx("Channel settings")}
           onClose={() => setChanEdit(null)}
           footer={<>
-            <button className="btn btn-danger" onClick={deleteChannel}><Trash2 size={15} /> Delete channel</button>
+            <button className="btn btn-danger" onClick={deleteChannel}><Trash2 size={15} />{' '}{tx("Delete channel")}</button>
             <div style={{ flex: 1 }} />
-            <button className="btn" onClick={() => setChanEdit(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={saveChannel}>Save</button>
+            <button className="btn" onClick={() => setChanEdit(null)}>{tx("Cancel")}</button>
+            <button className="btn btn-primary" onClick={saveChannel}>{tx("Save")}</button>
           </>}
         >
           {chanErr && <div className="form-error"><AlertCircle size={16} /> {chanErr}</div>}
-          <div className="field"><label>Name</label>
+          <div className="field"><label>{tx("Name")}</label>
             <input className="input" autoFocus value={chanEdit.label}
               onChange={(e) => setChanEdit({ ...chanEdit, label: e.target.value })} />
           </div>
-          <div className="field"><label>Head of the channel</label>
+          <div className="field"><label>{tx("Head of the channel")}</label>
             <select className="select" value={chanEdit.head_id}
               onChange={(e) => setChanEdit({ ...chanEdit, head_id: e.target.value === '' ? '' : Number(e.target.value) })}>
               <option value="">— nobody —</option>
@@ -862,31 +863,31 @@ export default function Department() {
           title={metric.id ? (manageMetrics ? 'Edit metric' : 'Update value') : 'Add metric'}
           onClose={() => setMetric(null)}
           footer={<>
-            {metric.id && manageMetrics && <button className="btn btn-danger" onClick={delMetric}><Trash2 size={15} /> Delete</button>}
+            {metric.id && manageMetrics && <button className="btn btn-danger" onClick={delMetric}><Trash2 size={15} />{' '}{tx("Delete")}</button>}
             <div style={{ flex: 1 }} />
-            <button className="btn" onClick={() => setMetric(null)}>Cancel</button>
+            <button className="btn" onClick={() => setMetric(null)}>{tx("Cancel")}</button>
             <button className="btn btn-primary" onClick={saveMetric}>{metric.id ? 'Save' : 'Add'}</button>
           </>}
         >
           {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
           {manageMetrics ? (
             <>
-              <div className="field"><label>Name</label><input className="input" autoFocus value={metric.label} onChange={(e) => setMetric({ ...metric, label: e.target.value })} placeholder="e.g. Reels" /></div>
-              <div className="field"><label>How it fills</label>
+              <div className="field"><label>{tx("Name")}</label><input className="input" autoFocus value={metric.label} onChange={(e) => setMetric({ ...metric, label: e.target.value })} placeholder={tx("e.g. Reels")} /></div>
+              <div className="field"><label>{tx("How it fills")}</label>
                 <select className="select" value={metric.content_type} onChange={(e) => setMetric({ ...metric, content_type: e.target.value })}>
                   {FILL_MODES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
                 </select>
-                {metric.content_type && <span className="field-hint">New tasks raise the plan; completed tasks fill it.</span>}
+                {metric.content_type && <span className="field-hint">{tx("New tasks raise the plan; completed tasks fill it.")}</span>}
               </div>
               <div className="grid grid-3" style={{ gap: 12 }}>
-                <div className="field"><label>Current</label>
+                <div className="field"><label>{tx("Current")}</label>
                   <input className="input" type="number" min="0" disabled={!!metric.content_type && user.role !== 'admin'}
                     value={metric.current} onChange={(e) => setMetric({ ...metric, current: e.target.value })} />
                 </div>
                 <div className="field"><label>{metric.content_type ? 'Plan' : 'Target'}</label><input className="input" type="number" min="1" value={metric.target} onChange={(e) => setMetric({ ...metric, target: e.target.value })} /></div>
-                <div className="field"><label>Unit</label><input className="input" value={metric.unit} onChange={(e) => setMetric({ ...metric, unit: e.target.value })} placeholder="reels" /></div>
+                <div className="field"><label>{tx("Unit")}</label><input className="input" value={metric.unit} onChange={(e) => setMetric({ ...metric, unit: e.target.value })} placeholder={tx("reels")} /></div>
               </div>
-              <div className="field"><label>Period</label>
+              <div className="field"><label>{tx("Period")}</label>
                 <select className="select" value={metric.period} onChange={(e) => setMetric({ ...metric, period: e.target.value })}>
                   {CADENCES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                 </select>

@@ -16,6 +16,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import Whiteboard from '../components/Whiteboard.jsx'
 import { activityLine } from '../lib/activity.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Distinct hues so member avatars/chips are tellable apart (matches Profile).
 const SWATCHES = ['#a32234', '#2a78d6', '#1D9E75', '#BA7517', '#7b5ad6', '#0e8f8f', '#d6499b', '#5a6b7a']
@@ -190,7 +191,7 @@ function Reminders({ members }) {
     try {
       if (edit.id) await api.patch(`/telegram/templates/${edit.id}`, edit)
       else await api.post('/telegram/templates', edit)
-      setEdit(null); await load(); toast('Reminder saved — synced')
+      setEdit(null); await load(); toast(tx('Reminder saved — synced'))
     } catch (e) { alert(e.message) } finally { setBusy(false) }
   }
   const toggle = async (t) => {
@@ -1298,7 +1299,7 @@ function PipelineTab() {
   const patchField = (k, part) => {
     const next = { ...fields, [k]: { ...fields[k], ...part } }
     setFields(next)
-    api.post('/fields', next).then((eff) => { setFields(eff); toast('Task form saved — synced') })
+    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Task form saved — synced')) })
       .catch((e) => { alert(e.message); load() })
   }
   const toggleFieldType = (k, t) => patchField(k, {
@@ -1319,14 +1320,14 @@ function PipelineTab() {
       crew: { ...fields.crew, [hat]: cur.includes(type) ? cur.filter((x) => x !== type) : [...cur, type] },
     }
     setFields(next)
-    api.post('/fields', next).then((eff) => { setFields(eff); toast('Crew rules saved — synced') })
+    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Crew rules saved — synced')) })
       .catch((e) => { alert(e.message); load() })
   }
 
   const toggleRule = async (actor, sid) => {
     const next = { ...rules, [actor]: { ...rules[actor], [sid]: !rules[actor]?.[sid] } }
     setRules(next)
-    try { await api.post('/statuses/rules', next); toast('Stage rules saved — synced') }
+    try { await api.post('/statuses/rules', next); toast(tx('Stage rules saved — synced')) }
     catch (e) { alert(e.message); load() }
   }
 
