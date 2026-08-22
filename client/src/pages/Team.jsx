@@ -389,10 +389,10 @@ export default function Team() {
         <div className="miss-stat"><b>{team.length}</b><span>{tx("on the team")}</span></div>
         <div className="miss-stat"><b>{crewCount}</b><span>{tx("video crew")}</span></div>
         <div className={'miss-stat' + (open.length ? ' miss-stat-bad' : ' miss-stat-ok')}>
-          <b>{open.length}</b><span>position{open.length === 1 ? '' : 's'} to fill</span>
+          <b>{open.length}</b><span>{open.length === 1 ? tx('position to fill') : tx('positions to fill')}</span>
         </div>
         <div className="miss-stat">
-          <b>{inPlay}</b><span>candidate{inPlay === 1 ? '' : 's'} in play</span>
+          <b>{inPlay}</b><span>{inPlay === 1 ? tx('candidate in play') : tx('candidates in play')}</span>
         </div>
       </div>
 
@@ -412,7 +412,7 @@ export default function Team() {
           onKeyDown={(e) => { if (e.key === 'Enter') addNeed() }} />
         <button type="button" className={'wd-chip hire-flame' + (priority ? ' on' : '')}
           data-tip={tx("Urgent — mark it hot")} onClick={() => setPriority(!priority)}>
-          <Flame size={14} /> Urgent
+          <Flame size={14} />{' '}{tx('Urgent')}
         </button>
         <button className="btn btn-primary" onClick={() => addNeed()} disabled={!title.trim()}>
           <Plus size={15} /> Add

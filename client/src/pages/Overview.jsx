@@ -331,7 +331,7 @@ export default function Overview() {
 
               <div className="ov-counts">
                 <span><b>{open.length}</b>{' '}{tx("open")}</span>
-                <span style={{ color: 'var(--good-ink, #0ca30c)' }}><Check size={12} /> {doneWeek.length} done · 7d</span>
+                <span style={{ color: 'var(--good-ink, #0ca30c)' }}><Check size={12} /> {doneWeek.length}{' '}{tx('done · 7d')}</span>
                 {overdue.length > 0 && (
                   <span className="pc-red"><AlertCircle size={12} /> {overdue.length} overdue</span>
                 )}
@@ -362,7 +362,7 @@ export default function Overview() {
         <span className="spacer" />
         <div className="pill-group">
           <button className={'pill' + (tab === 'upcoming' ? ' active' : '')} onClick={() => setTab('upcoming')}
-            data-tip={tx("Open tasks by date — overdue and today on top")}>Upcoming · {upcoming.length}</button>
+            data-tip={tx("Open tasks by date — overdue and today on top")}>{tx('Upcoming')} · {upcoming.length}</button>
           <button className={'pill' + (tab === 'done' ? ' active' : '')} onClick={() => setTab('done')}
             data-tip={tx("Recently completed, newest first")}>Done · {done.length}</button>
           <button className={'pill' + (tab === 'lanes' ? ' active' : '')} onClick={() => setTab('lanes')}

@@ -882,7 +882,7 @@ export default function Brief() {
         <div className="card card-pad brief-hero">
           <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
           <h2 className="brief-title">
-            {firstName}, today:{' '}
+            {tx('{name}, today:', { name: firstName })}{' '}
             {nothingToday ? tx('nothing on the schedule — enjoy the quiet.') : (
               [
                 dueToday.length > 0 && `${dueToday.length} to do`,
@@ -964,7 +964,7 @@ export default function Brief() {
       <div className="card card-pad brief-hero">
         <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
         <h2 className="brief-title">
-          {firstName}, today:{' '}
+          {tx('{name}, today:', { name: firstName })}{' '}
           {nothingToday ? tx('nothing on the schedule — enjoy the quiet.') : (
             [
               overdueN > 0 && `${overdueN} overdue`,

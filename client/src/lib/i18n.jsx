@@ -538,6 +538,15 @@ export const DICTS = { en: EN, ru: RU, uz: UZ }
 
 const PHRASES = {
   ru: {
+    "Customize": "Настроить",
+    "Urgent": "Срочно",
+    "candidate in play": "кандидат в работе",
+    "candidates in play": "кандидатов в работе",
+    "done · 7d": "готово · 7 дн.",
+    "each judged by its own clock: release, edit-ready, design-ready.": "каждая по своим часам: публикация, монтаж, дизайн.",
+    "position to fill": "вакансия открыта",
+    "positions to fill": "вакансий открыто",
+    "{name}, today:": "{name}, сегодня:",
     "By department": "По отделам",
     "Change": "Изменение",
     "Compared with": "По сравнению с",
@@ -986,6 +995,15 @@ const PHRASES = {
     "yours": "ваше",
   },
   uz: {
+    "Customize": "Sozlash",
+    "Urgent": "Shoshilinch",
+    "candidate in play": "nomzod jarayonda",
+    "candidates in play": "nomzod jarayonda",
+    "done · 7d": "tayyor · 7 kun",
+    "each judged by its own clock: release, edit-ready, design-ready.": "har biri o‘z soati bo‘yicha: chiqarish, montaj, dizayn.",
+    "position to fill": "ochiq lavozim",
+    "positions to fill": "ochiq lavozim",
+    "{name}, today:": "{name}, bugun:",
     "By department": "Bo‘limlar bo‘yicha",
     "Change": "O‘zgarish",
     "Compared with": "Taqqoslanmoqda",

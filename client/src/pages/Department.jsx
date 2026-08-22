@@ -780,7 +780,7 @@ export default function Department() {
         )}
         {canCustomize && (
           <button className="btn btn-sm" onClick={openDash} data-tip={tx("Choose which sections this page shows, and their order")}>
-            <SlidersHorizontal size={14} /> Customize
+            <SlidersHorizontal size={14} />{' '}{tx('Customize')}
           </button>
         )}
         {isAdmin && (
