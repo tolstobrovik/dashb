@@ -800,7 +800,7 @@ const RATE_ROWS = [
   { key: 'per_publish', label: 'Per piece run', hint: 'Each piece that went out as theirs' },
   { key: 'per_review', label: 'Per sign-off', hint: 'Each piece they signed off' },
   { key: 'ontime_bonus', label: 'On-time bonus', hint: 'Paid whole, or not at all' },
-  { key: 'ontime_target', label: 'On-time target %', hint: 'The share of deliveries that earns the bonus' },
+  { key: 'ontime_target', label: 'On-time target %', hint: 'The share of deliveries that earns the bonus', pct: true },
   { key: 'late_penalty', label: 'Per late piece', hint: 'Taken off for each delivery after its promised day' },
 ]
 const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0 }
@@ -987,7 +987,8 @@ function PayTab() {
           {RATE_ROWS.map((r) => (
             <div className="field" key={r.key}>
               <label>{r.label} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>— {r.hint}</span></label>
-              <input className="input" type="number" min="0" step="1000" style={{ maxWidth: 220 }}
+              <input className="input" type="number" min="0" style={{ maxWidth: 220 }}
+                step={r.pct ? 1 : 1000} max={r.pct ? 100 : undefined}
                 value={card.form[r.key] ?? 0}
                 onChange={(e) => setCard({ ...card, form: { ...card.form, [r.key]: e.target.value } })} />
             </div>
