@@ -29,7 +29,7 @@ const STORE = 'satashkent_lang'
 const EN = {
   'nav.overview': 'Overview',
   'nav.brief': 'My Day',
-  'nav.todo': 'To-do',
+  'nav.todo': 'To-Do',
   'nav.unassigned': 'Unassigned',
   'nav.projects': 'Projects',
   'nav.releases': 'Releases',
