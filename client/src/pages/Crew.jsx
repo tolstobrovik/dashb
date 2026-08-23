@@ -336,7 +336,7 @@ export default function Crew() {
       <div className="miss-filters">
         <div className="pill-group pp-tabs">
           <button className={'pill' + (tab === 'video' ? ' active' : '')} onClick={() => setTab('video')}>
-            <Clapperboard size={14} />{' '}{tx('Editors and shooters')}
+            <Clapperboard size={14} />{' '}{tx('Editors & shooters')}
           </button>
           <button className={'pill' + (tab === 'design' ? ' active' : '')} onClick={() => setTab('design')}>
             <Palette size={14} />{' '}{tx('Designers')}
