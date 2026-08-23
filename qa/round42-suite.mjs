@@ -221,9 +221,19 @@ ok('…and the chip waits in the tray', (await p.locator('.cal-tray-chip', { has
 await mreq(`/content/${drag1.id}`, 'PATCH', { release_date: today })
 await p.reload(); await p.waitForTimeout(1200)
 await p.locator('.cal-scale .pill', { hasText: 'Week' }).click(); await p.waitForTimeout(600)
-ok('week cards drag too', await dragPill(p, p.locator('.wk-card', { hasText: 'x42ui drag video' }), p.locator(`.wk-col[data-drop="${targetIso}"]`)))
+// The month grid always holds tomorrow; the WEEK only holds it five days out
+// of seven. Today is Sunday and the week runs Monday to Sunday, so tomorrow
+// belongs to next week and there is no column to drop on — which is the
+// calendar being right, not the drag being broken. So the target is picked
+// from the days the week actually shows, and any day but the card's own will
+// prove a drag moved it.
+const weekDays = await p.locator('.wk-col[data-drop]').evaluateAll(
+  (els) => els.map((e) => e.getAttribute('data-drop')).filter(Boolean))
+const weekTarget = weekDays.includes(targetIso) ? targetIso : weekDays.find((d) => d !== today)
+ok('the week shows days that can be dropped on', !!weekTarget, JSON.stringify(weekDays))
+ok('week cards drag too', await dragPill(p, p.locator('.wk-card', { hasText: 'x42ui drag video' }), p.locator(`.wk-col[data-drop="${weekTarget}"]`)))
 after = (await mreq('/content')).data.find((x) => x.id === drag1.id)
-ok('…across the week columns', after.release_date === targetIso, `got ${after.release_date}`)
+ok('…across the week columns', after.release_date === weekTarget, `got ${after.release_date}, wanted ${weekTarget}`)
 await p.screenshot({ path: SP + 'r42-week-drag.png' })
 
 // ---- the reviewer's queue hands over the file ----
