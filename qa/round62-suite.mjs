@@ -93,12 +93,38 @@ const openPage = async (pg, path) => {
 const mine = async (pg = page) => (await pg.locator('.rel-ev, .late-chip').allTextContents())
   .filter((t) => t.includes(tag))
 // The grid's own pointer drag: press the pill, slide to the target day, drop.
+//
+// It USED to aim eight pixels above the bottom of the target cell, read once
+// before the press. That is fine on an empty calendar and wrong on a full
+// one: with a month's work in the grid the cells are tall, the rows reflow
+// while the pointer is moving, and the coordinate read a moment ago is now
+// over the day next door. The suite ran on a board sixty other suites had
+// already filled, dropped one cell off, and reported that the app had failed
+// to move a task.
+//
+// So it aims at the CENTRE, re-reads the box after the grid has settled, and
+// — the part that actually makes it honest — asks the page what is under the
+// cursor before letting go. The app's drop logic reads the same way
+// (elementFromPoint → closest('[data-drop]')), so this is the browser
+// confirming the pointer is where the test believes it is, not the test
+// being told what it wants to hear.
 const dragTo = async (pill, iso, pg = page) => {
+  const target = pg.locator(`[data-drop="${iso}"]`)
+  await target.scrollIntoViewIfNeeded()
+  await pg.waitForTimeout(250)
   const from = await pill.boundingBox()
-  const cell = await pg.locator(`[data-drop="${iso}"]`).boundingBox()
   await pg.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
   await pg.mouse.down()
-  await pg.mouse.move(cell.x + cell.width / 2, cell.y + cell.height - 8, { steps: 12 })
+  for (let tries = 0; tries < 3; tries++) {
+    const cell = await target.boundingBox()
+    if (!cell) break
+    const x = cell.x + cell.width / 2
+    const y = cell.y + cell.height / 2
+    await pg.mouse.move(x, y, { steps: 12 })
+    const under = await pg.evaluate(([px, py]) =>
+      document.elementFromPoint(px, py)?.closest?.('[data-drop]')?.getAttribute('data-drop') || null, [x, y])
+    if (under === iso) break
+  }
   await pg.mouse.up()
   await pg.waitForTimeout(1400)
 }

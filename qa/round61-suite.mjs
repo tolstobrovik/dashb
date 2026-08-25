@@ -113,12 +113,28 @@ ok('…and a task sits in its own day',
 
 // ==================== moving a day is one drag ====================
 // The grid's own pointer drag: press the pill, slide to the target day, drop.
+//
+// Aims at the CENTRE and checks what is under the cursor before letting go —
+// see the long note on the same helper in round62-suite.mjs. Eight pixels
+// above the bottom of a cell read before the press is a coordinate that
+// belongs to the day next door as soon as a full calendar reflows.
 const dragTo = async (pill, iso, pg = page) => {
+  const target = pg.locator(`[data-drop="${iso}"]`)
+  await target.scrollIntoViewIfNeeded()
+  await pg.waitForTimeout(250)
   const from = await pill.boundingBox()
-  const cell = await pg.locator(`[data-drop="${iso}"]`).boundingBox()
   await pg.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
   await pg.mouse.down()
-  await pg.mouse.move(cell.x + cell.width / 2, cell.y + cell.height - 8, { steps: 12 })
+  for (let tries = 0; tries < 3; tries++) {
+    const cell = await target.boundingBox()
+    if (!cell) break
+    const x = cell.x + cell.width / 2
+    const y = cell.y + cell.height / 2
+    await pg.mouse.move(x, y, { steps: 12 })
+    const under = await pg.evaluate(([px, py]) =>
+      document.elementFromPoint(px, py)?.closest?.('[data-drop]')?.getAttribute('data-drop') || null, [x, y])
+    if (under === iso) break
+  }
   await pg.mouse.up()
   await pg.waitForTimeout(1400)
 }
