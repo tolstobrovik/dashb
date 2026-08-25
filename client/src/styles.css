@@ -3224,6 +3224,34 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 .streak-bar i { display: block; height: 100%; background: var(--brand-500); border-radius: 999px; }
 
+/* ---------- reading somebody else's brief ---------- */
+/* The answer sits UNDER the original in its own panel, tinted so nobody can
+   mistake it for the thing the author wrote. */
+.txh { margin-top: 8px; }
+.txh-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.txh-err { font-size: 12px; color: var(--critical); }
+.txh-spin { animation: txh-turn 900ms linear infinite; }
+@keyframes txh-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .txh-spin { animation-duration: 2.4s; } }
+.txh-out {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--brand-400);
+}
+.txh-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.txh-head b { font-size: 13px; }
+.txh-head .icon-btn { margin-left: auto; }
+.txh-body {
+  white-space: pre-wrap;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.txh-out .cm-hint { margin-top: 8px; }
+
 .my-pay { margin-bottom: 14px; padding: 0; overflow: hidden; }
 .my-pay-head {
   display: flex;

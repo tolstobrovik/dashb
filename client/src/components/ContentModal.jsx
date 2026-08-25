@@ -15,6 +15,7 @@ import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
 import { activityLine } from '../lib/activity.js'
 import { rewardFinish } from '../lib/reward.js'
+import TextHelp from './TextHelp.jsx'
 import { VoiceRecorder, VoicePlayer, canRecord } from './VoiceNote.jsx'
 
 // Documents a task can carry. The cap is deliberate and low: every byte is
@@ -1160,15 +1161,23 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
         <div className={'cm-row' + (badField === 'script' ? ' field-bad' : '')} data-field="script">
           <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}{fReq('script') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
-          <textarea className="input cm-script" rows={6} disabled={detailsLocked}
-            placeholder={tx("The script / shot plan the crew works by…")}
-            value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
+          <div>
+            <textarea className="input cm-script" rows={6} disabled={detailsLocked}
+              placeholder={tx("The script / shot plan the crew works by…")}
+              value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
+            {!creating && <TextHelp text={item?.script} label={t('task.script')} />}
+          </div>
         </div>
       )}
       {(crewViewer || !canEdit) && form.script && (
         <div className="cm-row">
           <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}</span>
-          <div className="crew-script">{form.script}</div>
+          <div>
+            <div className="crew-script">{form.script}</div>
+            {/* The shooter who cannot read the brief is exactly who this is
+                for, and this is the screen they read it on. */}
+            <TextHelp text={form.script} label={t('task.script')} />
+          </div>
         </div>
       )}
 
@@ -1177,8 +1186,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {show.description && !crewViewer && (
         <div className={'cm-row' + (badField === 'description' ? ' field-bad' : '')} data-field="description">
           <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> {t('task.description')}{fReq('description') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
-          <textarea className="input" rows={2} disabled={detailsLocked} value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={tx("References, links, notes…")} />
+          <div>
+            <textarea className="input" rows={2} disabled={detailsLocked} value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={tx("References, links, notes…")} />
+            {!creating && <TextHelp text={item?.description} label={t('task.description')} />}
+          </div>
         </div>
       )}
 

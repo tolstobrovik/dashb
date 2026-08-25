@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
-  X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Palette, UserCheck, RotateCcw,
+  X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Palette, UserCheck, RotateCcw, Languages, Loader2,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { rewardIfFinished } from '../lib/reward.js'
@@ -36,6 +36,7 @@ const TABS = [
   { key: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
   { key: 'reports', label: 'Reports', icon: FileBarChart },
   { key: 'pay', label: 'Pay', icon: Wallet },
+  { key: 'ai', label: 'Language help', icon: Languages },
   { key: 'history', label: 'History', icon: History },
   { key: 'telegram', label: 'Telegram', icon: Send },
 ]
@@ -64,6 +65,7 @@ export default function Admin() {
       {tab === 'pipeline' && <PipelineTab />}
       {tab === 'reports' && <ReportsTab channel={reportChannel} setChannel={setReportChannel} />}
       {tab === 'pay' && <PayTab />}
+      {tab === 'ai' && <AiTab />}
       {tab === 'history' && <HistoryTab />}
       {tab === 'telegram' && <TelegramTab />}
     </>
@@ -1112,6 +1114,88 @@ function PayTab() {
     </>
   )
 }
+
+/* ==================== LANGUAGE HELP ==================== */
+/* Who translates the briefs, and whether it costs anything.
+ *
+ * "Is a key set" and "does it work from where this is deployed" are different
+ * questions, and only the second one matters — a free endpoint that is fine
+ * from a laptop can be blocked from a data centre. So Test them now really
+ * calls each one with two words and reports what came back. */
+function AiTab() {
+  const [st, setSt] = useState(null)
+  const [probe, setProbe] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const load = () => api.get('/ai/status').then(setSt).catch(() => setSt(null))
+  useEffect(load, [])
+
+  const runProbe = async () => {
+    setBusy(true)
+    try { setProbe((await api.post('/ai/probe', {})).results) }
+    catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+  const clear = async () => {
+    try { await api.del('/ai/cache'); toast(tx('Saved — synced')); load() }
+    catch (e) { toast(e.message, 'err') }
+  }
+  if (!st) return <div className="app-loading"><span className="spinner" /></div>
+
+  return (
+    <>
+      <div className="section-head">
+        <h2>{tx('Translation & plain language')}</h2>
+        <span className="count">· {tx('Who does the work, and what it costs')}</span>
+        <span className="spacer" />
+        <button className="btn btn-sm" disabled={busy} onClick={runProbe}>
+          {busy ? <Loader2 size={14} className="txh-spin" /> : <Languages size={14} />} {tx('Test them now')}
+        </button>
+      </div>
+
+      {!st.canSimplifyWithModel && (
+        <div className="card card-pad pay-empty">
+          <b>{tx('No model key is set — translation uses the free services, and Explain simply falls back to splitting sentences rather than rewording.')}</b>
+          <span className="stat-sub">
+            ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY · GROQ_API_KEY · OPENROUTER_API_KEY
+          </span>
+        </div>
+      )}
+
+      <div className="card table-wrap">
+        <table className="tbl">
+          <thead><tr><th>Provider</th><th>Kind</th><th>Configured</th><th>Reachable</th></tr></thead>
+          <tbody>
+            {[...st.models.map((m) => ({ name: m, kind: 'model', set: true })),
+              ...MODELS_NOT_SET(st).map((m) => ({ name: m, kind: 'model', set: false })),
+              ...st.free.map((f) => ({ name: f, kind: 'free', set: true }))].map((row) => {
+              const hit = (probe || []).find((x) => x.name === row.name)
+              return (
+                <tr key={row.name + row.kind}>
+                  <td><b>{row.name}</b></td>
+                  <td>{row.kind === 'model' ? 'model' : 'free translation'}</td>
+                  <td>{row.set ? <span className="pay-good">yes</span> : <span className="stat-sub">no key</span>}</td>
+                  <td>
+                    {!hit ? <span className="stat-sub">—</span>
+                      : hit.ok ? <span className="pay-good">{tx('reachable')} · {hit.ms}ms</span>
+                        : <span className="pay-bad" data-tip={hit.why}>{tx('not reachable')}</span>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card card-pad" style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <b>{st.cached}</b><span className="stat-sub">{tx('saved translations')}</span>
+        <span className="spacer" />
+        <button className="btn btn-sm" onClick={clear}>{tx('Clear the saved translations')}</button>
+      </div>
+    </>
+  )
+}
+// The five the board knows how to use, minus the ones that have a key.
+const ALL_MODELS = ['anthropic', 'openai', 'gemini', 'groq', 'openrouter']
+const MODELS_NOT_SET = (st) => ALL_MODELS.filter((m) => !st.models.includes(m))
 
 /* ==================== CHANNELS (custom sidebar) ==================== */
 function ChannelsTab({ onOpenReport }) {

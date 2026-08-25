@@ -797,6 +797,23 @@ export async function initSchema() {
       updated_at TEXT    NOT NULL
     );
 
+    -- Translations and plain-language versions, kept.
+    --
+    -- The same brief is opened by the shooter, the editor and whoever is
+    -- checking on them, and it does not change between openings. Translating
+    -- it once is the difference between a feature that costs money every time
+    -- somebody reads a task and one that costs money once. The key is a hash
+    -- of the job and the exact text, so an edited brief simply misses and is
+    -- done again.
+    CREATE TABLE IF NOT EXISTS ai_cache (
+      k          TEXT PRIMARY KEY,   -- sha256(kind|target|text)
+      kind       TEXT NOT NULL,      -- 't' to translate, 's:<lang>' to simplify
+      target     TEXT NOT NULL,
+      out        TEXT NOT NULL,
+      provider   TEXT NOT NULL,      -- who produced it, shown to the reader
+      created_at TEXT NOT NULL
+    );
+
     -- What people are paid, and on what.
     --
     -- The rates are DATA, not code: they differ per person, they change, and

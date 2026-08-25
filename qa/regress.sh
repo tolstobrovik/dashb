@@ -122,6 +122,9 @@ fuser -k 4112/tcp 2>/dev/null; sleep 0.5
 fuser -k 4113/tcp 2>/dev/null; sleep 0.5
 if node round74-suite.mjs > $SP/out-round74-suite.log 2>&1; then echo "round74-suite PASS" >> $RES; else echo "round74-suite FAIL" >> $RES; fi
 fuser -k 4113/tcp 2>/dev/null; sleep 0.5
+fuser -k 4114/tcp 2>/dev/null; fuser -k 9975/tcp 2>/dev/null; sleep 0.5
+if node round75-suite.mjs > $SP/out-round75-suite.log 2>&1; then echo "round75-suite PASS" >> $RES; else echo "round75-suite FAIL" >> $RES; fi
+fuser -k 4114/tcp 2>/dev/null; fuser -k 9975/tcp 2>/dev/null; sleep 0.5
 fuser -k 9989/tcp 2>/dev/null; sleep 0.5
 
 # ---- pc-suite + journey on 4081 ----
