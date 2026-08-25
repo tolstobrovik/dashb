@@ -815,6 +815,108 @@ export async function initSchema() {
       updated_at TEXT    NOT NULL
     );
 
+    -- ============================================================
+    -- SPRINTS. A weekly board that shares exactly one thing with the rest
+    -- of this platform: it READS the users table for id, name and avatar.
+    -- It never writes there, never reads content, channels, releases or
+    -- anything else, and nothing outside these tables reads from it.
+    -- Every table is prefixed sprint_ so that isolation is visible rather
+    -- than merely intended.
+    -- ============================================================
+
+    -- One row per week. Monday 00:00 to Saturday 12:00 Tashkent, with the
+    -- meeting at 15:00 that Saturday. Times are stored as ISO instants, the
+    -- same as every other timestamp here — the Tashkent-ness lives in how
+    -- they are worked out, not in how they are written down.
+    CREATE TABLE IF NOT EXISTS sprints (
+      id         ${ID},
+      code       TEXT    NOT NULL,                  -- 'S36', the ISO week
+      start_at   TEXT    NOT NULL,
+      freeze_at  TEXT    NOT NULL,
+      meeting_at TEXT    NOT NULL,
+      status     TEXT    NOT NULL DEFAULT 'active', -- active | closed
+      created_at TEXT    NOT NULL
+    );
+
+    -- Who may close a sprint, edit after the freeze, and promote from the
+    -- backlog. Those three things and nothing else. It ships EMPTY and is
+    -- filled by hand after deploy: the platform Admin flag is deliberately
+    -- not inherited, so an admin who is not in here works under the same
+    -- freeze as everybody else.
+    CREATE TABLE IF NOT EXISTS sprint_owners (
+      user_id INTEGER NOT NULL
+    );
+
+    -- A task exists once, however many weeks it runs for. What week it
+    -- belongs to lives in sprint_task_sprints; what was committed FOR that
+    -- week lives in sprint_checklist_items. A backlog item is a row here
+    -- with status 'idea' and no sprint row at all.
+    --
+    -- There is no not_delivered status. Not delivered is an outcome of a
+    -- task in a WEEK, not a state of the task.
+    CREATE TABLE IF NOT EXISTS sprint_tasks (
+      id                   ${ID},
+      title                TEXT    NOT NULL,
+      description          TEXT    NOT NULL DEFAULT '',
+      status               TEXT    NOT NULL DEFAULT 'idea', -- idea|todo|in_progress|blocked|done
+      is_growth            INTEGER NOT NULL DEFAULT 0,
+      deadline             TEXT,
+      result_type          TEXT,                            -- link|file|text|NULL
+      result_link          TEXT    NOT NULL DEFAULT '',
+      result_text          TEXT    NOT NULL DEFAULT '',
+      result_attachment_id INTEGER,
+      blocker_reason       TEXT    NOT NULL DEFAULT '',
+      blocker_note         TEXT    NOT NULL DEFAULT '',
+      carried_count        INTEGER NOT NULL DEFAULT 0,
+      created_by           INTEGER,
+      created_at           TEXT    NOT NULL,
+      updated_at           TEXT    NOT NULL
+    );
+
+    -- Assignees are read from the platform users table and stored by id.
+    -- Removing somebody from the platform is not this module's business;
+    -- their name simply stops resolving and the task keeps the id.
+    CREATE TABLE IF NOT EXISTS sprint_task_assignees (
+      task_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL
+    );
+
+    -- One row per task per week it appears in. This is what lets a task
+    -- span several weeks, and it is where the verdict for that week lives.
+    CREATE TABLE IF NOT EXISTS sprint_task_sprints (
+      task_id   INTEGER NOT NULL,
+      sprint_id INTEGER NOT NULL,
+      outcome   TEXT                                -- delivered|not_delivered|NULL
+    );
+
+    -- The weekly slice. A task running three weeks has three separate
+    -- groups of items, so opening a sprint shows what was committed for
+    -- THAT week and not the whole history. Nothing here is scored or
+    -- weighted; there are no points anywhere in this module.
+    CREATE TABLE IF NOT EXISTS sprint_checklist_items (
+      id        ${ID},
+      task_id   INTEGER NOT NULL,
+      sprint_id INTEGER NOT NULL,
+      text      TEXT    NOT NULL,
+      done      INTEGER NOT NULL DEFAULT 0,
+      done_at   TEXT,
+      position  INTEGER NOT NULL DEFAULT 0
+    );
+
+    -- Same shape as the platform's own attachments: the bytes live in the
+    -- row as a data URI, because this deployment has no file storage and no
+    -- CDN. Capped at 5 MB before encoding, refused by the route.
+    CREATE TABLE IF NOT EXISTS sprint_attachments (
+      id          ${ID},
+      task_id     INTEGER NOT NULL,
+      name        TEXT    NOT NULL,
+      mime        TEXT    NOT NULL DEFAULT '',
+      size        INTEGER NOT NULL DEFAULT 0,       -- bytes of the original file
+      data        TEXT    NOT NULL,                 -- data:<mime>;base64,…
+      uploaded_by INTEGER,
+      created_at  TEXT    NOT NULL
+    );
+
     -- Translations and plain-language versions, kept.
     --
     -- The same brief is opened by the shooter, the editor and whoever is
@@ -1140,6 +1242,17 @@ export async function initSchema() {
     -- default row is kept by the route rather than by the index.
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_rules_user ON pay_rules(user_id);
 
+    -- Sprints. The unique pairs are the honest ones: a task is in a week
+    -- once and assigned to a person once, and saying so here means a double
+    -- click cannot make it twice.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_owner     ON sprint_owners(user_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_task_week ON sprint_task_sprints(task_id, sprint_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_assignee  ON sprint_task_assignees(task_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_sprint_week_tasks       ON sprint_task_sprints(sprint_id);
+    CREATE INDEX IF NOT EXISTS idx_sprint_check_slice      ON sprint_checklist_items(task_id, sprint_id, position);
+    CREATE INDEX IF NOT EXISTS idx_sprint_att_task         ON sprint_attachments(task_id);
+    CREATE INDEX IF NOT EXISTS idx_sprints_status          ON sprints(status, start_at);
+
   `)
 }
 
@@ -1382,6 +1495,33 @@ export const TASK_CHILD_TABLES = [
 ]
 export const taskChildDeletes = (id) =>
   TASK_CHILD_TABLES.map((t) => [`DELETE FROM ${t} WHERE content_id = ?`, id])
+
+// Deleting a sprint task takes its week rows, its weekly checklists, its
+// assignees and its files with it. Sprint tasks are NOT content tasks and
+// share none of their children — this is a separate list on purpose.
+export const SPRINT_TASK_CHILD_TABLES = [
+  'sprint_task_sprints', 'sprint_task_assignees', 'sprint_checklist_items', 'sprint_attachments',
+]
+export const sprintTaskChildDeletes = (id) =>
+  SPRINT_TASK_CHILD_TABLES.map((t) => [`DELETE FROM ${t} WHERE task_id = ?`, id])
+
+// The sprint board needs a week to stand on, and one only: the week we are
+// in. No users, no owners, no sample tasks — sprint_owners ships empty on
+// purpose and is filled by hand after deploy.
+//
+// Idempotent by the week's own start, so a restart on Tuesday does not open
+// a second sprint, and a board that was closed on Saturday does not have its
+// history reopened by a boot on Sunday.
+export async function ensureCurrentSprint() {
+  const { weekOf } = await import('./sprintweek.js')
+  const week = weekOf()
+  const already = await get('SELECT id FROM sprints WHERE start_at = ?', week.start_at)
+  if (already) return already.id
+  const info = await run(
+    'INSERT INTO sprints (code, start_at, freeze_at, meeting_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    week.code, week.start_at, week.freeze_at, week.meeting_at, 'active', new Date().toISOString())
+  return info.lastInsertRowid
+}
 
 export const CREW_NEED_KEYS = ['operator', 'editor', 'designer']
 export const DEFAULT_CREW_NEEDS = {
@@ -1730,6 +1870,7 @@ let initPromise
 export function initDb() {
   initPromise ||= (async () => {
     await initSchema()
+    await ensureCurrentSprint()
     await seedIfEmpty()
     await seedCampaignsIfEmpty()
     await migrateCampaignsToProjects()
