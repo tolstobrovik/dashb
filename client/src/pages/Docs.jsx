@@ -53,6 +53,9 @@ export default function Docs() {
   const fileRef = useRef(null)
 
   const [kpiEdit, setKpiEdit] = useState(null)   // null | {} (new) | kpi row
+  // What the board can count for a KPI, so the admin picks rather than types.
+  const [sources, setSources] = useState([])
+  useEffect(() => { api.get('/kpis/sources').then(setSources).catch(() => setSources([])) }, [])
   const [renaming, setRenaming] = useState(null) // null | doc row
 
   useEffect(() => {
@@ -142,6 +145,10 @@ export default function Docs() {
   const saveKpi = async () => {
     const k = kpiEdit
     if (!k.name?.trim()) { setErr('Name the KPI'); return }
+    // A counted KPI's Current belongs to the board, not to this form —
+    // sending it back would write a stale number into the column the server
+    // is about to recompute anyway.
+    if (k.source) k.current = ''
     try {
       if (k.id) {
         const upd = await api.patch(`/kpis/${k.id}`, k)
@@ -279,7 +286,15 @@ export default function Docs() {
                 {allMode && <span className="kpi-name">{nameOf(k.user_id)}</span>}
                 <span className="kpi-name">{k.name}</span>
                 <span className="kpi-num">{k.target || '—'}{k.target && k.unit ? ` ${k.unit}` : ''}</span>
-                <span className="kpi-num kpi-cur">{k.current || '—'}{k.current && k.unit ? ` ${k.unit}` : ''}</span>
+                <span className={'kpi-num kpi-cur' + (k.met === true ? ' kpi-met' : k.met === false ? ' kpi-missed' : '')}>
+                  {k.current || '—'}{k.current && k.unit ? ` ${k.unit}` : ''}
+                  {k.counted && <i className="kpi-auto" data-tip={k.source_label}>{tx('auto · from tasks')}</i>}
+                  {k.reward > 0 && (
+                    <i className={'kpi-pay' + (k.met === true ? ' on' : '')}>
+                      {k.met === true ? '+' : ''}{Math.round(k.reward).toLocaleString('en-US').replace(/,/g, ' ')}
+                    </i>
+                  )}
+                </span>
                 <span className="kpi-notes">{k.notes || ''}</span>
                 <span className="kpi-upd"><BadgeCheck size={12} /> {updLabel(k)}</span>
               </div>
@@ -332,11 +347,42 @@ export default function Docs() {
             </div>
             <div className="field"><label>{tx("Current")}</label>
               <input className="input" placeholder={tx("e.g. 3")} value={kpiEdit.current}
+                disabled={!!kpiEdit.source}
                 onChange={(e) => setKpiEdit({ ...kpiEdit, current: e.target.value })} />
             </div>
             <div className="field"><label>{tx("Unit")}</label>
               <input className="input" placeholder={tx("reels / %…")} value={kpiEdit.unit}
                 onChange={(e) => setKpiEdit({ ...kpiEdit, unit: e.target.value })} />
+            </div>
+          </div>
+          {/* Where the number comes from. Pick something the board already
+              counts and this KPI stops being a figure somebody retypes once a
+              month — it fills itself from the same delivery record the report
+              and the payroll read, so the three can never disagree. */}
+          <div className="field"><label>{tx('Counted from')}</label>
+            <select className="select" value={kpiEdit.source || ''}
+              onChange={(e) => setKpiEdit({ ...kpiEdit, source: e.target.value })}>
+              <option value="">{tx('Typed in by hand')}</option>
+              {sources.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+            </select>
+            <div className="cm-hint">
+              {kpiEdit.source
+                ? tx('Fills itself from the work. Current cannot be typed while this is set.')
+                : tx('Nothing is counted — Current is whatever somebody types.')}
+            </div>
+          </div>
+          <div className="kpi-form-row">
+            <div className="field"><label>{tx('The target is')}</label>
+              <select className="select" value={kpiEdit.direction || 'atleast'}
+                onChange={(e) => setKpiEdit({ ...kpiEdit, direction: e.target.value })}>
+                <option value="atleast">{tx('at least the number')}</option>
+                <option value="atmost">{tx('at most the number')}</option>
+              </select>
+            </div>
+            <div className="field"><label>{tx('Worth, when hit')}</label>
+              <input className="input" type="number" min="0" step="1000" value={kpiEdit.reward ?? 0}
+                onChange={(e) => setKpiEdit({ ...kpiEdit, reward: e.target.value })} />
+              <div className="cm-hint">{tx('Paid whole into their month. 0 means this KPI is a goal, not money.')}</div>
             </div>
           </div>
           <div className="field"><label><StickyNote size={12} style={{ verticalAlign: -2 }} />{' '}{tx("Notes")}</label>

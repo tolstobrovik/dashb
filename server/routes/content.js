@@ -483,6 +483,19 @@ const parentOf = async (user, contentId) => {
   return row && canSee(user, row) ? row : null
 }
 
+// How full each person's day already is, for the pickers. Cheap, read-only,
+// and asked with the day the work would land on.
+//
+// ABOVE /:id on purpose: this path is one segment, so a router that reaches
+// '/:id' first reads it as a task called "load" and answers Not found.
+router.get('/load', wrap(async (req, res) => {
+  const hat = String(req.query.hat || '')
+  if (!['operator_id', 'editor_id', 'designer_id'].includes(hat)) {
+    return res.status(400).json({ error: 'Ask about a shooter, an editor or a designer' })
+  }
+  res.json(await loadFor(hat, String(req.query.day || '').slice(0, 10)))
+}))
+
 router.get('/:id/files', wrap(async (req, res) => {
   if (!(await parentOf(req.user, req.params.id))) return res.status(404).json({ error: 'Not found' })
   res.json(await all(`SELECT ${DOC_COLUMNS} FROM attachments WHERE content_id = ? ORDER BY id`, req.params.id))
@@ -936,6 +949,9 @@ router.post('/', wrap(async (req, res) => {
     const capped = await capProblem(f, crew[f], capDay)
     if (capped) return res.status(409).json({ error: capped, crew_field: f })
   }
+  // And how many ads this channel is already running that day.
+  const adFull = await adCapProblem(safeType, channels, release_date)
+  if (adFull) return res.status(409).json({ error: adFull, crew_field: 'release_date' })
 
   const isFilmed = (await getCrewNeeds()).operator.includes(safeType)
   if (isFilmed && isBooking(status, await all('SELECT id, label, sort, is_final FROM statuses'))) {
@@ -1122,6 +1138,67 @@ export async function capProblem(hatField, personId, day, excludeId) {
   const what = { editor_id: 'cuts', operator_id: 'shoots', designer_id: 'pieces of artwork' }[hatField]
   return `${u.name} already has ${already} ${what} due on ${day}, which is their day's limit of ${cap}. `
     + 'Give it another day, another person, or raise their limit in Admin → People.'
+}
+
+// ---- what everybody's day already looks like --------------------------------
+// The cap refuses an over-assignment at save time, which is correct and, on
+// its own, rude: a content head picks a name from a list of nine, presses
+// save, and is told the person's Tuesday was already full. They could not
+// have known — the list was just names.
+//
+// So the same arithmetic is offered up front. One question, one answer for
+// the whole team, so the picker can grey out a full day instead of letting
+// somebody walk into it.
+export async function loadFor(hatField, day) {
+  const dateCol = { operator_id: 'recording_date', editor_id: 'edit_ready_date', designer_id: 'design_ready_date' }[hatField]
+  if (!dateCol || !day) return {}
+  const dead = (await all('SELECT id, label FROM statuses'))
+    .filter((st) => /^deleted$/i.test(String(st.label || ''))).map((st) => st.id)
+  const rows = await all(
+    `SELECT ${hatField} AS person FROM content
+     WHERE ${hatField} IS NOT NULL AND ${dateCol} = ? AND done_at IS NULL
+     ${dead.length ? `AND status_id NOT IN (${dead.map(() => '?').join(',')})` : ''}`,
+    day, ...dead)
+  const busy = {}
+  for (const r of rows) busy[r.person] = (busy[r.person] || 0) + 1
+  const out = {}
+  for (const u of await all('SELECT id, daily_cap FROM users')) {
+    out[u.id] = { taken: busy[u.id] || 0, cap: u.daily_cap || 0 }
+  }
+  return out
+}
+
+// ---- how many ads a channel runs in a day -----------------------------------
+// The per-person cap answers "can this editor take another cut on Tuesday".
+// This answers a different question the same day: "should this CHANNEL be
+// running a fifth ad on Tuesday". Ads are bought a month at a time and burn
+// their audience if they land in a heap, so the ceiling belongs to the
+// channel and is checked when the release day is set, which is the only
+// moment anybody can still spread them out.
+export async function adCapProblem(type, chans, day, excludeId) {
+  if (type !== 'target' || !day) return null
+  const dead = (await all('SELECT id, label FROM statuses'))
+    .filter((st) => /^deleted$/i.test(String(st.label || ''))).map((st) => st.id)
+  for (const key of (Array.isArray(chans) ? chans : [])) {
+    const ch = await get('SELECT label, daily_ad_cap FROM channels WHERE key = ?', key)
+    const cap = ch?.daily_ad_cap || 0
+    if (!cap) continue
+    const rows = await all(
+      `SELECT id, channels FROM content WHERE type = 'target' AND release_date = ?
+       ${dead.length ? `AND status_id NOT IN (${dead.map(() => '?').join(',')})` : ''}`,
+      day, ...dead)
+    const already = rows.filter((r) => {
+      if (r.id === excludeId) return false
+      let list = []
+      try { list = JSON.parse(r.channels || '[]') } catch { list = [] }
+      return list.includes(key)
+    }).length
+    if (already >= cap) {
+      return `${ch.label} already has ${already} video ${already === 1 ? 'ad' : 'ads'} going out on ${day}, `
+        + `which is its limit of ${cap} a day. Pick another day, or raise the limit in Admin → Channels.`
+    }
+  }
+  return null
 }
 
 // The channels a crew member works on. Empty means all of them.
@@ -1756,6 +1833,24 @@ router.patch('/:id', wrap(async (req, res) => {
       const day = patch[dateCol] !== undefined ? patch[dateCol] : row[dateCol]
       const capped = await capProblem(f, person, day, row.id)
       if (capped) return res.status(409).json({ error: capped, crew_field: f })
+    }
+  }
+
+  // Moving an ad onto a day the channel has already filled is the same
+  // over-booking as creating one there, and reaches this line by a different
+  // door — a drag on the release calendar rather than a form.
+  {
+    const nextType = patch.type !== undefined ? patch.type : row.type
+    const nextDay = patch.release_date !== undefined ? patch.release_date : row.release_date
+    let nextChans2 = []
+    try { nextChans2 = patch.channels !== undefined ? JSON.parse(patch.channels) : JSON.parse(row.channels || '[]') }
+    catch { nextChans2 = [] }
+    const typeChanged = patch.type !== undefined && patch.type !== row.type
+    const dayChanged2 = patch.release_date !== undefined && patch.release_date !== row.release_date
+    const chansChanged2 = patch.channels !== undefined && patch.channels !== row.channels
+    if (typeChanged || dayChanged2 || chansChanged2) {
+      const adFull = await adCapProblem(nextType, nextChans2, nextDay, row.id)
+      if (adFull) return res.status(409).json({ error: adFull, crew_field: 'release_date' })
     }
   }
 

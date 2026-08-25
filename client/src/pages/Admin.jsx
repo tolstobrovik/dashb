@@ -1233,7 +1233,7 @@ function ChannelsTab({ onOpenReport }) {
     if (!modal.label.trim()) return
     setErr('')
     try {
-      const body = { label: modal.label.trim(), icon: modal.icon, head_id: modal.head_id ?? null, drive_url: (modal.drive_url ?? '').trim() }
+      const body = { label: modal.label.trim(), icon: modal.icon, head_id: modal.head_id ?? null, drive_url: (modal.drive_url ?? '').trim(), daily_ad_cap: Number(modal.daily_ad_cap) || 0 }
       if (modal.id) await api.patch(`/channels/${modal.id}`, body)
       else await api.post('/channels', body)
       reload()
@@ -1258,7 +1258,7 @@ function ChannelsTab({ onOpenReport }) {
         <h2>Sidebar channels</h2>
         <span className="count">· shown top to bottom</span>
         <span className="spacer" />
-        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', icon: 'instagram', head_id: null, drive_url: '' }); setErr('') }}><Plus size={15} /> Add channel</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', icon: 'instagram', head_id: null, drive_url: '', daily_ad_cap: 0 }); setErr('') }}><Plus size={15} /> Add channel</button>
       </div>
       <div className="card" style={{ padding: '6px 14px' }}>
         {channels.map((c, i) => {
@@ -1292,7 +1292,7 @@ function ChannelsTab({ onOpenReport }) {
               <span className="spacer" style={{ flex: 1 }} />
               <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} data-tip="Move up in the sidebar" aria-label="Up"><ArrowUp size={15} /></button>
               <button className="icon-btn" disabled={i === channels.length - 1} onClick={() => move(i, 1)} data-tip="Move down in the sidebar" aria-label="Down"><ArrowDown size={15} /></button>
-              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null, drive_url: c.drive_url || '' }); setErr('') }} data-tip="Edit name, head & icon" aria-label="Edit"><Pencil size={15} /></button>
+              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null, drive_url: c.drive_url || '', daily_ad_cap: c.daily_ad_cap || 0 }); setErr('') }} data-tip="Edit name, head & icon" aria-label="Edit"><Pencil size={15} /></button>
               <button className="btn btn-danger btn-sm btn-icon" onClick={() => del(c)} data-tip="Delete channel & its data" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
             </div>
           )
@@ -1326,6 +1326,19 @@ function ChannelsTab({ onOpenReport }) {
               {modal.drive_url
                 ? 'Set. The crew now name the file — “1-3”, “reel 14” — instead of pasting this address on every task. Naming one is still required.'
                 : 'With a folder here, the crew name the file instead of pasting a full link every time. Without one they paste the whole address, as now.'}
+            </div>
+          </div>
+          {/* Ads are bought a month at a time and burn their audience if they
+              land in a heap, so the ceiling belongs to the channel rather
+              than to whoever happens to be making them. */}
+          <div className="field"><label>{tx('Video ads a day')}</label>
+            <input className="input" type="number" min="0" max="50" style={{ maxWidth: 120 }}
+              value={modal.daily_ad_cap ?? 0}
+              onChange={(e) => setModal({ ...modal, daily_ad_cap: e.target.value })} />
+            <div className="cm-hint">
+              {Number(modal.daily_ad_cap) > 0
+                ? `At most ${Number(modal.daily_ad_cap)} Target ${Number(modal.daily_ad_cap) === 1 ? 'piece' : 'pieces'} going out on one day for this channel — a further one is refused while it can still be moved. Other kinds of video are not counted.`
+                : 'No limit, which is what every channel was before this existed. Set a number and a day that is already full refuses the next ad instead of quietly running it.'}
             </div>
           </div>
           <div className="field"><label>Icon</label>

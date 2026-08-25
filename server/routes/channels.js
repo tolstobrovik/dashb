@@ -45,7 +45,7 @@ router.post('/', adminOnly, wrap(async (req, res) => {
 router.patch('/:id', adminOnly, wrap(async (req, res) => {
   const row = await get('SELECT * FROM channels WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Channel not found' })
-  const { label, icon, head_id, drive_url } = req.body || {}
+  const { label, icon, head_id, drive_url, daily_ad_cap } = req.body || {}
   let head = row.head_id
   if (head_id !== undefined) {
     try { head = await cleanHead(head_id) } catch (e) { return res.status(400).json({ error: e.message }) }
@@ -60,8 +60,19 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
       return res.status(400).json({ error: 'The folder is a link — paste the full https://… address of the Drive folder' })
     drive = next
   }
-  await run('UPDATE channels SET label = ?, icon = ?, head_id = ?, drive_url = ? WHERE id = ?',
-    label !== undefined ? String(label).trim() : row.label, icon ?? row.icon, head, drive, row.id)
+  // How many video ads this channel may run on one day. Ads are bought a
+  // month at a time and burn their audience if they land in a heap, so the
+  // ceiling belongs to the channel. 0 = none, which is what it was before.
+  let adCap = row.daily_ad_cap || 0
+  if (daily_ad_cap !== undefined) {
+    const n = Math.round(Number(daily_ad_cap))
+    if (!Number.isFinite(n) || n < 0 || n > 50) {
+      return res.status(400).json({ error: 'Ads a day is a whole number from 0 to 50 — 0 means no limit' })
+    }
+    adCap = n
+  }
+  await run('UPDATE channels SET label = ?, icon = ?, head_id = ?, drive_url = ?, daily_ad_cap = ? WHERE id = ?',
+    label !== undefined ? String(label).trim() : row.label, icon ?? row.icon, head, drive, adCap, row.id)
   res.json(await get('SELECT * FROM channels WHERE id = ?', row.id))
 }))
 

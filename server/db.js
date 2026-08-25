@@ -554,6 +554,12 @@ export async function initSchema() {
       -- ("1-3", "reel 14"), which is what they would have said out loud
       -- anyway, and the board keeps the folder.
       drive_url TEXT NOT NULL DEFAULT '',
+      -- The most video ads this channel may have going out on one day. Ads
+      -- are bought a month at a time and burn their audience if they land in
+      -- a heap, so the ceiling belongs to the CHANNEL rather than to whoever
+      -- happens to be making them. 0 is what every channel was before this
+      -- existed: no ceiling.
+      daily_ad_cap INTEGER NOT NULL DEFAULT 0,
       sort    INTEGER NOT NULL DEFAULT 0
     );
 
@@ -792,6 +798,18 @@ export async function initSchema() {
       unit       TEXT    NOT NULL DEFAULT '',
       notes      TEXT    NOT NULL DEFAULT '',
       sort       INTEGER NOT NULL DEFAULT 0,
+      -- What the board itself can count for this KPI, so 'current' stops
+      -- being a number somebody retypes once a month and starts being the
+      -- work. Empty means the old behaviour: an admin types it.
+      source     TEXT    NOT NULL DEFAULT '',
+      -- Which way the target points. 'atleast' for "twenty cuts"; 'atmost'
+      -- for "no more than two late", where beating the target means a
+      -- SMALLER number and the naive comparison pays exactly the wrong people.
+      direction  TEXT    NOT NULL DEFAULT 'atleast',
+      -- What hitting it is worth. This is the join the board was missing:
+      -- the KPIs were already here, and payroll was worked out somewhere else
+      -- from the same numbers, by hand.
+      reward     REAL    NOT NULL DEFAULT 0,
       updated_by INTEGER,
       created_at TEXT    NOT NULL,
       updated_at TEXT    NOT NULL
@@ -1074,6 +1092,10 @@ export async function initSchema() {
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_channels TEXT NOT NULL DEFAULT '[]'")
     await exec("ALTER TABLE channels ADD COLUMN IF NOT EXISTS drive_url TEXT NOT NULL DEFAULT ''")
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_cap INTEGER NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE channels ADD COLUMN IF NOT EXISTS daily_ad_cap INTEGER NOT NULL DEFAULT 0')
+    await exec("ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''")
+    await exec("ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'atleast'")
+    await exec('ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS reward REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota_bonus REAL NOT NULL DEFAULT 0')
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_channels TEXT NOT NULL DEFAULT '[]'")
@@ -1181,6 +1203,10 @@ async function migrate() {
     // pay_rules arrived in round 73 without a quota; the table is created by
     // CREATE TABLE IF NOT EXISTS, which will not add a column to one that is
     // already there, so an existing board needs these two spelled out.
+    if (!(await hasColumn('channels', 'daily_ad_cap'))) await exec('ALTER TABLE channels ADD COLUMN daily_ad_cap INTEGER NOT NULL DEFAULT 0')
+    if (!(await hasColumn('person_kpis', 'source'))) await exec("ALTER TABLE person_kpis ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+    if (!(await hasColumn('person_kpis', 'direction'))) await exec("ALTER TABLE person_kpis ADD COLUMN direction TEXT NOT NULL DEFAULT 'atleast'")
+    if (!(await hasColumn('person_kpis', 'reward'))) await exec('ALTER TABLE person_kpis ADD COLUMN reward REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'quota'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'quota_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota_bonus REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')

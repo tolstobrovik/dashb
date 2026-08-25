@@ -467,6 +467,27 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // a separator and the file the person named — "…/folders/ABC · 1-3". It is
   // one fact and reads as one, but pasted whole into an href it 404s, so the
   // address is taken from it rather than assumed to BE it.
+  // How full everybody's day already is, for the three pickers. The cap
+  // refuses an over-assignment at save time, which is correct and, on its
+  // own, rude: a content head picks a name out of nine and is then told that
+  // person's Tuesday was full. They could not have known — it was a list of
+  // names. So the same arithmetic is fetched up front and shown ON the names.
+  const [dayLoad, setDayLoad] = useState({})
+  const loadDays = `${form.recording_date || ''}|${form.edit_ready_date || ''}|${form.design_ready_date || ''}`
+  useEffect(() => {
+    const want = [
+      ['operator_id', form.recording_date],
+      ['editor_id', form.edit_ready_date],
+      ['designer_id', form.design_ready_date],
+    ].filter(([, d]) => d)
+    if (!want.length) { setDayLoad({}); return }
+    let alive = true
+    Promise.all(want.map(([hat, day]) =>
+      api.get(`/content/load?hat=${hat}&day=${day}`).then((r) => [hat, r]).catch(() => [hat, {}])))
+      .then((pairs) => { if (alive) setDayLoad(Object.fromEntries(pairs)) })
+    return () => { alive = false }
+  }, [loadDays]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const deliveryLinks = DELIVERY.map((f) => ({ ...f, href: deliveryHref(form[f.col]), note: splitDelivery(form[f.col]).note }))
     .filter((f) => f.href)
   const hasRef = !!(form.reference_text || form.reference_links.length > 0 || form.photo || form.photo_thumb)
@@ -1577,6 +1598,22 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             const pool = team.filter(here)
             const specialists = pool.filter(holds).sort(bySort)
             const everyoneElse = pool.filter((u) => !holds(u)).sort(bySort)
+            // "Dilnoza (3/4 that day)" — and a full day says so rather than
+            // waiting for the save to say it. The person already holding the
+            // hat is never marked full by their own piece.
+            const load = dayLoad[f.key] || {}
+            const nameOf = (u) => {
+              const l = load[u.id]
+              if (!l || !l.cap) return u.name
+              const mine = u.id === form[f.key] ? 1 : 0
+              const taken = Math.max(0, l.taken - mine)
+              return `${u.name} — ${taken}/${l.cap}${taken >= l.cap ? ` ${tx('day is full')}` : ''}`
+            }
+            const isFull = (u) => {
+              const l = load[u.id]
+              if (!l || !l.cap || u.id === form[f.key]) return false
+              return l.taken >= l.cap
+            }
             // What the stage owes: a booked shoot needs its shooter, and
             // footage in hand needs the editor who will cut it. An idea owes
             // neither — the hats say "optional" until the work reaches them.
@@ -1595,12 +1632,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   <option value="">{mustHave ? `— pick the ${f.label.toLowerCase()} —` : '— nobody —'}</option>
                   {specialists.length > 0 && (
                     <optgroup label={`${f.label}s`}>
-                      {specialists.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      {specialists.map((u) => (
+                        <option key={u.id} value={u.id} disabled={isFull(u)}>{nameOf(u)}</option>
+                      ))}
                     </optgroup>
                   )}
                   {everyoneElse.length > 0 && (
                     <optgroup label="Everyone else — one-time duty">
-                      {everyoneElse.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      {everyoneElse.map((u) => (
+                        <option key={u.id} value={u.id} disabled={isFull(u)}>{nameOf(u)}</option>
+                      ))}
                     </optgroup>
                   )}
                 </select>

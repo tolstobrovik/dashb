@@ -3285,6 +3285,28 @@ button.blame-person:hover { background: var(--surface-2); }
 .my-pay-line b { font-variant-numeric: tabular-nums; }
 .my-pay-line + .my-pay-line { border-top: 1px solid var(--hairline); }
 .my-pay-total { border-top: 2px solid var(--hairline-strong) !important; font-weight: 600; }
+.kpi-cur.kpi-met { color: var(--good-ink); }
+.kpi-cur.kpi-missed { color: var(--ink-2); }
+.kpi-auto, .kpi-pay {
+  display: block;
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: .02em;
+  color: var(--muted);
+}
+.kpi-pay.on { color: var(--good-ink); font-weight: 600; }
+
+.my-pay-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding-top: 12px; }
+.my-pay-items { margin-top: 10px; }
+.my-pay-items summary { cursor: pointer; }
+.my-pay-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 12.5px;
+  border-top: 1px solid var(--hairline);
+}
 .my-pay-lines .cm-hint { margin-top: 10px; }
 
 .my-late { border-left: 3px solid #A32D2D; display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }

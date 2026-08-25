@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { all, get, run, publicUser, tashkentDay } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 import { resolveGates, phasesOf, phasePassed } from '../deadlines.js'
+import { kpiEarnings } from '../kpi.js'
 
 const router = Router()
 
@@ -201,6 +202,9 @@ async function rateCards() {
 async function payRun({ from, to, only }) {
   const list = await contributions({ from, to })
   const { pick } = await rateCards()
+  // The KPIs the team already keeps, now carrying what hitting them is worth.
+  // Read once for everybody rather than once per person.
+  const kpis = await kpiEarnings({ from, to })
   const users = (await all('SELECT * FROM users')).map(publicUser)
   const wanted = only ? users.filter((u) => u.id === Number(only)) : users
 
@@ -240,7 +244,12 @@ async function payRun({ from, to, only }) {
     const quotaMet = quota > 0 && e.done >= quota
     const quotaBonus = quotaMet ? (rates.quota_bonus || 0) : 0
     const penalty = e.late * (rates.late_penalty || 0)
-    const bonus = onTimeBonus + quotaBonus
+    // What the KPI section says this month was worth. Each met KPI pays what
+    // it says it pays, and the lines travel with the number so nobody has to
+    // take the total on trust.
+    const kpiLines = kpis.get(u.id) || []
+    const kpiEarned = kpiLines.reduce((a, k) => a + k.earned, 0)
+    const bonus = onTimeBonus + quotaBonus + kpiEarned
     const total = (rates.base || 0) + piecework + bonus - penalty
     return {
       id: u.id, name: u.name, color: u.color, avatar: u.avatar, role: u.role, crew_roles: u.crew_roles,
@@ -248,6 +257,7 @@ async function payRun({ from, to, only }) {
       delivered: e.done, late: e.late, onTime, onTimePct,
       quota, quotaMet, quotaLeft: quota > 0 ? Math.max(0, quota - e.done) : null,
       lines, base: rates.base || 0, piecework,
+      kpis: kpiLines, kpiEarned,
       onTimeBonus, quotaBonus, bonus, penalty, total,
       items: e.items.sort((a, b) => String(b.day).localeCompare(String(a.day))),
     }
@@ -260,7 +270,7 @@ router.get('/pay', wrap(async (req, res) => {
   const out = await payRun({ from, to })
   const { hasDefault } = await rateCards()
   // Nobody with no card and nothing delivered clutters the payroll.
-  out.people = out.people.filter((p) => p.source !== 'none' || p.delivered > 0)
+  out.people = out.people.filter((p) => p.source !== 'none' || p.delivered > 0 || p.kpis.length > 0)
   out.people.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
   res.json({ ...out, hasDefault, currency: out.people[0]?.currency || 'UZS' })
 }))

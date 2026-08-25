@@ -6,6 +6,7 @@
 // own folder (a signed copy, say); KPIs are written by admins only.
 import { Router } from 'express'
 import { all, get, run } from '../db.js'
+import { kpisFor, SOURCES, SOURCE_KEYS } from '../kpi.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 
 export const DOC_KINDS = ['sop', 'responsibility', 'other']
@@ -113,17 +114,51 @@ docsRouter.delete('/:id', wrap(async (req, res) => {
 export const kpisRouter = Router()
 kpisRouter.use(authRequired)
 
-const KPI_FIELDS = [['target', 200], ['current', 200], ['unit', 40], ['notes', 1000]]
+const KPI_FIELDS = [['target', 200], ['current', 200], ['unit', 40], ['notes', 1000], ['source', 40], ['direction', 10]]
+// Money and a direction are not free text. A source the board does not know
+// how to count would leave the KPI silently manual; a negative reward would
+// mean hitting a target costs you.
+const cleanKpi = (b, vals) => {
+  if (vals.source !== undefined && vals.source !== '' && !SOURCE_KEYS.includes(vals.source)) {
+    return `That is not something the board counts — pick one of: ${SOURCE_KEYS.join(', ')}`
+  }
+  if (vals.direction !== undefined && vals.direction !== '' && !['atleast', 'atmost'].includes(vals.direction)) {
+    return 'A target is either at least or at most'
+  }
+  if (b.reward !== undefined) {
+    const n = Number(b.reward)
+    if (!Number.isFinite(n) || n < 0) return 'What the KPI pays must be a number, zero or more'
+  }
+  return null
+}
+
+// The period a KPI is measured over. Defaults to this month, because that is
+// what people are paid on; a caller can ask for any window.
+const windowOf = (req) => {
+  const to = String(req.query.to || '').slice(0, 10) || undefined
+  const from = String(req.query.from || '').slice(0, 10) || undefined
+  return { from, to }
+}
+
+// What the board can count, so the admin picks from a list rather than
+// guessing a keyword.
+kpisRouter.get('/sources', wrap(async (_req, res) => {
+  res.json(SOURCE_KEYS.map((k) => ({ key: k, label: SOURCES[k].label, unit: SOURCES[k].unit, lower: !!SOURCES[k].lower })))
+}))
 
 kpisRouter.get('/', wrap(async (req, res) => {
+  const win = windowOf(req)
   // Every KPI of everyone — admins only.
   if (req.query.all !== undefined) {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins see every KPI at once' })
-    return res.json(await all('SELECT * FROM person_kpis ORDER BY user_id, sort, id'))
+    const ids = (await all('SELECT DISTINCT user_id FROM person_kpis')).map((r) => r.user_id)
+    const out = []
+    for (const id of ids) out.push(...(await kpisFor(id, win)))
+    return res.json(out)
   }
   if (req.user.role !== 'admin' && req.query.user_id !== undefined && Number(req.query.user_id) !== req.user.id)
     return res.status(403).json({ error: 'You can only see your own KPIs' })
-  res.json(await all('SELECT * FROM person_kpis WHERE user_id = ? ORDER BY sort, id', targetUserId(req)))
+  res.json(await kpisFor(targetUserId(req), win))
 }))
 
 kpisRouter.post('/', adminOnly, wrap(async (req, res) => {
@@ -135,13 +170,18 @@ kpisRouter.post('/', adminOnly, wrap(async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Name the KPI' })
   const vals = {}
   for (const [f, max] of KPI_FIELDS) vals[f] = String(b[f] ?? '').trim().slice(0, max)
+  const wrong = cleanKpi(b, vals)
+  if (wrong) return res.status(400).json({ error: wrong })
+  const reward = Math.max(0, Number(b.reward) || 0)
   const now = new Date().toISOString()
   const maxSort = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM person_kpis WHERE user_id = ?', userId)).m
   const info = await run(`
-    INSERT INTO person_kpis (user_id, name, target, current, unit, notes, sort, updated_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, userId, name, vals.target, vals.current, vals.unit, vals.notes, maxSort + 1, req.user.id, now, now)
-  res.status(201).json(await get('SELECT * FROM person_kpis WHERE id = ?', info.lastInsertRowid))
+    INSERT INTO person_kpis (user_id, name, target, current, unit, notes, sort, source, direction, reward, updated_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, userId, name, vals.target, vals.current, vals.unit, vals.notes, maxSort + 1,
+     vals.source, vals.direction || 'atleast', reward, req.user.id, now, now)
+  const made = (await kpisFor(userId, windowOf(req))).find((k) => k.id === info.lastInsertRowid)
+  res.status(201).json(made || await get('SELECT * FROM person_kpis WHERE id = ?', info.lastInsertRowid))
 }))
 
 kpisRouter.patch('/:id', adminOnly, wrap(async (req, res) => {
@@ -157,6 +197,9 @@ kpisRouter.patch('/:id', adminOnly, wrap(async (req, res) => {
   for (const [f, max] of KPI_FIELDS) {
     if (b[f] !== undefined) patch[f] = String(b[f] ?? '').trim().slice(0, max)
   }
+  const wrong = cleanKpi(b, patch)
+  if (wrong) return res.status(400).json({ error: wrong })
+  if (b.reward !== undefined) patch.reward = Math.max(0, Number(b.reward) || 0)
   if (Object.keys(patch).length > 0) {
     // Every change stamps who and when — the page leads with it.
     patch.updated_by = req.user.id
@@ -165,7 +208,8 @@ kpisRouter.patch('/:id', adminOnly, wrap(async (req, res) => {
     await run(`UPDATE person_kpis SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`,
       ...keys.map((k) => patch[k]), row.id)
   }
-  res.json(await get('SELECT * FROM person_kpis WHERE id = ?', row.id))
+  const upd = (await kpisFor(row.user_id, windowOf(req))).find((k) => k.id === row.id)
+  res.json(upd || await get('SELECT * FROM person_kpis WHERE id = ?', row.id))
 }))
 
 kpisRouter.delete('/:id', adminOnly, wrap(async (req, res) => {
