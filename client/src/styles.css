@@ -3224,6 +3224,101 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 .streak-bar i { display: block; height: 100%; background: var(--brand-500); border-radius: 999px; }
 
+/* ---------- sprints ---------- */
+.sp-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.sp-head h2 { font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+.sp-range { color: var(--muted); font-size: 13.5px; }
+.sp-count {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--tint-neutral); color: var(--ink-2);
+}
+.sp-count.soon { background: var(--tint-warn); color: var(--warn-ink); }
+.sp-count.out  { background: var(--danger-bg); color: var(--critical); }
+
+.sp-locked {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  border-left: 3px solid var(--critical);
+}
+.sp-locked-owner { border-left-color: var(--warning); }
+
+/* The person strip. Wraps to as many lines as the team needs — it is derived
+   from who holds a task, so it is however long the week made it. */
+.sp-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.sp-strip-empty { margin-bottom: 16px; }
+.sp-person {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px 7px 8px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--hairline);
+}
+.sp-person-meta { display: flex; flex-direction: column; line-height: 1.2; }
+.sp-person-meta b { font-size: 13px; }
+.sp-person-meta .stat-sub { font-size: 11px; font-variant-numeric: tabular-nums; }
+.sp-blocked {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--critical); color: #fff;
+  font-size: 11px; font-weight: 700; display: grid; place-items: center;
+}
+
+.sp-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .sp-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .sp-board { grid-template-columns: 1fr; } }
+.sp-col { background: var(--surface-2); border-radius: var(--radius); padding: 10px; min-height: 120px; }
+.sp-col.over { outline: 2px dashed var(--brand-400); outline-offset: -4px; }
+.sp-col-head { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; font-size: 13px; }
+.sp-col-body { display: flex; flex-direction: column; gap: 8px; }
+
+.sp-card {
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm); padding: 10px 12px; cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.sp-card:hover { border-color: var(--hairline-strong); }
+.sp-card.dim { opacity: 0.4; }
+.sp-card-title { font-size: 13.5px; font-weight: 600; line-height: 1.35; display: flex; align-items: baseline; gap: 6px; }
+.sp-card-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.sp-faces { display: flex; gap: -4px; }
+.sp-faces > * + * { margin-left: -6px; }
+.sp-checks, .sp-deadline, .sp-carried {
+  font-size: 11px; padding: 2px 7px; border-radius: 999px;
+  background: var(--tint-neutral); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.sp-carried { background: var(--brand-50); color: var(--brand-700); }
+.sp-growth {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--good);
+  display: inline-block; flex: none;
+}
+/* The FIRST line of a written result, and only the first: a card is a
+   glance, and three lines of prose on it buries the four cards under it. */
+.sp-result {
+  margin-top: 6px; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sp-table td:last-child { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sp-add { display: flex; align-items: center; gap: 6px; padding: 2px; }
+.sp-add .input { border: none; background: transparent; padding: 6px 4px; font-size: 13px; }
+.sp-add .input:focus { outline: none; }
+
+.sp-filters { margin-bottom: 12px; }
+.sp-filters .select { max-width: 220px; }
+.sp-table td { font-size: 13px; }
+.sp-sort {
+  background: none; border: none; padding: 0; font: inherit; color: inherit;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+}
+.sp-sort svg { opacity: 0.35; }
+.sp-sort svg.on { opacity: 1; color: var(--brand-500); }
+
+.sp-growth-row { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+.sp-deadline-field { display: flex; flex-direction: column; gap: 4px; }
+.sp-deadline-field .input { max-width: 180px; }
+.sp-checklist { display: flex; flex-direction: column; gap: 4px; }
+.sp-item { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 13.5px; }
+.sp-item .sp-grip { color: var(--muted); cursor: grab; display: flex; }
+.sp-item .icon-btn { margin-left: auto; }
+
 /* ---------- reading somebody else's brief ---------- */
 /* The answer sits UNDER the original in its own panel, tinted so nobody can
    mistake it for the thing the author wrote. */

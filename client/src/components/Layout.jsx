@@ -71,6 +71,7 @@ export default function Layout() {
   else if (location.pathname.startsWith('/crew')) title = t('nav.crew')
   else if (location.pathname.startsWith('/team')) title = t('nav.team')
   else if (location.pathname.startsWith('/docs')) title = t('nav.docs')
+  else if (location.pathname.startsWith('/sprints')) title = t('nav.sprints')
   else if (location.pathname.startsWith('/profile')) title = t('nav.myprofilepage')
   else if (location.pathname.startsWith('/projects') || location.pathname.startsWith('/campaigns')) title = t('nav.projectspage')
   else if (location.pathname.startsWith('/dept/')) title = byKey[location.pathname.split('/')[2]]?.label || t('nav.channel')

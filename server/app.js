@@ -22,6 +22,7 @@ import contentRoutes, { autoFlagSilentlyLate } from './routes/content.js'
 import reportRoutes from './routes/reports.js'
 import rewardRoutes from './routes/rewards.js'
 import aiRoutes from './routes/ai.js'
+import sprintRoutes from './routes/sprints.js'
 import campaignRoutes from './routes/campaigns.js'
 import projectRoutes from './routes/projects.js'
 import boardRoutes from './routes/boards.js'
@@ -101,6 +102,7 @@ app.use('/api/content', contentRoutes)
 app.use('/api/reports', reportRoutes)
 app.use('/api/rewards', rewardRoutes)
 app.use('/api/ai', aiRoutes)
+app.use('/api/sprints', sprintRoutes)
 app.use('/api/campaigns', campaignRoutes)
 app.use('/api/projects', projectRoutes)
 app.use('/api/boards', boardRoutes)
@@ -126,6 +128,13 @@ if (existsSync(dist)) {
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  // A body bigger than the parser will take never reaches its route, so the
+  // route's own size rule never gets to speak and the person is told "Server
+  // error" about a file they could see was enormous. The parser knows exactly
+  // what went wrong; this passes that on instead of burying it.
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'That file is too big to send — keep it under 5 MB' })
+  }
   console.error(err)
   res.status(500).json({ error: 'Server error' })
 })
