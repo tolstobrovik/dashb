@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Languages, WandSparkles, X, Loader2 } from 'lucide-react'
 import { api } from '../lib/api.js'
+import { guessLang } from '../lib/text.js'
 import { useT, tr as tx } from '../lib/i18n.jsx'
 
 // Two questions a person has about somebody else's ТЗ, and a button for each.
@@ -14,10 +15,10 @@ import { useT, tr as tx } from '../lib/i18n.jsx'
 // become it. Closing the panel is the only way it goes away, and nothing is
 // saved to the task.
 //
-// Translate is only OFFERED when it would do something — the text is asked
-// what language it is in first, and a brief already in the reader's language
-// gets no button. Explain is always offered, because a wall of text is a wall
-// in any language.
+// Translate is only OFFERED when it would do something — the text's language
+// is worked out first, and a brief already in the reader's language gets no
+// button. Explain is always offered, because a wall of text is a wall in any
+// language.
 
 const PROVIDER_NOTE = {
   // The one that matters: no model was reachable, so this is not a rewrite —
@@ -30,21 +31,16 @@ const PROVIDER_NOTE = {
 
 export default function TextHelp({ text, label }) {
   const { lang } = useT()
-  const [src, setSrc] = useState(null)      // the language the text is in
   const [busy, setBusy] = useState('')      // '' | 'translate' | 'simplify'
   const [out, setOut] = useState(null)      // { text, provider, kind }
   const [err, setErr] = useState('')
 
   const body = String(text || '').trim()
-  useEffect(() => {
-    setOut(null); setErr('')
-    if (!body) { setSrc(null); return }
-    let alive = true
-    api.post('/ai/detect', { text: body })
-      .then((d) => { if (alive) setSrc(d.lang) })
-      .catch(() => { if (alive) setSrc(null) })
-    return () => { alive = false }
-  }, [body])
+  // Worked out here rather than asked of the server: opening a task would
+  // otherwise cost two round trips — one for the script, one for the
+  // description — to answer a question that is arithmetic over characters
+  // already on the page. Same function as the server's, mirrored in lib/text.
+  const src = useMemo(() => guessLang(body), [body])
 
   if (!body) return null
   const canTranslate = src && src !== lang

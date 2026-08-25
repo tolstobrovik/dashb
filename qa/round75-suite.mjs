@@ -73,6 +73,19 @@ ok('an empty brief has no language to offer', (await detect('   ')) === null)
 ok('a bare link is not a language', (await detect('https://drive.google.com/x')) === null,
   String(await detect('https://drive.google.com/x')))
 
+// The task window works the language out itself rather than asking — opening
+// a task would otherwise cost two round trips, one for the script and one for
+// the description, on the screen this board opens more than any other. Two
+// copies of a rule is two chances to disagree, so they are checked against
+// each other on the awkward cases.
+const { guessLang: clientGuess } = await import(ROOT + '/client/src/lib/text.js')
+const { guessLang: serverGuess } = await import(ROOT + '/server/ai.js')
+const CASES = [RU, EN, UZ, '', '   ', 'https://drive.google.com/x', '@dilnoza', 'ok',
+  'Reel https://x.com/a @bob 14:30', 'Правки 14:30', 'Shoot at 14:30 in the courtyard']
+const disagree = CASES.filter((c) => clientGuess(c) !== serverGuess(c))
+ok('the client reads a language exactly as the server does', disagree.length === 0,
+  JSON.stringify(disagree.map((c) => [c.slice(0, 24), clientGuess(c), serverGuess(c)])))
+
 // ===================== the cascade =====================
 await reset()
 let r = await req('/ai/translate', 'POST', { text: RU, to: 'en' })

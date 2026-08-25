@@ -124,3 +124,30 @@ export const deliveryHref = (value) => {
   const { url } = splitDelivery(value)
   return /^https?:\/\//i.test(url) ? url : ''
 }
+
+// ---- what language is this, roughly ---------------------------------------
+// Mirrors guessLang in server/ai.js, and exists so the task window does not
+// ask the server. Opening a task would otherwise cost two extra round trips —
+// one for the script, one for the description — on the screen this board
+// opens more than any other, to answer a question that is pure arithmetic
+// over the characters already on the page.
+//
+// Not a linguist: enough to answer "does this need translating for you?".
+// Cyrillic is Russian; Latin splits Uzbek from English on the letters and
+// words Uzbek has and English does not. A wrong answer costs a Translate
+// button that does nothing, never a wrong translation — the translator is
+// told to detect the source itself.
+const UZ_MARKS = /[ʻʼ‘’]|\b(va|bilan|uchun|kerak|bo['ʻ‘’]?l\w*|qil\w*|kun|ish|yang\w*|bo['ʻ‘’]?yicha|hamda|lekin)\b/i
+export function guessLang(text) {
+  // A link is not a language. Neither is a bare @handle or a date.
+  const s = String(text || '')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/\b[\w.+-]+@[\w.-]+\.\w+\b/g, ' ')
+    .replace(/@[\w.]+/g, ' ')
+    .replace(/\d/g, ' ')
+  const cyr = (s.match(/[Ѐ-ӿ]/g) || []).length
+  const lat = (s.match(/[A-Za-z]/g) || []).length
+  if (cyr + lat < 8) return null
+  if (cyr > lat) return 'ru'
+  return UZ_MARKS.test(s) ? 'uz' : 'en'
+}
