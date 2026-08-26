@@ -1099,6 +1099,9 @@ const PHRASES = {
     "The week before": "Предыдущая неделя",
     "This week": "Эта неделя",
     "This week is over.": "Эта неделя закончилась.",
+    "No": "Нет",
+    "Owner": "Владелец",
+    "Sprint owner": "Владелец спринта",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1659,6 +1662,9 @@ const PHRASES = {
     "The week before": "Oldingi hafta",
     "This week": "Shu hafta",
     "This week is over.": "Bu hafta tugagan.",
+    "No": "Yoʻq",
+    "Owner": "Ega",
+    "Sprint owner": "Sprint egasi",
   },
 }
 

@@ -1519,6 +1519,34 @@ export const sprintTaskChildDeletes = (id) =>
 // Idempotent by the week's own start, so a restart on Tuesday does not open
 // a second sprint, and a board that was closed on Saturday does not have its
 // history reopened by a boot on Sunday.
+// The first sprint owner.
+//
+// The table ships empty by design and was meant to be filled in by hand after
+// the first deploy, which is fine for one row and no way to run a team. This
+// puts the first one in so the module is usable the moment it lands; every
+// change after that is made in Admin, where an admin can add and remove
+// owners without touching the database.
+//
+// It runs once ever, and "once" starts when the person is actually found. A
+// flag burned on a board where they do not exist yet would mean they never
+// become an owner however long they are on the team afterwards. Written the
+// moment they are made one, so an admin taking it away later sticks, and a
+// restart does not put them back.
+const FIRST_SPRINT_OWNER = 'Asadbek Urakov'
+export async function ensureFirstSprintOwner() {
+  if (await get("SELECT value FROM meta WHERE key = 'sprint_owner_seeded'")) return
+  const name = FIRST_SPRINT_OWNER.trim().toLowerCase()
+  const first = name.split(/\s+/)[0]
+  const who = await get(
+    `SELECT id FROM users
+      WHERE lower(name) = ? OR lower(username) = ? OR lower(username) = ?
+      ORDER BY CASE WHEN lower(name) = ? THEN 0 ELSE 1 END LIMIT 1`,
+    name, name.replace(/\s+/g, ''), first, name)
+  if (!who) return
+  try { await run('INSERT INTO sprint_owners (user_id) VALUES (?)', who.id) } catch { /* already one */ }
+  await run("INSERT INTO meta (key, value) VALUES ('sprint_owner_seeded', ?)", new Date().toISOString())
+}
+
 export async function ensureCurrentSprint() {
   const { weekOf } = await import('./sprintweek.js')
   const week = weekOf()
@@ -1887,6 +1915,7 @@ export function initDb() {
     await seedIfEmpty()
     await seedCampaignsIfEmpty()
     await migrateCampaignsToProjects()
+    await ensureFirstSprintOwner()
     await ensureAdminAccess()
     await importJulyIgPlan()
     await seedTemplatesOnce()

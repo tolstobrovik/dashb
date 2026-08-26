@@ -551,7 +551,21 @@ function TasksTab() {
 /* ==================== TEAM (+ permissions) ==================== */
 const BLANK_USER = { name: '', username: '', password: '', role: 'member', crew_roles: [], departments: [], admin_channels: [], crew_channels: [], daily_cap: 0, permissions: {} }
 
+// Who owns sprints. Kept beside the people table because that is where the
+// question is asked: this person, yes or no. An admin sets it; being an admin
+// is not the same as being one.
+function useSprintOwners() {
+  const [owners, setOwners] = useState([])
+  useEffect(() => { api.get('/sprints/owners').then(setOwners).catch(() => setOwners([])) }, [])
+  const toggle = async (id, on) => {
+    try { setOwners(await api.put(`/sprints/owners/${id}`, { owner: on })) }
+    catch (e) { toast(e.message, 'err') }
+  }
+  return { owners, toggle }
+}
+
 function TeamTab() {
+  const { owners, toggle: toggleOwner } = useSprintOwners()
   const { channels } = useChannels()
   const [users, setUsers] = useState([])
   const [modal, setModal] = useState(false)
@@ -615,7 +629,8 @@ function TeamTab() {
       </div>
       <div className="card table-wrap">
         <table className="tbl">
-          <thead><tr><th>Member</th><th>Role</th><th>Channels</th><th>Permissions</th><th style={{ textAlign: 'right' }} /></tr></thead>
+          <thead><tr><th>Member</th><th>Role</th><th>Channels</th><th>Permissions</th><th>{tx('Sprint owner')}</th>
+                  <th style={{ textAlign: 'right' }} /></tr></thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
@@ -656,6 +671,16 @@ function TeamTab() {
                     : (u.crew_roles || []).length > 0
                       ? <span className="stat-sub">Move own work</span>
                       : <span className="stat-sub">{PERMISSIONS.filter((p) => u.permissions[p.key]).length}/{PERMISSIONS.length} enabled</span>}
+                </td>
+                <td>
+                  {/* Owners may promote an idea into a sprint and change a
+                      sprint after it freezes. Nothing else in the module cares
+                      who you are. */}
+                  <label className="checkbox-chip chip-sm">
+                    <input type="checkbox" checked={owners.includes(u.id)}
+                      onChange={(e) => toggleOwner(u.id, e.target.checked)} />
+                    {owners.includes(u.id) ? tx('Owner') : tx('No')}
+                  </label>
                 </td>
                 <td>
                   <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>

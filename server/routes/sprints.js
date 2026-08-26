@@ -218,6 +218,31 @@ router.get('/:id(\\d+)', wrap(async (req, res) => {
   res.json(await readSprint(sprint, req.user.id))
 }))
 
+// ---- who owns sprints ----------------------------------------------------
+// The one place the platform Admin flag means anything in this module, and it
+// means administering the module rather than being an owner of it. An admin
+// can say who the owners are; that does not make the admin one. It was always
+// meant to be set by hand in the database, which is fine for the first row and
+// no way to run a team.
+router.get('/owners', wrap(async (_req, res) => {
+  res.json((await all('SELECT user_id FROM sprint_owners')).map((r) => r.user_id))
+}))
+
+router.put('/owners/:userId', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' })
+  const id = Number(req.params.userId)
+  if (!(await get('SELECT id FROM users WHERE id = ?', id))) {
+    return res.status(404).json({ error: 'No such person' })
+  }
+  if (req.body?.owner) {
+    // The unique index makes a second insert a no-op rather than a duplicate.
+    try { await run('INSERT INTO sprint_owners (user_id) VALUES (?)', id) } catch { /* already one */ }
+  } else {
+    await run('DELETE FROM sprint_owners WHERE user_id = ?', id)
+  }
+  res.json((await all('SELECT user_id FROM sprint_owners')).map((r) => r.user_id))
+}))
+
 // The assignee picker, straight off the platform users table. Read only, and
 // the only place this module looks outside itself.
 router.get('/people', wrap(async (_req, res) => {

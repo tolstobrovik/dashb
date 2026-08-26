@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import GetSetUp from './GetSetUp.jsx'
-import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert } from 'lucide-react'
+import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert , Timer } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import QuickFind from './QuickFind.jsx'
 import NotificationsBell from './NotificationsBell.jsx'
@@ -110,6 +110,14 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/docs" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <ScrollText size={16} /> {t('nav.docs')}
+          </NavLink>
+          {/* Sprints is for the whole team, whatever hats they wear. It was in
+              the sidebar and ungated there, but somebody with no channels
+              gets this bar instead of a sidebar, so for them it did not exist
+              at all. The page itself always let them in; only the door was
+              missing. */}
+          <NavLink to="/sprints" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+            <Timer size={16} /> {t('nav.sprints')}
           </NavLink>
           <button className="icon-btn" onClick={() => setFinding(true)} data-tip={t('nav.find')} aria-label={t('nav.quickfind')}><Search size={17} /></button>
           <NotificationsBell user={user} />

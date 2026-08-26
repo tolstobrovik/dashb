@@ -137,5 +137,22 @@ for (const path of ['/sprints/current', '/sprints/people', '/sprints/backlog', '
 }
 ok('a week that does not exist is a 404', (await req('/sprints/999999')).status === 404)
 
+// ---------- who owns sprints, and who says so ----------
+// Ownership was a row you inserted by hand. It is a switch in Admin now, and
+// the platform Admin flag still buys nothing inside the module: an admin says
+// who the owners are without becoming one.
+const someone = (await req('/users')).data.find((u) => u.username === 'nodira')
+ok('an admin can name an owner', (await req(`/sprints/owners/${someone.id}`, 'PUT', { owner: true })).status === 200)
+ok('…and the person themselves is one', (await req('/sprints/current', 'GET', null, N)).data.owner === true)
+ok('…pressing it twice is not two rows',
+  (await req(`/sprints/owners/${someone.id}`, 'PUT', { owner: true })).data.filter((x) => x === someone.id).length === 1)
+ok('a member cannot hand it to themselves',
+  (await req(`/sprints/owners/${someone.id}`, 'PUT', { owner: false }, N)).status === 403)
+ok('…so they are still one', (await req('/sprints/current', 'GET', null, N)).data.owner === true)
+ok('naming somebody who does not exist is a 404',
+  (await req('/sprints/owners/999999', 'PUT', { owner: true })).status === 404)
+ok('an admin can take it back',
+  !(await req(`/sprints/owners/${someone.id}`, 'PUT', { owner: false })).data.includes(someone.id))
+
 console.log(fails === 0 ? '\nSprint guards suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails ? 1 : 0)
