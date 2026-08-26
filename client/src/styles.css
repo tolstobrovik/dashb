@@ -3751,3 +3751,21 @@ button.blame-person:hover { background: var(--surface-2); }
 .zoom-close:hover { background: rgba(255, 255, 255, 0.22); }
 .late-count { margin-left: 6px; background: var(--danger-bg); color: var(--critical); border-radius: 999px; padding: 1px 7px; font-size: 11px; }
 .late-more { font-weight: 700; color: var(--ink-2); background: var(--surface-2); border: 1px dashed var(--hairline-strong); cursor: pointer; font-family: inherit; }
+
+/* ---------- how sprints work ---------- */
+.sp-help {
+  margin-left: auto; align-self: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid var(--hairline-strong); background: var(--surface);
+  color: var(--muted); cursor: pointer; display: grid; place-items: center;
+}
+.sp-help:hover { border-color: var(--brand-300); color: var(--brand-600); background: var(--brand-50); }
+.sp-guide { display: flex; flex-direction: column; gap: 20px; }
+.sp-guide section { display: flex; flex-direction: column; gap: 5px; }
+.sp-guide h4 {
+  font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--brand-600); margin-bottom: 2px;
+}
+.sp-guide p { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.sp-guide ul { margin: 2px 0 2px 18px; display: flex; flex-direction: column; gap: 3px; }
+.sp-guide li { font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }

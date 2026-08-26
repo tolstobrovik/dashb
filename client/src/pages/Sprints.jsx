@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Timer, Plus, X, Check, Trash2, GripVertical, Link2, FileUp, AlignLeft,
-  LayoutGrid, Rows3, Lock, Circle, ArrowUpDown, Lightbulb,
+  LayoutGrid, Rows3, Lock, Circle, ArrowUpDown, Lightbulb, HelpCircle,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
 import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
-import { tr as tx } from '../lib/i18n.jsx'
+import { tr as tx, useT } from '../lib/i18n.jsx'
+import { SPRINT_GUIDE } from '../lib/sprintGuide.js'
 
 // The weekly sprint board.
 //
@@ -52,9 +53,37 @@ function countdownWords(ms) {
   return `${m}m ${s % 60}s`
 }
 
+// How it works, on both screens.
+//
+// The rules this module enforces are strict on purpose, and a rule nobody was
+// told about reads as a bug. Everything the board will refuse to do is
+// written down here, with the exact times and the exact numbers, in the
+// language the reader has set.
+function GuideModal({ onClose }) {
+  const { lang } = useT()
+  const sections = SPRINT_GUIDE[lang] || SPRINT_GUIDE.en
+  return (
+    <Modal title={tx('How sprints work')} onClose={onClose} wide footer={
+      <button className="btn btn-primary" onClick={onClose}>{tx('Got it')}</button>
+    }>
+      <div className="sp-guide">
+        {sections.map((s) => (
+          <section key={s.h}>
+            <h4>{s.h}</h4>
+            {(s.p || []).map((line) => <p key={line}>{line}</p>)}
+            {s.list && <ul>{s.list.map((line) => <li key={line}>{line}</li>)}</ul>}
+            {(s.after || []).map((line) => <p key={line}>{line}</p>)}
+          </section>
+        ))}
+      </div>
+    </Modal>
+  )
+}
+
 // The module's two screens. Real routes, so the browser's back button and a
 // pasted link both work; shared here so they cannot drift apart.
 export function SprintTabs() {
+  const [guide, setGuide] = useState(false)
   return (
     <div className="sp-tabs">
       <NavLink end to="/sprints" className={({ isActive }) => 'sp-tab' + (isActive ? ' active' : '')}>
@@ -63,6 +92,11 @@ export function SprintTabs() {
       <NavLink to="/sprints/backlog" className={({ isActive }) => 'sp-tab' + (isActive ? ' active' : '')}>
         <Lightbulb size={14} /> {tx('Backlog')}
       </NavLink>
+      <button type="button" className="sp-help" onClick={() => setGuide(true)}
+        data-tip={tx('How sprints work')} aria-label={tx('How sprints work')}>
+        <HelpCircle size={16} />
+      </button>
+      {guide && <GuideModal onClose={() => setGuide(false)} />}
     </div>
   )
 }

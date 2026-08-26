@@ -63,6 +63,9 @@ await req('/users', 'POST', {
 const DILNOZA = await login('dilnoza', 'pass1234')
 const users = (await req('/users', 'GET', null, ADMIN)).data
 const dil = users.find((u) => u.username === 'dilnoza')
+// The six, read from the API rather than retyped, so the guide is checked
+// against what the server actually accepts.
+const BLOCKER_REASONS_CHECK = (await req('/sprints/current', 'GET', null, ADMIN)).data.blockerReasons
 const adm = users.find((u) => u.username === 'admin')
 
 // ---------- an idea is anybody's to write down ----------
@@ -151,6 +154,24 @@ ok('the users table was not written to',
   (await req('/users', 'GET', null, ADMIN)).data.length === users.length)
 const owners = await db.execute('SELECT * FROM sprint_owners')
 ok('…and ownership is still the one row that was inserted by hand', owners.rows.length === 1)
+
+// ---------- the guide the ? button opens ----------
+// It states the rules the server enforces. If the two ever disagree, the one
+// people read is the one that is wrong, so the numbers are checked here
+// against the numbers the code uses.
+const { SPRINT_GUIDE } = await import(ROOT + '/client/src/lib/sprintGuide.js')
+const langs = Object.keys(SPRINT_GUIDE)
+ok('the guide exists in all three languages', langs.length === 3 && langs.every((l) => SPRINT_GUIDE[l].length === 12),
+  JSON.stringify(langs.map((l) => `${l}:${SPRINT_GUIDE[l].length}`)))
+const flat = (l) => SPRINT_GUIDE[l].flatMap((x) => [x.h, ...(x.p || []), ...(x.list || []), ...(x.after || [])])
+const dashed = langs.filter((l) => flat(l).some((line) => /[\u2013\u2014]/.test(line) || /\s-\s/.test(line)))
+ok('…and none of it uses a dash as punctuation', dashed.length === 0, dashed.join(', '))
+const en = flat('en').join(' ')
+ok('…it states the freeze the server enforces', en.includes('Saturday at 12:00'))
+ok('…the hundred characters the server counts', en.includes('100 characters'))
+ok('…and every one of the six blocker reasons',
+  BLOCKER_REASONS_CHECK.every((r) => en.includes(r)),
+  JSON.stringify(BLOCKER_REASONS_CHECK.filter((r) => !en.includes(r))))
 
 console.log(fails === 0 ? '\nSprint backlog suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails ? 1 : 0)

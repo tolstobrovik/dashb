@@ -1091,6 +1091,8 @@ const PHRASES = {
     "\u0422\u0417": "\u0422\u0417",
     "Show fewer": "Показать меньше",
     "{n} more": "ещё {n}",
+    "Got it": "Понятно",
+    "How sprints work": "Как работают спринты",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1643,6 +1645,8 @@ const PHRASES = {
     "\u0422\u0417": "\u0422\u0417",
     "Show fewer": "Kamroq koʻrsatish",
     "{n} more": "yana {n} ta",
+    "Got it": "Tushunarli",
+    "How sprints work": "Sprint qanday ishlaydi",
   },
 }
 
