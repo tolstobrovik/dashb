@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Timer, Plus, X, Check, Trash2, GripVertical, Link2, FileUp, AlignLeft,
   LayoutGrid, Rows3, Lock, Circle, ArrowUpDown, Lightbulb, HelpCircle,
+  ChevronLeft, ChevronRight, History,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
@@ -111,12 +112,18 @@ export default function Sprints() {
   const [open, setOpen] = useState(null)      // the task in the modal
   const [asking, setAsking] = useState(null)  // { task, to } — result or blocker
   const [people, setPeople] = useState([])
+  // Which week is on screen. null means this one, and this one is whatever
+  // the calendar says today — never a remembered id, or a Monday would open
+  // on last week because that is where you left off.
+  const [weekId, setWeekId] = useState(null)
+  const [weeks, setWeeks] = useState([])
 
-  const load = useCallback(() => api.get('/sprints/current')
+  const load = useCallback(() => api.get(weekId ? `/sprints/${weekId}` : '/sprints/current')
     .then((d) => { setData(d); setErr('') })
-    .catch((e) => setErr(e.message)), [])
+    .catch((e) => setErr(e.message)), [weekId])
   useEffect(() => { load() }, [load])
   useEffect(() => { api.get('/sprints/people').then(setPeople).catch(() => setPeople([])) }, [])
+  useEffect(() => { api.get('/sprints/history').then(setWeeks).catch(() => setWeeks([])) }, [])
 
   // Every write hands back the whole board, so this is the only place state
   // is replaced and there is never a half-updated screen.
@@ -127,6 +134,13 @@ export default function Sprints() {
   const sprint = data?.sprint
   const left = useCountdown(sprint?.freeze_at || new Date().toISOString())
   const locked = !!data?.frozen && !data?.owner
+  // A past week is finished business. Even an owner, who may still correct
+  // it, is not offered the box that adds NEW work — that box writes to the
+  // current week, and a task typed while reading August would land in
+  // September without saying so.
+  const liveWeek = !!sprint && weeks.find((w) => w.current)?.id === sprint.id
+  const at = weeks.findIndex((w) => w.id === sprint?.id)
+  const step = (n) => { const w = weeks[at + n]; if (w) setWeekId(w.current ? null : w.id) }
 
   const byId = useMemo(() => Object.fromEntries((people || []).map((p) => [p.id, p])), [people])
 
@@ -157,11 +171,44 @@ export default function Sprints() {
     <>
       <SprintTabs />
       <div className="sp-head">
+        {/* One step back is the week before, which is the question people
+            actually have. The list is there for the ones further off. */}
+        <button className="icon-btn" disabled={at < 0 || at + 1 >= weeks.length}
+          onClick={() => step(1)} data-tip={tx('The week before')} aria-label={tx('The week before')}>
+          <ChevronLeft size={18} />
+        </button>
         <h2>{sprint.code}</h2>
+        <button className="icon-btn" disabled={at <= 0}
+          onClick={() => step(-1)} data-tip={tx('The week after')} aria-label={tx('The week after')}>
+          <ChevronRight size={18} />
+        </button>
         <span className="sp-range">{sprint.label}</span>
-        <span className={'sp-count' + (left <= 0 ? ' out' : left < 6 * 3600e3 ? ' soon' : '')}>
-          <Timer size={14} /> {countdownWords(left)}
-        </span>
+        {liveWeek ? (
+          <span className={'sp-count' + (left <= 0 ? ' out' : left < 6 * 3600e3 ? ' soon' : '')}>
+            <Timer size={14} /> {countdownWords(left)}
+          </span>
+        ) : (
+          <span className="sp-past">
+            <History size={13} /> {tx('A week that has finished')}
+          </span>
+        )}
+        {!liveWeek && (
+          <button className="btn btn-sm" onClick={() => setWeekId(null)}>{tx('This week')}</button>
+        )}
+        {weeks.length > 1 && (
+          <select className="select sp-weeks" value={sprint.id}
+            onChange={(e) => {
+              const w = weeks.find((x) => String(x.id) === e.target.value)
+              setWeekId(w?.current ? null : Number(e.target.value))
+            }}
+            data-tip={tx('Jump to a week')}>
+            {weeks.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.code} · {w.label} · {w.done}/{w.tasks}
+              </option>
+            ))}
+          </select>
+        )}
         <span className="spacer" />
         <div className="pill-group">
           <button className={'pill' + (view === 'board' ? ' active' : '')} onClick={() => setView('board')}>
@@ -179,7 +226,9 @@ export default function Sprints() {
           <b>
             {sprint.status === 'closed'
               ? tx('This sprint is closed.')
-              : tx('This sprint froze at noon on Saturday.')}
+              : liveWeek
+                ? tx('This sprint froze at noon on Saturday.')
+                : tx('This week is over.')}
           </b>
           <span className="stat-sub">
             {data.owner ? tx('You are an owner — you can still change it.') : tx('An owner can still change it.')}
@@ -190,13 +239,14 @@ export default function Sprints() {
       <PersonStrip people={data.people} />
 
       {view === 'board'
-        ? <Board data={data} locked={locked} byId={byId} onMove={move} onOpen={setOpen} onAdd={push} />
+        ? <Board data={data} locked={locked || !liveWeek} byId={byId} onMove={move} onOpen={setOpen} onAdd={push} />
         : <ListView data={data} byId={byId} onOpen={setOpen} sprint={sprint} />}
 
       {open && (
         <TaskModal
           task={data.tasks.find((t) => t.id === open.id) || open}
-          people={people} locked={locked} onMove={moveFromWindow}
+          people={people} locked={locked} onMove={liveWeek ? moveFromWindow : null}
+          sprintId={liveWeek ? null : sprint.id}
           onClose={() => setOpen(null)} onSaved={setData}
         />
       )}
@@ -526,7 +576,7 @@ function AskModal({ task, to, reasons, onClose, onSaved }) {
 
 // ---- the task ----------------------------------------------------------------
 // One screen, no tabs. Everything except the title is optional.
-export function TaskModal({ task, people, locked, onClose, onSaved, onMove }) {
+export function TaskModal({ task, people, locked, onClose, onSaved, onMove, sprintId = null }) {
   const [form, setForm] = useState({
     title: task.title, description: task.description,
     is_growth: task.is_growth, deadline: task.deadline || '',
@@ -539,8 +589,11 @@ export function TaskModal({ task, people, locked, onClose, onSaved, onMove }) {
   const [err, setErr] = useState('')
   const dragRef = useRef(null)
 
+  // Naming the week matters when the week is not this one: a task opened from
+  // a sprint three weeks ago has to show the items committed for THAT week.
   const reloadItems = useCallback(
-    () => api.get(`/sprints/tasks/${task.id}/checklist`).then(setItems).catch(() => setItems([])), [task.id])
+    () => api.get(`/sprints/tasks/${task.id}/checklist${sprintId ? `?sprint=${sprintId}` : ''}`)
+      .then(setItems).catch(() => setItems([])), [task.id, sprintId])
   useEffect(() => { reloadItems() }, [reloadItems])
   useEffect(() => { api.get(`/sprints/tasks/${task.id}/files`).then(setFiles).catch(() => setFiles([])) }, [task.id])
 

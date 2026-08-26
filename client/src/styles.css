@@ -3752,6 +3752,18 @@ button.blame-person:hover { background: var(--surface-2); }
 .late-count { margin-left: 6px; background: var(--danger-bg); color: var(--critical); border-radius: 999px; padding: 1px 7px; font-size: 11px; }
 .late-more { font-weight: 700; color: var(--ink-2); background: var(--surface-2); border: 1px dashed var(--hairline-strong); cursor: pointer; font-family: inherit; }
 
+/* A tray chip is 260px wide by default, which on a 390px phone hangs 35px off
+   the right edge once the quick buttons are on it. It gives way there instead;
+   the title already ellipses, so a narrower chip loses nothing but width. */
+@media (max-width: 640px) {
+  .cal-tray-chip { max-width: 100%; min-width: 0; }
+  .cal-tray-chip .ev-txt { min-width: 0; }
+  .cal-tray-items { width: 100%; }
+}
+@media (hover: none) {
+  .late-more { min-height: 40px; }
+}
+
 /* ---------- how sprints work ---------- */
 .sp-help {
   margin-left: auto; align-self: center;
@@ -3769,3 +3781,12 @@ button.blame-person:hover { background: var(--surface-2); }
 .sp-guide p { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
 .sp-guide ul { margin: 2px 0 2px 18px; display: flex; flex-direction: column; gap: 3px; }
 .sp-guide li { font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.sp-head .icon-btn { flex: none; }
+.sp-past { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.sp-weeks { max-width: 300px; font-size: 12.5px; }
+
+/* Last word on touch sizes, so a rule written earlier in the file cannot win
+   the tie simply by being defined further down. */
+@media (hover: none) {
+  .sp-help { width: 40px; height: 40px; }
+}

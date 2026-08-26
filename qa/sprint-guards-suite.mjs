@@ -114,5 +114,28 @@ now = await one(t.id)
 ok('finishing a blocked task clears what it was waiting on',
   now.status === 'done' && now.blocker_reason === '', JSON.stringify(now.blocker_reason))
 
+// ---------- looking back at a week that has finished ----------
+// The board reads one week at a time. Everything that WRITES still works on
+// the current week only, which is what stops a task typed while reading
+// August from landing in September.
+const hist = (await req('/sprints/history')).data
+ok('history lists every week, newest first',
+  Array.isArray(hist) && hist.length >= 2 && hist[0].start_at > hist[1].start_at,
+  JSON.stringify(hist.map((h) => h.code)))
+ok('…and marks exactly one of them as now', hist.filter((h) => h.current).length === 1)
+const older = hist.find((h) => !h.current)
+ok('…counting what was in it', typeof older.tasks === 'number' && typeof older.done === 'number',
+  JSON.stringify({ tasks: older.tasks, done: older.done }))
+const read = await req(`/sprints/${older.id}`)
+ok('a past week opens by its id', read.status === 200 && read.data.sprint.id === older.id, String(read.status))
+ok('…and comes back frozen, which is what makes it read only', read.data.frozen === true)
+ok('…while this week is still this week',
+  (await req('/sprints/current')).data.sprint.id !== older.id)
+// The named routes must never be read as an id.
+for (const path of ['/sprints/current', '/sprints/people', '/sprints/backlog', '/sprints/history']) {
+  ok(`${path} is a route, not a sprint id`, (await req(path)).status === 200)
+}
+ok('a week that does not exist is a 404', (await req('/sprints/999999')).status === 404)
+
 console.log(fails === 0 ? '\nSprint guards suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails ? 1 : 0)

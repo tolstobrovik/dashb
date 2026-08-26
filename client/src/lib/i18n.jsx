@@ -1093,6 +1093,12 @@ const PHRASES = {
     "{n} more": "ещё {n}",
     "Got it": "Понятно",
     "How sprints work": "Как работают спринты",
+    "A week that has finished": "Завершённая неделя",
+    "Jump to a week": "Перейти к неделе",
+    "The week after": "Следующая неделя",
+    "The week before": "Предыдущая неделя",
+    "This week": "Эта неделя",
+    "This week is over.": "Эта неделя закончилась.",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1647,6 +1653,12 @@ const PHRASES = {
     "{n} more": "yana {n} ta",
     "Got it": "Tushunarli",
     "How sprints work": "Sprint qanday ishlaydi",
+    "A week that has finished": "Tugagan hafta",
+    "Jump to a week": "Haftaga oʻtish",
+    "The week after": "Keyingi hafta",
+    "The week before": "Oldingi hafta",
+    "This week": "Shu hafta",
+    "This week is over.": "Bu hafta tugagan.",
   },
 }
 

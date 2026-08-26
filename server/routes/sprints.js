@@ -186,6 +186,38 @@ router.get('/current', wrap(async (req, res) => {
   res.json(await readSprint(sprint, req.user.id))
 }))
 
+// Every week there has been, newest first, for the picker in the header.
+// Cheap enough to send whole: this is one row per week, so a board three years
+// old is a hundred and fifty rows.
+router.get('/history', wrap(async (req, res) => {
+  const rows = await all(`
+    SELECT s.id, s.code, s.start_at, s.freeze_at, s.meeting_at, s.status,
+           (SELECT COUNT(*) FROM sprint_task_sprints ts WHERE ts.sprint_id = s.id) AS tasks,
+           (SELECT COUNT(*) FROM sprint_task_sprints ts
+              JOIN sprint_tasks t ON t.id = ts.task_id
+             WHERE ts.sprint_id = s.id AND t.status = 'done') AS done
+    FROM sprints s ORDER BY s.start_at DESC
+  `)
+  const now = Date.now()
+  res.json(rows.map((r) => ({
+    ...r,
+    label: weekLabel(r),
+    current: Date.parse(r.start_at) <= now && now < Date.parse(r.start_at) + 7 * 86400e3,
+  })))
+}))
+
+// One week by its id, in exactly the shape the board reads. A past week comes
+// back frozen, because its freeze is in the past, which is what makes it
+// read only without a second rule saying so.
+//
+// Registered after the named routes above and guarded to digits, so /current,
+// /people, /backlog and /history are never mistaken for a sprint id.
+router.get('/:id(\\d+)', wrap(async (req, res) => {
+  const sprint = await get('SELECT * FROM sprints WHERE id = ?', req.params.id)
+  if (!sprint) return res.status(404).json({ error: 'No such sprint' })
+  res.json(await readSprint(sprint, req.user.id))
+}))
+
 // The assignee picker, straight off the platform users table. Read only, and
 // the only place this module looks outside itself.
 router.get('/people', wrap(async (_req, res) => {
@@ -368,8 +400,20 @@ router.post('/backlog/:id/promote', wrap(async (req, res) => {
 // ---- the weekly checklist ----------------------------------------------------
 // Items belong to a task AND a week. A task in its third sprint shows the
 // three things committed for THIS week, not the eleven it has ever had.
+// The week being READ, which is not always the current one: opening a task
+// from a sprint three weeks ago has to show that week's items, not this
+// week's. Everything that WRITES still works on the current week only.
+async function viewedSprint(req) {
+  const asked = Number(req.query?.sprint)
+  if (asked) {
+    const row = await get('SELECT * FROM sprints WHERE id = ?', asked)
+    if (row) return row
+  }
+  return currentSprint()
+}
+
 router.get('/tasks/:id/checklist', wrap(async (req, res) => {
-  const sprint = await currentSprint()
+  const sprint = await viewedSprint(req)
   res.json(await all(
     'SELECT * FROM sprint_checklist_items WHERE task_id = ? AND sprint_id = ? ORDER BY position, id',
     req.params.id, sprint.id))
