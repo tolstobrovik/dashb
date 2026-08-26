@@ -204,7 +204,7 @@ const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, ass
   operator_id, editor_id, designer_id, reviewer_id, reviewers,
   shot_at, edited_at, edit_due_revised, review_due_revised,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
-  shot_link, design_link, reference_text, reference_links, format, rubrika, script, release_date, release_time, description,
+  shot_link, design_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
   checklist, todo_sort, pinned, ${withThumbs ? 'photo_thumb,' : ''}
   CASE WHEN photo_thumb IS NULL THEN 0 ELSE 1 END AS has_thumb,
   (SELECT COUNT(*) FROM comments WHERE comments.content_id = content.id) AS comment_count,
@@ -223,7 +223,7 @@ const logEvent = (user, id, title, kind) =>
   run(...actRow(user, id, title, kind, null, null, null, new Date().toISOString()))
 
 // Paragraph-sized fields land as a quiet "updated the …" — no quoting essays.
-const QUIET_FIELDS = ['description', 'script', 'reference_text', 'reference_links', 'photo', 'checklist']
+const QUIET_FIELDS = ['description', 'script', 'tz', 'reference_text', 'reference_links', 'photo', 'checklist']
 const PLAIN_FIELDS = ['title', 'type', 'recording_date', 'recording_time', 'recording_end', 'edit_ready_date',
   'design_ready_date', 'release_date', 'release_time', 'format', 'rubrika', 'ready_link', 'shot_link', 'design_link',
   // A re-promised deadline is the most disputable thing on the task: it is
@@ -965,8 +965,8 @@ router.post('/', wrap(async (req, res) => {
   const info = await run(`
     INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id, reviewer_id, reviewers,
       recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, release_date, release_time, description, ready_link,
-      shot_link, design_link, reference_text, reference_links, format, rubrika, script, script_key, photo, photo_thumb, checklist, todo_sort, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      shot_link, design_link, reference_text, reference_links, format, rubrika, script, tz, script_key, photo, photo_thumb, checklist, todo_sort, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     String(title).trim(), JSON.stringify(channels), safeType, assignee, JSON.stringify(assigneeList), req.user.id, status, campaignId,
     crew.operator_id, crew.editor_id, crew.designer_id, crew.reviewer_id, JSON.stringify(reviewerList),
@@ -974,7 +974,7 @@ router.post('/', wrap(async (req, res) => {
     cleanDescription, cleanLink(req.body?.ready_link) || null,
     cleanLink(req.body?.shot_link) || null, cleanLink(req.body?.design_link) || null,
     reference_text ? String(reference_text).slice(0, 4000) : null, JSON.stringify(referenceLinks),
-    briefText.format, briefText.rubrika, briefText.script, scriptKey(briefText.script),
+    briefText.format, briefText.rubrika, briefText.script, cleanScript(req.body?.tz), scriptKey(briefText.script),
     photo || null, photo_thumb || null, JSON.stringify(Array.isArray(checklist) ? checklist : []),
     maxSort + 1, new Date().toISOString(),
   )
@@ -1736,6 +1736,7 @@ router.patch('/:id', wrap(async (req, res) => {
 
   // The brief fields (format / rubrika / script) — manage_content, like the
   // Reference. Clearing one the admin made required for this type is refused.
+  if (body.tz !== undefined) patch.tz = cleanScript(body.tz)
   if (['format', 'rubrika', 'script'].some((f) => body[f] !== undefined)) {
     if (!can(req.user, 'manage_content')) return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
     const fieldRules = await getTaskFields()

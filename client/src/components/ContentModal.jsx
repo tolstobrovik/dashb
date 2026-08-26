@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye,
+  ClipboardList, FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
@@ -142,6 +142,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     operator_id: item?.operator_id ?? null,
     editor_id: item?.editor_id ?? null,
     designer_id: item?.designer_id ?? null,
+    tz: item?.tz ?? '',
     reviewer_ids: (() => {
       try {
         const l = Array.isArray(item?.reviewers) ? item.reviewers : JSON.parse(item?.reviewers || '[]')
@@ -456,8 +457,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // a link they could see was there. The type only decides which EMPTY
   // fields are worth offering.
   const DELIVERY = [
-    { col: 'shot_link', file: 'shot_file', label: 'Recording', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, kind: 'shot', mine: myHats.operator, present: !!item?.operator_id, offer: !isDesign },
-    { col: 'ready_link', file: 'ready_file', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, kind: 'edit', mine: myHats.editor, present: !!item?.editor_id, offer: !isDesign },
+    { col: 'shot_link', file: 'shot_file', label: 'Recording', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, kind: 'shot', mine: myHats.operator, present: !!item?.operator_id, offer: true },
+    { col: 'ready_link', file: 'ready_file', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, kind: 'edit', mine: myHats.editor, present: !!item?.editor_id, offer: true },
     { col: 'design_link', file: 'design_file', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, kind: 'design', mine: myHats.designer, present: !!item?.designer_id, offer: true },
   ]
   const deliveryFields = DELIVERY.filter((f) => (form[f.col] ? true : (crewViewer
@@ -803,6 +804,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         format: form.format || null,
         rubrika: form.rubrika.trim() || null,
         script: form.script.trim() || null,
+        tz: form.tz.trim() || null,
         recording_date: form.recording_date || null,
         recording_time: form.recording_time || null,
         recording_end: form.recording_end || null,
@@ -1179,6 +1181,30 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               placeholder={tx("The script / shot plan the crew works by…")}
               value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
             {!creating && <TextHelp text={item?.script} label={t('task.script')} />}
+          </div>
+        </div>
+      )}
+      {/* ТЗ — техническое задание. Separate from the script on purpose: the
+          script is what the operator films, the ТЗ is what the editor is told
+          to make of it. A shoot can be scripted with no ТЗ written yet, and
+          an edit cannot start without one. */}
+      {!crewViewer && canEdit && (
+        <div className={'cm-row' + (badField === 'tz' ? ' field-bad' : '')} data-field="tz">
+          <span className="cm-key"><ClipboardList size={13} style={{ verticalAlign: -2 }} /> {tx('ТЗ')}</span>
+          <div>
+            <textarea className="input cm-script" rows={5} disabled={detailsLocked}
+              placeholder={tx('What the editor is asked to make — length, cuts, captions, music…')}
+              value={form.tz} onChange={(e) => setForm({ ...form, tz: e.target.value })} />
+            {!creating && <TextHelp text={item?.tz} label={tx('ТЗ')} />}
+          </div>
+        </div>
+      )}
+      {(crewViewer || !canEdit) && form.tz && (
+        <div className="cm-row">
+          <span className="cm-key"><ClipboardList size={13} style={{ verticalAlign: -2 }} /> {tx('ТЗ')}</span>
+          <div>
+            <div className="crew-script">{form.tz}</div>
+            <TextHelp text={form.tz} label={tx('ТЗ')} />
           </div>
         </div>
       )}
@@ -1563,13 +1589,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       <div className="cm-row" data-field={badField === 'operator_id' ? 'operator_id' : badField === 'editor_id' ? 'editor_id' : undefined}>
         <span className="cm-key">{t('task.crew')}</span>
         <div className="crew-row">
-          {(isDesign ? [
-            { key: 'designer_id', label: tx('Designer'), role: 'designer', tip: 'Who designs this post' },
-          ] : [
+          {/* Two hats. The designer used to be a third, offered on every task
+              and picked on almost none — the pipeline this board runs is
+              idea → shoot → edit, and a designer has no stage in it. The
+              column and anyone already holding it are untouched; it is simply
+              not offered any more. */}
+          {[
             { key: 'operator_id', label: tx('Operator'), role: 'operator', tip: 'Who films / shoots this' },
             { key: 'editor_id', label: tx('Editor'), role: 'editor', tip: 'Who edits this' },
-            { key: 'designer_id', label: tx('Designer'), role: 'designer', tip: 'Who designs the artwork (thumbnail, cover…)' },
-          ]).map((f) => {
+          ].map((f) => {
             const holds = (u) => (u.crew_roles || []).includes(f.role)
             const bySort = (a, b) =>
               (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name)
@@ -1725,8 +1753,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           }
           const at = (k) => ({ ...shared, bad: badField === k })
           return (<>
-            {!isDesign && <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" {...at('recording_date')} />}
-            {!isDesign && <DateRow icon={Scissors} label="Edit ready" dateKey="edit_ready_date" {...at('edit_ready_date')} />}
+            <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" {...at('recording_date')} />
+            <DateRow icon={Scissors} label="Edit ready" dateKey="edit_ready_date" {...at('edit_ready_date')} />
             <DateRow icon={Palette} label="Design ready" dateKey="design_ready_date" {...at('design_ready_date')} />
             {!crewViewer && <DateRow icon={Send} label="Release" dateKey="release_date" timeKey="release_time" {...at('release_date')} />}
           </>)

@@ -150,6 +150,47 @@ const VIEWS = [
   { key: 'list', label: 'List', icon: Rows3 },
 ]
 
+// The late tray, with a ceiling.
+//
+// Both copies of this rendered every overdue piece there was. On a real board
+// that is fifty chips stacked above the timetable they are meant to be dragged
+// onto — you scroll past the problem to reach the place you fix it. Oldest
+// first, because the piece that has been late longest is the one to rebook,
+// and the rest wait behind a count until they are asked for.
+const LATE_SHOWN = 6
+function LateTray({ groups, onOpen, startDrag, endDrag }) {
+  const [all, setAll] = useState(false)
+  const flat = groups
+    .flatMap((g) => g.items.map((t) => ({ ...g, t })))
+    .sort((a, b) => String(a.dateOf(a.t)).localeCompare(String(b.dateOf(b.t))))
+  if (flat.length === 0) return null
+  const shown = all ? flat : flat.slice(0, LATE_SHOWN)
+  return (
+    <div className="cal-tray crew-late-tray">
+      <span className="cal-tray-label">
+        <AlertTriangle size={13} />{' '}{tx('Late — drag onto a day to rebook')}
+        <b className="late-count">{flat.length}</b>
+      </span>
+      <div className="cal-tray-items">
+        {shown.map(({ t, kind, Icon, who, dateOf }) => (
+          <div key={`${kind}${t.id}`} className="cal-tray-chip" draggable
+            onDragStart={(e) => startDrag(e, t, kind)} onDragEnd={endDrag}
+            onClick={() => onOpen(t)} title={t.title}>
+            <Icon size={12} />
+            <span className="ev-txt">{t.title}</span>
+            <span className="chip chip-danger">{who(t)} · {dateLabel(dateOf(t))}</span>
+          </div>
+        ))}
+        {flat.length > LATE_SHOWN && (
+          <button type="button" className="cal-tray-chip late-more" onClick={() => setAll(!all)}>
+            {all ? tx('Show fewer') : tx('{n} more', { n: flat.length - LATE_SHOWN })}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Crew() {
   const { user } = useAuth()
   const { byKey } = useChannels()
@@ -439,22 +480,10 @@ export default function Crew() {
         const wdaysOf = (u) => (Array.isArray(u.work_days) && u.work_days.length ? u.work_days : DEFAULT_DAYS)
         return (
           <>
-            {lateDesigns.length > 0 && (
-              <div className="cal-tray crew-late-tray">
-                <span className="cal-tray-label"><AlertTriangle size={13} />{' '}{tx("Late — drag onto a day to rebook")}</span>
-                <div className="cal-tray-items">
-                  {lateDesigns.map((t) => (
-                    <div key={`ld${t.id}`} className="cal-tray-chip" draggable
-                      onDragStart={(e) => startDrag(e, t, 'design')} onDragEnd={endDrag}
-                      onClick={() => setOpenItem(t)} title={t.title}>
-                      <Palette size={12} />
-                      <span className="ev-txt">{t.title}</span>
-                      <span className="chip chip-danger">{nameOf(t.designer_id)} · {dateLabel(t.design_ready_date)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <LateTray onOpen={setOpenItem} startDrag={startDrag} endDrag={endDrag} groups={[
+              { kind: 'design', Icon: Palette, items: lateDesigns,
+                who: (t) => nameOf(t.designer_id), dateOf: (t) => t.design_ready_date },
+            ]} />
             <div className="card table-wrap tt-wrap">
               <table className="crew-tt">
                 <thead>
@@ -569,31 +598,12 @@ export default function Crew() {
         const nameOf = (id) => users.find((x) => x.id === id)?.name?.split(' ')[0] || '?'
         return (
           <>
-            {(lateShoots.length > 0 || lateCuts.length > 0) && (
-              <div className="cal-tray crew-late-tray">
-                <span className="cal-tray-label"><AlertTriangle size={13} />{' '}{tx("Late — drag onto a day to rebook")}</span>
-                <div className="cal-tray-items">
-                  {lateShoots.map((t) => (
-                    <div key={`ls${t.id}`} className="cal-tray-chip" draggable
-                      onDragStart={(e) => startDrag(e, t, 'shoot')} onDragEnd={endDrag}
-                      onClick={() => setOpenItem(t)} title={t.title}>
-                      <Clapperboard size={12} />
-                      <span className="ev-txt">{t.title}</span>
-                      <span className="chip chip-danger">{nameOf(t.operator_id)} · {dateLabel(t.recording_date)}</span>
-                    </div>
-                  ))}
-                  {lateCuts.map((t) => (
-                    <div key={`lc${t.id}`} className="cal-tray-chip" draggable
-                      onDragStart={(e) => startDrag(e, t, 'edit')} onDragEnd={endDrag}
-                      onClick={() => setOpenItem(t)} title={t.title}>
-                      <Scissors size={12} />
-                      <span className="ev-txt">{t.title}</span>
-                      <span className="chip chip-danger">{nameOf(t.editor_id)} · {dateLabel(t.edit_ready_date || t.release_date)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <LateTray onOpen={setOpenItem} startDrag={startDrag} endDrag={endDrag} groups={[
+              { kind: 'shoot', Icon: Clapperboard, items: lateShoots,
+                who: (t) => nameOf(t.operator_id), dateOf: (t) => t.recording_date },
+              { kind: 'edit', Icon: Scissors, items: lateCuts,
+                who: (t) => nameOf(t.editor_id), dateOf: (t) => t.edit_ready_date || t.release_date },
+            ]} />
         <div className="card table-wrap tt-wrap">
           <table className="crew-tt">
             <thead>

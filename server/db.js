@@ -624,6 +624,7 @@ export async function initSchema() {
       format         TEXT,   -- the shape of the piece: talking head, split screen…
       rubrika        TEXT,   -- the recurring column (rubric) it belongs to
       script         TEXT,   -- the written script / shot plan
+      tz             TEXT,   -- техническое задание: what the EDITOR is told to make. The script is what gets filmed; the ТЗ is what gets cut.
       script_key     TEXT,   -- fingerprint of the above, so "is this script already on another task" is a lookup rather than a scan
       release_date   TEXT,
       release_time   TEXT,
@@ -1158,6 +1159,7 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS operator_id INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS editor_id INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS designer_id INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS tz TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_ready_date TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS assignees TEXT NOT NULL DEFAULT '[]'")
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_roles TEXT NOT NULL DEFAULT '[]'")
@@ -1281,6 +1283,7 @@ async function migrate() {
   //                   legacy upgrades below only ever applied to SQLite files.
   try {
     if (!(await hasColumn('users', 'permissions'))) await exec("ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}'")
+    if (!(await hasColumn('content', 'tz'))) await exec('ALTER TABLE content ADD COLUMN tz TEXT')
     if (!(await hasColumn('trackers', 'content_type'))) await exec('ALTER TABLE trackers ADD COLUMN content_type TEXT')
     // Older databases stored a single channel per task — rebuild to the new shape.
     if (await hasColumn('content', 'channel')) {

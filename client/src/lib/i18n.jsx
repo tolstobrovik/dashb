@@ -1087,6 +1087,10 @@ const PHRASES = {
     "Column": "Колонка",
     "Click to see it full size": "Нажмите, чтобы открыть целиком",
     "Duplicated as {name}": "Создана копия: {name}",
+    "What the editor is asked to make — length, cuts, captions, music…": "Что нужно сделать монтажёру — хронометраж, склейки, титры, музыка…",
+    "\u0422\u0417": "\u0422\u0417",
+    "Show fewer": "Показать меньше",
+    "{n} more": "ещё {n}",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1635,6 +1639,10 @@ const PHRASES = {
     "Column": "Ustun",
     "Click to see it full size": "Toʻliq koʻrish uchun bosing",
     "Duplicated as {name}": "Nusxa olindi: {name}",
+    "What the editor is asked to make — length, cuts, captions, music…": "Montajchiga nima topshirilyapti — davomiyligi, kesimlar, matnlar, musiqa…",
+    "\u0422\u0417": "\u0422\u0417",
+    "Show fewer": "Kamroq koʻrsatish",
+    "{n} more": "yana {n} ta",
   },
 }
 

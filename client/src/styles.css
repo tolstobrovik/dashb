@@ -3749,3 +3749,5 @@ button.blame-person:hover { background: var(--surface-2); }
   display: grid; place-items: center; cursor: pointer;
 }
 .zoom-close:hover { background: rgba(255, 255, 255, 0.22); }
+.late-count { margin-left: 6px; background: var(--danger-bg); color: var(--critical); border-radius: 999px; padding: 1px 7px; font-size: 11px; }
+.late-more { font-weight: 700; color: var(--ink-2); background: var(--surface-2); border: 1px dashed var(--hairline-strong); cursor: pointer; font-family: inherit; }
