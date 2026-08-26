@@ -659,15 +659,83 @@ table.tbl tr:hover td { background: var(--surface-2); }
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
-  width: 100%; max-width: 460px;
-  max-height: 90vh; overflow-y: auto;
+  /* Never wider than the screen it opens on. It used to be a flat 460px, so
+     on a phone the head clipped and the footer laid its first three buttons
+     out at a negative x — off the edge, unreachable, with no scroll to
+     recover them. */
+  width: 100%; max-width: min(460px, calc(100vw - 32px));
+  max-height: 90vh;
+  display: flex; flex-direction: column;
   animation: pop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes pop { from { transform: translateY(8px) scale(0.98); opacity: 0; } }
-.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--hairline); }
-.modal-head h3 { font-size: 16px; font-weight: 700; }
-.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--hairline); }
+/* The title and the buttons stay put while the middle scrolls, so on a long
+   form you can always see what you are editing and always reach Save. */
+.modal-head {
+  display: flex; align-items: center; gap: 12px; justify-content: space-between;
+  padding: 18px 20px; border-bottom: 1px solid var(--hairline);
+  position: sticky; top: 0; z-index: 3; background: var(--surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.modal-head h3 {
+  font-size: 16px; font-weight: 700;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.modal-head .icon-btn { flex: none; }
+.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+
+/* ---------- the modal footer, one shape in all twenty-three of them ----------
+   Two zones: on the left what this window can do to the thing it is showing,
+   on the right what it does with your changes. The zones are parted by a real
+   element rather than margin-left:auto, because on a phone that element turns
+   into a line break — Cancel and Save get a row of their own instead of
+   shoving everything else off the screen. */
+.modal-foot {
+  display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: flex-end; gap: 10px;
+  padding: 16px 20px; border-top: 1px solid var(--hairline);
+  position: sticky; bottom: 0; z-index: 3; background: var(--surface);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.modal-foot > .foot-gap { flex: 1 1 0; min-width: 0; }
+
+/* ---------- on a phone a window stops pretending to be a window ----------
+   It comes up off the bottom edge as a sheet: full width, title pinned at the
+   top, buttons pinned at the bottom where a thumb already is, and the form
+   scrolling between them. Nothing is ever off-screen, so nothing has to be
+   hunted for. */
+@media (max-width: 640px) {
+  .modal-backdrop { padding: 0; place-items: end stretch; }
+  /* .modal.modal-wide, not .modal-wide: the wide rule is defined further down
+     the file and would otherwise win the tie and keep the sheet 32px short of
+     the screen. */
+  .modal, .modal.modal-wide {
+    max-width: 100%; width: 100%;
+    max-height: 94vh;
+    border-radius: 18px 18px 0 0;
+    animation: sheet-up 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes sheet-up { from { transform: translateY(18px); opacity: 0.5; } }
+  /* The grab bar every phone sheet has. It says "this came up, it can go back
+     down" without a word of explanation. */
+  .modal-head {
+    padding: 16px 16px 12px; border-radius: 18px 18px 0 0;
+  }
+  .modal-head::before {
+    content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 999px; background: var(--hairline-strong);
+  }
+  .modal-body { padding: 16px; gap: 16px; }
+  .modal-foot {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    gap: 8px; border-radius: 0;
+  }
+  /* The gap becomes the line break, and every button takes a fair share of
+     its row rather than being squeezed to nothing by the one beside it. */
+  .modal-foot > .foot-gap { flex-basis: 100%; height: 0; margin: 0; }
+  .modal-foot > .btn { flex: 1 1 40%; justify-content: center; }
+  .modal-foot > .btn-icon { flex: 0 0 auto; }
+}
 .icon-btn { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: grid; place-items: center; }
 .icon-btn:hover { background: var(--surface-2); color: var(--ink); }
 
@@ -1013,7 +1081,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .rel-ev.dim { opacity: 0.4; }
 
 /* ---- Task editor v2 (cleaner UX) ---- */
-.modal-wide { max-width: 560px; }
+.modal-wide { max-width: min(560px, calc(100vw - 32px)); }
 .cm-title {
   width: 100%; border: none; background: transparent; font-family: inherit;
   font-size: 19px; font-weight: 700; color: var(--ink); padding: 2px 0 10px;
@@ -1058,7 +1126,10 @@ table.tbl tr:hover td { background: var(--surface-2); }
   .drow-label { flex: 1 0 100%; }
   .drow .input { flex: 1 1 110px; min-width: 0; width: auto; }
   .drow-quick { flex: 1 0 100%; }
-  .cm-row { grid-template-columns: 74px 1fr; }
+  /* A 74px label column left the chips and inputs beside it about 200px to
+     live in, so a row of six stage chips became five lines. The label takes
+     its own line and the control gets the whole width. */
+  .cm-row { grid-template-columns: 1fr; align-items: start; gap: 6px; }
 }
 
 /* ---- Pinned metrics (several per channel) ---- */
@@ -1314,7 +1385,12 @@ table.tbl tr:hover td { background: var(--surface-2); }
 /* Touch screens have no hover, and the hidden bubble still widens the page's
    scroll area on narrow layouts — drop tooltips there entirely. */
 @media (hover: none), (max-width: 720px) {
-  [data-tip]::after { display: none; }
+  /* All three, not just the base rule: [data-tip]:hover::after outranks
+     [data-tip]::after on specificity, so the bubble kept rendering on touch
+     and one of them on Team was wide enough to push the whole page sideways. */
+  [data-tip]::after,
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after { display: none; }
 }
 
 /* The complete-checkbox greys out when the task isn't yours to complete. */
@@ -3494,3 +3570,129 @@ button.blame-person:hover { background: var(--surface-2); }
 .setup-install > svg { color: var(--brand-500); flex-shrink: 0; }
 .setup-txt { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .setup-sub { font-size: 12px; color: var(--ink-soft); line-height: 1.45; }
+
+/* ============================================================
+   Touch: nothing smaller than a fingertip
+   ============================================================
+   Measured across the app at 390px before this existed: nineteen delete
+   buttons 22px square on To-Do, the complete tick at 24, the menu button at
+   34, the sidebar's four at 26–28, the colour swatches at 30. A finger pad is
+   about 9mm — roughly 44 CSS pixels — so every control that DOES something
+   grows to meet one on a device with no mouse.
+
+   The ones that only SAY something are deliberately left alone. The channel
+   and type chips on a task row are captions, not buttons; making a caption
+   44px tall would push the next task off the screen to no purpose. */
+@media (hover: none) {
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 40px; }
+  .icon-btn { min-width: 40px; min-height: 40px; }
+  .input, .select, textarea.input { min-height: 44px; }
+  select.select { padding-top: 10px; padding-bottom: 10px; }
+  .pill, .tab, .seg-btn, .stage-chip, .checkbox-chip, .extra-btn,
+  .qbtn, .rev-chip, .wd-chip, .sp-tab { min-height: 40px; }
+  /* The tick is the one control that should NOT grow to 44: a row of them
+     down the page reads as a column of buttons rather than a checklist. It
+     keeps the size it looks right at and wears an invisible 44px hit area
+     instead, so the thumb target is full size and the row is not. */
+  .todo-check, .mini-check { width: 30px; height: 30px; position: relative; }
+  .todo-check::before, .mini-check::before {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+  }
+  .cf-mine, .hire-gap { min-height: 40px; }
+  .pw-eye { min-width: 40px; min-height: 40px; }
+  /* An icon with no words beside it is as wide as its padding — about 31px in
+     the Admin tables. Give every button a floor on both axes. */
+  .btn { min-width: 40px; justify-content: center; }
+  .hamburger { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
+  .side-logout, .side-edit-btn { min-height: 40px; min-width: 40px; }
+  .swatch { width: 40px; height: 40px; }
+  /* Rows that hold those bigger controls need room for them rather than
+     cropping them. */
+  .todo-row, .drow, .hire-gap { align-items: center; }
+  /* A task row is the densest thing in the app, so it gets its own budget.
+     The drag handle goes — HTML5 drag-to-reorder does nothing under a finger
+     anyway — and the row actions settle at 36px, which a thumb can still hit
+     and which leaves the title two lines instead of four. They also stop
+     being half-faded: there is no hover to bring them back. */
+  .todo-grip { display: none; }
+  .todo-actions { opacity: 1; gap: 4px; }
+  .todo-actions .icon-btn { min-width: 36px; min-height: 36px; }
+  .todo-main { min-height: 40px; justify-content: center; }
+  /* The person rows on Missed open to show which tasks — a wide target that
+     was only 34px tall. */
+  .blame-person { min-height: 44px; }
+}
+
+/* ============================================================
+   Control bars — one line on a desk, two on a phone
+   ============================================================
+   The pattern the whole app already uses without a name: what you are
+   filtering on the left, how you are looking at it on the right, parted by a
+   spacer. Naming it lets the spacer become a line break on a phone — the
+   filters keep one line and scroll sideways, the view controls get a row of
+   their own — instead of the filters wrapping into six rows of pills before
+   the first task. Same idea as the modal footer, same reason. */
+.bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bar > .bar-gap { flex: 1 1 0; min-width: 0; }
+.seg-strip { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+
+/* The quick-add line on To-Do. Real classes rather than inline flex bases,
+   because an inline style cannot be answered by a media query — which is why
+   this form used to squeeze "Instagram Flagship" down to "Instagram Flagsl". */
+.qa-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.qa-title { flex: 2 1 200px; }
+.qa-type { flex: 0 1 110px; }
+.qa-chan { flex: 1 1 140px; }
+.qa-who { flex: 1 1 130px; }
+.qa-date { flex: 0 1 150px; }
+
+@media (max-width: 640px) {
+  .bar > .bar-gap { flex-basis: 100%; height: 0; margin: 0; }
+  .seg-strip {
+    flex: 1 1 100%; flex-wrap: nowrap;
+    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    margin-inline: -2px; padding: 2px;
+  }
+  .seg-strip::-webkit-scrollbar { display: none; }
+  .seg-strip > * { flex: none; }
+  /* Every field takes the width, and the button takes the last line whole:
+     a half-width Add next to a half-width date is two small targets where
+     one big one would do. */
+  .qa-title, .qa-type, .qa-chan, .qa-who, .qa-date { flex: 1 1 100%; }
+  .qa-go { flex: 1 1 100%; }
+  /* Folded until you touch the line you type in. The list starts a screen
+     higher, and everything is still one tap away. */
+  .qa-form:not(.qa-open) .qa-more,
+  .qa-form:not(.qa-open) > .qa-more { display: none; }
+  .qa-form:not(.qa-open) { margin-bottom: 10px; }
+}
+
+/* ============================================================
+   The calendar on a phone
+   ============================================================
+   A month of seven columns needs 660px. On a 390px screen it hung off the
+   right edge of its card, so Friday, Saturday and Sunday lived behind a
+   sideways swipe nobody had been told about. It fits now by saying less: each
+   day shows its number and a dot per piece of work, keeping the status
+   colours. Tapping a day opens that day, which has the room to name things.
+   The week view stops being seven columns and becomes seven rows, which is
+   what a week looks like on a phone anyway. */
+@media (max-width: 640px) {
+  .cal-head, .cal-grid { min-width: 0; }
+  .cal-head { flex-wrap: wrap; row-gap: 10px; }
+  .cal-head h3 { min-width: 0; flex: 1 1 auto; text-align: left; }
+  .cal-grid { gap: 3px; }
+  .cal-day { min-height: 56px; padding: 3px; }
+  .cal-daynum { width: 20px; height: 18px; font-size: 11px; }
+  .cal-events { flex-direction: row; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+  .cal-day .cal-ev, .cal-day .rel-ev {
+    width: 8px; height: 8px; min-width: 8px; padding: 0; border-radius: 50%;
+    border-left: none; overflow: hidden; text-indent: -999px; white-space: nowrap;
+  }
+  .cal-day .cal-ev svg, .cal-day .rel-ev svg { display: none; }
+  .cal-wd { font-size: 9px; letter-spacing: 0; padding: 2px 0; text-align: center; }
+  /* Seven rows, not seven columns. */
+  .cal-grid.wk-grid { grid-template-columns: 1fr; }
+}

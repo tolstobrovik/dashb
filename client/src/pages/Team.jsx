@@ -71,7 +71,7 @@ function CandidateModal({ candidate, positions, onClose, onSaved, onDeleted }) {
     <Modal title={creating ? 'New candidate' : form.name} onClose={onClose}
       footer={<>
         {!creating && <button className="btn btn-danger" onClick={del}><Trash2 size={15} />{' '}{tx("Remove")}</button>}
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
         <button className="btn btn-primary" onClick={save} disabled={!form.name.trim()}><Check size={15} />{' '}{tx("Save")}</button>
       </>}>
@@ -177,7 +177,7 @@ function MemberModal({ member, channels, onClose, onSaved }) {
     <Modal title={member.name} wide onClose={onClose}
       footer={<>
         <span className="stat-sub">{tx("Passwords are changed in Admin → People.")}</span>
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
         <button className="btn btn-primary" onClick={save} disabled={!form.name.trim() || !form.username.trim()}><Check size={15} />{' '}{tx("Save")}</button>
       </>}>

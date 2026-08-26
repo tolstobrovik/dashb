@@ -965,7 +965,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <Hand size={15} /> Raise a hand
           </button>
         )}
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
         {!readOnly && (
           <button className="btn btn-primary" onClick={() => save()} disabled={busy || !form.title.trim()}>

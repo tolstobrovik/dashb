@@ -71,7 +71,7 @@ export function ProjectForm({ project, team, metrics, onClose, onSaved, onDelete
       onClose={onClose}
       footer={<>
         {!creating && isAdmin && <button className="btn btn-danger" onClick={del}><Trash2 size={15} /> Delete</button>}
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={save}>{creating ? 'Create project' : 'Save'}</button>
       </>}

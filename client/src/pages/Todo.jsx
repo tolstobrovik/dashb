@@ -208,30 +208,37 @@ function QuickAdd({ visible, canTeamAdd, isAdmin, team, chan, viewUser, onAddCon
     } catch (e2) { alert(e2.message) }
   }
 
+  // On a phone five stacked fields push the actual list off the screen before
+  // you have added anything. The line you type in is always there; the rest
+  // unfolds the moment you touch it. On a desktop the whole row fits and this
+  // does nothing — the class only means something inside the phone media query.
+  const [unfolded, setUnfolded] = useState(false)
+
   return (
-    <form className="card card-pad" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }} onSubmit={submit}>
-      <input className="input" style={{ flex: '2 1 200px' }} placeholder={channel === '__personal' ? 'Add a personal task…' : tx('Add a task…')} value={title} onChange={(e) => setTitle(e.target.value)} />
+    <form className={'card card-pad qa-form' + (unfolded || title ? ' qa-open' : '')} onSubmit={submit}>
+      <input className="input qa-title" placeholder={channel === '__personal' ? 'Add a personal task…' : tx('Add a task…')} value={title}
+        onFocus={() => setUnfolded(true)} onChange={(e) => setTitle(e.target.value)} />
       {channel !== '__personal' && (
-        <select className="select" style={{ flex: '0 1 110px' }} value={type} onChange={(e) => setType(e.target.value)} data-tip={tx("Task type — counts toward that plan")}>
+        <select className="select qa-type qa-more" value={type} onChange={(e) => setType(e.target.value)} data-tip={tx("Task type — counts toward that plan")}>
           {CONTENT_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
         </select>
       )}
-      <select className="select" style={{ flex: '1 1 140px' }} value={channel} onChange={(e) => setChannel(e.target.value)} data-tip={tx("Where the task goes — a channel, or your private list")}>
+      <select className="select qa-chan qa-more" value={channel} onChange={(e) => setChannel(e.target.value)} data-tip={tx("Where the task goes — a channel, or your private list")}>
         {canTeamAdd && visible.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
         <option value="__personal">{tx("Personal — only me")}</option>
       </select>
       {isAdmin && channel !== '__personal' && (
-        <select className="select" style={{ flex: '1 1 130px' }} value={assign} onChange={(e) => setAssign(e.target.value)} data-tip={tx("Who this task is for")}>
+        <select className="select qa-who qa-more" value={assign} onChange={(e) => setAssign(e.target.value)} data-tip={tx("Who this task is for")}>
           <option value="">{tx("For: whole channel")}</option>
           {[...team].sort((a, b) => (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name))
             .map((u) => <option key={u.id} value={u.id}>For: {u.name}</option>)}
         </select>
       )}
-      <input className="input" type="date" style={{ flex: '0 1 150px' }} value={date} onChange={(e) => setDate(e.target.value)} data-tip={channel === '__personal' ? 'Due date (optional)' : 'Release date'} />
-      <button className="btn btn-primary" type="submit" data-tip={tx("Add the task")} data-tip-left=""><Plus size={16} />{' '}{tx("Add")}</button>
+      <input className="input qa-date qa-more" type="date" value={date} onChange={(e) => setDate(e.target.value)} data-tip={channel === '__personal' ? 'Due date (optional)' : 'Release date'} />
+      <button className="btn btn-primary qa-go qa-more" type="submit" data-tip={tx("Add the task")} data-tip-left=""><Plus size={16} />{' '}{tx("Add")}</button>
       {/* One task can land on several boards at once */}
       {canTeamAdd && channel !== '__personal' && visible.length > 1 && (
-        <div className="qa-extras">
+        <div className="qa-extras qa-more">
           <span className="stat-sub">{tx("also on:")}</span>
           {visible.filter((c) => c.key !== channel).map((c) => (
             <label key={c.key} className={'checkbox-chip' + (extra.includes(c.key) ? ' on' : '')}>
@@ -489,15 +496,19 @@ export default function Todo() {
       {celebrate && <div className="celebrate"><PartyPopper size={18} />{' '}{tx("Nice work!")}</div>}
 
       {/* One list per channel, plus your private Personal list */}
-      <div className="pill-group" style={{ marginBottom: 14, alignItems: 'center' }}>
-        <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')} data-tip={tx("Every task you can see")}>{tx("All")}</button>
-        {visible.length > 1 && visible.map((c) => (
-          <button key={c.key} className={'pill' + (chan === c.key ? ' active' : '')} onClick={() => setChan(c.key)} data-tip={`Only ${c.label} tasks`}>{c.label}</button>
-        ))}
-        <button className={'pill' + (chan === 'personal' ? ' active' : '')} onClick={() => setChan('personal')} data-tip={tx("Your private tasks — only you can see them")}>
-          <Lock size={13} /> Personal
-        </button>
-        <span style={{ flex: 1 }} />
+      <div className="bar" style={{ marginBottom: 14 }}>
+        {/* One line of channels that scrolls sideways on a phone instead of
+            wrapping into six rows of pills before the first task. */}
+        <div className="seg-strip">
+          <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')} data-tip={tx("Every task you can see")}>{tx("All")}</button>
+          {visible.length > 1 && visible.map((c) => (
+            <button key={c.key} className={'pill' + (chan === c.key ? ' active' : '')} onClick={() => setChan(c.key)} data-tip={`Only ${c.label} tasks`}>{c.label}</button>
+          ))}
+          <button className={'pill' + (chan === 'personal' ? ' active' : '')} onClick={() => setChan('personal')} data-tip={tx("Your private tasks — only you can see them")}>
+            <Lock size={13} /> {tx("Personal")}
+          </button>
+        </div>
+        <span className="bar-gap" />
         {isAdmin && team.length > 1 && (
           <select
             className="select member-view"

@@ -551,7 +551,7 @@ export function TaskModal({ task, people, locked, onClose, onSaved }) {
   return (
     <Modal title={tx('Task')} onClose={onClose} wide footer={<>
       {!locked && <button className="btn" onClick={remove}><Trash2 size={14} /> {tx('Delete')}</button>}
-      <span className="spacer" />
+      <span className="foot-gap" />
       <button className="btn" onClick={onClose}>{tx('Cancel')}</button>
       <button className="btn btn-primary" disabled={busy || locked} onClick={save}>{tx('Save')}</button>
     </>}>

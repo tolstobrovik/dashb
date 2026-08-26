@@ -836,7 +836,7 @@ export default function Department() {
           onClose={() => setChanEdit(null)}
           footer={<>
             <button className="btn btn-danger" onClick={deleteChannel}><Trash2 size={15} />{' '}{tx("Delete channel")}</button>
-            <div style={{ flex: 1 }} />
+            <span className="foot-gap" />
             <button className="btn" onClick={() => setChanEdit(null)}>{tx("Cancel")}</button>
             <button className="btn btn-primary" onClick={saveChannel}>{tx("Save")}</button>
           </>}
@@ -864,7 +864,7 @@ export default function Department() {
           onClose={() => setMetric(null)}
           footer={<>
             {metric.id && manageMetrics && <button className="btn btn-danger" onClick={delMetric}><Trash2 size={15} />{' '}{tx("Delete")}</button>}
-            <div style={{ flex: 1 }} />
+            <span className="foot-gap" />
             <button className="btn" onClick={() => setMetric(null)}>{tx("Cancel")}</button>
             <button className="btn btn-primary" onClick={saveMetric}>{metric.id ? 'Save' : 'Add'}</button>
           </>}

@@ -1030,7 +1030,7 @@ function PayTab() {
             {card.userId !== 'default' && card.own && (
               <button className="btn" onClick={dropCard} disabled={busy}><RotateCcw size={14} /> Use the default</button>
             )}
-            <span className="spacer" />
+            <span className="foot-gap" />
             <button className="btn" onClick={() => setCard(null)}>Cancel</button>
             <button className="btn btn-primary" onClick={saveCard} disabled={busy}>Save rates</button>
           </>}

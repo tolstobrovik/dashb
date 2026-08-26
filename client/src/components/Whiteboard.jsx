@@ -337,7 +337,7 @@ function NodeModal({ node, team, onClose, onSave, onDelete }) {
       onClose={onClose}
       footer={<>
         <button className="btn btn-danger" onClick={() => { if (confirm(`Delete “${node.text}”?`)) onDelete() }}><Trash2 size={15} /> Delete</button>
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={() => onSave({ ...form, text: form.text.trim() || 'Role' })}>Save</button>
       </>}

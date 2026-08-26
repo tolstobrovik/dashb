@@ -310,7 +310,7 @@ export default function Docs() {
       {renaming && (
         <Modal title={tx("Document")} onClose={() => setRenaming(null)}
           footer={<>
-            <div style={{ flex: 1 }} />
+            <span className="foot-gap" />
             <button className="btn" onClick={() => setRenaming(null)}>{tx("Cancel")}</button>
             <button className="btn btn-primary" onClick={saveRename}>{tx("Save")}</button>
           </>}>
@@ -332,7 +332,7 @@ export default function Docs() {
       {kpiEdit && (
         <Modal title={kpiEdit.id ? 'KPI' : 'New KPI'} onClose={() => setKpiEdit(null)}
           footer={<>
-            <div style={{ flex: 1 }} />
+            <span className="foot-gap" />
             <button className="btn" onClick={() => setKpiEdit(null)}>{tx("Cancel")}</button>
             <button className="btn btn-primary" onClick={saveKpi}>{kpiEdit.id ? 'Save' : 'Add KPI'}</button>
           </>}>

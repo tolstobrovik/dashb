@@ -87,7 +87,7 @@ export default function CampaignForm({ campaign, projects, team, metrics, defaul
       onClose={onClose}
       footer={<>
         {!creating && isAdmin && <button className="btn btn-danger" onClick={del}><Trash2 size={15} /> Delete</button>}
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose}>Cancel</button>
         {(creating || campaign?.status === 'idea') && (
           <button className="btn" onClick={() => save('idea')} disabled={busy}

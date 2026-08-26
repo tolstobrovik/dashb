@@ -117,7 +117,7 @@ function ScheduleModal({ member, onClose, onSaved }) {
   return (
     <Modal title={`${member.name} — working schedule`} onClose={onClose}
       footer={<>
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
         <button className="btn btn-primary" onClick={save}><Check size={15} />{' '}{tx("Save schedule")}</button>
       </>}>
