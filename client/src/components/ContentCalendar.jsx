@@ -33,8 +33,13 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
   const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()))
-  // The last used scale is remembered — most people live in one of them.
-  const [scale, setScaleState] = useState(() => localStorage.getItem('satashkent_cal_scale') || 'month')
+  // The last used scale is remembered — most people live in one of them. On a
+  // phone the first answer is the week, not the month: a month of seven
+  // columns on a 390px screen can only show a dot per piece of work, and the
+  // day-to-day question is "what is on this week", which the week view answers
+  // with the titles still readable. A choice, once made, is still remembered.
+  const [scale, setScaleState] = useState(() => localStorage.getItem('satashkent_cal_scale')
+    || (typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 'week' : 'month'))
   const setScale = (s) => { setScaleState(s); localStorage.setItem('satashkent_cal_scale', s) }
   const today = todayISO()
   const dateField = mode === 'recording' ? 'recording_date' : 'release_date'

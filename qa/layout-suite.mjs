@@ -91,8 +91,11 @@ ok('…and every control a thumb has to hit is at least 40px', small.length === 
 
 // ---------------- the modal, which is where this went wrong ----------------
 await phone.goto(BASE + '/releases'); await phone.waitForTimeout(1600)
-await phone.locator('.rel-ev').first().scrollIntoViewIfNeeded()
-await phone.locator('.rel-ev').first().click()
+// A phone opens the calendar on the week, where a piece of work is a card
+// with its title on it; the month is dots. Take whichever is showing.
+const anyItem = phone.locator('.wk-card, .rel-ev').first()
+await anyItem.scrollIntoViewIfNeeded()
+await anyItem.click()
 await phone.waitForTimeout(1800)
 const m = await phone.evaluate(() => {
   const modal = document.querySelector('.modal').getBoundingClientRect()
@@ -120,6 +123,31 @@ ok('…and so is the title', m.headSticky === 'sticky', m.headSticky)
 // The three that used to be unreachable
 const labels = m.kids.map((k) => k.t).join(' ')
 ok('the destructive action is back on the screen', /Delete|Удалить/i.test(labels), labels)
+
+// ---------------- the calendar, on the phone we already have open ----------------
+// One page fewer: opening a third browser page here was enough to tip the
+// sandbox over about one run in three, which reads as a failure and is not one.
+await phone.setViewportSize({ width: 390, height: 1200 })
+// Releases, not Recordings: a board with no shoots booked shows an empty
+// state rather than a calendar, and an empty state proves nothing here.
+await phone.goto(BASE + '/releases'); await phone.waitForTimeout(1700)
+const scale = await phone.locator('.cal-scale .pill.active').textContent()
+ok('a phone opens the calendar on the week, where titles are readable', /week/i.test(scale || ''), scale)
+const wk = await phone.evaluate(() => {
+  const cols = [...document.querySelectorAll('.wk-col')].map((c) => Math.round(c.getBoundingClientRect().height))
+  return { n: cols.length, tallest: Math.max(...cols) }
+})
+ok('…as seven rows only as tall as what is on them', wk.n === 7 && wk.tallest < 260, JSON.stringify(wk))
+// The month still has to fit when somebody asks for it.
+await phone.locator('.cal-scale .pill', { hasText: 'Month' }).click()
+await phone.waitForTimeout(900)
+const c = await phone.evaluate(() => {
+  const card = document.querySelector('.card.cal')
+  const cols = [...document.querySelectorAll('.cal-weekhead .cal-wd')].map((e) => Math.round(e.getBoundingClientRect().right))
+  return { sw: card.scrollWidth, cw: card.clientWidth, lastCol: cols[cols.length - 1], vw: innerWidth, days: cols.length }
+})
+ok('…and a month fits all seven columns without a swipe',
+  c.sw <= c.cw + 1 && c.days === 7 && c.lastCol <= c.vw, JSON.stringify(c))
 await phone.close()
 
 // ---------------- the same screens on a desktop ----------------
@@ -132,20 +160,30 @@ for (const path of SCREENS) {
   if (r.clipped.length) clipped.push(path + ': ' + JSON.stringify(r.clipped.slice(0, 3)))
 }
 ok('nothing scrolls sideways on a desktop either', sideways.length === 0, sideways.join(', '))
-ok('…and nothing is laid out past the edge of its row', clipped.length === 0, clipped.slice(0, 2).join(' | '))
 
-// A month has to show all seven days without being swiped for the last three.
-await desk.close()
-const cal = await open(390, 1200, true)
-await cal.goto(BASE + '/releases'); await cal.waitForTimeout(1700)
-const c = await cal.evaluate(() => {
-  const card = document.querySelector('.card.cal')
-  const cols = [...document.querySelectorAll('.cal-weekhead .cal-wd')].map((e) => Math.round(e.getBoundingClientRect().right))
-  return { sw: card.scrollWidth, cw: card.clientWidth, lastCol: cols[cols.length - 1], vw: innerWidth, days: cols.length }
+// ---------------- and the window you actually work in ----------------
+// A pinned footer is only worth having if it stays one line. When it wrapped
+// it took 115px of a 810px window away from the form, and the job of this
+// board is filling that form in.
+await desk.goto(BASE + '/releases'); await desk.waitForTimeout(1600)
+await desk.locator('.rel-ev').first().scrollIntoViewIfNeeded()
+await desk.locator('.rel-ev').first().click()
+await desk.waitForTimeout(1700)
+const work = await desk.evaluate(() => {
+  const foot = document.querySelector('.modal-foot')
+  const kids = [...foot.children].filter((c) => c.getBoundingClientRect().width > 0)
+  const tops = kids.map((c) => Math.round(c.getBoundingClientRect().top))
+  return {
+    footH: Math.round(foot.getBoundingClientRect().height),
+    spread: Math.max(...tops) - Math.min(...tops),
+    bodyH: Math.round(document.querySelector('.modal-body').getBoundingClientRect().height),
+    modalW: Math.round(document.querySelector('.modal').getBoundingClientRect().width),
+  }
 })
-ok('the month fits the phone, all seven columns', c.sw <= c.cw + 1 && c.days === 7 && c.lastCol <= c.vw,
-  JSON.stringify(c))
-await cal.close()
+ok('the task window\'s footer is one line', work.footH < 90 && work.spread < 20, JSON.stringify(work))
+ok('…so the form keeps most of the window', work.bodyH >= 640, `${work.bodyH}px of form`)
+ok('…in a window wide enough to lay a row of chips out on one line', work.modalW >= 700, `${work.modalW}px`)
+ok('…and nothing is laid out past the edge of its row', clipped.length === 0, clipped.slice(0, 2).join(' | '))
 
 await b.close()
 console.log(fails === 0 ? '\nLayout suite clean.' : `\n${fails} PROBLEMS`)

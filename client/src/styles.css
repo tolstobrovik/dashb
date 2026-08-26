@@ -698,6 +698,12 @@ table.tbl tr:hover td { background: var(--surface-2); }
   border-radius: 0 0 var(--radius) var(--radius);
 }
 .modal-foot > .foot-gap { flex: 1 1 0; min-width: 0; }
+/* The tools on the left are secondary — they should read as available, not
+   compete with Save. Tighter than a full button, which is also what keeps the
+   whole row on one line and off the form. */
+.modal-foot > .btn-ghost, .modal-foot > .btn-danger,
+.modal-foot > .crew-peek .select { padding: 7px 11px; font-size: 13px; }
+.modal-foot > .crew-peek .select { max-width: 170px; }
 
 /* ---------- on a phone a window stops pretending to be a window ----------
    It comes up off the bottom edge as a sheet: full width, title pinned at the
@@ -1081,7 +1087,12 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .rel-ev.dim { opacity: 0.4; }
 
 /* ---- Task editor v2 (cleaner UX) ---- */
-.modal-wide { max-width: min(560px, calc(100vw - 32px)); }
+/* The task window is where the whole job happens, and it was 560px wide with
+   a footer parked over it — 632px of form on a 900px screen, so you scrolled
+   past Platforms to reach the crew. Wider is the cheapest fix there is: the
+   form breathes, and the footer stops wrapping onto a second line it was
+   stealing another 50px for. */
+.modal-wide { max-width: min(760px, calc(100vw - 32px)); }
 .cm-title {
   width: 100%; border: none; background: transparent; font-family: inherit;
   font-size: 19px; font-weight: 700; color: var(--ink); padding: 2px 0 10px;
@@ -3634,9 +3645,23 @@ button.blame-person:hover { background: var(--surface-2); }
    filters keep one line and scroll sideways, the view controls get a row of
    their own — instead of the filters wrapping into six rows of pills before
    the first task. Same idea as the modal footer, same reason. */
-.bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* No wrapping on a desk. A wrapping flex line breaks BEFORE it shrinks, so
+   the channel strip pushed the view controls onto a second row and every task
+   on the page down with them. Held to one line, the strip is the thing that
+   gives, and it scrolls inside itself instead. */
+.bar { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
 .bar > .bar-gap { flex: 1 1 0; min-width: 0; }
-.seg-strip { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+/* One line, always. It used to claim its full content width and push the view
+   controls onto a second row — which pushed every task on the page down with
+   them. It takes what is left after those controls and scrolls inside itself
+   if the channels do not fit, which on any real screen they do. */
+.seg-strip {
+  display: flex; align-items: center; gap: 8px;
+  flex: 0 1 auto; min-width: 0; flex-wrap: nowrap;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.seg-strip::-webkit-scrollbar { display: none; }
+.seg-strip > * { flex: none; }
 
 /* The quick-add line on To-Do. Real classes rather than inline flex bases,
    because an inline style cannot be answered by a media query — which is why
@@ -3649,14 +3674,9 @@ button.blame-person:hover { background: var(--surface-2); }
 .qa-date { flex: 0 1 150px; }
 
 @media (max-width: 640px) {
+  .bar { flex-wrap: wrap; }
   .bar > .bar-gap { flex-basis: 100%; height: 0; margin: 0; }
-  .seg-strip {
-    flex: 1 1 100%; flex-wrap: nowrap;
-    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-    margin-inline: -2px; padding: 2px;
-  }
-  .seg-strip::-webkit-scrollbar { display: none; }
-  .seg-strip > * { flex: none; }
+  .seg-strip { flex: 1 1 100%; margin-inline: -2px; padding: 2px; }
   /* Every field takes the width, and the button takes the last line whole:
      a half-width Add next to a half-width date is two small targets where
      one big one would do. */
@@ -3693,8 +3713,13 @@ button.blame-person:hover { background: var(--surface-2); }
   }
   .cal-day .cal-ev svg, .cal-day .rel-ev svg { display: none; }
   .cal-wd { font-size: 9px; letter-spacing: 0; padding: 2px 0; text-align: center; }
-  /* Seven rows, not seven columns. */
-  .cal-grid.wk-grid { grid-template-columns: 1fr; }
+  /* Seven rows, not seven columns — and a row is only as tall as what is on
+     it. The 340px floor exists so seven columns line up side by side; stacked,
+     it turned a week of six tasks into 1,600px of scrolling past empty boxes. */
+  .cal-grid.wk-grid { grid-template-columns: 1fr; gap: 6px; }
+  .wk-col { min-height: 0; }
+  .wk-cards { flex: none; }
+  .wk-cards:empty { padding: 0; }
 }
 /* The four columns as buttons inside the task window. Dragging a card is a
    mouse trick — under a finger the board was read-only, with no way to finish
