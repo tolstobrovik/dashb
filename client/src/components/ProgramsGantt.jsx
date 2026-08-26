@@ -8,6 +8,7 @@ import { PcChecklist, scalePhoto } from './ProjectBits.jsx'
 import { playLaunch, playHalt, playDone } from '../lib/sound.js'
 import { toast } from '../lib/toast.js'
 import { tr as tx } from '../lib/i18n.jsx'
+import Zoom from './Zoom.jsx'
 
 // Launch programs on a timeline — built for the Target team. Each program is
 // a bar: blue while planned, green while running, amber when halted, gray
@@ -75,7 +76,7 @@ function CreativesEditor({ items, canEdit, onChange }) {
         <div key={i} className="creative-card">
           <div className="creative-top">
             {c.photo_thumb || c.photo ? (
-              <img className="creative-thumb" src={c.photo_thumb || c.photo} alt="" />
+              <Zoom className="creative-thumb" src={c.photo_thumb || c.photo} full={c.photo || c.photo_thumb} alt={c.title || ''} />
             ) : canEdit ? (
               <label className="creative-thumb creative-pick" data-tip="Attach a photo">
                 <ImagePlus size={16} />

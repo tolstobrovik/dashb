@@ -372,7 +372,7 @@ export default function Schedule({ mode }) {
       )}
 
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem === 'new' ? null : openItem}
           defaults={newDefaults || undefined}
           statuses={statuses}

@@ -17,6 +17,7 @@ import { activityLine } from '../lib/activity.js'
 import { rewardFinish } from '../lib/reward.js'
 import TextHelp from './TextHelp.jsx'
 import { VoiceRecorder, VoicePlayer, canRecord } from './VoiceNote.jsx'
+import Zoom from './Zoom.jsx'
 
 // Documents a task can carry. The cap is deliberate and low: every byte is
 // stored, synced and paid for on the team's storage, so a 4 MB brief is a
@@ -867,27 +868,18 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   }
   // One press spawns the recurring piece: brief, crew and platforms ride
   // along; dates, stage and delivery start clean.
+  // The server makes the copy, because the name has to be the next free
+  // "Duplicate N" across every copy that exists and two people pressing this
+  // at the same moment must not both get Duplicate 1.
   const duplicate = async () => {
     if (busy) return
     setBusy(true); setErr('')
     try {
-      await api.post('/content', {
-        title: `${form.title.trim()} (copy)`,
-        channels: form.channels, type: form.type,
-        description: form.description,
-        checklist: form.checklist.map((c) => (typeof c === 'object' ? { ...c, done: false } : c)),
-        reference_text: form.reference_text || null, reference_links: form.reference_links,
-        format: form.format || null, rubrika: form.rubrika.trim() || null, script: form.script.trim() || null,
-        // Carrying the brief across is the whole point of this button, so the
-        // repeat-script filter is told this one is deliberate.
-        allow_duplicate_script: true,
-        operator_id: form.operator_id, editor_id: form.editor_id, designer_id: form.designer_id,
-        reviewer_ids: form.reviewer_ids,
-        campaign_id: form.campaign_id,
-        ...(user.role === 'admin' && form.assignee_ids ? { assignee_ids: form.assignee_ids } : {}),
-      })
-      toast(tx('Duplicated — brief kept, dates cleared'))
-      onClose()
+      const copy = await api.post(`/content/${item.id}/duplicate`)
+      toast(tx('Duplicated as {name}', { name: copy.title }))
+      // Open the copy. It is the thing you asked for; you should be looking
+      // at it rather than at a message saying it exists somewhere.
+      onClose(copy)
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   // A task URL anyone on the team can open — pasteable into any chat.
@@ -1129,7 +1121,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
             {(form.photo || form.photo_thumb) ? (
               <div className="photo-wrap ref-photo">
-                <img src={form.photo || form.photo_thumb} alt="reference" />
+                <Zoom src={form.photo_thumb || form.photo} full={form.photo || form.photo_thumb} alt="reference" />
                 {briefEditable && <button className="photo-remove" data-tip={tx("Remove the photo")} data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label={tx("Remove photo")}><X size={14} /></button>}
               </div>
             ) : briefEditable ? (
@@ -1257,7 +1249,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 </div>
                 {pravki.photo ? (
                   <div className="photo-wrap pravki-shot">
-                    <img src={pravki.photo_thumb || pravki.photo} alt="what needs changing" />
+                    <Zoom src={pravki.photo_thumb || pravki.photo} full={pravki.photo || pravki.photo_thumb} alt="what needs changing" />
                     <button className="photo-remove" aria-label={tx("Remove screenshot")} data-tip={tx("Remove the screenshot")} data-tip-left=""
                       onClick={() => setPravki({ ...pravki, photo: null, photo_thumb: null })}><X size={14} /></button>
                   </div>
@@ -1296,7 +1288,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <span className="rev-body">
                   <span className="rev-note">{r.note}</span>
                   {r.voice_id ? <VoicePlayer id={r.voice_id} secs={r.voice_secs} /> : null}
-                  {r.photo && <a className="rev-shot" href={r.photo} target="_blank" rel="noreferrer"><img src={r.photo} alt="what needed changing" /></a>}
+                  {r.photo && <span className="rev-shot"><Zoom src={r.photo_thumb || r.photo} full={r.photo} alt="what needed changing" /></span>}
                   <span className="rev-meta">
                     {r.requested_name || '—'} · {new Date(r.created_at).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })} · to {r.target}{r.resolved_at ? ' · fixed' : ''}
                   </span>

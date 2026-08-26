@@ -940,7 +940,7 @@ export default function Brief() {
         ))}
 
         {openItem && (
-          <ContentModal item={openItem} statuses={statuses} onClose={() => setOpenItem(null)}
+          <ContentModal key={openItem?.id || 'new'} item={openItem} statuses={statuses} onClose={(next) => setOpenItem(next?.id ? next : null)}
             onUpdate={updateContent} onDelete={deleteContent} />
         )}
       </>
@@ -993,7 +993,7 @@ export default function Brief() {
         <>
           <CrewCalendar tasks={open} userId={user.id} today={today} byKey={byKey} onOpen={setOpenItem} />
           {openItem && (
-            <ContentModal item={openItem} statuses={statuses} onClose={() => setOpenItem(null)}
+            <ContentModal key={openItem?.id || 'new'} item={openItem} statuses={statuses} onClose={(next) => setOpenItem(next?.id ? next : null)}
               onUpdate={updateContent} onDelete={deleteContent} />
           )}
         </>
@@ -1006,10 +1006,10 @@ export default function Brief() {
       </>}
 
       {myView !== 'calendar' && openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onUpdate={updateContent}
           onDelete={deleteContent}
         />

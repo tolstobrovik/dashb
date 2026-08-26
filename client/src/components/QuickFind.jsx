@@ -138,7 +138,7 @@ export default function QuickFind({ onClose }) {
         </div>
       )}
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
           onClose={() => { setOpenItem(null); onClose() }}

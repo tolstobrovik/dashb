@@ -721,7 +721,7 @@ export default function Crew() {
           onSaved={(u) => setUsers((prev) => prev.map((x) => (x.id === u.id ? u : x)))} />
       )}
       {openItem && (
-        <ContentModal item={openItem} statuses={statuses} onClose={() => setOpenItem(null)}
+        <ContentModal key={openItem?.id || 'new'} item={openItem} statuses={statuses} onClose={(next) => setOpenItem(next?.id ? next : null)}
           onUpdate={updateContent} onDelete={deleteContent} />
       )}
     </>

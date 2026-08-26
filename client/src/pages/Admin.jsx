@@ -524,17 +524,17 @@ function TasksTab() {
       )}
 
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onCreate={() => {}}
           onUpdate={updateContent}
           onDelete={deleteContent}
         />
       )}
       {creating && (
-        <ContentModal
+        <ContentModal key='new'
           item={null}
           statuses={statuses}
           defaults={chan !== 'all' ? { channels: [chan] } : {}}

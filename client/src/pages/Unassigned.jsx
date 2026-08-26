@@ -378,7 +378,7 @@ export default function Unassigned() {
       )}
 
       {openItem && (
-        <ContentModal item={openItem} statuses={statuses} onClose={() => setOpenItem(null)}
+        <ContentModal key={openItem?.id || 'new'} item={openItem} statuses={statuses} onClose={(next) => setOpenItem(next?.id ? next : null)}
           onUpdate={updateContent} onDelete={deleteContent} />
       )}
     </>

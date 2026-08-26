@@ -901,11 +901,11 @@ export default function Department() {
 
       {/* Content modal */}
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem === 'new' ? null : openItem}
           statuses={statuses}
           defaults={newDefaults}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onCreate={createContent}
           onUpdate={updateFromModal}
           onDelete={deleteContent}

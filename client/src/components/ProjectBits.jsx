@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { playTick } from '../lib/sound.js'
 import { Check, X, Plus, ImagePlus } from 'lucide-react'
 import { dateLabel, todayISO } from '../lib/constants.js'
+import Zoom from './Zoom.jsx'
 
 // Browser-side downscale for cover photos: main ≤1000px, thumbnail ≤160px.
 export function scalePhoto(file, maxW, quality) {
@@ -277,7 +278,7 @@ export function CampaignRow({ c, byKey, onOpen }) {
   const startsIn = c.status === 'incoming' && c.start_date ? daysUntil(c.start_date) : null
   return (
     <button className="pc-camp-row" onClick={() => onOpen(c)}>
-      {c.photo_thumb && <img className="pc-row-thumb" src={c.photo_thumb} alt="" />}
+      {c.photo_thumb && <Zoom className="pc-row-thumb" src={c.photo_thumb} full={c.photo || c.photo_thumb} alt={c.title || ''} />}
       <div className="pc-row-body">
       <div className="pc-camp-top">
         <span className="pc-camp-name">{c.name}</span>

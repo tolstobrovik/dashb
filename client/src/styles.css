@@ -3726,3 +3726,26 @@ button.blame-person:hover { background: var(--surface-2); }
    anything — so the move lives here too, and goes through the same two
    questions the drag does. */
 .sp-stage { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- looking at a screenshot ---------- */
+/* Any photo on the board opens full size. It used to be a thumbnail and
+   nothing else — clicking one did nothing at all. */
+.zoomable { cursor: zoom-in; }
+.zoom-back {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(10, 7, 9, 0.82);
+  display: grid; place-items: center; padding: 24px;
+  animation: fade 0.14s ease;
+}
+.zoom-img {
+  max-width: min(1400px, 96vw); max-height: 92vh;
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
+  cursor: zoom-out; object-fit: contain;
+}
+.zoom-close {
+  position: absolute; top: 16px; right: 18px;
+  width: 42px; height: 42px; border-radius: 50%;
+  border: none; background: rgba(255, 255, 255, 0.12); color: #fff;
+  display: grid; place-items: center; cursor: pointer;
+}
+.zoom-close:hover { background: rgba(255, 255, 255, 0.22); }

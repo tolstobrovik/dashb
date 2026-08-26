@@ -228,11 +228,11 @@ export default function CampaignDetail() {
         />
       )}
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem === 'new' ? null : openItem}
           statuses={statuses}
           defaults={{ campaign_id: c.id }}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onCreate={createContent}
           onUpdate={updateContent}
           onDelete={deleteContent}

@@ -745,10 +745,10 @@ export default function Missed() {
       )}
 
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onUpdate={updateContent}
           onDelete={deleteContent}
         />

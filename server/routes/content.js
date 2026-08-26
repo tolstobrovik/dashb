@@ -993,6 +993,73 @@ router.post('/', wrap(async (req, res) => {
   res.status(201).json(await listRow(info.lastInsertRowid))
 }))
 
+// A real duplicate.
+//
+// This used to be done from the browser by POSTing a new task named
+// "<title> (copy)" with every date left off — so the copy landed in
+// Unassigned, nowhere near the board you were looking at, and all you saw was
+// a toast saying it had worked. It looked like the button did nothing.
+//
+// A duplicate is the same task again: same brief, same crew, same dates, same
+// column. Only the name changes, and only enough to tell them apart.
+//
+// Columns that belong to the original's own history rather than to a copy of
+// it — when it was made, when it was finished, when each stage was handed
+// over — start empty on the copy.
+const DUP_SKIP = new Set([
+  'id', 'created_at', 'done_at', 'ready_at', 'shot_at', 'edited_at',
+  'edit_due_revised', 'review_due_revised', 'todo_sort',
+])
+
+router.post('/:id/duplicate', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
+  if (!row) return res.status(404).json({ error: 'No such task' })
+  if (!can(req.user, 'manage_content')) {
+    return res.status(403).json({ error: 'You don’t have permission to add tasks' })
+  }
+  const channels = JSON.parse(row.channels || '[]')
+  if (!channels.every((ch) => canAccessDept(req.user, ch))) {
+    return res.status(403).json({ error: 'Not your channel' })
+  }
+
+  // "Title Duplicate 1", then 2, then 3 — the next free number across every
+  // copy that already exists, counted from the original's name so that
+  // duplicating a duplicate does not give you "X Duplicate 1 Duplicate 1".
+  const base = String(row.title).replace(/\s+Duplicate\s+\d+$/i, '').trim() || 'Task'
+  const kin = await all('SELECT title FROM content WHERE title = ? OR title LIKE ?', base, `${base} Duplicate %`)
+  let n = 0
+  for (const k of kin) {
+    const m = /\s+Duplicate\s+(\d+)$/i.exec(k.title || '')
+    if (m) n = Math.max(n, Number(m[1]))
+  }
+  const title = `${base} Duplicate ${n + 1}`.slice(0, 300)
+
+  // Built from the row's own columns, so a column added next year is copied
+  // without anybody having to remember this place.
+  const cols = Object.keys(row).filter((k) => !DUP_SKIP.has(k))
+  const vals = cols.map((k) => (k === 'title' ? title : k === 'created_by' ? req.user.id : row[k]))
+  const maxSort = (await get('SELECT COALESCE(MAX(todo_sort), -1) AS m FROM content')).m
+  cols.push('todo_sort', 'created_at')
+  vals.push(maxSort + 1, new Date().toISOString())
+
+  const info = await run(
+    `INSERT INTO content (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...vals)
+  await logEvent(req.user, info.lastInsertRowid, title, 'created')
+
+  // The crew carried across are holding the copy too, so they are told the
+  // same way they would be told about any other task handed to them.
+  const roles = new Map()
+  for (const id of JSON.parse(row.assignees || '[]')) addRole(roles, id, 'owner')
+  addRole(roles, row.operator_id, 'operator')
+  addRole(roles, row.editor_id, 'editor')
+  addRole(roles, row.designer_id, 'designer')
+  addRole(roles, row.reviewer_id, 'reviewer')
+  await notifyAssigned(req, info.lastInsertRowid, title, roles, dateBit(row.recording_date, row.release_date))
+  for (const ch of channels) await bumpPlan(ch, row.type, { target: +1 }, true)
+
+  res.status(201).json(await listRow(info.lastInsertRowid))
+}))
+
 // Reorder the to-do list (drag): ids in display order.
 router.post('/todo-reorder', wrap(async (req, res) => {
   const { ids } = req.body || {}

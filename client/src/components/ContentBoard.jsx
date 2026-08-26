@@ -3,6 +3,7 @@ import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors,
 import { dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
+import Zoom from './Zoom.jsx'
 
 // Simple kanban: one column per pipeline stage, drag a card to move it.
 // Dragging into the final stage completes the task and fills its plan.
@@ -73,7 +74,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                     onDragEnd={() => { dragRef.current = null; setDragId(null); setOverCol(null) }}
                     onClick={() => onOpen(item)}
                   >
-                    {(item.photo_thumb || item.photo) && <img className="tcard-photo" src={item.photo_thumb || item.photo} alt="" loading="lazy" />}
+                    {(item.photo_thumb || item.photo) && <Zoom className="tcard-photo" src={item.photo_thumb || item.photo} full={item.photo || item.photo_thumb} alt={item.title} />}
                     <div className="tcard-title">{item.title}</div>
                     <div className="tcard-badges">
                       <span className={`chip ct-${item.type}`}>{typeInfo(item.type).label}</span>

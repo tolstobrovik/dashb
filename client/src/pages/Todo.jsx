@@ -562,15 +562,15 @@ export default function Todo() {
       {openItem && (openItem.personal ? (
         <PersonalModal
           item={openItem}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onSave={updatePersonal}
           onDelete={deletePersonal}
         />
       ) : (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onCreate={addContent}
           onUpdate={updateContent}
           onDelete={deleteContent}

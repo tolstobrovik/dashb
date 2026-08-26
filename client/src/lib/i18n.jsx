@@ -1085,6 +1085,8 @@ const PHRASES = {
     "{n} of 100 characters": "{n} из 100 символов",
     "— pick one —": "— выберите —",
     "Column": "Колонка",
+    "Click to see it full size": "Нажмите, чтобы открыть целиком",
+    "Duplicated as {name}": "Создана копия: {name}",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1631,6 +1633,8 @@ const PHRASES = {
     "{n} of 100 characters": "{n} / 100 belgi",
     "— pick one —": "— birini tanlang —",
     "Column": "Ustun",
+    "Click to see it full size": "Toʻliq koʻrish uchun bosing",
+    "Duplicated as {name}": "Nusxa olindi: {name}",
   },
 }
 
