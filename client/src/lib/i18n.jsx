@@ -1084,6 +1084,7 @@ const PHRASES = {
     "up to 5 MB": "до 5 МБ",
     "{n} of 100 characters": "{n} из 100 символов",
     "— pick one —": "— выберите —",
+    "Column": "Колонка",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1629,6 +1630,7 @@ const PHRASES = {
     "up to 5 MB": "5 MB gacha",
     "{n} of 100 characters": "{n} / 100 belgi",
     "— pick one —": "— birini tanlang —",
+    "Column": "Ustun",
   },
 }
 

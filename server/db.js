@@ -1252,6 +1252,10 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_sprint_check_slice      ON sprint_checklist_items(task_id, sprint_id, position);
     CREATE INDEX IF NOT EXISTS idx_sprint_att_task         ON sprint_attachments(task_id);
     CREATE INDEX IF NOT EXISTS idx_sprints_status          ON sprints(status, start_at);
+    /* One row per week, enforced rather than assumed: the week is looked up by
+       its start, and two requests arriving together on a Monday morning would
+       otherwise both find nothing and both insert. */
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_week          ON sprints(start_at);
 
   `)
 }
@@ -1517,10 +1521,16 @@ export async function ensureCurrentSprint() {
   const week = weekOf()
   const already = await get('SELECT id FROM sprints WHERE start_at = ?', week.start_at)
   if (already) return already.id
-  const info = await run(
-    'INSERT INTO sprints (code, start_at, freeze_at, meeting_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    week.code, week.start_at, week.freeze_at, week.meeting_at, 'active', new Date().toISOString())
-  return info.lastInsertRowid
+  try {
+    const info = await run(
+      'INSERT INTO sprints (code, start_at, freeze_at, meeting_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      week.code, week.start_at, week.freeze_at, week.meeting_at, 'active', new Date().toISOString())
+    return info.lastInsertRowid
+  } catch {
+    // Somebody else inserted this week between the check and the write. The
+    // unique index caught it; the row we wanted exists either way.
+    return (await get('SELECT id FROM sprints WHERE start_at = ?', week.start_at))?.id ?? null
+  }
 }
 
 export const CREW_NEED_KEYS = ['operator', 'editor', 'designer']

@@ -107,6 +107,18 @@ export default function Sprints() {
     push(api.patch(`/sprints/tasks/${task.id}`, { status: to }))
   }
 
+  // The same move, made from inside the task window. Dragging a card is a
+  // mouse trick: HTML5 drag does nothing under a finger, so on a phone the
+  // board was read-only — there was no way to finish a task at all. The
+  // window gets the columns as buttons, and they go through the same two
+  // questions the drag does.
+  const moveFromWindow = (task, to) => {
+    if (locked) return toast(tx('This sprint is frozen'), 'err')
+    if (task.status === to) return
+    if (to === 'done' || to === 'blocked') { setOpen(null); setAsking({ task, to }); return }
+    push(api.patch(`/sprints/tasks/${task.id}`, { status: to }))
+  }
+
   return (
     <>
       <SprintTabs />
@@ -150,7 +162,7 @@ export default function Sprints() {
       {open && (
         <TaskModal
           task={data.tasks.find((t) => t.id === open.id) || open}
-          people={people} locked={locked}
+          people={people} locked={locked} onMove={moveFromWindow}
           onClose={() => setOpen(null)} onSaved={setData}
         />
       )}
@@ -480,7 +492,7 @@ function AskModal({ task, to, reasons, onClose, onSaved }) {
 
 // ---- the task ----------------------------------------------------------------
 // One screen, no tabs. Everything except the title is optional.
-export function TaskModal({ task, people, locked, onClose, onSaved }) {
+export function TaskModal({ task, people, locked, onClose, onSaved, onMove }) {
   const [form, setForm] = useState({
     title: task.title, description: task.description,
     is_growth: task.is_growth, deadline: task.deadline || '',
@@ -562,6 +574,21 @@ export function TaskModal({ task, people, locked, onClose, onSaved }) {
         <input className="input" value={form.title} disabled={locked}
           onChange={(e) => setForm({ ...form, title: e.target.value })} />
       </div>
+
+      {onMove && (
+        <div className="field">
+          <label>{tx('Column')}</label>
+          <div className="sp-stage">
+            {COLUMNS.map((c) => (
+              <button key={c.key} type="button" disabled={locked}
+                className={'pill' + (task.status === c.key ? ' active' : '')}
+                onClick={() => onMove(task, c.key)}>
+                {tx(c.label)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="field">
         <label>{tx('Assignee')}</label>

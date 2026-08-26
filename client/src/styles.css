@@ -3696,3 +3696,8 @@ button.blame-person:hover { background: var(--surface-2); }
   /* Seven rows, not seven columns. */
   .cal-grid.wk-grid { grid-template-columns: 1fr; }
 }
+/* The four columns as buttons inside the task window. Dragging a card is a
+   mouse trick — under a finger the board was read-only, with no way to finish
+   anything — so the move lives here too, and goes through the same two
+   questions the drag does. */
+.sp-stage { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -21,21 +21,32 @@ router.use(authRequired)
 const now = () => new Date().toISOString()
 const isOwner = async (userId) => !!(await get('SELECT 1 AS x FROM sprint_owners WHERE user_id = ?', userId))
 
-// The week on screen. Created on demand as well as at boot, so a board that
-// has been asleep since Friday opens on Monday's sprint rather than on none.
+// The week on screen is decided by the calendar, not by whether anybody
+// pressed a button. This used to read "the newest active sprint", which meant
+// that on Monday morning — after a Saturday nobody closed — the board still
+// showed last week. Last week is past its freeze, so the whole team was
+// locked out of a read-only board until somebody restarted the server. The
+// week is a fact about the date; it is looked up as one.
 async function currentSprint() {
-  const active = await get("SELECT * FROM sprints WHERE status = 'active' ORDER BY start_at DESC LIMIT 1")
-  if (active) return active
+  const week = weekOf()
+  const row = await get('SELECT * FROM sprints WHERE start_at = ?', week.start_at)
+  if (row) return row
   await ensureCurrentSprint()
-  return get("SELECT * FROM sprints WHERE status = 'active' ORDER BY start_at DESC LIMIT 1")
+  return get('SELECT * FROM sprints WHERE start_at = ?', week.start_at)
 }
 
 const BLOCKER_REASONS = [
   'Waiting on teammate', 'Waiting on external party', 'Budget or approval',
   'Scope was too big', 'Priority changed', 'Did not start',
 ]
-const STATUSES = ['idea', 'todo', 'in_progress', 'blocked', 'done']
 const BOARD = ['todo', 'in_progress', 'blocked', 'done']
+// A title is a line on a card. Five thousand characters of one is not a title,
+// it is a denial of service against the person trying to read the board.
+const MAX_TITLE = 200
+const cleanTitle = (v) => String(v ?? '').trim().slice(0, MAX_TITLE)
+// A deadline is a Tashkent day. "next tuesday-ish" was being stored and then
+// rendered on the card as "t tuesday-ish", because the card shows a slice.
+const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z'))
 
 // ---- the three enforcements -------------------------------------------------
 // Server side, every one of them: a client can be old, wrong or bypassed, and
@@ -189,7 +200,7 @@ router.post('/tasks', wrap(async (req, res) => {
   const sprint = await currentSprint()
   const stop = await frozenProblem(sprint, req.user.id)
   if (stop) return res.status(423).json({ error: stop })
-  const title = String(req.body?.title || '').trim()
+  const title = cleanTitle(req.body?.title)
   if (!title) return res.status(400).json({ error: 'A task needs a title' })
 
   const stamp = now()
@@ -214,18 +225,27 @@ router.patch('/tasks/:id', wrap(async (req, res) => {
   const body = req.body || {}
   const set = {}
   if (body.title !== undefined) {
-    const title = String(body.title).trim()
+    const title = cleanTitle(body.title)
     if (!title) return res.status(400).json({ error: 'A task needs a title' })
     set.title = title
   }
   if (body.description !== undefined) set.description = String(body.description)
   if (body.is_growth !== undefined) set.is_growth = body.is_growth ? 1 : 0
-  if (body.deadline !== undefined) set.deadline = body.deadline || null
+  if (body.deadline !== undefined) {
+    if (body.deadline && !isDay(String(body.deadline))) {
+      return res.status(400).json({ error: 'A deadline is a date — YYYY-MM-DD' })
+    }
+    set.deadline = body.deadline || null
+  }
 
   // The status moves, and the two that cost something ask for it first.
   if (body.status !== undefined) {
     const next = String(body.status)
-    if (!STATUSES.includes(next)) return res.status(400).json({ error: 'Unknown status' })
+    // Only the four columns. 'idea' used to be accepted here, which moved the
+    // task off the board while leaving its week row in place — so it showed
+    // in no column, in no backlog, and nowhere at all. An idea is a task that
+    // has never been promoted, not a place a promoted one can go back to.
+    if (!BOARD.includes(next)) return res.status(400).json({ error: 'Unknown status' })
     if (next === 'done' && task.status !== 'done') {
       const problem = await resultProblem(task.id, body)
       if (problem) return res.status(422).json({ error: problem, needs: 'result' })
@@ -243,6 +263,13 @@ router.patch('/tasks/:id', wrap(async (req, res) => {
     // Leaving blocked clears the reason: a card sitting in Done still wearing
     // "waiting on a teammate" is a lie the next reader has to unpick.
     if (next !== 'blocked' && task.status === 'blocked') { set.blocker_reason = ''; set.blocker_note = '' }
+    // And the same going the other way. A task pulled back out of Done kept
+    // the link it was finished with, so it sat in In Progress still carrying
+    // proof of a result it no longer has — and would be asked for a new one
+    // anyway the moment it went back.
+    if (next !== 'done' && task.status === 'done') {
+      set.result_type = null; set.result_link = ''; set.result_text = ''; set.result_attachment_id = null
+    }
     set.status = next
   }
 
@@ -352,7 +379,12 @@ router.post('/tasks/:id/checklist', wrap(async (req, res) => {
   const sprint = await currentSprint()
   const stop = await frozenProblem(sprint, req.user.id)
   if (stop) return res.status(423).json({ error: stop })
-  const text = String(req.body?.text || '').trim()
+  // Without this, POST to /tasks/999999/checklist returned 201 and left a row
+  // hanging off a task that has never existed.
+  if (!(await get('SELECT id FROM sprint_tasks WHERE id = ?', req.params.id))) {
+    return res.status(404).json({ error: 'No such task' })
+  }
+  const text = String(req.body?.text || '').trim().slice(0, 500)
   if (!text) return res.status(400).json({ error: 'An item needs words' })
   const last = await get(
     'SELECT COALESCE(MAX(position), -1) AS p FROM sprint_checklist_items WHERE task_id = ? AND sprint_id = ?',
