@@ -18,3 +18,8 @@ data/*.db-shm
 # caught seven of them. qa/ holds only files, so any directory appearing
 # there is scratch by definition — including whatever the next suite invents.
 qa/*/
+
+# The screenshots the suites take to look at what they are testing. Per-run
+# evidence, the same as the scratch directories above — regenerated on every
+# gate and never worth a diff.
+qa/*.png

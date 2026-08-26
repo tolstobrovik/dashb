@@ -130,6 +130,11 @@ if node round76-suite.mjs > $SP/out-round76-suite.log 2>&1; then echo "round76-s
 fuser -k 4115/tcp 2>/dev/null; sleep 0.5
 fuser -k 9989/tcp 2>/dev/null; sleep 0.5
 
+# ---- Sprints: the backlog and the promote flow (4116) ----
+fuser -k 4116/tcp 2>/dev/null; sleep 0.5
+if node sprint-backlog-suite.mjs > $SP/out-sprint-backlog-suite.log 2>&1; then echo "sprint-backlog-suite PASS" >> $RES; else echo "sprint-backlog-suite FAIL" >> $RES; fi
+fuser -k 4116/tcp 2>/dev/null; sleep 0.5
+
 # ---- pc-suite + journey on 4081 ----
 if bash pc-suite.sh > $SP/out-pc-suite.log 2>&1; then echo "pc-suite PASS" >> $RES; else echo "pc-suite FAIL" >> $RES; fi
 # By exit code, not by grepping the log for a word the log could never contain

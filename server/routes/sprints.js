@@ -277,6 +277,67 @@ router.delete('/tasks/:id', wrap(async (req, res) => {
   res.json(await readSprint(sprint, req.user.id))
 }))
 
+// ---- the backlog -------------------------------------------------------------
+// An idea is a task with no week: status 'idea' and no row in
+// sprint_task_sprints. That is the whole definition — there is no separate
+// backlog table to drift out of step, and the moment an idea is promoted it
+// stops matching this query without anything having to be deleted.
+async function readBacklog(userId) {
+  const items = await all(`
+    SELECT t.id, t.title, t.created_at, t.created_by,
+           u.name AS added_by, u.avatar AS added_avatar, u.color AS added_color
+    FROM sprint_tasks t
+    LEFT JOIN users u ON u.id = t.created_by
+    WHERE t.status = 'idea'
+      AND NOT EXISTS (SELECT 1 FROM sprint_task_sprints ts WHERE ts.task_id = t.id)
+    ORDER BY t.created_at DESC, t.id DESC
+  `)
+  return { items, owner: await isOwner(userId) }
+}
+
+router.get('/backlog', wrap(async (req, res) => {
+  res.json(await readBacklog(req.user.id))
+}))
+
+// Anybody can put an idea down, and the freeze does not apply here: an idea
+// belongs to no week, so there is no week of it to be frozen.
+router.post('/backlog', wrap(async (req, res) => {
+  const title = String(req.body?.title || '').trim()
+  if (!title) return res.status(400).json({ error: 'An idea needs a title' })
+  const stamp = now()
+  await run(
+    `INSERT INTO sprint_tasks (title, description, status, is_growth, deadline, created_by, created_at, updated_at)
+     VALUES (?, '', 'idea', 0, NULL, ?, ?, ?)`,
+    title, req.user.id, stamp, stamp)
+  res.status(201).json(await readBacklog(req.user.id))
+}))
+
+// Promotion is one of the three owner-only actions. It gives the idea a week
+// and a status; the owner sets the assignee and the checklist in the modal
+// that opens straight afterwards.
+router.post('/backlog/:id/promote', wrap(async (req, res) => {
+  if (!(await isOwner(req.user.id))) {
+    return res.status(403).json({ error: 'Only a sprint owner can promote an idea' })
+  }
+  const task = await get('SELECT * FROM sprint_tasks WHERE id = ?', req.params.id)
+  if (!task) return res.status(404).json({ error: 'No such idea' })
+  const already = await get('SELECT 1 AS x FROM sprint_task_sprints WHERE task_id = ?', task.id)
+  if (task.status !== 'idea' || already) {
+    return res.status(409).json({ error: 'That one is already in a sprint' })
+  }
+
+  const sprint = await currentSprint()
+  await run('UPDATE sprint_tasks SET status = ?, deadline = ?, updated_at = ? WHERE id = ?',
+    'todo', sprint.freeze_at.slice(0, 10), now(), task.id)
+  await run('INSERT INTO sprint_task_sprints (task_id, sprint_id, outcome) VALUES (?, ?, NULL)', task.id, sprint.id)
+
+  // The promoted task comes back in the board's own shape rather than a second
+  // one assembled here, so the modal that opens is reading the same task the
+  // board would hand it.
+  const board = await readSprint(sprint, req.user.id)
+  res.json({ ...(await readBacklog(req.user.id)), task: board.tasks.find((t) => t.id === task.id) || null })
+}))
+
 // ---- the weekly checklist ----------------------------------------------------
 // Items belong to a task AND a week. A task in its third sprint shows the
 // three things committed for THIS week, not the eleven it has ever had.

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { NavLink } from 'react-router-dom'
 import {
   Timer, Plus, X, Check, Trash2, GripVertical, Link2, FileUp, AlignLeft,
-  LayoutGrid, Rows3, Lock, Circle, ArrowUpDown,
+  LayoutGrid, Rows3, Lock, Circle, ArrowUpDown, Lightbulb,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
-import { useAuth } from '../lib/auth.jsx'
 import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
@@ -52,11 +52,25 @@ function countdownWords(ms) {
   return `${m}m ${s % 60}s`
 }
 
+// The module's two screens. Real routes, so the browser's back button and a
+// pasted link both work; shared here so they cannot drift apart.
+export function SprintTabs() {
+  return (
+    <div className="sp-tabs">
+      <NavLink end to="/sprints" className={({ isActive }) => 'sp-tab' + (isActive ? ' active' : '')}>
+        <Timer size={14} /> {tx('Sprint')}
+      </NavLink>
+      <NavLink to="/sprints/backlog" className={({ isActive }) => 'sp-tab' + (isActive ? ' active' : '')}>
+        <Lightbulb size={14} /> {tx('Backlog')}
+      </NavLink>
+    </div>
+  )
+}
+
 const dayOf = (iso) => (iso || '').slice(0, 10)
 const firstLine = (text) => String(text || '').split('\n')[0].slice(0, 80)
 
 export default function Sprints() {
-  const { user } = useAuth()
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const [view, setView] = useState('board')   // board | list
@@ -95,6 +109,7 @@ export default function Sprints() {
 
   return (
     <>
+      <SprintTabs />
       <div className="sp-head">
         <h2>{sprint.code}</h2>
         <span className="sp-range">{sprint.label}</span>
@@ -135,8 +150,8 @@ export default function Sprints() {
       {open && (
         <TaskModal
           task={data.tasks.find((t) => t.id === open.id) || open}
-          people={people} locked={locked} sprint={sprint}
-          onClose={() => setOpen(null)} onSaved={setData} me={user}
+          people={people} locked={locked}
+          onClose={() => setOpen(null)} onSaved={setData}
         />
       )}
       {asking && (
@@ -465,7 +480,7 @@ function AskModal({ task, to, reasons, onClose, onSaved }) {
 
 // ---- the task ----------------------------------------------------------------
 // One screen, no tabs. Everything except the title is optional.
-function TaskModal({ task, people, locked, sprint, onClose, onSaved }) {
+export function TaskModal({ task, people, locked, onClose, onSaved }) {
   const [form, setForm] = useState({
     title: task.title, description: task.description,
     is_growth: task.is_growth, deadline: task.deadline || '',
@@ -562,7 +577,7 @@ function TaskModal({ task, people, locked, sprint, onClose, onSaved }) {
       </div>
 
       <div className="field sp-growth-row">
-        <label className="checkbox-chip">
+        <label className={'checkbox-chip' + (form.is_growth ? ' on' : '')}>
           <input type="checkbox" checked={form.is_growth} disabled={locked}
             onChange={(e) => setForm({ ...form, is_growth: e.target.checked })} />
           {tx('Growth')}

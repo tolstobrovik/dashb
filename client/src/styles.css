@@ -3296,6 +3296,33 @@ button.blame-person:hover { background: var(--surface-2); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sp-table td:last-child { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-table td.sp-promote-cell:last-child { max-width: none; overflow: visible; }
+/* Four short columns crushed into a phone turn every title into four lines and
+   push the button past the edge. The platform's answer to a table too wide for
+   the screen is to scroll it inside its own card, so this one keeps its
+   natural width and does the same. */
+.sp-backlog { min-width: 620px; }
+@media (max-width: 640px) {
+  /* …except that scrolling a four-column table on a phone shows you the idea
+     or the button, never both. Below this width the row stops being a row: the
+     idea, then who wrote it and when, then the one thing you can do with it. */
+  .sp-backlog, .sp-backlog tbody, .sp-backlog td { display: block; }
+  .sp-backlog { min-width: 0; }
+  .sp-backlog thead { display: none; }
+  .sp-backlog tbody tr {
+    display: grid; grid-template-columns: 1fr auto; gap: 3px 10px;
+    padding: 12px; border-bottom: 1px solid var(--hairline);
+  }
+  .sp-backlog tbody tr:last-child { border-bottom: none; }
+  .sp-backlog tbody tr:hover { background: var(--surface-2); }
+  table.sp-backlog td { padding: 0; border: none; }
+  .sp-backlog tbody tr:hover td { background: transparent; }
+  .sp-backlog .sp-idea-cell { grid-column: 1 / -1; font-size: 14px; }
+  .sp-backlog .sp-added-cell { text-align: right; align-self: center; white-space: nowrap; }
+  .sp-backlog .sp-promote-cell { grid-column: 1 / -1; margin-top: 8px; }
+  .sp-backlog .sp-promote-cell .btn { width: 100%; justify-content: center; }
+  .sp-backlog td.empty { grid-column: 1 / -1; }
+}
 
 .sp-add { display: flex; align-items: center; gap: 6px; padding: 2px; }
 .sp-add .input { border: none; background: transparent; padding: 6px 4px; font-size: 13px; }
@@ -3311,13 +3338,49 @@ button.blame-person:hover { background: var(--surface-2); }
 .sp-sort svg { opacity: 0.35; }
 .sp-sort svg.on { opacity: 1; color: var(--brand-500); }
 
-.sp-growth-row { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+.sp-growth-row { display: flex; flex-direction: row; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
 .sp-deadline-field { display: flex; flex-direction: column; gap: 4px; }
 .sp-deadline-field .input { max-width: 180px; }
 .sp-checklist { display: flex; flex-direction: column; gap: 4px; }
 .sp-item { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 13.5px; }
 .sp-item .sp-grip { color: var(--muted); cursor: grab; display: flex; }
 .sp-item .icon-btn { margin-left: auto; }
+
+/* ---------- the module's two screens ---------- */
+/* A quiet underline rather than another pill group: the header already has
+   Board/List on the right, and two pill groups on one row read as one
+   confusing control. */
+.sp-tabs {
+  display: flex; gap: 4px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.sp-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px 9px; font-size: 13.5px; font-weight: 600;
+  color: var(--ink-soft); text-decoration: none;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.sp-tab:hover { color: var(--ink); }
+.sp-tab.active { color: var(--brand-600); border-bottom-color: var(--brand-500); }
+
+/* ---------- the backlog ---------- */
+/* Writing an idea down has to cost nothing, so the field sits above the list
+   already focused-looking and takes one line and one key. */
+.sp-idea-add {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  padding: 4px 12px; background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+.sp-idea-add > svg { color: var(--muted); flex: none; }
+.sp-idea-add .input { border: none; background: transparent; padding: 9px 0; font-size: 14px; }
+.sp-idea-add .input:focus { outline: none; }
+.sp-idea-add:focus-within { border-color: var(--brand-500); }
+.sp-added-by { display: inline-flex; align-items: center; gap: 7px; }
+.sp-promote-cell { text-align: right; white-space: nowrap; }
+.sp-promote-cell .btn svg { margin-left: 2px; }
+.sp-table tr:hover .sp-promote-cell .btn { border-color: var(--brand-400); color: var(--brand-600); }
+.sp-table td.empty { display: table-cell; text-align: center; }
+.sp-table td.empty svg { vertical-align: -3px; margin-right: 4px; color: var(--muted); }
 
 /* ---------- reading somebody else's brief ---------- */
 /* The answer sits UNDER the original in its own panel, tinted so nobody can

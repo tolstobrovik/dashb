@@ -21,6 +21,7 @@ const Crew = lazy(() => import('./pages/Crew.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
 const Docs = lazy(() => import('./pages/Docs.jsx'))
 const Sprints = lazy(() => import('./pages/Sprints.jsx'))
+const SprintBacklog = lazy(() => import('./pages/SprintBacklog.jsx'))
 const Admin = lazy(() => import('./pages/Admin.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
 
@@ -101,6 +102,7 @@ export default function App() {
           />
           <Route path="/docs" element={<Docs />} />
           <Route path="/sprints" element={<Sprints />} />
+          <Route path="/sprints/backlog" element={<SprintBacklog />} />
           <Route path="/profile" element={<Profile />} />
           <Route
             path="/admin"
