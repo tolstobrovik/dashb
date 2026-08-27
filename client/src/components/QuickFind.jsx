@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, CornerDownLeft } from 'lucide-react'
+import { Search, CornerDownLeft, X } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -101,7 +101,10 @@ export default function QuickFind({ onClose }) {
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={onKey}
               />
+              {/* A phone has no Esc key, so naming one is a leftover from the
+                  desk. Same corner, same job, a control a thumb can use. */}
               <span className="qf-esc">{tx("esc")}</span>
+              <button type="button" className="qf-x" onClick={onClose} aria-label={tx("Close")}><X size={18} /></button>
             </div>
             {needle && (
               <div className="qf-list">

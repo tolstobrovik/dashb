@@ -791,8 +791,14 @@ export default function Department() {
         )}
       </div>
 
-      {/* The dashboard, exactly the sections this channel chose */}
-      {widgetOrder.map((k) => <div key={k}>{renderWidget(k)}</div>)}
+      {/* The dashboard, exactly the sections this channel chose. Each section
+          is named on its wrapper so a phone can put the work first: on a desk
+          the growth numbers sit beside the board, on a 390px screen they sat
+          three screenfuls above it, and the board is what the channel is
+          opened for. */}
+      <div className="dept-widgets">
+        {widgetOrder.map((k) => <div key={k} data-w={k}>{renderWidget(k)}</div>)}
+      </div>
 
       {/* Customize modal — toggle sections, reorder with arrows */}
       {dash && (

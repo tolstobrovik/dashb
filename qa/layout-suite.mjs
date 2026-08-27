@@ -120,9 +120,29 @@ ok('…and none of them is below the fold',
   m.kids.every((k) => k.bottom <= m.vh + 1), JSON.stringify(m.kids.filter((k) => k.bottom > m.vh + 1)))
 ok('the footer is pinned, so Save is there however long the form is', m.footSticky === 'sticky', m.footSticky)
 ok('…and so is the title', m.headSticky === 'sticky', m.headSticky)
-// The three that used to be unreachable
+// The three that used to be unreachable. Round 79 folded the secondary
+// tools — Delete, Duplicate, Copy link, Raise a hand — behind one button on
+// a phone, because laid out they took three rows and 290px of a 790px sheet.
+// The check is still that Delete is REACHABLE, which is what it was ever
+// about; it is now one tap away instead of nought, and it is on the screen
+// when it opens rather than off the edge, which is where round 77 found it.
 const labels = m.kids.map((k) => k.t).join(' ')
-ok('the destructive action is back on the screen', /Delete|Удалить/i.test(labels), labels)
+let del = /Delete|Удалить/i.test(labels)
+if (!del && await phone.locator('.cm-more-btn').count()) {
+  await phone.locator('.cm-more-btn').click()
+  await phone.waitForTimeout(300)
+  del = await phone.evaluate(() => {
+    const box = document.querySelector('.cm-tools.open')
+    if (!box) return false
+    const b = [...box.querySelectorAll('.btn')].find((x) => /Delete|Удалить/i.test(x.textContent))
+    if (!b) return false
+    const r = b.getBoundingClientRect()
+    return r.x >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight
+  })
+  await phone.locator('.cm-more-btn').click()
+  await phone.waitForTimeout(200)
+}
+ok('the destructive action is reachable and on the screen', del, labels)
 
 // ---------------- the calendar, on the phone we already have open ----------------
 // One page fewer: opening a third browser page here was enough to tip the

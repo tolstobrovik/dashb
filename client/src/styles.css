@@ -701,9 +701,15 @@ table.tbl tr:hover td { background: var(--surface-2); }
 /* The tools on the left are secondary — they should read as available, not
    compete with Save. Tighter than a full button, which is also what keeps the
    whole row on one line and off the form. */
-.modal-foot > .btn-ghost, .modal-foot > .btn-danger,
-.modal-foot > .crew-peek .select { padding: 7px 11px; font-size: 13px; }
-.modal-foot > .crew-peek .select { max-width: 170px; }
+/* Descendant, not child: the task sheet's tools live inside a `display:
+   contents` wrapper so a phone can fold them behind one button, and a
+   contents box still counts as a level in the DOM even though it draws no
+   box. Written with `>` these rules stopped matching and the desk's footer
+   went back to full-size buttons on two rows — the exact thing round 77
+   fixed. */
+.modal-foot .btn-ghost, .modal-foot .btn-danger,
+.modal-foot .crew-peek .select { padding: 7px 11px; font-size: 13px; }
+.modal-foot .crew-peek .select { max-width: 170px; }
 
 /* ---------- on a phone a window stops pretending to be a window ----------
    It comes up off the bottom edge as a sheet: full width, title pinned at the
@@ -739,7 +745,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
   /* The gap becomes the line break, and every button takes a fair share of
      its row rather than being squeezed to nothing by the one beside it. */
   .modal-foot > .foot-gap { flex-basis: 100%; height: 0; margin: 0; }
-  .modal-foot > .btn { flex: 1 1 40%; justify-content: center; }
+  .modal-foot > .btn { flex: 1 1 30%; justify-content: center; }
   .modal-foot > .btn-icon { flex: 0 0 auto; }
 }
 .icon-btn { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: grid; place-items: center; }
@@ -3832,3 +3838,400 @@ button.blame-person:hover { background: var(--surface-2); }
 .pay-bar-base  { background: var(--brand-400); }
 .pay-bar-piece { background: var(--hairline-strong); }
 .pay-bar-bonus { background: var(--good); }
+
+/* ============================================================
+   The app shell on a phone
+   ============================================================
+   Until now the phone got the desk's furniture: a sidebar that slid in from
+   the left holding thirteen destinations, a title bar with a hamburger, and no
+   way to start a task without first finding the channel that owns it. Every
+   piece of it worked; none of it was a phone.
+
+   What a phone app is: four destinations across the bottom where the thumb
+   already rests, the one thing you came to do raised in the middle of them,
+   everything else behind More — and More comes UP as a sheet, because that is
+   the direction a phone moves things. The bar is fixed, so it is there on
+   every page after every scroll, and it sits inside the safe area so it is
+   never under the home indicator.
+
+   Below 640px only. On anything wider the sidebar is still the sidebar. */
+.mob-tabs { display: none; }
+.mob-sheet { display: none; }
+
+@media (max-width: 640px) {
+  .mob-tabs {
+    display: flex; align-items: stretch;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    background: var(--surface);
+    border-top: 1px solid var(--hairline);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -10px 26px rgba(28, 21, 24, 0.07);
+  }
+  .mob-tab {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 7px 2px 6px; min-height: 54px;
+    background: none; border: none; cursor: pointer; text-decoration: none;
+    color: var(--muted); font-size: 10.5px; font-weight: 600; line-height: 1.1;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* The label is a caption under an icon, not a paragraph: one line, and the
+     channel called "Instagram Flagship" gets an ellipsis rather than a second
+     row that changes the height of the whole bar. */
+  .mob-tab > span:last-child {
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mob-ico { display: grid; place-items: center; height: 22px; }
+  .mob-tab.active { color: var(--brand-600); }
+  .mob-tab:active { background: var(--surface-2); }
+
+  /* The action, raised out of the bar. It is not a route: giving a task is
+     something you do, not somewhere you go, so it never lights up as "where
+     you are". */
+  .mob-new {
+    flex: 0 0 auto; width: 62px;
+    display: grid; place-items: center;
+    background: none; border: none; cursor: pointer; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mob-new i {
+    display: grid; place-items: center;
+    width: 48px; height: 48px; border-radius: 17px;
+    background: linear-gradient(158deg, var(--brand-500), var(--brand-700));
+    color: #fff; transform: translateY(-9px);
+    box-shadow: 0 8px 18px rgba(28, 21, 24, 0.24);
+    transition: transform 0.12s ease;
+  }
+  .mob-new:active i { transform: translateY(-9px) scale(0.93); }
+
+  /* Room under the last row of every page, so the bar covers nothing. */
+  .content { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Both doors to the same room were open at once — the hamburger at the top
+     left and More at the bottom right. An app has one. */
+  .hamburger { display: none; }
+  /* The solo top bar's eight links are all in the tab bar or behind More now.
+     Kept for the desk, where they fit on one line. */
+  .solo-bar .solo-link { display: none; }
+  /* …and with the links gone the title stops being a duplicate of one of
+     them. It was dropped at 720px for that reason and never came back; a
+     phone app names the screen you are on, so it comes back here. */
+  .solo-bar { flex-wrap: nowrap; }
+  .solo-bar h1 {
+    display: block; flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* The spacer was doing the h1's job — taking every free pixel and leaving
+     the title at "My D…". With the title as the flexible one there is
+     nothing for a spacer to do. */
+  .solo-bar .topbar-spacer { display: none; }
+  /* Theme, language, the profile and Sign out are all in the More sheet now,
+     which is where a phone app keeps them. The bar keeps what a bar is for:
+     where you are, search, and what is waiting. */
+  .solo-bar .solo-theme, .solo-bar .solo-avatar,
+  .solo-bar > .icon-btn:last-child { display: none; }
+
+  /* ---- the sidebar, as a sheet ----
+     Same component, same personalization, same channels. It arrives from the
+     bottom edge with a grab bar on it instead of arriving from the left as a
+     full-height column, which is what a phone does with a list of places. */
+  .sidebar {
+    position: fixed; inset: auto 0 0 0;
+    width: auto; height: auto; max-height: 84vh;
+    transform: translateY(101%);
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    border-radius: 20px 20px 0 0;
+    padding: 20px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+    overflow: hidden; overscroll-behavior: contain;
+    z-index: 60;
+  }
+  .sidebar.open { transform: translateY(0); }
+  /* The grab bar has to stay put, so the sheet itself does not scroll — the
+     list of places inside it does, which is what it already did on a desk. */
+  .sidebar > nav { flex: 1 1 auto; min-height: 0; }
+  /* The app's own name is not a destination, and on a phone it was the first
+     110 pixels of a list of them. */
+  .sidebar .logo-lockup { display: none; }
+  .sidebar::before {
+    content: ''; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.4);
+  }
+  .scrim.show { z-index: 55; }
+
+  /* ---- the More sheet for an account with no sidebar ---- */
+  .mob-sheet {
+    display: block; position: fixed; inset: 0; z-index: 60;
+    background: rgba(28, 21, 24, 0.4);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .mob-sheet.open { opacity: 1; pointer-events: auto; }
+  .mob-sheet-card {
+    position: absolute; inset: auto 0 0 0;
+    background: var(--surface); color: var(--ink);
+    border-radius: 20px 20px 0 0;
+    padding: 18px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    max-height: 84vh; overflow-y: auto; overscroll-behavior: contain;
+    transform: translateY(101%);
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .mob-sheet.open .mob-sheet-card { transform: translateY(0); }
+  .mob-sheet-grip {
+    width: 38px; height: 4px; border-radius: 999px; background: var(--hairline-strong);
+    margin: -6px auto 14px;
+  }
+  .mob-sheet-list { display: flex; flex-direction: column; gap: 2px; }
+  .mob-sheet-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 12px; border-radius: var(--radius-xs);
+    color: var(--ink); text-decoration: none; font-size: 15px; font-weight: 600;
+    min-height: 48px;
+  }
+  .mob-sheet-row:active { background: var(--surface-2); }
+  .mob-sheet-row.active { background: var(--brand-50); color: var(--brand-600); }
+  .mob-sheet-foot {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hairline);
+  }
+  .mob-sheet-out {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+    background: none; border: none; cursor: pointer;
+    color: var(--critical); font-size: 14px; font-weight: 600;
+    min-height: 44px; padding: 0 6px;
+  }
+}
+
+/* ============================================================
+   The task sheet, dealt into pages on a phone
+   ============================================================
+   Fourteen fields, and on a 390px screen 2,600 pixels of scrolling. Nobody
+   reads 2,600 pixels: they scroll past the field they needed and save without
+   it. The same rows become five pages with a strip across the top — what the
+   task is, what it is waiting on, how it is set up, when it is due, and the
+   talk.
+
+   The pages are `display: contents`, so on a desk the form is exactly the form
+   it was: one column, every row on it, no wrappers in the layout. Hidden pages
+   keep their DOM, so what you typed on page two is still typed when you come
+   back, and a refusal about a field three pages away can still find it. */
+.cm-sec { display: contents; }
+.modal-sub {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--surface); border-bottom: 1px solid var(--hairline);
+}
+.cm-pages {
+  display: flex; gap: 4px; padding: 8px 10px;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.cm-pages::-webkit-scrollbar { display: none; }
+.cm-page-tab {
+  flex: none; padding: 8px 13px; min-height: 38px;
+  background: none; border: none; border-radius: 999px; cursor: pointer;
+  color: var(--muted); font-size: 13px; font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+.cm-page-tab.on { background: var(--brand-50); color: var(--brand-600); }
+.modal-body.cm-paged > .cm-sec { display: none; }
+.modal-body.cm-paged > .cm-sec.on { display: contents; }
+/* A sheet that resizes itself every time you change page is a sheet that
+   jumps under your thumb. Paged, it takes the height it is going to keep and
+   the short pages simply have room to spare. */
+.modal.modal-tall { height: 94vh; }
+.modal.modal-tall .modal-body { flex: 1 1 auto; }
+
+/* Nothing behind a sheet moves while the sheet is up. A phone rule on
+   purpose: on a desk a modal has never locked the page and there is no
+   thumb to miss the form with, so nothing there needs changing. */
+@media (max-width: 640px) { body.page-held { overflow: hidden; } }
+
+@media (max-width: 640px) {
+  /* The commit row on a phone: Save is the wide one, because it is the one
+     you came here to press. The bases add up to less than the row so the
+     three of them — the tools button, Cancel, Save — stay on one line and
+     grow into it, rather than wrapping and taking a second row of the sheet
+     away from the form. */
+  .modal-foot > .btn-primary { flex: 2 1 40%; }
+}
+
+/* The Pravki picker: same shape as the reference picker, so "attach the frame"
+   looks the same wherever the app asks for a picture. */
+.pravki-pick { align-self: flex-start; }
+
+/* ============================================================
+   Tables become cards on a phone
+   ============================================================
+   Six columns on a 390px screen scrolled sideways: you saw two of them and had
+   to remember what the other four said. Stacked, a row is a card and a cell is
+   a labelled line — the shape every phone app uses for the same data. The
+   labels are copied from the table's own header at runtime (lib/stackTables),
+   so nothing had to be rewritten and a table added tomorrow gets this too. */
+@media (max-width: 640px) {
+  table.tbl { display: block; font-size: 14px; }
+  table.tbl thead { display: none; }
+  table.tbl tbody { display: flex; flex-direction: column; gap: 10px; }
+  table.tbl tr {
+    display: block; background: var(--surface);
+    border: 1px solid var(--hairline); border-radius: 14px; overflow: hidden;
+  }
+  table.tbl tr:hover td { background: none; }
+  table.tbl td, table.tbl tr:last-child td {
+    display: flex; align-items: center; gap: 12px; min-height: 44px;
+    padding: 9px 13px; border-bottom: 1px solid var(--hairline);
+  }
+  table.tbl tr td:last-child { border-bottom: none; }
+  /* The column's name, in front of its value. A cell whose header was blank —
+     the actions column — keeps the full width instead of an empty gutter. */
+  table.tbl td[data-th]:not([data-th=""])::before {
+    content: attr(data-th);
+    flex: 0 0 34%; min-width: 0;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--muted); line-height: 1.25;
+  }
+  /* The first cell names the row. It reads as the card's title rather than as
+     the first of six fields. */
+  table.tbl tbody td:first-child {
+    background: var(--surface-2); font-weight: 700; font-size: 14.5px;
+  }
+  table.tbl tbody td:first-child::before { display: none; }
+  /* A row that spans the table (an empty state) is a caption, not a card. */
+  table.tbl td[colspan] { justify-content: center; text-align: center; }
+  table.tbl td[colspan]::before { display: none; }
+  /* Whatever the cell holds takes the rest of the line and wraps inside it
+     rather than pushing the card sideways. */
+  table.tbl td > * { min-width: 0; }
+  table.tbl td .chip, table.tbl td .pill { white-space: normal; }
+
+  /* ---- tab strips scroll, they do not stack ----
+     Eleven tabs in the Admin panel wrapped onto four rows and pushed the panel
+     itself below the fold. One line that scrolls is what a phone does with a
+     row of tabs. */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs > * { flex: none; }
+
+  /* ---- the warning that follows you ----
+     It is meant to be unmissable, and on a desk one line does that. On a phone
+     the same markup took the first third of every screen in the app, every
+     page, all day. Same words, one line, still red. */
+  .weak-pw {
+    align-items: center; gap: 8px; padding: 10px 12px;
+    font-size: 12.5px; line-height: 1.35;
+  }
+  .weak-pw b { display: block; }
+  .weak-pw > span { min-width: 0; }
+  .weak-pw-go { flex: none; padding: 8px 12px; font-size: 12.5px; }
+}
+
+/* ============================================================
+   Boards swipe on a phone
+   ============================================================
+   Four kanban columns on a 390px screen have two shapes to choose from, and
+   the app had picked the wrong one twice: the content board scrolled sideways
+   at 272px, showing a column and a third of the next, and the sprint board
+   stacked all four, so an empty "Blocked" cost a whole screen of scrolling to
+   pass.
+
+   Both become one column at a time, snapped, with the edge of the next one
+   showing so it is obvious there is more. It is the shape every phone kanban
+   has, and it is the shape a thumb can actually work. */
+@media (max-width: 640px) {
+  .board, .sp-board {
+    display: flex; align-items: flex-start; gap: 10px;
+    overflow-x: auto; scroll-snap-type: x mandatory;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    /* Bleed to the edges of the screen, keeping the first column's inset —
+       a carousel that stops 14px short of the edge looks broken. */
+    margin-inline: -14px; padding-inline: 14px; padding-bottom: 8px;
+  }
+  .board::-webkit-scrollbar, .sp-board::-webkit-scrollbar { display: none; }
+  .board > .board-col, .sp-board > .sp-col {
+    flex: 0 0 calc(100% - 44px); scroll-snap-align: center;
+  }
+  .sp-board { grid-template-columns: none; }
+
+  /* A row of view pills wrapped onto three lines and pushed the thing being
+     viewed below the fold. Same answer as the tabs: one line, scrolled.
+     `flex: 0 1 auto; min-width: 0` is the whole trick and the same one the
+     channel strip needed — without it the group claims its full content
+     width, and instead of scrolling inside itself it pushes the PAGE
+     sideways, which is worse than the wrap it replaced. */
+  .pill-group {
+    /* `display: inline-flex` is shrink-to-fit: the group takes its content
+       width whatever its parent is, so overflow-x had nothing to scroll and
+       the group hung off the page instead. Block-level and capped, it fills
+       the line it is on and scrolls inside itself; `flex: 0 1 auto` with
+       `min-width: 0` lets it shrink when it IS a flex item, as in a section
+       head beside a title. */
+    display: flex; max-width: 100%;
+    flex: 0 1 auto; min-width: 0;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; border-radius: 16px;
+  }
+  .pill-group::-webkit-scrollbar { display: none; }
+  .pill-group > * { flex: none; }
+  /* And the row that HOLDS the group has to be allowed to shrink, or the
+     group never gets a narrow box to scroll inside. A flex item's default
+     `min-width: auto` is its content width, so one of these heads carrying
+     eight pills stayed 585px wide inside a 390px card and took the page with
+     it — the group scrolled internally and the page scrolled sideways
+     anyway. These are the rows that hold one. */
+  .docs-up, .docs-sec-head, .section-head, .pub-head { min-width: 0; }
+  .docs-up { flex: 1 1 auto; }
+}
+
+/* The channel page on a phone leads with the work. On a desk the sections keep
+   the order the channel chose (Customize); on a phone the content board is
+   lifted to the top, because a board three screenfuls down is a board nobody
+   scrolls to on the way to a meeting. */
+@media (max-width: 640px) {
+  .dept-widgets { display: flex; flex-direction: column; }
+  .dept-widgets > [data-w="content"] { order: -1; }
+}
+
+/* ---- the task sheet's secondary actions, on a phone ----
+   Delete, Duplicate, Copy link, See it as and Raise a hand laid three rows of
+   buttons under the form: 290px of a 790px sheet spent on things you are
+   mostly not doing, with Save pushed to the bottom of them. On a desk they
+   stay exactly where they were — the wrapper is `display: contents`, so the
+   footer is the same flex row it always was. */
+.cm-tools { display: contents; }
+@media (max-width: 640px) {
+  .cm-tools.cm-tools-pop {
+    display: none;
+    position: absolute; left: 10px; right: 10px; bottom: calc(100% + 8px);
+    flex-direction: column; gap: 6px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 16px; padding: 8px;
+    box-shadow: var(--shadow-lg);
+  }
+  .cm-tools.cm-tools-pop.open { display: flex; }
+  .cm-tools-pop > * { width: 100%; }
+  .cm-tools-pop .btn { flex: none; justify-content: flex-start; font-size: 14px; padding: 10px 12px; }
+  .cm-tools-pop .crew-peek { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+  .cm-tools-pop .crew-peek .select { flex: 1 1 auto; max-width: none; }
+  .cm-more-btn { flex: 0 0 auto; }
+  .modal-foot > .foot-gap-tight { flex: 1 1 0; flex-basis: 0; height: auto; }
+  .cm-more-btn.on { background: var(--surface-2); color: var(--ink); }
+}
+
+/* Quick find on a phone: the "esc" chip names a key the device has not got.
+   The X does the same job with a thumb. On a desk the chip stays and the X is
+   redundant, so only one of them is ever shown. */
+.qf-x { display: none; }
+@media (hover: none), (max-width: 640px) {
+  .qf-esc { display: none; }
+  .qf-x {
+    display: grid; place-items: center; flex: none;
+    width: 40px; height: 40px; border-radius: 12px;
+    background: none; border: none; cursor: pointer; color: var(--muted);
+  }
+  .qf-x:active { background: var(--surface-2); }
+}
+
+/* A one-line hint with an ellipsis is a graceful trim on a desk, where the
+   line is 900px and the sentence fits. At 390px it cut the sentence in half
+   and the ellipsis did not even show, because the note is a flex row. On a
+   phone it wraps and says the whole thing. */
+@media (max-width: 640px) {
+  .brief-note { white-space: normal; align-items: flex-start; }
+}

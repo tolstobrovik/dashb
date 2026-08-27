@@ -72,17 +72,24 @@ ok('Small works too', (await page.evaluate(() => document.documentElement.style.
 await page.locator('.seg-btn', { hasText: 'Medium' }).click()
 ok('Medium resets to normal', (await page.evaluate(() => document.documentElement.style.zoom)) === '')
 
-// 4. A post carries the designer hat, offered to designer-role people
+// 4. A post carries the hats that have a stage, and they persist
+// This board runs idea → shoot → edit. The designer hat came off the picker
+// in round 78 — it was offered on every task and picked on almost none — so
+// a post now gets the same two hats every other type has, not a design
+// pipeline of its own. The column and anyone already holding it are
+// untouched; it is simply not offered any more.
 await page.goto(BASE + '/todo')
 await page.waitForSelector('.todo-row', { timeout: 10000 })
 await page.locator('.todo-row', { hasText: 'Crew on a post' }).locator('.todo-main').click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-ok('a post carries one designer hat', (await page.locator('.modal .crew-field').count()) === 1)
+const hats = await page.locator('.modal .crew-label').allTextContents()
+ok('a post carries the two hats with a stage', hats.length === 2, hats.join(' / '))
+ok('the designer hat is not offered', !hats.some((h) => /designer/i.test(h)), hats.join(' / '))
 ok('marked optional', (await page.locator('.modal').textContent()).includes('optional'))
-await page.locator('.modal .crew-field select').first().selectOption({ label: 'Polish Designer' })
+await page.locator('.modal .crew-field select').nth(1).selectOption({ label: 'Polish Operator' })
 await page.getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
-ok('crew persisted from the modal', (await req(`/content/${post.id}`)).data.designer_id === poldes.id)
+ok('crew persisted from the modal', (await req(`/content/${post.id}`)).data.editor_id === polop.id)
 
 await browser.close()
 await req(`/content/${post.id}`, 'DELETE')

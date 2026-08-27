@@ -496,7 +496,7 @@ export default function Missed() {
             : `${open.length} still not done · ${late.length} finished late`}
         </h2>
         <div className="stat-sub" style={{ marginTop: 4 }}>
-          {tx('Done, upcoming and missed — across every task')}{' '}{isAdmin ? 'of the team' : 'assigned to you'},
+          {tx('Done, upcoming and missed — across every task')}{' '}{isAdmin ? 'of the team' : 'assigned to you'},{' '}
           {tx('each judged by its own clock: release, edit-ready, design-ready.')}
         </div>
       </div>

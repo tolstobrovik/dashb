@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  ClipboardList, FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye,
+  ClipboardList, FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye, MoreHorizontal,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
@@ -10,6 +10,7 @@ import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHre
 import { useT, tr as tx, locale } from '../lib/i18n.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
+import { useIsPhone } from '../lib/usePhone.js'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
@@ -108,6 +109,17 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
 
 // Task editor — used from the board, both calendars, the to-do list and the
 // admin panel. Deliberately small: title → stage → type → platforms → dates.
+// The five pages the sheet becomes on a phone, in the order the form already
+// has them. Labels are English keys translated at render, so the strip follows
+// the language switch like everything else.
+const SECTIONS = [
+  { key: 'brief', label: 'Brief' },
+  { key: 'review', label: 'Review' },
+  { key: 'setup', label: 'Setup' },
+  { key: 'when', label: 'Dates' },
+  { key: 'more', label: 'Talk' },
+]
+
 export default function ContentModal({ item, statuses, defaults = {}, onClose, onCreate, onUpdate, onDelete }) {
   const { user } = useAuth()
   const { visible, byKey, reload } = useChannels()
@@ -120,6 +132,36 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // scroll to it, so "«Script» needs a real answer" lands next to the script.
   const [badField, setBadField] = useState('')
   const refuse = (field, message) => { setBadField(field); setErr(message) }
+  // ---- one form on a desk, five pages on a phone ----
+  // This sheet holds fourteen fields and, on a 390px screen, 2,600 pixels of
+  // scrolling. Nobody reads 2,600 pixels; they scroll past the field they
+  // needed and save without it. The same rows are dealt into five pages here
+  // — what the task is, what it is waiting on, how it is set up, when it is
+  // due, and the talk — with a strip across the top to move between them.
+  //
+  // Nothing is removed and nothing is reordered. The pages are `display:
+  // contents` on a desk, so the desktop form is exactly the form it was, and
+  // a page that renders nothing (a new task has no history to show) never
+  // appears in the strip at all.
+  const phone = useIsPhone()
+  const bodyRef = useRef(null)
+  const [sec, setSec] = useState('brief')
+  const [pages, setPages] = useState(SECTIONS)
+  // Measured, not predicted: a page is worth a tab when it actually put
+  // something in the DOM. The rows are hidden with CSS rather than unmounted,
+  // so what you typed on page two is still there when you come back to it,
+  // and counting children works whichever page is showing.
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const live = SECTIONS.filter((x) => (el.querySelector(`[data-sec="${x.key}"]`)?.children.length || 0) > 0)
+    setPages((prev) => (prev.map((x) => x.key).join() === live.map((x) => x.key).join() ? prev : live))
+  })
+  useEffect(() => {
+    if (pages.length && !pages.some((x) => x.key === sec)) setSec(pages[0].key)
+  }, [pages, sec])
+  const secCls = (k) => 'cm-sec' + (sec === k ? ' on' : '')
+  const [tools, setTools] = useState(false)
   const [busy, setBusy] = useState(false)
   const [subText, setSubText] = useState('')
   const [form, setForm] = useState(() => ({
@@ -557,11 +599,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   useEffect(() => {
     if (!badField) return
     const el = document.querySelector(`[data-field="${badField}"]`)
-    if (el) {
+    if (!el) return
+    // On a phone the field may be on a page that is not showing. Turn to it
+    // first, then scroll — an element inside `display: none` cannot be
+    // scrolled to, and the refusal would have pointed at nothing.
+    const page = el.closest('.cm-sec')?.dataset.sec
+    if (page) setSec(page)
+    const go = () => {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       const focusable = el.querySelector('input, textarea, select')
       if (focusable) focusable.focus({ preventScroll: true })
     }
+    if (page) requestAnimationFrame(go)
+    else go()
   }, [badField])
 
   // Raising a hand. The crew could always deliver late; they had no way to say
@@ -680,6 +730,25 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     img.src = url
   }
   const pickPhoto = (e) => takePhoto(e.target.files?.[0], 'picked')
+  // The same frame, picked instead of pasted. A phone has no clipboard you can
+  // put a screenshot on and no Ctrl to press, so on a phone this was the only
+  // way to send back "look at THIS bit" — and it did not exist.
+  const pickPravkiShot = (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) { setErr('Image is too large — keep it under 15 MB'); return }
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        setPravki((pv) => (pv ? { ...pv, photo: scaleImage(img, 1600, 0.85), photo_thumb: scaleImage(img, 320, 0.75) } : pv))
+        setErr('')
+      } catch { setErr('Could not read that image') } finally { URL.revokeObjectURL(url) }
+    }
+    img.onerror = () => { setErr('Could not read that image'); URL.revokeObjectURL(url) }
+    img.src = url
+  }
   // A reference is almost always a screenshot that is already on the
   // clipboard — Ctrl+V drops it straight in, so nobody has to save it to disk
   // first just to pick it back out of a file dialog. Anywhere in the task
@@ -917,9 +986,35 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   return (
     <Modal
       wide
-      title={creating ? 'New task' : 'Task'}
+      title={creating ? tx('New task') : tx('Task')}
       onClose={onClose}
+      bodyRef={bodyRef}
+      bodyClass={phone && pages.length > 1 ? 'cm-paged' : ''}
+      tall={phone && pages.length > 1}
+      subhead={phone && pages.length > 1 ? (
+        <div className="cm-pages" role="tablist">
+          {pages.map((x) => (
+            <button key={x.key} type="button" role="tab" aria-selected={sec === x.key}
+              className={'cm-page-tab' + (sec === x.key ? ' on' : '')}
+              onClick={() => { setSec(x.key); bodyRef.current?.scrollTo({ top: 0 }) }}>
+              {tx(x.label)}
+            </button>
+          ))}
+        </div>
+      ) : null}
       footer={<>
+        {/* On a phone these five put three rows of secondary buttons under the
+            form — 290px of a 790px sheet spent on things you are mostly not
+            doing. Behind one button they are still one tap away, and Save gets
+            the room instead. */}
+        {phone && !creating && (
+          <button type="button" className={'btn btn-ghost btn-icon cm-more-btn' + (tools ? ' on' : '')}
+            onClick={() => setTools((v) => !v)} aria-label={tx('More actions')} aria-expanded={tools}>
+            <MoreHorizontal size={18} />
+          </button>
+        )}
+        <div className={'cm-tools' + (phone ? ' cm-tools-pop' : '') + (tools ? ' open' : '')}
+          onClick={() => phone && setTools(false)}>
         {!creating && canEdit && <button className="btn btn-danger" onClick={del}><Trash2 size={15} />{' '}{tx("Delete")}</button>}
         {!creating && canEdit && !crewViewer && (
           <button className="btn btn-ghost" onClick={duplicate} disabled={busy}
@@ -928,8 +1023,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           </button>
         )}
         {!creating && (
-          <button className="btn btn-ghost btn-icon" onClick={copyLink} data-tip={tx("Copy a link to this task")} aria-label={tx("Copy link")}>
-            <Link2 size={15} />
+          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')} onClick={copyLink}
+            data-tip={tx("Copy a link to this task")} aria-label={tx("Copy link")}>
+            {/* In the footer it is an icon among icons and the tooltip names
+                it. In the menu there are no tooltips and no neighbours to
+                explain it, so it says what it is. */}
+            <Link2 size={15} />{phone ? <> {tx('Copy link')}</> : null}
           </button>
         )}
         {/* Standing where the crew stand. The people who plan the work ran the
@@ -959,7 +1058,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <Hand size={15} /> Raise a hand
           </button>
         )}
-        <span className="foot-gap" />
+        </div>
+        {/* The gap is a line break on a phone so a row of tools cannot shove
+            Save off the screen. With the tools behind one button there is
+            nothing left to break for, and the row fits on one line. */}
+        <span className={'foot-gap' + (phone ? ' foot-gap-tight' : '')} />
         <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
         {!readOnly && (
           <button className="btn btn-primary" onClick={() => save()} disabled={busy || !form.title.trim()}>
@@ -1018,6 +1121,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         placeholder={tx("Task title")}
       />
 
+      <div className={secCls('brief')} data-sec="brief">
       {/* Stage — the pipeline, in its own colours */}
       <div className="cm-row">
         <span className="cm-key">{t('task.stage')}</span>
@@ -1127,8 +1231,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 {briefEditable && <button className="photo-remove" data-tip={tx("Remove the photo")} data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label={tx("Remove photo")}><X size={14} /></button>}
               </div>
             ) : briefEditable ? (
-              <label className="photo-pick ref-photo-pick" data-tip={tx("Pick a file — or just press Ctrl+V with a screenshot on the clipboard")}>
-                <ImagePlus size={15} /> Reference photo <span className="crew-opt">{tx("or paste it — Ctrl+V")}</span>
+              <label className="photo-pick ref-photo-pick"
+                data-tip={tx("Pick a file — or just press Ctrl+V with a screenshot on the clipboard")}>
+                <ImagePlus size={15} /> {tx('Reference photo')}{' '}
+                <span className="crew-opt">{phone ? tx('take one or pick one') : tx('or paste it — Ctrl+V')}</span>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPhoto} />
               </label>
             ) : null}
@@ -1233,6 +1339,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      </div>
+
+      <div className={secCls('review')} data-sec="review">
       {/* Review (SMM & admin): a Ready task waits here for release. Publish it,
           or send it back to the crew with one note (Pravki). */}
       {atReady && (canReview || canRequest) && (
@@ -1268,7 +1377,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <textarea className="input" rows={3} autoFocus value={pravki.note}
                   onPaste={pravkiPaste}
                   onChange={(e) => setPravki({ ...pravki, note: e.target.value })}
-                  placeholder={tx("Write everything that needs changing, in one go… (Ctrl+V pastes the screenshot)")} />
+                  placeholder={phone
+                    ? tx("Write everything that needs changing, in one go…")
+                    : tx("Write everything that needs changing, in one go… (Ctrl+V pastes the screenshot)")} />
                 <div className="pravki-voice">
                   {canRecord() && <VoiceRecorder key={`p${clipNonce}`} onClip={(c) => setPravki((p) => (p ? { ...p, clip: c } : p))} disabled={busy} />}
                   <span className="stat-sub">Say it out loud if it is quicker — the note still goes in writing, so it can be skimmed later.</span>
@@ -1279,6 +1390,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                     <button className="photo-remove" aria-label={tx("Remove screenshot")} data-tip={tx("Remove the screenshot")} data-tip-left=""
                       onClick={() => setPravki({ ...pravki, photo: null, photo_thumb: null })}><X size={14} /></button>
                   </div>
+                ) : phone ? (
+                  <label className="photo-pick pravki-pick">
+                    <ImagePlus size={15} /> {tx('Add the frame you mean')}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPravkiShot} />
+                  </label>
                 ) : (
                   <span className="doc-hint"><ImagePlus size={12} />{' '}{tx("Press Ctrl+V to paste the frame you mean.")}</span>
                 )}
@@ -1430,6 +1546,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      </div>
+
+      <div className={secCls('setup')} data-sec="setup">
       {/* Crew read, they don't configure: instead of four pickers they can't
           touch (type, platforms, crew, campaign), one compact line says what
           the piece is, where it goes and who else is on it — the modal stays
@@ -1742,6 +1861,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       </div>
       </>)}
 
+      </div>
+
+      <div className={secCls('when')} data-sec="when">
       {/* Dates — the shoot in hours (from–to), the editor's cut deadline, the
           designer's artwork deadline, and the public release. Each maker is
           judged by their own date, never by the release. */}
@@ -1833,6 +1955,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      </div>
+
+      <div className={secCls('more')} data-sec="more">
       {/* Reference and Description are open from the start now, so what is
           left here is the chrome that only earns its space once it holds
           something. */}
@@ -1926,6 +2051,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           </div>
         </div>
       )}
+      </div>
     </Modal>
   )
 }

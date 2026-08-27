@@ -1,18 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import GetSetUp from './GetSetUp.jsx'
-import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert , Timer } from 'lucide-react'
+import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert, Timer, LayoutGrid, User } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
+import MobileTabs, { MoreSheet } from './MobileTabs.jsx'
+import NewTask from './NewTask.jsx'
 import QuickFind from './QuickFind.jsx'
 import NotificationsBell from './NotificationsBell.jsx'
 import Logo from './Logo.jsx'
 import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
+import LangToggle from './LangToggle.jsx'
 import { useT, tr as tx } from '../lib/i18n.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAutoUpdate } from '../lib/useAutoUpdate.js'
-import { iconFor } from '../lib/constants.js'
+import { useIsPhone } from '../lib/usePhone.js'
+import { watchTables } from '../lib/stackTables.js'
+import { can, iconFor } from '../lib/constants.js'
 
 // Signed in with a password that is printed in this repository. The source is
 // readable and the dashboard sits on a public URL, so this is the shortest way
@@ -38,6 +43,7 @@ export default function Layout() {
   const { t } = useT()
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  const [more, setMore] = useState(false)
   // Ctrl/Cmd-K quick find — reach any task or page from anywhere.
   const [finding, setFinding] = useState(false)
   useEffect(() => {
@@ -58,6 +64,20 @@ export default function Layout() {
   useAutoUpdate() // long-lived tabs pick up new deploys on their own
 
   useEffect(() => setOpen(false), [location.pathname])
+
+  // ---- the phone shell ----
+  // Giving a task used to start with finding the channel that owns it. The
+  // raised button in the tab bar starts it from anywhere, in the same form the
+  // channel board opens, with the channel filled in from where you were.
+  const [giving, setGiving] = useState(false)
+  const canGive = can(user, 'manage_content')
+  // A route change closes both the More sheet and the drawer; the sheet is a
+  // place you leave, not a thing you dismiss.
+  useEffect(() => setMore(false), [location.pathname])
+  // Tables become stacked cards on a phone, and each cell needs the name of
+  // the column it came from. One watcher for the whole app.
+  const phone = useIsPhone()
+  useEffect(() => (phone ? watchTables() : undefined), [phone])
 
   // The channel's own name is never translated — it is what the team called
   // it, in whichever language they called it.
@@ -81,6 +101,25 @@ export default function Layout() {
   const solo = user.role !== 'admin' && visible.length <= 1
   const soloChannel = solo ? visible[0] : null
   const SoloIcon = soloChannel ? iconFor(soloChannel.icon) : null
+
+  // Four destinations and the action, which is all a phone has room for. A
+  // member with one channel gets that channel in the bar — it is their whole
+  // job — and everything else moves behind More.
+  const soloTabs = [
+    { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun },
+    soloChannel
+      ? { key: 'ch', to: `/dept/${soloChannel.key}`, label: soloChannel.label, icon: SoloIcon }
+      : { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
+    { key: 'todo', to: '/todo', label: t('nav.todo'), icon: ListChecks },
+    { key: 'more', onClick: () => setMore((v) => !v), on: more, label: tx('More'), icon: LayoutGrid },
+  ]
+  const soloMore = [
+    ...(soloChannel ? [{ key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer }] : []),
+    { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
+    { key: 'missed-tasks', to: '/missed-tasks', label: t('nav.missedtasks'), icon: AlertTriangle },
+    { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
+    { key: 'profile', to: '/profile', label: t('nav.myprofilepage'), icon: User },
+  ]
 
   if (solo) {
     return (
@@ -121,7 +160,9 @@ export default function Layout() {
           </NavLink>
           <button className="icon-btn" onClick={() => setFinding(true)} data-tip={t('nav.find')} aria-label={t('nav.quickfind')}><Search size={17} /></button>
           <NotificationsBell user={user} />
-          <ThemeToggle />
+          {/* Named so a phone can put it away: theme, language, the profile
+              and Sign out all live in the More sheet there. */}
+          <ThemeToggle className="icon-btn solo-theme" />
           <NavLink to="/profile" className="solo-avatar" data-tip={t('nav.myprofile')} data-tip-left="" aria-label={t('nav.myprofilepage')}>
             <Avatar name={user.name} color={user.color} src={user.avatar} size="sm" />
           </NavLink>
@@ -133,9 +174,26 @@ export default function Layout() {
           <Outlet />
         </main>
         {finding && <QuickFind onClose={() => setFinding(false)} />}
+        <MobileTabs tabs={soloTabs} canGive={canGive}
+          onNew={() => (canGive ? setGiving(true) : setFinding(true))}
+          newLabel={canGive ? tx('Give a task') : tx('Find anything')} />
+        <MoreSheet open={more} onClose={() => setMore(false)} links={soloMore}
+          foot={<>
+            <ThemeToggle />
+            <LangToggle />
+            <button type="button" className="mob-sheet-out" onClick={logout}><LogOut size={16} /> {tx('Sign out')}</button>
+          </>} />
+        {giving && <NewTask onClose={() => setGiving(false)} />}
       </div>
     )
   }
+
+  const tabs = [
+    { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun },
+    { key: 'todo', to: '/todo', label: t('nav.todo'), icon: ListChecks },
+    { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
+    { key: 'more', onClick: () => setOpen((v) => !v), on: open, label: tx('More'), icon: LayoutGrid },
+  ]
 
   return (
     <div className={'layout' + (sideOff ? ' side-off' : '')}>
@@ -170,6 +228,14 @@ export default function Layout() {
           <Outlet />
         </main>
         {finding && <QuickFind onClose={() => setFinding(false)} />}
+        {/* The same four slots for everyone else. More opens the sidebar,
+            which on a phone comes up from the bottom as a sheet instead of
+            sliding in from the left as a desktop drawer that was never a
+            phone thing to begin with. */}
+        <MobileTabs tabs={tabs} canGive={canGive}
+          onNew={() => (canGive ? setGiving(true) : setFinding(true))}
+          newLabel={canGive ? tx('Give a task') : tx('Find anything')} />
+        {giving && <NewTask onClose={() => setGiving(false)} />}
       </div>
     </div>
   )
