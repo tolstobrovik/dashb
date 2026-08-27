@@ -1547,6 +1547,26 @@ export async function ensureFirstSprintOwner() {
   await run("INSERT INTO meta (key, value) VALUES ('sprint_owner_seeded', ?)", new Date().toISOString())
 }
 
+// Keys an admin typed into the panel.
+//
+// They live in meta beside the other deployment facts. They are never sent to
+// a browser: the panel is told a key exists and where it came from, never what
+// it is. ai.js keeps them in memory because secret() is called on every
+// request; this is what fills that memory, at boot and after each save.
+export async function saveAiKey(envName, value) {
+  const key = `ai_key_${envName}`
+  if (value) await run('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value)
+  else await run('DELETE FROM meta WHERE key = ?', key)
+}
+export async function loadAiKeys() {
+  const rows = await all("SELECT key, value FROM meta WHERE key LIKE 'ai_key_%'")
+  const map = {}
+  for (const r of rows) if (r.value) map[r.key.slice('ai_key_'.length)] = r.value
+  const { useTypedKeys } = await import('./ai.js')
+  useTypedKeys(map)
+  return Object.keys(map)
+}
+
 export async function ensureCurrentSprint() {
   const { weekOf } = await import('./sprintweek.js')
   const week = weekOf()
@@ -1915,6 +1935,7 @@ export function initDb() {
     await seedIfEmpty()
     await seedCampaignsIfEmpty()
     await migrateCampaignsToProjects()
+    await loadAiKeys()
     await ensureFirstSprintOwner()
     await ensureAdminAccess()
     await importJulyIgPlan()

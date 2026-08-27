@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { authRequired, adminOnly, wrap } from '../auth.js'
-import { translate, simplify, guessLang, configured, probe, cacheSize, clearCache, LANG_NAME } from '../ai.js'
+import { translate, simplify, guessLang, configured, probe, cacheSize, clearCache, LANG_NAME, MODEL_KEYS } from '../ai.js'
+import { saveAiKey, loadAiKeys } from '../db.js'
 
 const router = Router()
 router.use(authRequired)
@@ -72,6 +73,28 @@ router.post('/probe', adminOnly, wrap(async (_req, res) => {
 router.delete('/cache', adminOnly, wrap(async (_req, res) => {
   await clearCache()
   res.json({ ok: true })
+}))
+
+// ---- keys an admin can type in ----
+// The board runs on a host somebody else administers, so "set an environment
+// variable" was advice nobody could take and every provider read "no key"
+// forever. A key typed here is stored and used; the environment still wins
+// over it, and the value is never sent back to any browser.
+router.put('/keys/:provider', adminOnly, wrap(async (req, res) => {
+  const env = MODEL_KEYS[req.params.provider]
+  if (!env) return res.status(404).json({ error: 'No such provider' })
+  const value = String(req.body?.key ?? '').trim()
+  if (value) {
+    // A key with spaces or newlines in it is a paste accident, and the error
+    // it causes later reads as "the provider is down".
+    if (/\s/.test(value)) return res.status(400).json({ error: 'That key has a space in it — check the paste' })
+    if (value.length < 12) return res.status(400).json({ error: 'That is too short to be a key' })
+    await saveAiKey(env, value)
+  } else {
+    await saveAiKey(env, null)
+  }
+  await loadAiKeys()
+  res.json({ ...configured(), cached: await cacheSize() })
 }))
 
 export default router

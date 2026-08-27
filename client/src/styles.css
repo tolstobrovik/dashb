@@ -3790,3 +3790,10 @@ button.blame-person:hover { background: var(--surface-2); }
 @media (hover: none) {
   .sp-help { width: 40px; height: 40px; }
 }
+
+/* ---------- language help: keys typed in, not set on a server ---------- */
+.ai-note { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.ai-keyset { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--good); font-size: 12.5px; }
+.ai-keycell { min-width: 300px; }
+.ai-keyform { display: flex; align-items: center; gap: 6px; }
+.ai-keyform .input { max-width: 190px; font-size: 12.5px; padding: 7px 10px; }

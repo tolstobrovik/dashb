@@ -26,12 +26,41 @@ import { createHash } from 'crypto'
 import { all, get, run } from './db.js'
 import * as cfg from './config.js'
 
-// The environment always wins; config.js is the fallback for a deploy where
-// setting environment variables is somebody else's job. Same rule the
-// Telegram bridge already follows.
+// Where a key comes from, in order.
+//
+// The environment always wins, because whoever sets one there meant it. Then
+// what an admin typed into the panel, then config.js. The panel exists
+// because on this deployment nobody can set an environment variable: the
+// board runs on a host somebody else administers, so "no key" was a dead end
+// with no door out of it.
+//
+// Kept in memory because secret() is called on every request and reading the
+// database for it would be silly. Filled at boot and again on every save.
+let typedKeys = {}
+export function useTypedKeys(map) { typedKeys = map || {} }
+
 const secret = (name) => {
   if (process.env[name] !== undefined) return process.env[name] || ''
+  if (typedKeys[name]) return typedKeys[name]
   return cfg[name] || ''
+}
+
+// The five, named once so the panel, the loader and the reader agree.
+export const MODEL_KEYS = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+  groq: 'GROQ_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+}
+// Where a key came from, for the panel to say so plainly. An admin who typed
+// one into a box and still sees "no key" needs to know the environment is
+// overriding them.
+export const keySource = (name) => {
+  if (process.env[name]) return 'environment'
+  if (typedKeys[name]) return 'typed in'
+  if (cfg[name]) return 'config file'
+  return null
 }
 
 export const LANG_NAME = { en: 'English', ru: 'Russian', uz: 'Uzbek' }
@@ -385,10 +414,15 @@ export async function simplify(text, lang = 'en', { useCache = true } = {}) {
 // deployed. `probe` really calls each one with two words.
 export function configured() {
   const models = orderFromEnv().filter((n) => {
-    try { return !!secret({ anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', groq: 'GROQ_API_KEY', openrouter: 'OPENROUTER_API_KEY', gemini: 'GEMINI_API_KEY' }[n]) }
-    catch { return false }
+    try { return !!secret(MODEL_KEYS[n]) } catch { return false }
   })
-  return { models, free: FREE_ORDER, canSimplifyWithModel: models.length > 0 }
+  // Every provider, whether it has a key or not, with where the key came
+  // from. The panel used to work this out from two lists and could not say
+  // why a key it had just been given was being ignored.
+  const providers = Object.entries(MODEL_KEYS).map(([name, env]) => ({
+    name, env, set: !!secret(env), source: keySource(env),
+  }))
+  return { models, providers, free: FREE_ORDER, canSimplifyWithModel: models.length > 0 }
 }
 
 export async function probe() {

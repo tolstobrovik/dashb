@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
@@ -1151,19 +1151,39 @@ function AiTab() {
   const [st, setSt] = useState(null)
   const [probe, setProbe] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [draft, setDraft] = useState({})
   const load = () => api.get('/ai/status').then(setSt).catch(() => setSt(null))
   useEffect(load, [])
 
-  const runProbe = async () => {
+  const runProbe = useCallback(async () => {
     setBusy(true)
     try { setProbe((await api.post('/ai/probe', {})).results) }
     catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }, [])
+  // Reachability answers itself on arrival. It used to sit on a dash until
+  // somebody found the button, which reads as "nothing works" rather than
+  // "nobody has asked yet".
+  useEffect(() => { runProbe() }, [runProbe])
+
+  const saveKey = async (provider, key) => {
+    setBusy(true)
+    try {
+      setSt(await api.put(`/ai/keys/${provider}`, { key }))
+      setDraft((d) => ({ ...d, [provider]: '' }))
+      toast(key ? tx('Key saved — testing it now') : tx('Key removed'))
+      runProbe()
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }
   const clear = async () => {
     try { await api.del('/ai/cache'); toast(tx('Saved — synced')); load() }
     catch (e) { toast(e.message, 'err') }
   }
   if (!st) return <div className="app-loading"><span className="spinner" /></div>
+
+  const rows = [
+    ...(st.providers || []).map((p) => ({ ...p, kind: 'model' })),
+    ...st.free.map((f) => ({ name: f, kind: 'free', set: true, source: 'built in' })),
+  ]
 
   return (
     <>
@@ -1176,32 +1196,58 @@ function AiTab() {
         </button>
       </div>
 
-      {!st.canSimplifyWithModel && (
-        <div className="card card-pad pay-empty">
-          <b>{tx('No model key is set — translation uses the free services, and Explain simply falls back to splitting sentences rather than rewording.')}</b>
-          <span className="stat-sub">
-            ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY · GROQ_API_KEY · OPENROUTER_API_KEY
-          </span>
-        </div>
-      )}
+      <div className="card card-pad ai-note">
+        <b>{tx('The free two need no key and handle translation on their own.')}</b>
+        <span className="stat-sub">
+          {tx('A model key is what makes «Explain simply» reword a brief instead of just splitting its sentences. Paste one below and it is used straight away. One is enough; the rest are tried only if it fails.')}
+        </span>
+      </div>
 
       <div className="card table-wrap">
         <table className="tbl">
-          <thead><tr><th>Provider</th><th>Kind</th><th>Configured</th><th>Reachable</th></tr></thead>
+          <thead><tr>
+            <th>{tx('Provider')}</th><th>{tx('Kind')}</th><th>{tx('Key')}</th>
+            <th>{tx('Reachable')}</th><th />
+          </tr></thead>
           <tbody>
-            {[...st.models.map((m) => ({ name: m, kind: 'model', set: true })),
-              ...MODELS_NOT_SET(st).map((m) => ({ name: m, kind: 'model', set: false })),
-              ...st.free.map((f) => ({ name: f, kind: 'free', set: true }))].map((row) => {
+            {rows.map((row) => {
               const hit = (probe || []).find((x) => x.name === row.name)
+              const typed = draft[row.name] ?? ''
               return (
                 <tr key={row.name + row.kind}>
                   <td><b>{row.name}</b></td>
-                  <td>{row.kind === 'model' ? 'model' : 'free translation'}</td>
-                  <td>{row.set ? <span className="pay-good">yes</span> : <span className="stat-sub">no key</span>}</td>
+                  <td className="stat-sub">{row.kind === 'model' ? tx('model') : tx('free translation')}</td>
                   <td>
-                    {!hit ? <span className="stat-sub">—</span>
-                      : hit.ok ? <span className="pay-good">{tx('reachable')} · {hit.ms}ms</span>
-                        : <span className="pay-bad" data-tip={hit.why}>{tx('not reachable')}</span>}
+                    {row.kind === 'free'
+                      ? <span className="stat-sub">{tx('none needed')}</span>
+                      : row.set
+                        ? <span className="ai-keyset">
+                            <ShieldCheck size={13} /> {tx('set')}
+                            <span className="stat-sub"> · {tx('from the {where}', { where: row.source })}</span>
+                          </span>
+                        : <span className="stat-sub">{tx('no key')}</span>}
+                  </td>
+                  <td>
+                    {row.kind === 'model' && !row.set ? <span className="stat-sub">—</span>
+                      : busy && !hit ? <span className="stat-sub">{tx('testing…')}</span>
+                        : !hit ? <span className="stat-sub">—</span>
+                          : hit.ok ? <span className="pay-good">{tx('reachable')} · {hit.ms}ms</span>
+                            : <span className="pay-bad" data-tip={hit.why}>{tx('not reachable')}</span>}
+                  </td>
+                  <td className="ai-keycell">
+                    {row.kind === 'model' && (
+                      <span className="ai-keyform">
+                        <input className="input" type="password" autoComplete="off"
+                          placeholder={row.set ? tx('replace the key') : tx('paste the key')}
+                          value={typed} onChange={(e) => setDraft({ ...draft, [row.name]: e.target.value })} />
+                        <button className="btn btn-sm" disabled={busy || !typed.trim()}
+                          onClick={() => saveKey(row.name, typed.trim())}>{tx('Save')}</button>
+                        {row.set && row.source === 'typed in' && (
+                          <button className="btn btn-sm btn-danger" disabled={busy}
+                            onClick={() => saveKey(row.name, '')}>{tx('Remove')}</button>
+                        )}
+                      </span>
+                    )}
                   </td>
                 </tr>
               )
@@ -1213,16 +1259,12 @@ function AiTab() {
       <div className="card card-pad" style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
         <b>{st.cached}</b><span className="stat-sub">{tx('saved translations')}</span>
         <span className="spacer" />
-        <button className="btn btn-sm" onClick={clear}>{tx('Clear the saved translations')}</button>
+        <button className="btn" onClick={clear}>{tx('Clear the saved translations')}</button>
       </div>
     </>
   )
 }
-// The five the board knows how to use, minus the ones that have a key.
-const ALL_MODELS = ['anthropic', 'openai', 'gemini', 'groq', 'openrouter']
-const MODELS_NOT_SET = (st) => ALL_MODELS.filter((m) => !st.models.includes(m))
 
-/* ==================== CHANNELS (custom sidebar) ==================== */
 function ChannelsTab({ onOpenReport }) {
   const { channels, reload } = useChannels()
   const [modal, setModal] = useState(null) // {id?, label, icon, head_id}
