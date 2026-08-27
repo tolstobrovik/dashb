@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import {
   Shield, LogOut, ListChecks, Briefcase, LayoutDashboard, Sun, BarChart3, UserX, Clapperboard, UsersRound, ScrollText, Send,
-  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, AlertTriangle, Timer,
+  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, AlertTriangle, Timer, UserCheck,
 } from 'lucide-react'
 import { LogoLockup } from './Logo.jsx'
 import Avatar from './Avatar.jsx'
@@ -73,6 +73,9 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       { key: 'missed-tasks', to: '/missed-tasks', label: t('nav.missedtasks'), icon: AlertTriangle },
       isAdmin && { key: 'unassigned', to: '/unassigned', label: t('nav.unassigned'), icon: UserX },
       { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
+      // Who came in and when. It lived as tab eight of eleven inside the
+      // Admin panel, which is not where anybody looks for it.
+      { key: 'attendance', to: '/attendance', label: t('nav.attendance'), icon: UserCheck },
       { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
       isAdmin && { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },
     ].filter(Boolean),

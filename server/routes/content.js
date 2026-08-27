@@ -160,6 +160,26 @@ const chansOf = (row) => (Array.isArray(row?.channels)
 // Does this person's admin writ cover this task?
 const adminHere = (user, row) => isAdminOn(user, chansOf(row))
 
+// ---- the admin is not made to fill in a form ------------------------------
+// Every rule below this line exists to stop WORK going out half-briefed: a
+// shoot with no shooter, a stage moved with nothing attached, a required field
+// left empty. They are right for the people doing the work and wrong for the
+// person who set them, who is usually correcting the board at speed — putting
+// a name on a card somebody phoned in, fixing a date, dragging four pieces out
+// of the wrong stage — and does not want to be asked for a reference photo
+// each time.
+//
+// So the admin passes them all. Not "sees a nicer error", not "clicks through
+// a warning": the requirement does not apply to them. What still applies is
+// everything that is not a form to fill in — whose channel it is, whether a
+// link is actually a link, whether a person exists — because those are not
+// requirements, they are facts.
+//
+// An admin scoped to particular channels is an admin ON those channels, and
+// this follows the same scope: they are unfettered where they are the admin
+// and refused outright where they are not.
+const unfettered = (user, chans) => isAdminOn(user, chans)
+
 const canPublish = (user, row) => {
   if (adminHere(user, row)) return true
   if (!can(user, 'review_publish')) return false
@@ -205,6 +225,8 @@ const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, ass
   shot_at, edited_at, edit_due_revised, review_due_revised,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
+  shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note,
+  edit_ack, edit_ack_at, edit_ack_by, edit_ack_note,
   checklist, todo_sort, pinned, ${withThumbs ? 'photo_thumb,' : ''}
   CASE WHEN photo_thumb IS NULL THEN 0 ELSE 1 END AS has_thumb,
   (SELECT COUNT(*) FROM comments WHERE comments.content_id = content.id) AS comment_count,
@@ -302,6 +324,42 @@ async function notifyAssigned(req, contentId, title, roleById, extra = '') {
   await Promise.allSettled(ids.map((id) =>
     tgMirror([id], `📌 New work for you — you're the ${roleById.get(id)}\n<b>«${tgEsc(title)}»</b>${extra}\nFrom ${tgEsc(req.user.name)}. Have a look and plan it in 👇`, contentId, tgOriginFrom(req))))
 }
+// ---- booked time the crew answer for -----------------------------------
+// A shoot day is not a fact until the person holding the camera has said they
+// can be there, and an edit deadline is not a deadline until the editor has
+// said it fits. The planner books; the crew ANSWERS. Until they do the slot
+// reads as waiting, and once they accept it it is theirs — the planner cannot
+// quietly move an afternoon somebody has already cleared.
+//
+// Two bookings, one shape. `shoot` is the operator and the recording day with
+// its hours; `edit` is the editor and the day the cut is due. Anything else on
+// the task — the release, the design date — is a plan, not a promise made to
+// a person, and nobody is asked to confirm it.
+const BOOKINGS = {
+  shoot: {
+    holder: 'operator_id', ack: 'shoot_ack', at: 'shoot_ack_at', by: 'shoot_ack_by', note: 'shoot_ack_note',
+    day: 'recording_date', from: 'recording_time', to: 'recording_end',
+    what: 'the shoot', role: 'operator',
+  },
+  edit: {
+    holder: 'editor_id', ack: 'edit_ack', at: 'edit_ack_at', by: 'edit_ack_by', note: 'edit_ack_note',
+    day: 'edit_ready_date', from: null, to: null,
+    what: 'the edit deadline', role: 'editor',
+  },
+}
+// A booking exists when somebody is holding it AND there is a day. One without
+// the other is half a plan and owes nobody an answer.
+const bookedOn = (row, k) => !!(row[BOOKINGS[k].holder] && row[BOOKINGS[k].day])
+// How the slot reads in a sentence: "3 Sep, 14:00-16:00" or just "3 Sep".
+const slotWords = (row, k) => {
+  const b = BOOKINGS[k]
+  const day = tgDate(row[b.day])
+  const from = b.from && row[b.from]
+  const to = b.to && row[b.to]
+  if (!from) return day
+  return `${day}, ${from}${to ? `-${to}` : ''}`
+}
+
 // A person can wear two hats on one task — the message names both.
 const addRole = (map, id, role) => {
   if (!id) return
@@ -819,6 +877,8 @@ router.post('/', wrap(async (req, res) => {
   const rubrika = cleanShort(req.body?.rubrika)
   const script = cleanScript(req.body?.script)
   const fieldRules = await getTaskFields()
+  // The admin is not made to fill in a form; see `unfettered` above.
+  const free = unfettered(req.user, channels)
   // A reference can arrive as a link, a photo or an attached document; only
   // the text-only case has to prove that it points somewhere.
   const refCarried = referenceLinks.length > 0 || !!photo
@@ -836,14 +896,14 @@ router.post('/', wrap(async (req, res) => {
       linkless: !refCarried && hasSubstance(reference_text) && !hasLink(reference_text),
     },
   })
-  if (problem) return res.status(400).json({ error: problem })
+  if (problem && !free) return res.status(400).json({ error: problem })
 
   // The two rules that hold whether or not the admin demanded the field,
   // because they are about what the words ARE, not about whether they were
   // required: a reference that is only prose points nowhere, and a reference
   // of "." is not one. Text standing ALONE carries the rule — links, a photo
   // or an attached document already point somewhere.
-  if (reference_text && !refCarried) {
+  if (reference_text && !refCarried && !free) {
     if (!hasSubstance(reference_text))
       return res.status(400).json({ error: `«Reference» needs a real answer — “${clip(reference_text)}” is a placeholder, not a reference` })
     if (!hasLink(reference_text))
@@ -852,7 +912,7 @@ router.post('/', wrap(async (req, res) => {
   // A script the crew already has is not a second script — it is the same
   // shoot booked twice, and both cards then wait for the same footage.
   // Duplicate carries the brief across ON PURPOSE, so it says so and passes.
-  if (!req.body?.allow_duplicate_script) {
+  if (!req.body?.allow_duplicate_script && !free) {
     const twin = await duplicateScript(script)
     if (twin)
       return res.status(400).json({ error: `That script is already on «${twin.title}» — link to it or write what is different about this one` })
@@ -959,7 +1019,7 @@ router.post('/', wrap(async (req, res) => {
       operatorId: crew.operator_id, recording: recording_date, editReady: edit_ready_date,
       release: release_date, refReady: refCarried || hasLink(reference_text) || isSentence(briefText.script),
     })
-    if (booking) return res.status(400).json({ error: booking })
+    if (booking && !free) return res.status(400).json({ error: booking })
   }
   const maxSort = (await get('SELECT COALESCE(MAX(todo_sort), -1) AS m FROM content')).m
   const info = await run(`
@@ -1638,6 +1698,10 @@ router.patch('/:id', wrap(async (req, res) => {
   // editing and designing ARE stage changes — even with no granular rights.
   const isCrew = row.operator_id === req.user.id || row.editor_id === req.user.id || row.designer_id === req.user.id
   const oldChannels = JSON.parse(row.channels || '[]')
+  // The admin is not made to fill in a form; see `unfettered` above. Scoped
+  // to the channels this piece is actually on, so a channel admin is free on
+  // their own board and nowhere else.
+  const free = unfettered(req.user, oldChannels)
   const patch = {}
 
   // Who holds which hat on this task — the milestone tick each may mark.
@@ -1664,7 +1728,9 @@ router.patch('/:id', wrap(async (req, res) => {
       edited: { field: 'ready_link', what: 'the cut' },
       designed: { field: 'design_link', what: 'the artwork' },
     }
-    const proof = NEEDS_FILE[m]
+    // The admin ticking a milestone is catching the board up on work that
+    // already happened somewhere else, and has no file to paste for it.
+    const proof = free ? null : NEEDS_FILE[m]
     if (proof) {
       const fileKey = { ready_link: 'ready_file', design_link: 'design_file' }[proof.field]
       const named = body[fileKey] !== undefined ? cleanFileLabel(body[fileKey]) : ''
@@ -1738,7 +1804,7 @@ router.patch('/:id', wrap(async (req, res) => {
       ? cleanLinks(body.reference_links)
       : (() => { try { return JSON.parse(row.reference_links || '[]') } catch { return [] } })()
     const carried = links.length > 0 || !!(body.photo !== undefined ? body.photo : row.photo)
-    if (next && !carried) {
+    if (next && !carried && !free) {
       if (!hasSubstance(next))
         return res.status(400).json({ error: `«Reference» needs a real answer — “${clip(next)}” is a placeholder, not a reference` })
       if (!hasLink(next))
@@ -1762,7 +1828,7 @@ router.patch('/:id', wrap(async (req, res) => {
       if (body[f] === undefined) continue
       const v = f === 'script' ? cleanScript(body[f]) : cleanShort(body[f])
       const r = fieldRules[f]
-      const demanded = r?.state === 'required' && r.types.includes(nextType)
+      const demanded = !free && r?.state === 'required' && r.types.includes(nextType)
       if (!v && row[f] && demanded)
         return res.status(400).json({ error: `«${FIELD_LABELS[f]}» is required for this type of task — it can’t be cleared` })
       // Emptying a demanded field is refused above; filling it with a dot is
@@ -1771,7 +1837,7 @@ router.patch('/:id', wrap(async (req, res) => {
       // than reaching the card and reading as content. A demanded SCRIPT is
       // held to the higher bar the crew actually films from — one careless
       // word has letters in it and is still not a shot list.
-      const answered = f === 'script' && demanded ? isSentence(v) : hasSubstance(v)
+      const answered = free || (f === 'script' && demanded ? isSentence(v) : hasSubstance(v))
       if (v && !answered) {
         if (demanded)
           return res.status(400).json({ error: `«${FIELD_LABELS[f]}» needs a real answer — “${clip(v)}” is a placeholder, not a brief` })
@@ -1783,7 +1849,7 @@ router.patch('/:id', wrap(async (req, res) => {
       // KEEPING its own script is not repeating anything, though — an
       // ordinary save sends every field back, and a twin made on purpose
       // (Duplicate) would otherwise make the original unsaveable ever after.
-      if (f === 'script' && v && !body.allow_duplicate_script && normScript(v) !== normScript(row.script)) {
+      if (f === 'script' && v && !free && !body.allow_duplicate_script && normScript(v) !== normScript(row.script)) {
         const twin = await duplicateScript(v, row.id)
         if (twin)
           return res.status(400).json({ error: `That script is already on «${twin.title}» — link to it or write what is different about this one` })
@@ -1807,9 +1873,9 @@ router.patch('/:id', wrap(async (req, res) => {
   if (patch.description !== undefined) {
     const nType = patch.type !== undefined ? patch.type : row.type
     const dr = (await getTaskFields()).description
-    const demanded = dr?.state === 'required' && dr.types.includes(nType)
+    const demanded = !free && dr?.state === 'required' && dr.types.includes(nType)
     const d = String(patch.description ?? '').trim()
-    if (d && !hasSubstance(d)) {
+    if (d && !hasSubstance(d) && !free) {
       if (demanded)
         return res.status(400).json({ error: `«Description» needs a real answer — “${clip(d)}” is a placeholder, not a brief` })
       patch.description = ''
@@ -1895,6 +1961,33 @@ router.patch('/:id', wrap(async (req, res) => {
       // Setting the single reviewer replaces the whole list — the two must
       // never disagree about who is on the hook.
       if (f === 'reviewer_id') patch.reviewers = JSON.stringify(next ? [next] : [])
+    }
+  }
+
+  // ---- an accepted slot is not moved behind somebody's back ----------------
+  // Once the operator has said they can be there, the shoot day and its hours
+  // belong to them as much as to the board: they have cleared an afternoon for
+  // it. The same for an editor who has accepted a deadline. Moving it is the
+  // admin's to do — and doing it puts the question back to the crew rather
+  // than leaving a "confirmed" tick standing over a time nobody agreed to.
+  for (const which of Object.keys(BOOKINGS)) {
+    const b = BOOKINGS[which]
+    const touched = [b.day, b.from, b.to, b.holder].filter(Boolean)
+      .filter((f) => patch[f] !== undefined && String(patch[f] ?? '') !== String(row[f] ?? ''))
+    if (!touched.length) continue
+    if (row[b.ack] === 'yes' && !free) {
+      const who = await get('SELECT name FROM users WHERE id = ?', row[b.holder])
+      return res.status(409).json({
+        error: `${who?.name || 'The ' + b.role} has already agreed to ${b.what} — ${slotWords(row, which)}. An admin can move it; they will be asked again.`,
+        booking: which,
+      })
+    }
+    // Re-booked: the answer is about the old time and does not carry over.
+    if (row[b.ack]) {
+      patch[b.ack] = ''
+      patch[b.at] = null
+      patch[b.by] = null
+      patch[b.note] = null
     }
   }
 
@@ -2181,7 +2274,10 @@ router.patch('/:id', wrap(async (req, res) => {
       // demanding a future shoot day of it would be asking about a day that
       // has been and gone. That is the same reason creating one there is left
       // alone, and the walls stay where a person actually stands.
-      const filmedNow = (await getCrewNeeds()).operator.includes(val('type') ?? row.type)
+      // …and the admin walks through both walls. They are the person who
+      // put the walls there, and they are usually the one catching the board
+      // up on work that already happened.
+      const filmedNow = !free && (await getCrewNeeds()).operator.includes(val('type') ?? row.type)
       const g = resolved.gates.shoot
       if (filmedNow && g && at(patch.status_id) === g.index) {
         let links = []
@@ -2287,6 +2383,30 @@ router.patch('/:id', wrap(async (req, res) => {
     }
   }
 
+  // ---- and the booking asks its question ----
+  // A slot that is now complete and unanswered goes to whoever has to answer
+  // it. Sent when the booking actually CHANGED, not on every save, or a
+  // person would be asked the same question every time somebody edited the
+  // title of a task they are on.
+  {
+    const after = { ...row, ...patch }
+    for (const which of Object.keys(BOOKINGS)) {
+      const b = BOOKINGS[which]
+      const moved = [b.day, b.from, b.to, b.holder].filter(Boolean)
+        .some((f) => patch[f] !== undefined && String(patch[f] ?? '') !== String(row[f] ?? ''))
+      if (!moved || !bookedOn(after, which) || after[b.ack]) continue
+      const who = after[b.holder]
+      if (!who || who === req.user.id) continue
+      const line = `Can you make ${b.what} on ${slotWords(after, which)}?`
+      await run(
+        'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+        who, 'confirm', `${line} · «${after.title}»`, row.id, new Date().toISOString())
+      await tgMirror([who],
+        `🗓 <b>«${tgEsc(after.title)}»</b>\n${tgEsc(line)}\nOpen the task and say yes or no 👇`,
+        row.id, tgOriginFrom(req)).catch(() => {})
+    }
+  }
+
   // The bell rings for everyone on the task except whoever moved it: a
   // status change is news to the rest of the crew, not to its author. A move
   // onto Ready is ALSO the reviewers' cue — the admins and the channel's
@@ -2379,6 +2499,54 @@ router.patch('/:id', wrap(async (req, res) => {
 // gates the move crosses, who is eligible to take each one — the editing
 // stage offers editors, not the whole company — and whether the handover is
 // running late enough to need a fresh promise. The rules live here, once.
+// ---- answering a booking ---------------------------------------------------
+// The operator says whether they can be there; the editor says whether the
+// deadline fits. Only the person actually holding it may answer — an admin
+// answering on their behalf would put the board back exactly where it was,
+// with a date nobody had agreed to.
+//
+// "No" is not a refusal to work: it is the earliest possible warning that the
+// plan needs another look, and it carries a reason so the planner can re-book
+// rather than guess.
+router.post('/:id/confirm', wrap(async (req, res) => {
+  const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
+  if (!row) return res.status(404).json({ error: 'Not found' })
+  const which = String(req.body?.which || '')
+  const b = BOOKINGS[which]
+  if (!b) return res.status(400).json({ error: 'Answer about the shoot or the edit' })
+  if (!bookedOn(row, which)) {
+    return res.status(400).json({ error: `Nothing is booked yet — ${b.what} needs its ${b.role} and a day first` })
+  }
+  if (row[b.holder] !== req.user.id) {
+    return res.status(403).json({ error: `Only the ${b.role} on this task can answer for ${b.what}` })
+  }
+  const ok = req.body?.ok !== false
+  const note = String(req.body?.note ?? '').trim().slice(0, 400)
+  if (!ok && !note) return res.status(400).json({ error: 'Say what is in the way — a no with no reason cannot be planned around' })
+
+  const now = new Date().toISOString()
+  await run(
+    `UPDATE content SET ${b.ack} = ?, ${b.at} = ?, ${b.by} = ?, ${b.note} = ? WHERE id = ?`,
+    ok ? 'yes' : 'no', now, req.user.id, ok ? null : note, row.id)
+  await run(...actRow(req.user, row.id, row.title, 'confirmed', which, row[b.ack] || 'waiting', ok ? 'yes' : 'no', now))
+
+  // Whoever booked it hears back. A booking answered into silence is a
+  // booking the planner has to chase, which is the thing this replaces.
+  const tell = [...new Set([row.created_by, ...assigneesOf(row)])].filter((id) => id && id !== req.user.id)
+  if (tell.length) {
+    const line = ok
+      ? `${req.user.name} confirmed ${b.what} — ${slotWords(row, which)}`
+      : `${req.user.name} can't make ${b.what} (${slotWords(row, which)}) — “${note}”`
+    await batch(tell.map((id) => [
+      'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      id, ok ? 'confirmed' : 'declined', `${line} · «${row.title}»`, row.id, now,
+    ]))
+    await Promise.allSettled(tell.map((id) => tgMirror([id],
+      `${ok ? '✅' : '⚠️'} <b>«${tgEsc(row.title)}»</b>\n${tgEsc(line)}`, row.id, tgOriginFrom(req))))
+  }
+  res.json(await listRow(row.id))
+}))
+
 router.get('/:id/handover', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
@@ -2391,6 +2559,11 @@ router.get('/:id/handover', wrap(async (req, res) => {
   const at = (id) => resolved.ordered.findIndex((s) => s.id === id)
   const forward = at(to) > at(row.status_id) && at(to) >= 0
   if (!forward) return res.json({ gates: [] })
+  // The admin is not stopped at a handover gate. Answering "who is cutting
+  // this and where is the footage" is the point of the gate for the crew and
+  // an interruption for the person dragging four finished pieces onto Ready.
+  // Empty gates means the board simply moves the card; see `unfettered`.
+  if (unfettered(req.user, JSON.parse(row.channels || '[]'))) return res.json({ gates: [] })
 
   const team = (await all('SELECT * FROM users')).map(publicUser)
   // Who may wear each hat. The crew hats are declared on the person; review is

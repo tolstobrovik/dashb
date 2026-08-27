@@ -4240,3 +4240,74 @@ button.blame-person:hover { background: var(--surface-2); }
    gesture as a pan of the canvas under it. Without this the finger scrolls the
    board and the card stays where it was. */
 .board-node { touch-action: none; }
+
+/* ============================================================
+   A booking the crew answer for
+   ============================================================
+   The slot as a card, the way a calendar app shows one: the day large, the
+   hours beside it, and one line saying whether the person holding it has
+   agreed. Three states, three colours — waiting, yes, no — because the whole
+   point is that "booked" and "agreed" are different facts and used to look
+   identical. */
+.bk {
+  border: 1px solid var(--hairline); border-left: 3px solid var(--hairline-strong);
+  border-radius: var(--radius-sm); background: var(--surface);
+  padding: 10px 12px; margin: -2px 0 4px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.bk-wait { border-left-color: var(--warn, #d59a2b); background: var(--surface-2); }
+.bk-yes { border-left-color: var(--ok, #1D9E75); }
+.bk-no { border-left-color: var(--critical); background: var(--danger-bg); }
+.bk-slot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bk-ico { flex: none; color: var(--muted); }
+.bk-yes .bk-ico { color: var(--ok, #1D9E75); }
+.bk-no .bk-ico { color: var(--critical); }
+.bk-when { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.bk-when b { font-size: 15px; letter-spacing: -0.2px; }
+.bk-time { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+.bk-label {
+  margin-left: auto; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--muted);
+}
+.bk-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bk-said { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.bk-said.bk-yes { color: var(--ok, #1D9E75); }
+.bk-said.bk-no { color: var(--critical); }
+.bk-said.bk-wait { color: var(--ink-2); }
+.bk-why { font-style: italic; font-weight: 500; color: var(--ink-2); }
+.bk-do { margin-left: auto; display: inline-flex; gap: 6px; }
+.bk-form { display: flex; flex-direction: column; gap: 8px; }
+.bk-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bk-actions .stat-sub { margin-right: auto; }
+@media (max-width: 640px) {
+  .bk-label { margin-left: 0; flex-basis: 100%; }
+  .bk-do { margin-left: 0; flex-basis: 100%; }
+  .bk-do .btn { flex: 1 1 0; justify-content: center; }
+}
+
+/* The answer tray on My Day: times somebody has put in your day and is
+   waiting to hear about. It sits above the work because it is not work — it
+   is one tap that lets somebody else finish planning their week. */
+.ask-tray { border-left: 3px solid var(--warn, #d59a2b); display: flex; flex-direction: column; gap: 2px; }
+.ask-tray-head { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 6px; }
+.ask-tray-head svg { color: var(--warn, #d59a2b); }
+.ask-tray-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+  padding: 9px 8px; border-radius: var(--radius-xs); min-height: 44px;
+  border-top: 1px solid var(--hairline);
+}
+.ask-tray-row:first-of-type { border-top: none; }
+.ask-tray-row:hover { background: var(--surface-2); }
+.ask-tray-what { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 14px; }
+.ask-tray-what b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-tray-what svg { flex: none; color: var(--muted); }
+.ask-tray-when { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.ask-tray-go {
+  margin-left: auto; flex: none; font-size: 12.5px; font-weight: 700; color: var(--brand-600);
+  border: 1px solid var(--brand-200, #e3c3c9); border-radius: 999px; padding: 5px 12px;
+}
+@media (max-width: 640px) {
+  .ask-tray-what { flex-basis: 100%; }
+  .ask-tray-go { margin-left: auto; }
+}

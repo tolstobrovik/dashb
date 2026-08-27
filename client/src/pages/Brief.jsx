@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Sun, Clapperboard, Scissors, Send, AlertCircle, CheckCircle2, CalendarRange, Check, StickyNote, ListTodo, PenLine, Trash2, Palette,
   Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, RotateCcw, ExternalLink, Link2,
-  SlidersHorizontal, Eye, EyeOff,
+  SlidersHorizontal, Eye, EyeOff, CalendarClock,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
@@ -496,6 +496,21 @@ export default function Brief() {
     () => mine.filter((t) => !t.done_at && !isDeletedLabel(statusesById[t.status_id]?.label)),
     [mine, statusesById])
 
+  // ---- times somebody has booked and is waiting on you for ----
+  // A booking answered late is a booking answered on the day, which is the
+  // thing it was meant to replace. It waits at the top of the day, above the
+  // work, because it is not work — it is one tap that lets somebody else
+  // finish planning.
+  const toAnswer = useMemo(() => {
+    const out = []
+    for (const t of open) {
+      if (t.operator_id === user.id && t.recording_date && !t.shoot_ack) out.push({ t, which: 'shoot' })
+      if (t.editor_id === user.id && t.edit_ready_date && !t.edit_ack) out.push({ t, which: 'edit' })
+    }
+    return out.sort((a, b) => (a.t[a.which === 'shoot' ? 'recording_date' : 'edit_ready_date'] || '')
+      .localeCompare(b.t[b.which === 'shoot' ? 'recording_date' : 'edit_ready_date'] || ''))
+  }, [open, user.id])
+
   const recordToday = useMemo(
     () => open.filter((t) => t.recording_date === today)
       .sort((a, b) => (a.recording_time || '99').localeCompare(b.recording_time || '99')),
@@ -959,6 +974,32 @@ export default function Brief() {
           used to be an admin's wall of chips to drag back onto a calendar;
           it belongs to whoever is carrying it, with the answers that exist. */}
       <MyLate onOpen={openByContentId} />
+
+      {/* Somebody has put a time in your day and is waiting to hear whether
+          it works. One tap each, from the page you already open. */}
+      {toAnswer.length > 0 && (
+        <div className="card card-pad ask-tray">
+          <div className="ask-tray-head">
+            <CalendarClock size={16} />
+            <b>{tx('Waiting on your answer')}</b>
+            <span className="count">· {toAnswer.length}</span>
+          </div>
+          {toAnswer.map(({ t, which }) => (
+            <button key={`${t.id}-${which}`} type="button" className="ask-tray-row" onClick={() => openByContentId(t.id)}>
+              <span className="ask-tray-what">
+                {which === 'shoot' ? <Clapperboard size={13} /> : <Scissors size={13} />}
+                <b>{t.title}</b>
+              </span>
+              <span className="ask-tray-when">
+                {which === 'shoot'
+                  ? `${dateLabel(t.recording_date)}${t.recording_time ? ` · ${t.recording_time}${t.recording_end ? `–${t.recording_end}` : ''}` : ''}`
+                  : dateLabel(t.edit_ready_date)}
+              </span>
+              <span className="ask-tray-go">{tx('Answer')}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* The brief: one line that says what today is about */}
       <div className="card card-pad brief-hero">

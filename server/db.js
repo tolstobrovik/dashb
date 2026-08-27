@@ -640,6 +640,23 @@ export async function initSchema() {
       -- that was handed over late never reads as its owner's fault.
       shot_at        TEXT,   -- entered Editing: the shooter's part is done
       edited_at      TEXT,   -- entered Ready: the editor's part is done
+      -- ---- the time the crew agreed to ----
+      -- A shoot day is not a fact until the person holding the camera has
+      -- said they can be there, and an edit deadline is not a deadline until
+      -- the editor has said it fits. Both are booked by the planner and
+      -- ANSWERED by the crew: '' while it is waiting, 'yes' once accepted,
+      -- 'no' with a reason when they cannot. An accepted time is then locked
+      -- — the planner cannot quietly move a slot somebody has already cleared
+      -- their afternoon for; changing it puts the question back and tells
+      -- them.
+      shoot_ack      TEXT    NOT NULL DEFAULT '',
+      shoot_ack_at   TEXT,
+      shoot_ack_by   INTEGER,
+      shoot_ack_note TEXT,
+      edit_ack       TEXT    NOT NULL DEFAULT '',
+      edit_ack_at    TEXT,
+      edit_ack_by    INTEGER,
+      edit_ack_note  TEXT,
       -- When a handover lands late the mover must re-promise the next stage's
       -- date. The original stays untouched, so the pair shows what was planned
       -- and what the delay forced.
@@ -1177,6 +1194,14 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS editor_id INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS designer_id INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS tz TEXT')
+    await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS shoot_ack TEXT NOT NULL DEFAULT ''")
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shoot_ack_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shoot_ack_by INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shoot_ack_note TEXT')
+    await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack TEXT NOT NULL DEFAULT ''")
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_by INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_note TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_ready_date TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS assignees TEXT NOT NULL DEFAULT '[]'")
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_roles TEXT NOT NULL DEFAULT '[]'")
@@ -1303,6 +1328,10 @@ async function migrate() {
   try {
     if (!(await hasColumn('users', 'permissions'))) await exec("ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}'")
     if (!(await hasColumn('content', 'tz'))) await exec('ALTER TABLE content ADD COLUMN tz TEXT')
+    for (const [col, decl] of [
+      ['shoot_ack', "TEXT NOT NULL DEFAULT ''"], ['shoot_ack_at', 'TEXT'], ['shoot_ack_by', 'INTEGER'], ['shoot_ack_note', 'TEXT'],
+      ['edit_ack', "TEXT NOT NULL DEFAULT ''"], ['edit_ack_at', 'TEXT'], ['edit_ack_by', 'INTEGER'], ['edit_ack_note', 'TEXT'],
+    ]) if (!(await hasColumn('content', col))) await exec(`ALTER TABLE content ADD COLUMN ${col} ${decl}`)
     if (!(await hasColumn('trackers', 'content_type'))) await exec('ALTER TABLE trackers ADD COLUMN content_type TEXT')
     // Older databases stored a single channel per task — rebuild to the new shape.
     if (await hasColumn('content', 'channel')) {

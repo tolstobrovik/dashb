@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import GetSetUp from './GetSetUp.jsx'
-import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert, Timer, LayoutGrid, User } from 'lucide-react'
+import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert, Timer, LayoutGrid, User, UserCheck } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import MobileTabs, { MoreSheet } from './MobileTabs.jsx'
 import NewTask from './NewTask.jsx'
@@ -94,6 +94,7 @@ export default function Layout() {
   else if (location.pathname.startsWith('/crew')) title = t('nav.crew')
   else if (location.pathname.startsWith('/team')) title = t('nav.team')
   else if (location.pathname.startsWith('/docs')) title = t('nav.docs')
+  else if (location.pathname.startsWith('/attendance')) title = t('nav.attendance')
   else if (location.pathname.startsWith('/sprints')) title = t('nav.sprints')
   else if (location.pathname.startsWith('/profile')) title = t('nav.myprofilepage')
   else if (location.pathname.startsWith('/projects') || location.pathname.startsWith('/campaigns')) title = t('nav.projectspage')
@@ -121,6 +122,7 @@ export default function Layout() {
     { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
     { key: 'missed-tasks', to: '/missed-tasks', label: t('nav.missedtasks'), icon: AlertTriangle },
     { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
+    { key: 'attendance', to: '/attendance', label: t('nav.attendance'), icon: UserCheck },
     { key: 'profile', to: '/profile', label: t('nav.myprofilepage'), icon: User },
   ]
 
@@ -160,6 +162,9 @@ export default function Layout() {
               missing. */}
           <NavLink to="/sprints" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <Timer size={16} /> {t('nav.sprints')}
+          </NavLink>
+          <NavLink to="/attendance" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+            <UserCheck size={16} /> {t('nav.attendance')}
           </NavLink>
           <button className="icon-btn" onClick={() => setFinding(true)} data-tip={t('nav.find')} aria-label={t('nav.quickfind')}><Search size={17} /></button>
           <NotificationsBell user={user} />

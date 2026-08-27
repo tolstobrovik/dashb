@@ -23,6 +23,7 @@ const Docs = lazy(() => import('./pages/Docs.jsx'))
 const Sprints = lazy(() => import('./pages/Sprints.jsx'))
 const SprintBacklog = lazy(() => import('./pages/SprintBacklog.jsx'))
 const Admin = lazy(() => import('./pages/Admin.jsx'))
+const Attendance = lazy(() => import('./pages/Attendance.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
 
 const Loading = () => <div className="app-loading"><span className="spinner" /></div>
@@ -100,6 +101,9 @@ export default function App() {
               </Protected>
             }
           />
+          {/* Everybody reads the register — a counter nobody can see counts
+              nothing. Only an admin marks it, which the page enforces. */}
+          <Route path="/attendance" element={<Attendance />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/sprints" element={<Sprints />} />
           <Route path="/sprints/backlog" element={<SprintBacklog />} />

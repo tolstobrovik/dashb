@@ -31,6 +31,14 @@ const shooter = await mk('sh', 'Sardor Shooter')
 const editor = await mk('ed', 'Eldor Editor')
 const rev1 = await mk('r1', 'Rustam Reviewer')
 const rev2 = await mk('r2', 'Rano Reviewer')
+// Somebody who is asked. Round 80 made the admin a superuser — they are
+// never stopped at a handover gate — so the gate's CONTENTS have to be read
+// as the person the gate is for: a planner moving a card on their channel.
+const planner = await req('/users', 'POST', {
+  name: 'Petra Planner', username: 'pl' + sfx, password: 'pw123456', role: 'member',
+  departments: ['instagram_main'], permissions: { manage_content: true, move_tasks: true },
+})
+const plannerT = await login('pl' + sfx, 'pw123456')
 const shooterT = await login('sh' + sfx, 'pw123456')
 const editorT = await login('ed' + sfx, 'pw123456')
 const rev1T = await login('r1' + sfx, 'pw123456')
@@ -189,7 +197,7 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   ok('crew with declared hats exist', !!(opA && edA && edB))
 
   const t = await newTask()
-  const { data: h } = await req(`/content/${t.id}/handover?to=${S['Editing']}`)
+  const { data: h } = await req(`/content/${t.id}/handover?to=${S['Editing']}`, 'GET', null, plannerT)
   const byKey = Object.fromEntries((h.gates || []).map((g) => [g.key, g]))
 
   ok('a move to Editing crosses two gates', (h.gates || []).length === 2,
@@ -208,19 +216,19 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   ok('the editing gate knows the footage is still missing', byKey.edit?.link_ok === false, String(byKey.edit?.link_ok))
 
   // Review is the shared one, and asks the people who sign work off.
-  const { data: h2 } = await req(`/content/${t.id}/handover?to=${S['Ready']}`)
+  const { data: h2 } = await req(`/content/${t.id}/handover?to=${S['Ready']}`, 'GET', null, plannerT)
   const rev = (h2.gates || []).find((g) => g.key === 'review')
   ok('the review gate is a multi-pick', rev?.many === true, String(rev?.many))
   ok('  and offers sign-off people, not the crew',
     (rev?.candidates || []).every((c) => c.name !== 'Eldor Cutter'), JSON.stringify((rev?.candidates || []).map((c) => c.name)))
 
   // Backwards asks for nothing.
-  const { data: back } = await req(`/content/${t.id}/handover?to=${S['Idea']}`)
+  const { data: back } = await req(`/content/${t.id}/handover?to=${S['Idea']}`, 'GET', null, plannerT)
   ok('moving backwards hands nothing over', (back.gates || []).length === 0, JSON.stringify(back.gates))
 
   // A gate already behind the task is not asked again.
   await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'], operator_id: opA })
-  const { data: h3 } = await req(`/content/${t.id}/handover?to=${S['Editing']}`)
+  const { data: h3 } = await req(`/content/${t.id}/handover?to=${S['Editing']}`, 'GET', null, plannerT)
   ok('a gate already passed is not asked twice', (h3.gates || []).length === 1
     && h3.gates[0].key === 'edit', JSON.stringify((h3.gates || []).map((g) => g.key)))
   ok('  and the editor already on the task comes pre-selected when there is one',

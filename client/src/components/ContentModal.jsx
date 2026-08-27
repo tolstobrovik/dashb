@@ -11,6 +11,7 @@ import { useT, tr as tx, locale } from '../lib/i18n.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useIsPhone } from '../lib/usePhone.js'
+import Booking from './Booking.jsx'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
@@ -162,6 +163,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   }, [pages, sec])
   const secCls = (k) => 'cm-sec' + (sec === k ? ' on' : '')
   const [tools, setTools] = useState(false)
+  // What the booking cards read. The FORM holds what is being typed; a
+  // booking is about what is actually saved, and answering one sends back the
+  // fresh row rather than making the whole sheet reload.
+  const [booked, setBooked] = useState(() => item || null)
   const [busy, setBusy] = useState(false)
   const [subText, setSubText] = useState('')
   const [form, setForm] = useState(() => ({
@@ -809,7 +814,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     if (busy || !form.title.trim()) return // guard against double-submit
     // The admin's required brief fields gate the save — with the section
     // opened so the cursor lands where the answer goes.
-    if (creating || canEdit) {
+    // ---- the admin is not made to fill in a form ----
+    // Every check below stops WORK going out half-briefed, which is right for
+    // the people doing the work and wrong for the person who set the rules.
+    // They are usually correcting the board at speed — a name on a card
+    // somebody phoned in, a date, four pieces dragged out of the wrong stage
+    // — and being asked for a reference photo each time is how a board stops
+    // being kept up to date. The server agrees with this; see `unfettered` in
+    // server/routes/content.js.
+    if ((creating || canEdit) && !isAdmin) {
       // Booking a shoot is a promise about a day that passes whether or not a
       // camera, a crew and a brief turn up — so the whole booking is asked at
       // the stage where the booking happens, and nothing is asked of an idea.
@@ -1895,7 +1908,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           const at = (k) => ({ ...shared, bad: badField === k })
           return (<>
             <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" {...at('recording_date')} />
+            {/* The booked slot, and whether the person holding it has agreed
+                to it. A date typed into a box is a plan; this is where it
+                becomes an arrangement between two people. */}
+            {!creating && (
+              <Booking item={booked} which="shoot" label={tx('Shoot')}
+                holderName={team.find((u) => u.id === booked?.operator_id)?.name?.split(' ')[0]}
+                mine={booked?.operator_id === user.id} onAnswered={setBooked} />
+            )}
             <DateRow icon={Scissors} label="Edit ready" dateKey="edit_ready_date" {...at('edit_ready_date')} />
+            {!creating && (
+              <Booking item={booked} which="edit" label={tx('Edit ready')}
+                holderName={team.find((u) => u.id === booked?.editor_id)?.name?.split(' ')[0]}
+                mine={booked?.editor_id === user.id} onAnswered={setBooked} />
+            )}
             <DateRow icon={Palette} label="Design ready" dateKey="design_ready_date" {...at('design_ready_date')} />
             {!crewViewer && <DateRow icon={Send} label="Release" dateKey="release_date" timeKey="release_time" {...at('release_date')} />}
           </>)
