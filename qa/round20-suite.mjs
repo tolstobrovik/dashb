@@ -34,12 +34,16 @@ ok('My Day is the locked anchor — no hide toggle',
 // hide To-Do (main) and Post Production (manage)
 await p.locator('.side-edit-row.grp-main', { hasText: 'To-Do' }).locator('button.side-eye').last().click()
 await p.locator('.side-edit-row.grp-manage', { hasText: 'Post Production' }).locator('button.side-eye').last().click()
-// move Statistics up one slot with the arrow
-const yBefore = (await p.locator('.side-edit-row.grp-main', { hasText: 'Statistics' }).boundingBox()).y
+// Move Statistics up one slot with the arrow. Measured as its PLACE in the
+// list, not its y: the sidebar's list scrolls once it is long enough, and a
+// pixel that moved because the list scrolled says nothing about the arrow.
+const placeOf = async (label) => (await p.locator('.side-edit-row.grp-main').allTextContents())
+  .findIndex((t) => t.includes(label))
+const iBefore = await placeOf('Statistics')
 await p.locator('.side-edit-row.grp-main', { hasText: 'Statistics' }).locator('button.side-eye').first().click()
 await p.waitForTimeout(200)
-const yAfter = (await p.locator('.side-edit-row.grp-main', { hasText: 'Statistics' }).boundingBox()).y
-ok('the arrow moves a page up the list', yAfter < yBefore, `${yBefore}→${yAfter}`)
+const iAfter = await placeOf('Statistics')
+ok('the arrow moves a page up the list', iAfter >= 0 && iAfter < iBefore, `${iBefore}→${iAfter}`)
 await p.locator('.side-edit-btn', { hasText: 'Done' }).click()
 
 const nav1 = await p.locator('.sidebar nav').textContent()

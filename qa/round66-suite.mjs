@@ -44,8 +44,15 @@ for (let i = 0; i < 60; i++) {
 
 const login = async (u, p) => (await (await fetch(B + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) })).json()).token
 const T = await login('admin', 'admin123')
-const req = async (p, m = 'GET', b, tok = T) => {
-  const r = await fetch(B + p, { method: m, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` }, body: b ? JSON.stringify(b) : undefined })
+// Who the calls below are made AS. It starts as the admin, because building
+// the fixtures — accounts, channels — is admin work. It becomes the planner
+// the moment the rules start being tested: round 80 made the admin a
+// superuser, never asked for a field and never stopped at a booking wall, so
+// a refusal asked of the admin proves nothing.
+let AS = T
+const req = async (p, m = 'GET', b, tok = null) => {
+  const auth = tok || AS
+  const r = await fetch(B + p, { method: m, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` }, body: b ? JSON.stringify(b) : undefined })
   return { status: r.status, data: await r.json().catch(() => ({})) }
 }
 const day = (n) => { const d = new Date(Date.now() + 5 * 3600e3); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) } // Tashkent day, like the server
@@ -62,6 +69,15 @@ const shooter = (await req('/users', 'POST', {
 const cutter = (await req('/users', 'POST', {
   name: 'R66 Cutter', username: 'r66ed', password: 'probe123', role: 'editor', departments: [ch],
 })).data
+// The planner these rules are for. Round 80 made the admin a superuser —
+// never asked for a field, never stopped at a booking wall — so a refusal
+// asked of the admin would prove nothing.
+const planner = (await req('/users', 'POST', {
+  name: 'R66 Planner', username: 'r66pl', password: 'probe123', role: 'member', departments: [ch],
+  permissions: { manage_content: true, move_tasks: true },
+})).data
+const plannerT = await login('r66pl', 'probe123')
+AS = plannerT // everything from here is the planner's doing
 const mk = (over) => req('/content', 'POST', { channels: [ch], ...over })
 const booking = {
   operator_id: shooter.id,
@@ -208,7 +224,7 @@ await req('/fields', 'POST', {
   reference: { state: 'optional', types: ['post'] },
   format: { state: 'optional', types: ['post'] },
   rubrika: { state: 'optional', types: ['post'] },
-})
+}, T) // writing the rules is the admin's job, whoever is being tested against them
 for (const lazy of ['халатно', 'готово', 'norm']) {
   const rr = await mk({ title: `r66 lazy ${lazy}`, type: 'post', script: lazy })
   ok(`a “script” of “${lazy}” is refused — it has letters, not a shot list`, rr.status === 400,

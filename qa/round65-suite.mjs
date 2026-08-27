@@ -58,9 +58,13 @@ const me = (await req('/auth/me')).data.user
 const shooter = (await req('/users', 'POST', {
   name: 'R65 Shooter', username: 'r65op', password: 'probe123', role: 'operator', departments: [ch],
 })).data
-// Somebody who may move tasks but is not an admin — the person the lock is for.
+// Somebody who may move tasks but is not an admin — the person the lock is
+// for, and since round 80 the person every rule below is for. An admin is a
+// superuser now: never asked for a field, never stopped at a booking wall, so
+// making these refusals as the admin would prove nothing at all.
 const smm = (await req('/users', 'POST', {
   name: 'R65 SMM', username: 'r65smm', password: 'probe123', role: 'member', departments: [ch],
+  permissions: { manage_content: true, move_tasks: true },
 })).data
 const smmT = await login('r65smm', 'probe123')
 
@@ -71,7 +75,7 @@ const booked = {
   recording_date: day(1), edit_ready_date: day(3), release_date: day(5),
   status_id: shootId, reference_links: ['https://example.com/reference'],
 }
-const mk = (over) => req('/content', 'POST', { channels: [ch], ...over })
+const mk = (over) => req('/content', 'POST', { channels: [ch], ...over }, smmT)
 
 // ===================== the shooter =====================
 let r = await mk({ title: 'r65 no shooter', type: 'video', ...booked })
@@ -156,9 +160,9 @@ ok('…and a link on its own needs no prose', r.status === 201, `${r.status} ${r
 
 // The same standard on edit — otherwise the rule lasts until somebody reopens
 // the task and types a dot.
-r = await req(`/content/${written.id}`, 'PATCH', { description: '.' })
+r = await req(`/content/${written.id}`, 'PATCH', { description: '.' }, smmT)
 ok('a task cannot be EDITED into a placeholder either', r.status === 400, `${r.status} ${r.data.error || ''}`)
-r = await req(`/content/${written.id}`, 'PATCH', { reference_text: 'ask me' })
+r = await req(`/content/${written.id}`, 'PATCH', { reference_text: 'ask me' }, smmT)
 ok('…nor its reference edited into words that point nowhere', r.status === 400, `${r.status} ${r.data.error || ''}`)
 
 // An OPTIONAL field is not worth an error — but junk is not worth storing

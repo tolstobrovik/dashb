@@ -102,7 +102,15 @@ await req('/fields', 'POST', {
   format: { state: 'optional', types: ['post'] },
   rubrika: { state: 'optional', types: ['post'] },
 })
-const mk = (over) => req('/content', 'POST', { channels: [ch], ...over })
+// The person these rules are for. Round 80 made the admin a superuser —
+// never asked for a field, never told a placeholder is not a brief — so the
+// reader below has to be tested on somebody it still speaks to.
+const writer = (await req('/users', 'POST', {
+  name: 'R68 Writer', username: 'r68wr', password: 'probe123', role: 'member', departments: [ch],
+  permissions: { manage_content: true, move_tasks: true },
+})).data
+const writerT = await login('r68wr', 'probe123')
+const mk = (over) => req('/content', 'POST', { channels: [ch], ...over }, writerT)
 
 // A script is what the crew films FROM. A link is where they get the file.
 let r = await mk({ title: 'r68 a link as a script', type: 'post', script: 'https://drive.google.com/file/d/1a2b3c' })
