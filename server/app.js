@@ -23,6 +23,7 @@ import reportRoutes from './routes/reports.js'
 import rewardRoutes from './routes/rewards.js'
 import aiRoutes from './routes/ai.js'
 import sprintRoutes from './routes/sprints.js'
+import attendanceRouter from './routes/attendance.js'
 import campaignRoutes from './routes/campaigns.js'
 import projectRoutes from './routes/projects.js'
 import boardRoutes from './routes/boards.js'
@@ -103,6 +104,7 @@ app.use('/api/reports', reportRoutes)
 app.use('/api/rewards', rewardRoutes)
 app.use('/api/ai', aiRoutes)
 app.use('/api/sprints', sprintRoutes)
+app.use('/api/attendance', attendanceRouter)
 app.use('/api/campaigns', campaignRoutes)
 app.use('/api/projects', projectRoutes)
 app.use('/api/boards', boardRoutes)

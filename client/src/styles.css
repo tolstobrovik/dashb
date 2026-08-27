@@ -3797,3 +3797,17 @@ button.blame-person:hover { background: var(--surface-2); }
 .ai-keycell { min-width: 300px; }
 .ai-keyform { display: flex; align-items: center; gap: 6px; }
 .ai-keyform .input { max-width: 190px; font-size: 12.5px; padding: 7px 10px; }
+
+/* ---------- attendance ---------- */
+.at-pick { display: inline-flex; align-items: center; gap: 6px; }
+.at-pick .input { max-width: 165px; font-size: 12.5px; padding: 7px 10px; }
+.at-who { display: inline-flex; align-items: center; gap: 10px; }
+.at-states .pill { font-size: 12px; padding: 5px 11px; }
+.at-states .pill.at-ontime.active { background: var(--good); border-color: var(--good); color: #fff; }
+.at-states .pill.at-late.active { background: var(--critical); border-color: var(--critical); color: #fff; }
+.at-states .pill.at-away.active { background: var(--muted); border-color: var(--muted); color: #fff; }
+.at-count {
+  display: inline-grid; place-items: center; min-width: 26px; height: 24px; padding: 0 7px;
+  border-radius: 999px; background: var(--surface-2); font-size: 12.5px; font-weight: 800; color: var(--ink-2);
+}
+.at-count.at-late-count { background: var(--danger-bg); color: var(--critical); }

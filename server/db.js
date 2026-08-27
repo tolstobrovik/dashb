@@ -829,6 +829,23 @@ export async function initSchema() {
     -- meeting at 15:00 that Saturday. Times are stored as ISO instants, the
     -- same as every other timestamp here — the Tashkent-ness lives in how
     -- they are worked out, not in how they are written down.
+    /* Who came, and when.
+       Nobody is late by default: a day with no row here says nothing at all,
+       which is the honest reading of "nobody wrote anything down". Only an
+       admin writes rows, and the register only ever says what one of them
+       said. One row per person per day. */
+    CREATE TABLE IF NOT EXISTS attendance (
+      id          ${ID},
+      user_id     INTEGER NOT NULL,
+      day         TEXT    NOT NULL,          -- a Tashkent day, YYYY-MM-DD
+      status      TEXT    NOT NULL,          -- on_time | late | away
+      arrived_at  TEXT,                      -- HH:MM, only meaningful when late
+      note        TEXT    NOT NULL DEFAULT '',
+      marked_by   INTEGER,
+      created_at  TEXT    NOT NULL,
+      updated_at  TEXT    NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS sprints (
       id         ${ID},
       code       TEXT    NOT NULL,                  -- 'S36', the ISO week
@@ -1253,6 +1270,8 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_sprint_week_tasks       ON sprint_task_sprints(sprint_id);
     CREATE INDEX IF NOT EXISTS idx_sprint_check_slice      ON sprint_checklist_items(task_id, sprint_id, position);
     CREATE INDEX IF NOT EXISTS idx_sprint_att_task         ON sprint_attachments(task_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_day    ON attendance(user_id, day);
+    CREATE INDEX IF NOT EXISTS idx_attendance_when           ON attendance(day);
     CREATE INDEX IF NOT EXISTS idx_sprints_status          ON sprints(status, start_at);
     /* One row per week, enforced rather than assumed: the week is looked up by
        its start, and two requests arriving together on a Monday morning would
