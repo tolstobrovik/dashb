@@ -153,11 +153,26 @@ await phone.setViewportSize({ width: 390, height: 1200 })
 await phone.goto(BASE + '/releases'); await phone.waitForTimeout(1700)
 const scale = await phone.locator('.cal-scale .pill.active').textContent()
 ok('a phone opens the calendar on the week, where titles are readable', /week/i.test(scale || ''), scale)
+// The rule is "a row is as tall as what is on it", and the way to check it is
+// to compare rows against each other — not against a number. A flat ceiling
+// said the same thing until the board filled up: one legitimately busy
+// Thursday put six releases in a row and failed a test about empty space.
 const wk = await phone.evaluate(() => {
-  const cols = [...document.querySelectorAll('.wk-col')].map((c) => Math.round(c.getBoundingClientRect().height))
-  return { n: cols.length, tallest: Math.max(...cols) }
+  const rows = [...document.querySelectorAll('.wk-col')].map((c) => ({
+    h: Math.round(c.getBoundingClientRect().height),
+    items: c.querySelectorAll('.wk-card, .rel-ev, .cal-ev').length,
+  }))
+  const quiet = rows.filter((r) => !r.items)
+  const busiest = rows.reduce((a, b) => (b.items > a.items ? b : a), rows[0] || { h: 0, items: 0 })
+  return {
+    n: rows.length,
+    emptiest: quiet.length ? Math.max(...quiet.map((r) => r.h)) : 0,
+    tallest: Math.max(...rows.map((r) => r.h)),
+    busiest,
+  }
 })
-ok('…as seven rows only as tall as what is on them', wk.n === 7 && wk.tallest < 260, JSON.stringify(wk))
+ok('…as seven rows only as tall as what is on them',
+  wk.n === 7 && wk.emptiest < 90 && wk.tallest === wk.busiest.h, JSON.stringify(wk))
 // The month still has to fit when somebody asks for it.
 await phone.locator('.cal-scale .pill', { hasText: 'Month' }).click()
 await phone.waitForTimeout(900)

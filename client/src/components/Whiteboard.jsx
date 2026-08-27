@@ -154,9 +154,14 @@ export default function Whiteboard() {
 
   // ---- drag (mouse) ----
   const dragState = useRef(null)
+  // Pointer events, not mouse events. A finger fires neither `mousedown` nor
+  // `mousemove`, so on a phone the cards on this board could be looked at and
+  // not moved — the whole point of the board. Capturing the pointer also means
+  // a drag that wanders off the card keeps following the finger.
   const startDrag = (e, node) => {
-    if (e.button !== 0) return
+    if (e.button !== undefined && e.button !== 0) return
     e.preventDefault()
+    try { e.currentTarget.setPointerCapture?.(e.pointerId) } catch { /* not captured, still works */ }
     dragState.current = { id: node.id, sx: e.clientX, sy: e.clientY, ox: node.x, oy: node.y, moved: false }
     const onMove = (ev) => {
       const d = dragState.current
@@ -177,14 +182,16 @@ export default function Whiteboard() {
     const onUp = () => {
       const d = dragState.current
       dragState.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
       if (!d) return
       if (d.moved) scheduleSave()
       else clickNode(d.id) // a plain click: link target or open the editor
     }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }
 
   const clickNode = (id) => {
@@ -291,10 +298,10 @@ export default function Whiteboard() {
                 key={n.id}
                 className={'board-node' + (linkFrom === n.id ? ' link-src' : '') + (linkFrom && linkFrom !== n.id ? ' link-target' : '')}
                 style={{ left: n.x, top: n.y, borderTopColor: n.color }}
-                onMouseDown={(e) => startDrag(e, n)}
+                onPointerDown={(e) => startDrag(e, n)}
                 onContextMenu={(e) => nodeMenu(e, n)}
               >
-                <div className="bn-tools" onMouseDown={(e) => e.stopPropagation()}>
+                <div className="bn-tools" onPointerDown={(e) => e.stopPropagation()}>
                   <button className="icon-btn" onClick={() => setLinkFrom(linkFrom === n.id ? null : n.id)} data-tip="Connect to another card" aria-label="Link"><Link2 size={13} /></button>
                   <button className="icon-btn" onClick={() => setEditNode(n)} data-tip="Edit role & member" aria-label="Edit"><Pencil size={13} /></button>
                   <button className="icon-btn del-btn" onClick={() => { if (confirm(`Delete “${n.text}”?`)) removeNode(n.id) }} data-tip="Delete this card" data-tip-left="" aria-label="Delete"><Trash2 size={13} /></button>

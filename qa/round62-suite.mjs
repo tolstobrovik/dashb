@@ -274,10 +274,19 @@ const mErrs = []
 mp.on('pageerror', (e) => mErrs.push(e.message))
 await signIn(mp, 'admin', 'admin123')
 await openPage(mp, '/releases')
+// A phone opens the calendar on the WEEK — round 77, because seven columns of
+// titles on a 390px screen are seven columns of nothing readable. This
+// fixture's work is spread across the month, so the month is what has to be
+// on screen before counting it. The switch itself is what is under test.
+await mp.locator('.cal-scale .pill', { hasText: /month/i }).click()
+await mp.waitForTimeout(800)
+const phoneAll = (await mine(mp)).length
 await mp.locator('.cf-mine').click()
 await mp.waitForTimeout(700)
+const phoneMine = (await mine(mp)).length
 ok('the phone gets the switch, and it works there',
-  (await mp.locator('.cf-mine.active').count()) === 1 && (await mine(mp)).length === 2)
+  (await mp.locator('.cf-mine.active').count()) === 1 && phoneMine === 2,
+  `all=${phoneAll} mine=${phoneMine}`)
 ok('…without pushing the page sideways',
   !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)))
 ok('…with nothing thrown', mErrs.length === 0, mErrs.join(' | '))

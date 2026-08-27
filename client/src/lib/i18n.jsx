@@ -1172,6 +1172,7 @@ const PHRASES = {
     "Add the frame you mean": "Добавьте нужный кадр",
     "Write everything that needs changing, in one go…": "Напишите всё, что нужно поправить, одним разом…",
     "More actions": "Другие действия",
+    "Your part": "Ваша часть",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1805,6 +1806,7 @@ const PHRASES = {
     "Add the frame you mean": "Kerakli kadrni qo‘shing",
     "Write everything that needs changing, in one go…": "O‘zgartirish kerak bo‘lgan hamma narsani bir yo‘la yozing…",
     "More actions": "Boshqa amallar",
+    "Your part": "Sizning qismingiz",
   },
 }
 

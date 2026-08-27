@@ -1006,9 +1006,22 @@ router.post('/', wrap(async (req, res) => {
 // Columns that belong to the original's own history rather than to a copy of
 // it — when it was made, when it was finished, when each stage was handed
 // over — start empty on the copy.
+// …and so do the dates, the stage and the delivery. The button has always
+// said "brief, crew and platforms kept — dates and stage cleared", and it was
+// telling the truth until the copy was rebuilt from the row's own columns: a
+// duplicate then arrived already booked for the shoot the original was booked
+// for, already at Editing, with the original's cut hanging off it. What is
+// being duplicated is the RECURRING PIECE, not the week it went out in.
 const DUP_SKIP = new Set([
   'id', 'created_at', 'done_at', 'ready_at', 'shot_at', 'edited_at',
   'edit_due_revised', 'review_due_revised', 'todo_sort',
+  // the week it was made in
+  'recording_date', 'recording_time', 'recording_end',
+  'edit_ready_date', 'design_ready_date', 'release_date', 'release_time',
+  // where that week got to
+  'status_id',
+  // and what came out of it
+  'ready_link', 'ready_file', 'shot_link', 'shot_file', 'design_link', 'design_file',
 ])
 
 router.post('/:id/duplicate', wrap(async (req, res) => {
@@ -1041,6 +1054,10 @@ router.post('/:id/duplicate', wrap(async (req, res) => {
   const maxSort = (await get('SELECT COALESCE(MAX(todo_sort), -1) AS m FROM content')).m
   cols.push('todo_sort', 'created_at')
   vals.push(maxSort + 1, new Date().toISOString())
+  // A copy starts at the beginning of the pipeline. The first stage is
+  // whatever the board's first stage is called, not a hard-coded "idea".
+  const first = await get('SELECT id FROM statuses ORDER BY sort, id LIMIT 1')
+  if (first) { cols.push('status_id'); vals.push(first.id) }
 
   const info = await run(
     `INSERT INTO content (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...vals)
@@ -1054,7 +1071,7 @@ router.post('/:id/duplicate', wrap(async (req, res) => {
   addRole(roles, row.editor_id, 'editor')
   addRole(roles, row.designer_id, 'designer')
   addRole(roles, row.reviewer_id, 'reviewer')
-  await notifyAssigned(req, info.lastInsertRowid, title, roles, dateBit(row.recording_date, row.release_date))
+  await notifyAssigned(req, info.lastInsertRowid, title, roles, dateBit(null, null))
   for (const ch of channels) await bumpPlan(ch, row.type, { target: +1 }, true)
 
   res.status(201).json(await listRow(info.lastInsertRowid))

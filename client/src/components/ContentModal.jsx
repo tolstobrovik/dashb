@@ -506,6 +506,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const deliveryFields = DELIVERY.filter((f) => (form[f.col] ? true : (crewViewer
     ? (f.offer && (f.mine || f.present))
     : (f.offer && canEdit && show.delivery))))
+
+  // Which page the sheet opens on, decided once. A crew member opens this to
+  // tick their milestone and drop their link, and both live on the second
+  // page — landing on the first one put the one control they came for behind
+  // a tab they had no reason to press. Everybody else opens on the brief,
+  // which is what the task IS. Only the first paint chooses; after that the
+  // strip is theirs.
+  const chosePage = useRef(false)
+  const wantsWork = crewViewer || deliveryFields.length > 0
+  useEffect(() => {
+    if (chosePage.current || !phone || pages.length < 2) return
+    chosePage.current = true
+    if (wantsWork && pages.some((x) => x.key === 'review')) setSec('review')
+  }, [phone, pages, wantsWork])
   // The files themselves, one press away for anyone who can open the task.
   // A delivery made through a channel's shared folder is stored as the folder,
   // a separator and the file the person named — "…/folders/ABC · 1-3". It is
@@ -997,7 +1011,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <button key={x.key} type="button" role="tab" aria-selected={sec === x.key}
               className={'cm-page-tab' + (sec === x.key ? ' on' : '')}
               onClick={() => { setSec(x.key); bodyRef.current?.scrollTo({ top: 0 }) }}>
-              {tx(x.label)}
+              {/* The same page is "Review" to whoever signs the work off and
+                  "Your part" to whoever does it — it holds the review buttons,
+                  the revision notes, the finished files and the crew's own
+                  tick, and which of those you are here for depends on who you
+                  are. */}
+              {tx(x.key === 'review' && crewViewer ? 'Your part' : x.label)}
             </button>
           ))}
         </div>

@@ -71,8 +71,11 @@ await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForT
 ok('the Brief row rides the video type', (await p.locator('.modal .cm-key', { hasText: 'Brief' }).count()) === 1)
 ok('Rubrika became a dropdown once options exist',
   (await p.locator('.modal .brief-field', { hasText: 'Rubrika' }).locator('option', { hasText: 'Book Hype' }).count()) === 1)
+// `.cm-script` is the shape of a long textarea, and since round 78 the ТЗ
+// wears it too — they are both tall boxes. What identifies a field here is
+// its row's data-field, which is what the refusals aim at as well.
 ok('the demanded Script is open with its star',
-  (await p.locator('.modal .cm-script').count()) === 1 && (await p.locator('.modal .req-star').count()) >= 1)
+  (await p.locator('.modal [data-field="script"] textarea').count()) === 1 && (await p.locator('.modal .req-star').count()) >= 1)
 await p.fill('.modal .cm-title', 'x27: ui video')
 await p.locator('.modal .btn-primary', { hasText: 'Create task' }).click(); await p.waitForTimeout(500)
 ok('the client refuses to save without the script',

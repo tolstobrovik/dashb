@@ -93,14 +93,16 @@ await page.waitForSelector('.todo-row', { timeout: 10000 })
 await page.locator('.todo-row', { hasText: 'r14: launch video' }).locator('.todo-main').click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const labels = await page.locator('.modal .crew-field .crew-label').allTextContents()
-ok('a video offers Operator, Editor and Designer hats', labels.length === 3
-  && /Operator/.test(labels[0]) && /Editor/.test(labels[1]) && /Designer/.test(labels[2]), labels.join(' | '))
+// Round 78 took the designer hat off the picker — this board runs
+// idea → shoot → edit and a designer has no stage in it. The design-ready
+// deadline below is untouched, and so is the column: what changed is that
+// the form no longer offers a hat nobody was picking.
+ok('a video offers the Operator and Editor hats', labels.length === 2
+  && /Operator/.test(labels[0]) && /Editor/.test(labels[1]), labels.join(' | '))
 // Round 27: specialists lead their optgroup; everyone else is offered below
 // for one-time duty — so the check is on who LEADS, not who appears.
 const edSpecial = await page.locator('.modal .crew-field select').nth(1).locator('optgroup[label="Editors"] option').allTextContents()
-const dzSpecial = await page.locator('.modal .crew-field select').nth(2).locator('optgroup[label="Designers"] option').allTextContents()
 ok('the editor specialists lead their list', edSpecial.some((o) => o.includes('Malika')) && !edSpecial.some((o) => o.includes('Otkir')))
-ok('the designer specialists lead theirs', dzSpecial.some((o) => o.includes('Malika')) && !dzSpecial.some((o) => o.includes('Otkir')), dzSpecial.join(' | '))
 ok('both deadline rows present', /Edit ready/.test(await page.locator('.modal .dates-block').textContent())
   && /Design ready/.test(await page.locator('.modal .dates-block').textContent()))
 

@@ -4235,3 +4235,8 @@ button.blame-person:hover { background: var(--surface-2); }
 @media (max-width: 640px) {
   .brief-note { white-space: normal; align-items: flex-start; }
 }
+
+/* A card on the whiteboard is dragged, so the browser must not treat the same
+   gesture as a pan of the canvas under it. Without this the finger scrolls the
+   board and the card stays where it was. */
+.board-node { touch-action: none; }

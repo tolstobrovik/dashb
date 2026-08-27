@@ -71,9 +71,12 @@ const vidRow = page.locator('.todo-row', { hasText: 'Крю видео' })
 ok('crew chips on the to-do row', (await vidRow.textContent()).includes('Jasmina'))
 await vidRow.locator('.todo-main').click()
 await page.waitForSelector('.modal', { timeout: 8000 })
-ok('crew selects visible for video type', await page.locator('.modal .crew-field').count() === 3)
+// Round 78 took the designer hat off the picker: this board runs
+// idea → shoot → edit, so every type carries the same two hats now instead
+// of a video carrying three and a post carrying one.
+ok('crew selects visible for video type', await page.locator('.modal .crew-field').count() === 2)
 await page.locator('.modal .tchip', { hasText: 'Post' }).click()
-ok('a post swaps the crew for one designer hat', await page.locator('.modal .crew-field').count() === 1)
+ok('a post carries the same two hats', await page.locator('.modal .crew-field').count() === 2)
 await page.locator('.modal .tchip', { hasText: 'Video' }).click()
 await page.locator('.modal .crew-field select').nth(1).selectOption({ label: 'Eldor Cutter' })
 await page.getByRole('button', { name: 'Save changes' }).click()

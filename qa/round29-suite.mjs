@@ -38,8 +38,12 @@ ok('Copy link writes the task URL', clip.includes(`/todo?task=${src.id}`))
 
 // ---- 2) Duplicate from the modal ----
 await p.locator('.modal .btn-ghost', { hasText: 'Duplicate' }).click(); await p.waitForTimeout(900)
-const copy = (await req('/content')).data.find((c) => c.title === 'x29: rubric video (copy)')
-ok('Duplicate spawns the copy', !!copy)
+// Round 78 renamed what a duplicate is called. "(copy)" was one name however
+// many copies you made, so a second press produced a second row with the same
+// title as the first; it is "Duplicate 1", "Duplicate 2" now, numbered by the
+// server so two people pressing at once cannot both get Duplicate 1.
+const copy = (await req('/content')).data.find((c) => /^x29: rubric video Duplicate \d+$/.test(c.title))
+ok('Duplicate spawns the copy, numbered', !!copy, copy?.title || 'no copy')
 ok('…brief, crew and platforms kept', copy?.format === 'Vlog' && copy?.rubrika === 'Campus life' && copy?.script === 'Scene one.' && copy?.channels.includes('youtube'))
 ok('…dates and completion cleared', copy?.release_date == null && copy?.recording_date == null && copy?.done_at == null)
 
