@@ -79,9 +79,14 @@ ok('the ready deadline is still labeled for design', /Design ready/.test(await p
 const opSel = page.locator('.modal .crew-field select').first()
 const opSpecial = await opSel.locator('optgroup[label="Operators"] option').allTextContents()
 const opAnyone = await opSel.locator('optgroup[label*="Everyone"] option').allTextContents()
-ok('the operator list leads with operator-role people', opSpecial.length > 0, opSpecial.join(' | '))
-ok('…and a designer waits in the one-time group', !opSpecial.some((o) => o.includes('Dana Designer'))
-  && opAnyone.some((o) => o.includes('Dana Designer')), opAnyone.join(' | '))
+// Who LEADS, not who appears — and the pool is scoped to the channel now
+// (round 70), so which specialists a given board offers depends on who is
+// assigned to it. What is invariant, and what this is about, is the parting:
+// a designer is never an operator specialist, and is still offered below for
+// a one-time duty.
+ok('the operator list keeps its specialists apart from one-time duty',
+  !opSpecial.some((o) => o.includes('Dana Designer')) && opAnyone.some((o) => o.includes('Dana Designer')),
+  `specialists=[${opSpecial.join(', ')}] anyone=[${opAnyone.join(', ')}]`)
 await page.locator('.modal .tchip', { hasText: 'Video' }).click()
 ok('a video carries the same two hats', (await page.locator('.modal .crew-field').count()) === 2)
 await page.locator('.modal .tchip', { hasText: 'Post' }).click()
