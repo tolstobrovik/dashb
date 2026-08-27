@@ -70,7 +70,7 @@ export default function Docs() {
       api.get(allMode ? '/kpis?all=1' : `/kpis?user_id=${who}`),
     ]).then(([d, k]) => { setDocs(d); setKpis(k) }).catch((e) => setErr(e.message))
   }
-  useEffect(load, [who]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [who]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const byId = useMemo(() => Object.fromEntries(team.map((u) => [u.id, u])), [team])
   const nameOf = (id) => byId[id]?.name || (id === user.id ? user.name : '—')

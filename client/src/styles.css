@@ -3811,3 +3811,24 @@ button.blame-person:hover { background: var(--surface-2); }
   border-radius: 999px; background: var(--surface-2); font-size: 12.5px; font-weight: 800; color: var(--ink-2);
 }
 .at-count.at-late-count { background: var(--danger-bg); color: var(--critical); }
+
+/* ---------- pay: the arithmetic, shown ---------- */
+.pay-legend { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+.pay-sum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pay-term {
+  display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 800; border: 1.5px solid transparent;
+}
+.pay-op { font-size: 15px; font-weight: 800; color: var(--muted); }
+.pay-term-base  { background: var(--brand-50); color: var(--brand-700); border-color: var(--brand-200, var(--brand-100)); }
+.pay-term-piece { background: var(--surface-2); color: var(--ink-2); border-color: var(--hairline-strong); }
+.pay-term-bonus { background: var(--good-bg, rgba(12,163,12,0.10)); color: var(--good); border-color: var(--good); }
+.pay-term-late  { background: var(--danger-bg); color: var(--critical); border-color: var(--danger-border); }
+.pay-term-total { background: var(--ink); color: var(--surface); }
+.pay-defs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 20px; margin: 0; padding: 0; list-style: none; }
+.pay-defs li { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+/* Where one person's money comes from, in one line under their total. */
+.pay-bar { display: flex; height: 5px; border-radius: 999px; overflow: hidden; margin-top: 5px; background: var(--surface-2); min-width: 70px; }
+.pay-bar-base  { background: var(--brand-400); }
+.pay-bar-piece { background: var(--hairline-strong); }
+.pay-bar-bonus { background: var(--good); }

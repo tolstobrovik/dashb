@@ -914,7 +914,7 @@ function PayTab() {
     api.get(`/reports/pay?from=${range.from}&to=${range.to}`).then(setData).catch(() => setData(null))
     api.get('/reports/pay/rules').then(setRules).catch(() => setRules([]))
   }
-  useEffect(load, [range.from, range.to]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [range.from, range.to]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCard = (userId, name) => {
     const row = rules.find((r) => (userId === 'default' ? !r.user_id : r.user_id === userId))
@@ -989,11 +989,41 @@ function PayTab() {
             </div>
           </div>
 
+          {/* The arithmetic, once, in words. Every number in the table below
+              is one of these four, and the last column is the four added up.
+              Without this the table is eight numbers with no relationship
+              between them. */}
+          <div className="card card-pad pay-legend">
+            <div className="pay-sum">
+              <span className="pay-term pay-term-base">{tx('Base')}</span>
+              <span className="pay-op">+</span>
+              <span className="pay-term pay-term-piece">{tx('Piecework')}</span>
+              <span className="pay-op">+</span>
+              <span className="pay-term pay-term-bonus">{tx('Bonus')}</span>
+              <span className="pay-op">−</span>
+              <span className="pay-term pay-term-late">{tx('Late')}</span>
+              <span className="pay-op">=</span>
+              <span className="pay-term pay-term-total">{tx('Pay')}</span>
+            </div>
+            <ul className="pay-defs">
+              <li><b>{tx('Base')}</b> — {tx('paid for the period whatever the count')}</li>
+              <li><b>{tx('Piecework')}</b> — {tx('what each finished piece is worth, added up')}</li>
+              <li><b>{tx('Bonus')}</b> — {tx('paid for meeting the quota, and for hitting the on-time target')}</li>
+              <li><b>{tx('Late')}</b> — {tx('taken off for each piece delivered after its day')}</li>
+            </ul>
+          </div>
+
           <div className="card table-wrap" style={{ marginTop: 14 }}>
             <table className="tbl pay-tbl">
               <thead><tr>
-                <th>Person</th><th>Delivered</th><th>On time</th><th>Base</th>
-                <th>Piecework</th><th>Bonus</th><th>Late</th><th>Pay</th><th />
+                <th>{tx('Person')}</th>
+                <th data-tip={tx('Finished pieces in this period, against the quota if one is set')}>{tx('Delivered')}</th>
+                <th data-tip={tx('How many of them landed on or before their day')}>{tx('On time')}</th>
+                <th data-tip={tx('Paid for the period whatever the count')}>{tx('Base')}</th>
+                <th data-tip={tx('What each finished piece is worth, added up')}>{tx('Piecework')}</th>
+                <th data-tip={tx('Paid for meeting the quota, and for hitting the on-time target')}>{tx('Bonus')}</th>
+                <th data-tip={tx('Taken off for each piece delivered after its day')}>{tx('Late')}</th>
+                <th data-tip={tx('Base plus piecework plus bonus, less late')}>{tx('Pay')}</th><th />
               </tr></thead>
               <tbody>
                 {data.people.map((p) => (
@@ -1033,7 +1063,23 @@ function PayTab() {
                       )}
                     </td>
                     <td>{p.penalty ? <span className="pay-bad">−{money(p.penalty, p.currency)}</span> : <span className="stat-sub">—</span>}</td>
-                    <td><b>{money(p.total, p.currency)}</b></td>
+                    <td>
+                      <b>{money(p.total, p.currency)}</b>
+                      {/* Where this person's money comes from, at a glance.
+                          Two people on the same total can be paid in
+                          completely different shapes, and the table alone
+                          never showed that. */}
+                      {p.total > 0 && (
+                        <div className="pay-bar" data-tip={payShape(p)}>
+                          {[['base', p.base], ['piece', p.piecework], ['bonus', p.bonus]]
+                            .filter(([, v]) => v > 0)
+                            .map(([k, v]) => (
+                              <span key={k} className={`pay-bar-${k}`}
+                                style={{ flexGrow: v }} />
+                            ))}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="icon-btn" onClick={() => openCard(p.id, p.name)}
                         data-tip={`${p.name}'s rates`} data-tip-left=""><Pencil size={14} /></button>
@@ -1154,6 +1200,17 @@ function PayTab() {
 // Nobody is late by default. A day nobody has looked at says nothing, and the
 // register only ever says what an admin said, which is why "on time" is a
 // state somebody chooses rather than what an empty row means.
+// "12 000 base + 40 000 piecework + 5 000 bonus, less 2 000 late" — the row's
+// own arithmetic, spelled out for the bar under its total.
+const payShape = (p) => {
+  const bits = []
+  if (p.base > 0) bits.push(`${p.base.toLocaleString()} base`)
+  if (p.piecework > 0) bits.push(`${p.piecework.toLocaleString()} piecework`)
+  if (p.bonus > 0) bits.push(`${p.bonus.toLocaleString()} bonus`)
+  const sum = bits.join(' + ') || '0'
+  return p.penalty > 0 ? `${sum}, less ${p.penalty.toLocaleString()} late` : sum
+}
+
 const AT_STATES = [
   { key: 'on_time', label: 'On time', cls: 'at-ontime' },
   { key: 'late', label: 'Late', cls: 'at-late' },
@@ -1279,7 +1336,9 @@ function AiTab() {
   const [busy, setBusy] = useState(false)
   const [draft, setDraft] = useState({})
   const load = () => api.get('/ai/status').then(setSt).catch(() => setSt(null))
-  useEffect(load, [])
+  // Wrapped, not passed: load returns a Promise, and an effect that returns
+  // one has React calling it as the cleanup when the tab is left.
+  useEffect(() => { load() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const runProbe = useCallback(async () => {
     setBusy(true)
