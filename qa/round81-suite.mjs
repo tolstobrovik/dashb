@@ -224,6 +224,23 @@ const cell = row.locator(`.at-cell`).nth(Number(todayIso.slice(8, 10)) - 1)
 await cell.locator('.at-mark').click()
 await admin.waitForTimeout(400)
 ok('clicking a square asks what happened', (await admin.locator('.at-pick').count()) === 1)
+// The month scrolls sideways inside its own box, and a box that scrolls clips
+// whatever hangs out of it — which cut the bottom off this and took the
+// arrival time and Clear with it. Drawn over the page now, so: all of it.
+const pickBox = await admin.evaluate(() => {
+  const p = document.querySelector('.at-pick')
+  const r = p.getBoundingClientRect()
+  const last = p.lastElementChild.getBoundingClientRect()
+  return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right),
+    lastBottom: Math.round(last.bottom), vw: window.innerWidth, vh: window.innerHeight,
+    fixed: getComputedStyle(p).position }
+})
+ok('…and the whole picker is on the screen, not clipped by the month',
+  pickBox.fixed === 'fixed' && pickBox.top >= 0 && pickBox.left >= 0
+  && pickBox.right <= pickBox.vw && pickBox.lastBottom <= pickBox.vh, JSON.stringify(pickBox))
+ok('…including the time field and everything under it',
+  (await admin.locator('.at-pick .at-pick-time input').isVisible())
+  && (await admin.locator('.at-pick .at-pick-opt').count()) === 3)
 await admin.locator('.at-pick .at-pick-opt', { hasText: /Late|Опозда|Kech/ }).first().click()
 await admin.waitForTimeout(1400)
 ok('…the square fills in, still on the month view',
@@ -269,6 +286,25 @@ const pgeo = await phone.evaluate(() => ({
 ok('on a phone the month scrolls inside its own card, not the page', pgeo.sideways === 0, JSON.stringify(pgeo))
 ok('…with the names and the totals both pinned',
   pgeo.name >= 0 && pgeo.tot <= pgeo.vw + 2, JSON.stringify(pgeo))
+// On a phone the picker comes up as a sheet, where the thumb already is, and
+// clear of the tab bar rather than under it.
+await phone.locator('.at-grid tbody tr').first().locator('.at-cell').first().locator('.at-mark').click()
+await phone.waitForTimeout(500)
+const sheet = await phone.evaluate(() => {
+  const p = document.querySelector('.at-pick')
+  if (!p) return { none: true }
+  const r = p.getBoundingClientRect()
+  const bar = document.querySelector('.mob-tabs')
+  return { left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom),
+    width: Math.round(r.width), vw: window.innerWidth, vh: window.innerHeight,
+    barTop: bar ? Math.round(bar.getBoundingClientRect().top) : null }
+})
+ok('the picker is a sheet across the phone, not a popover on a 26px square',
+  sheet.width > 300 && sheet.left >= 0 && sheet.right <= sheet.vw, JSON.stringify(sheet))
+ok('…and sits clear of the tab bar',
+  sheet.barTop === null || sheet.bottom <= sheet.barTop, JSON.stringify(sheet))
+ok('…with the arrival time reachable on a phone',
+  await phone.locator('.at-pick .at-pick-time input').isVisible())
 
 const member = await browser.newPage({ viewport: { width: 1400, height: 900 } })
 member.on('pageerror', (e) => errs.push(`member: ${e.message}`))

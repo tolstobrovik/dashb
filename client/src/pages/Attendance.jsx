@@ -50,6 +50,23 @@ const daysOf = (ym) => {
     return { iso, n: i + 1, weekend: dow === 0 || dow === 6 }
   })
 }
+// Put the picker beside the square it belongs to, and never off the screen.
+// Below the square if there is room, above it otherwise; nudged left when the
+// last days of the month would push it past the edge. Narrow screens get a
+// sheet across the bottom instead, so the thumb does not have to reach.
+const PICK_W = 190
+const PICK_H = 250
+const pickStyle = (box) => {
+  if (typeof window === 'undefined' || !box) return {}
+  if (window.innerWidth <= 640) return {}   // the sheet, laid out in CSS
+  const left = Math.max(8, Math.min(box.left, window.innerWidth - PICK_W - 8))
+  const below = box.bottom + 6
+  const room = window.innerHeight - below
+  return room >= PICK_H
+    ? { left, top: below }
+    : { left, top: Math.max(8, box.top - PICK_H - 6) }
+}
+
 const monthWords = (ym) =>
   new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(locale(), { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
@@ -63,7 +80,12 @@ export default function Attendance() {
   const [busy, setBusy] = useState('')
   // Which cell is open for marking. One at a time — a grid of open menus is
   // not a register, it is a mess.
-  const [picking, setPicking] = useState(null) // null | { userId, day, at }
+  //
+  // It carries the square's position because the picker is drawn OVER the
+  // page rather than inside the cell: the month scrolls sideways in its own
+  // box, and a box that scrolls clips whatever hangs out of it — which cut
+  // the bottom off the picker and took the arrival time and Clear with it.
+  const [picking, setPicking] = useState(null) // null | { userId, day, name, box }
   const [lateAt, setLateAt] = useState('09:30')
 
   const load = useCallback(() => {
@@ -173,33 +195,16 @@ export default function Attendance() {
                           <button type="button" title={title} aria-label={title}
                             className={'at-mark' + (st ? ` on ${st.cls}` : '') + (open ? ' open' : '')}
                             disabled={!isAdmin || future || busy === `${u.id}|${d.iso}`}
-                            onClick={() => { setLateAt(row?.arrived_at || '09:30'); setPicking(open ? null : { userId: u.id, day: d.iso }) }}>
+                            onClick={(e) => {
+                              setLateAt(row?.arrived_at || '09:30')
+                              const b = e.currentTarget.getBoundingClientRect()
+                              setPicking(open ? null : {
+                                userId: u.id, day: d.iso, name: u.name, marked: !!row,
+                                box: { left: b.left, right: b.right, top: b.top, bottom: b.bottom },
+                              })
+                            }}>
                             {st ? <st.Icon size={13} strokeWidth={3} /> : null}
                           </button>
-                          {open && (
-                            <div className="at-pick" role="dialog" aria-label={tx('What happened')}>
-                              <div className="at-pick-day">{d.iso}</div>
-                              {STATES.map((s) => (
-                                <button key={s.key} type="button" className={'at-pick-opt ' + s.cls}
-                                  onClick={() => (s.key === 'late'
-                                    ? mark(u.id, d.iso, 'late', lateAt)
-                                    : mark(u.id, d.iso, s.key))}>
-                                  <s.Icon size={13} /> {tx(s.label)}
-                                </button>
-                              ))}
-                              <label className="at-pick-time">
-                                {tx('Arrived')}
-                                <input className="input" type="time" value={lateAt}
-                                  onChange={(e) => setLateAt(e.target.value)} />
-                              </label>
-                              {row && (
-                                <button type="button" className="at-pick-opt at-pick-clear"
-                                  onClick={() => mark(u.id, d.iso, null)}>
-                                  <X size={13} /> {tx('Clear')}
-                                </button>
-                              )}
-                            </div>
-                          )}
                         </td>
                       )
                     })}
@@ -225,6 +230,33 @@ export default function Attendance() {
 
       {/* Tapping anywhere else puts the picker away. */}
       {picking && <div className="at-scrim" onClick={() => setPicking(null)} />}
+
+      {/* Drawn over the page, not inside the square: see the note on `picking`.
+          On a phone it comes up from the bottom, where a thumb already is. */}
+      {picking && (
+        <div className="at-pick" role="dialog" aria-label={tx('What happened')} style={pickStyle(picking.box)}>
+          <div className="at-pick-day">{picking.name} · {picking.day}</div>
+          {STATES.map((s) => (
+            <button key={s.key} type="button" className={'at-pick-opt ' + s.cls}
+              onClick={() => (s.key === 'late'
+                ? mark(picking.userId, picking.day, 'late', lateAt)
+                : mark(picking.userId, picking.day, s.key))}>
+              <s.Icon size={13} /> {tx(s.label)}
+            </button>
+          ))}
+          <label className="at-pick-time">
+            {tx('Arrived')}
+            <input className="input" type="time" value={lateAt}
+              onChange={(e) => setLateAt(e.target.value)} />
+          </label>
+          {picking.marked && (
+            <button type="button" className="at-pick-opt at-pick-clear"
+              onClick={() => mark(picking.userId, picking.day, null)}>
+              <X size={13} /> {tx('Clear')}
+            </button>
+          )}
+        </div>
+      )}
     </>
   )
 }

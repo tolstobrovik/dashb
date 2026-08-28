@@ -3805,13 +3805,7 @@ button.blame-person:hover { background: var(--surface-2); }
 .ai-keyform .input { max-width: 190px; font-size: 12.5px; padding: 7px 10px; }
 
 /* ---------- attendance ---------- */
-.at-pick { display: inline-flex; align-items: center; gap: 6px; }
-.at-pick .input { max-width: 165px; font-size: 12.5px; padding: 7px 10px; }
 .at-who { display: inline-flex; align-items: center; gap: 10px; }
-.at-states .pill { font-size: 12px; padding: 5px 11px; }
-.at-states .pill.at-ontime.active { background: var(--good); border-color: var(--good); color: #fff; }
-.at-states .pill.at-late.active { background: var(--critical); border-color: var(--critical); color: #fff; }
-.at-states .pill.at-away.active { background: var(--muted); border-color: var(--muted); color: #fff; }
 .at-count {
   display: inline-grid; place-items: center; min-width: 26px; height: 24px; padding: 0 7px;
   border-radius: 999px; background: var(--surface-2); font-size: 12.5px; font-weight: 800; color: var(--ink-2);
@@ -4425,9 +4419,12 @@ button.blame-person:hover { background: var(--surface-2); }
 
 /* Saying what happened, at the square you clicked. */
 .at-scrim { position: fixed; inset: 0; z-index: 30; }
+/* Fixed, not absolute: the month scrolls sideways inside its own box, and a
+   box that scrolls clips whatever hangs out of it — which cut the bottom off
+   this and took the arrival time and Clear with it. Placed from the square's
+   own position in JS, so it cannot be clipped by anything. */
 .at-pick {
-  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  z-index: 31; margin-top: 4px; width: 176px;
+  position: fixed; z-index: 31; width: 190px;
   background: var(--surface); border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
   padding: 8px; display: flex; flex-direction: column; gap: 3px; text-align: left;
@@ -4456,6 +4453,20 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 .at-leg { display: inline-flex; align-items: center; gap: 6px; }
 .at-leg .at-mark { width: 16px; height: 16px; border-radius: 5px; cursor: default; }
+
+/* A phone gets it as a sheet across the bottom rather than a popover pinned
+   to a 26px square somewhere in a sideways scroll. */
+@media (max-width: 640px) {
+  .at-pick {
+    left: 10px; right: 10px; top: auto; width: auto; padding: 10px;
+    /* clear of the tab bar: its 54px plus the phone's own bottom inset */
+    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + 10px);
+  }
+  .at-pick-day { font-size: 12.5px; color: var(--ink-2); padding-bottom: 6px; }
+  .at-pick-opt { min-height: 46px; font-size: 14.5px; }
+  .at-pick-time { font-size: 12.5px; padding: 6px 4px; }
+  .at-scrim { background: rgba(0, 0, 0, 0.28); }
+}
 
 @media (max-width: 640px) {
   .at-name-col { min-width: 132px; padding: 8px 10px; }
