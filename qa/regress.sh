@@ -140,6 +140,11 @@ fuser -k 4131/tcp 2>/dev/null; sleep 0.5
 if node attendance-suite.mjs > $SP/out-attendance-suite.log 2>&1; then echo "attendance-suite PASS" >> $RES; else echo "attendance-suite FAIL" >> $RES; fi
 fuser -k 4128/tcp 2>/dev/null; sleep 0.5
 
+# ---- a finished piece stops saying it is late, and the register is a month (4132) ----
+fuser -k 4132/tcp 2>/dev/null; sleep 0.5
+if node round81-suite.mjs > $SP/out-round81-suite.log 2>&1; then echo "round81-suite PASS" >> $RES; else echo "round81-suite FAIL" >> $RES; fi
+fuser -k 4132/tcp 2>/dev/null; sleep 0.5
+
 # ---- Sprints: the guards a QA pass put in (4118) ----
 fuser -k 4118/tcp 2>/dev/null; sleep 0.5
 if node sprint-guards-suite.mjs > $SP/out-sprint-guards-suite.log 2>&1; then echo "sprint-guards-suite PASS" >> $RES; else echo "sprint-guards-suite FAIL" >> $RES; fi

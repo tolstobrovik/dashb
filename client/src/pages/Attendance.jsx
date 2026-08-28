@@ -1,147 +1,230 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Check, Clock, Plane, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
 import { todayISO } from '../lib/constants.js'
-import { tr as tx } from '../lib/i18n.jsx'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import Avatar from '../components/Avatar.jsx'
 
 // ---- who came in, and when ----
 // The register was built as tab eight of eleven inside the Admin panel, which
-// is a place nobody goes to look for "was anyone late today". It is a page
-// now, with its own door in the sidebar, and the whole team can read it —
-// which is the point of a counter. Only an admin writes to it.
+// is not where anybody looks for "was anyone late today". It is a page now,
+// with its own door, and the whole team can read it — the point of a counter.
+// Only an admin writes to it.
 //
-// Nothing is assumed. A day with no mark on it means nobody wrote anything
-// down, not that everybody was on time; marking somebody on time is its own
-// fact and worth making.
+// It showed ONE DAY at a time, with a date picker for the rest. Every question
+// this register exists to answer is about a run of days — who keeps coming in
+// late, who has been away this week — and answering any of them meant clicking
+// through thirty-one days and holding the answer in your head. The month is
+// the view now: people down the side, days across the top, the whole shape of
+// it in one look. The data was always the whole month; only the view was one
+// day wide.
+//
+// Nothing is assumed. An empty cell means nobody wrote anything down, not that
+// somebody was on time; marking somebody on time is its own fact and worth
+// making.
 
-const AT_STATES = [
-  { key: 'on_time', label: 'On time', cls: 'at-ontime' },
-  { key: 'late', label: 'Late', cls: 'at-late' },
-  { key: 'away', label: 'Away', cls: 'at-away' },
+const STATES = [
+  { key: 'on_time', label: 'On time', short: 'On time', cls: 'at-ontime', Icon: Check },
+  { key: 'late', label: 'Late', short: 'Late', cls: 'at-late', Icon: Clock },
+  { key: 'away', label: 'Away', short: 'Away', cls: 'at-away', Icon: Plane },
 ]
+const byKey = Object.fromEntries(STATES.map((s) => [s.key, s]))
+
+const monthOf = (iso) => iso.slice(0, 7)
+const shiftMonth = (ym, by) => {
+  const [y, m] = ym.split('-').map(Number)
+  const d = new Date(Date.UTC(y, m - 1 + by, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+// Every day in the month, and which of them are weekends — a blank Sunday is
+// not a gap in the record.
+const daysOf = (ym) => {
+  const [y, m] = ym.split('-').map(Number)
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return Array.from({ length: last }, (_, i) => {
+    const day = String(i + 1).padStart(2, '0')
+    const iso = `${ym}-${day}`
+    const dow = new Date(`${iso}T00:00:00Z`).getUTCDay()
+    return { iso, n: i + 1, weekend: dow === 0 || dow === 6 }
+  })
+}
+const monthWords = (ym) =>
+  new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(locale(), { month: 'long', year: 'numeric', timeZone: 'UTC' })
+
 export default function Attendance() {
   const { user } = useAuth()
   const isAdmin = user.role === 'admin'
-  const [day, setDay] = useState(() => todayISO())
-  const [month, setMonth] = useState(() => todayISO().slice(0, 7))
+  const today = todayISO()
+  const [month, setMonth] = useState(() => monthOf(today))
   const [users, setUsers] = useState([])
   const [data, setData] = useState(null)
-  const [busy, setBusy] = useState(0)
+  const [busy, setBusy] = useState('')
+  // Which cell is open for marking. One at a time — a grid of open menus is
+  // not a register, it is a mess.
+  const [picking, setPicking] = useState(null) // null | { userId, day, at }
+  const [lateAt, setLateAt] = useState('09:30')
 
   const load = useCallback(() => {
-    const from = `${month}-01`
-    const to = `${month}-31`
+    const days = daysOf(month)
+    const from = days[0].iso
+    const to = days[days.length - 1].iso
     return api.get(`/attendance?from=${from}&to=${to}`).then(setData).catch(() => setData(null))
   }, [month])
   useEffect(() => { api.get('/users').then(setUsers).catch(() => setUsers([])) }, [])
   useEffect(() => { load() }, [load])
+  // Esc closes the picker, the same as every other transient thing on the board.
+  useEffect(() => {
+    if (!picking) return
+    const onKey = (e) => e.key === 'Escape' && setPicking(null)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [picking])
 
-  const mark = async (userId, status) => {
-    setBusy(userId)
+  const days = useMemo(() => daysOf(month), [month])
+  // One lookup for the whole grid: "what does this person's day say?"
+  const cells = useMemo(() => {
+    const m = {}
+    for (const r of data?.rows || []) m[`${r.user_id}|${r.day}`] = r
+    return m
+  }, [data])
+
+  const mark = async (userId, day, status, arrived) => {
+    setBusy(`${userId}|${day}`)
     try {
-      const body = status === 'late'
-        ? { status, arrived_at: prompt(tx('What time did they arrive? HH:MM'), '09:30') || null }
-        : { status }
-      if (status === 'late' && !body.arrived_at) { setBusy(0); return }
-      await api.put(`/attendance/${userId}/${day}`, body)
+      await api.put(`/attendance/${userId}/${day}`, status ? { status, arrived_at: arrived || null } : {})
       await load()
-    } catch (e) { toast(e.message, 'err') } finally { setBusy(0) }
+      setPicking(null)
+    } catch (e) { toast(e.message, 'err') } finally { setBusy('') }
   }
 
   if (!data) return <div className="app-loading"><span className="spinner" /></div>
-  const onDay = Object.fromEntries(data.rows.filter((r) => r.day === day).map((r) => [r.user_id, r]))
-  const lateThisMonth = data.rows.filter((r) => r.status === 'late').length
+
+  const lateThisMonth = (data.rows || []).filter((r) => r.status === 'late').length
+  const awayThisMonth = (data.rows || []).filter((r) => r.status === 'away').length
 
   return (
     <>
-      <div className="section-head">
+      <div className="section-head at-head">
         <h2>{tx('Attendance')}</h2>
-        <span className="count">· {tx('{n} late this month', { n: lateThisMonth })}</span>
-        <span className="spacer" />
-        <label className="at-pick">
-          <span className="stat-sub">{tx('Day')}</span>
-          <input className="input" type="date" value={day} max={todayISO()}
-            onChange={(e) => { setDay(e.target.value); setMonth(e.target.value.slice(0, 7)) }} />
-        </label>
-        <label className="at-pick">
-          <span className="stat-sub">{tx('Month')}</span>
-          <input className="input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-        </label>
-      </div>
-
-      {isAdmin && <div className="card card-pad ai-note">
-        <b>{tx('Nobody is late unless somebody says so.')}</b>
-        <span className="stat-sub">
-          {tx('A day with nothing marked means nothing was written down, not that everyone was on time. Marking somebody on time is a separate fact, and it is worth marking.')}
+        <span className="at-sum">
+          <b className={lateThisMonth ? 'pay-bad' : ''}>{lateThisMonth}</b> {tx('late')}
+          <span className="at-dot">·</span>
+          <b>{awayThisMonth}</b> {tx('away')}
         </span>
-      </div>}
-
-      <div className="card table-wrap">
-        <table className="tbl">
-          <thead><tr>
-            <th>{tx('Member')}</th><th>{tx('This day')}</th><th>{tx('Arrived')}</th>
-            <th>{tx('Late this month')}</th><th>{tx('Away')}</th><th />
-          </tr></thead>
-          <tbody>
-            {users.map((u) => {
-              const row = onDay[u.id]
-              const t = data.tally[u.id] || { late: 0, away: 0, on_time: 0 }
-              return (
-                <tr key={u.id}>
-                  <td>
-                    <span className="at-who">
-                      <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
-                      <span><b>{u.name}</b><br /><span className="stat-sub">@{u.username}</span></span>
-                    </span>
-                  </td>
-                  <td>
-                    {/* An admin marks; everybody else reads. A row of buttons
-                        that answer 403 reads as the app being broken rather
-                        than as "not your call". */}
-                    {isAdmin ? (
-                      <span className="pill-group at-states">
-                        {AT_STATES.map((st) => (
-                          <button key={st.key} disabled={busy === u.id}
-                            className={'pill' + (row?.status === st.key ? ` active ${st.cls}` : '')}
-                            onClick={() => mark(u.id, st.key)}>
-                            {tx(st.label)}
-                          </button>
-                        ))}
-                      </span>
-                    ) : row?.status ? (
-                      <span className={`pill active ${AT_STATES.find((st) => st.key === row.status)?.cls || ''}`}>
-                        {tx(AT_STATES.find((st) => st.key === row.status)?.label || row.status)}
-                      </span>
-                    ) : <span className="stat-sub">{tx('nothing written down')}</span>}
-                  </td>
-                  <td>{row?.status === 'late' && row.arrived_at
-                    ? <b className="pay-bad">{row.arrived_at}</b>
-                    : <span className="stat-sub">—</span>}</td>
-                  <td>{t.late > 0
-                    ? <span className="at-count at-late-count">{t.late}</span>
-                    : <span className="stat-sub">0</span>}</td>
-                  <td>{t.away > 0
-                    ? <span className="at-count">{t.away}</span>
-                    : <span className="stat-sub">0</span>}</td>
-                  <td>
-                    {row && isAdmin && (
-                      <button className="btn btn-sm" disabled={busy === u.id}
-                        data-tip={tx('Back to nothing written down')}
-                        onClick={async () => {
-                          setBusy(u.id)
-                          try { await api.put(`/attendance/${u.id}/${day}`, {}); await load() }
-                          catch (e) { toast(e.message, 'err') } finally { setBusy(0) }
-                        }}>{tx('Clear')}</button>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <span className="spacer" />
+        <div className="at-month">
+          <button className="icon-btn" onClick={() => setMonth((m) => shiftMonth(m, -1))}
+            aria-label={tx('Previous month')} data-tip={tx('Previous month')}><ChevronLeft size={18} /></button>
+          <b>{monthWords(month)}</b>
+          <button className="icon-btn" disabled={month >= monthOf(today)}
+            onClick={() => setMonth((m) => shiftMonth(m, 1))}
+            aria-label={tx('Next month')} data-tip={tx('Next month')}><ChevronRight size={18} /></button>
+        </div>
       </div>
+
+      {isAdmin && (
+        <div className="card card-pad ai-note">
+          <b>{tx('Nobody is late unless somebody says so.')}</b>
+          <span className="stat-sub">
+            {tx('An empty square means nothing was written down, not that somebody was on time. Click a square to say what happened.')}
+          </span>
+        </div>
+      )}
+
+      <div className="card at-wrap">
+        <div className="at-grid-scroll">
+          <table className="at-grid">
+            <thead>
+              <tr>
+                <th className="at-name-col">{tx('Member')}</th>
+                {days.map((d) => (
+                  <th key={d.iso}
+                    className={'at-day-h' + (d.weekend ? ' at-wknd' : '') + (d.iso === today ? ' at-today' : '')}
+                    title={d.iso}>{d.n}</th>
+                ))}
+                <th className="at-tot-col at-tot-late">{tx('Late')}</th>
+                <th className="at-tot-col">{tx('Away')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => {
+                const t = data.tally[u.id] || { late: 0, away: 0, on_time: 0 }
+                return (
+                  <tr key={u.id}>
+                    <th className="at-name-col at-who">
+                      <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
+                      <span className="at-who-meta">
+                        <b>{u.name}</b>
+                        <span className="stat-sub">@{u.username}</span>
+                      </span>
+                    </th>
+                    {days.map((d) => {
+                      const row = cells[`${u.id}|${d.iso}`]
+                      const st = row?.status ? byKey[row.status] : null
+                      const future = d.iso > today
+                      const open = picking && picking.userId === u.id && picking.day === d.iso
+                      const title = st
+                        ? `${u.name} · ${d.iso} — ${tx(st.label)}${row.arrived_at ? ` ${row.arrived_at}` : ''}`
+                        : `${u.name} · ${d.iso} — ${tx('nothing written down')}`
+                      return (
+                        <td key={d.iso} className={'at-cell' + (d.weekend ? ' at-wknd' : '') + (d.iso === today ? ' at-today' : '')}>
+                          <button type="button" title={title} aria-label={title}
+                            className={'at-mark' + (st ? ` on ${st.cls}` : '') + (open ? ' open' : '')}
+                            disabled={!isAdmin || future || busy === `${u.id}|${d.iso}`}
+                            onClick={() => { setLateAt(row?.arrived_at || '09:30'); setPicking(open ? null : { userId: u.id, day: d.iso }) }}>
+                            {st ? <st.Icon size={13} strokeWidth={3} /> : null}
+                          </button>
+                          {open && (
+                            <div className="at-pick" role="dialog" aria-label={tx('What happened')}>
+                              <div className="at-pick-day">{d.iso}</div>
+                              {STATES.map((s) => (
+                                <button key={s.key} type="button" className={'at-pick-opt ' + s.cls}
+                                  onClick={() => (s.key === 'late'
+                                    ? mark(u.id, d.iso, 'late', lateAt)
+                                    : mark(u.id, d.iso, s.key))}>
+                                  <s.Icon size={13} /> {tx(s.label)}
+                                </button>
+                              ))}
+                              <label className="at-pick-time">
+                                {tx('Arrived')}
+                                <input className="input" type="time" value={lateAt}
+                                  onChange={(e) => setLateAt(e.target.value)} />
+                              </label>
+                              {row && (
+                                <button type="button" className="at-pick-opt at-pick-clear"
+                                  onClick={() => mark(u.id, d.iso, null)}>
+                                  <X size={13} /> {tx('Clear')}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      )
+                    })}
+                    <td className="at-tot at-tot-late">{t.late > 0
+                      ? <span className="at-count at-late-count">{t.late}</span>
+                      : <span className="stat-sub">0</span>}</td>
+                    <td className="at-tot">{t.away > 0
+                      ? <span className="at-count">{t.away}</span>
+                      : <span className="stat-sub">0</span>}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="at-legend">
+          {STATES.map((s) => (
+            <span key={s.key} className="at-leg"><i className={`at-mark on ${s.cls}`}><s.Icon size={11} strokeWidth={3} /></i> {tx(s.label)}</span>
+          ))}
+          <span className="at-leg"><i className="at-mark" /> {tx('nothing written down')}</span>
+        </div>
+      </div>
+
+      {/* Tapping anywhere else puts the picker away. */}
+      {picking && <div className="at-scrim" onClick={() => setPicking(null)} />}
     </>
   )
 }

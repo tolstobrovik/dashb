@@ -1194,6 +1194,8 @@ const PHRASES = {
     "A newer version of the board is ready.": "Готова новая версия доски.",
     "Load it": "Загрузить",
     "Which build this is": "Какая это сборка",
+    "away": "отсутствий",
+    "An empty square means nothing was written down, not that somebody was on time. Click a square to say what happened.": "Пустая клетка означает, что ничего не отметили, а не что человек пришёл вовремя. Нажмите на клетку, чтобы сказать, что было.",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1846,6 +1848,8 @@ const PHRASES = {
     "A newer version of the board is ready.": "Doskaning yangi versiyasi tayyor.",
     "Load it": "Yuklash",
     "Which build this is": "Bu qaysi versiya",
+    "away": "yo‘q",
+    "An empty square means nothing was written down, not that somebody was on time. Click a square to say what happened.": "Bo‘sh katak hech narsa yozilmaganini bildiradi, o‘z vaqtida kelganini emas. Nima bo‘lganini aytish uchun katakni bosing.",
   },
 }
 

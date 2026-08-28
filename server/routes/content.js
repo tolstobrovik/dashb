@@ -2365,6 +2365,24 @@ router.patch('/:id', wrap(async (req, res) => {
   await run(`UPDATE content SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`, ...keys.map((k) => patch[k]), row.id)
   await logPatch(req.user, row, patch)
 
+  // ---- finishing the work puts the hand down ----
+  // A hand says "this will be late" or "I cannot take this on". Publishing the
+  // piece answers both, and nothing was answering them: the board raised its
+  // own hand on work that had gone quiet, the work then went out, and the hand
+  // stayed up — a finished piece reading "The board says this will be late"
+  // on its own card, and sitting in the planners' queue of problems for ever.
+  //
+  // Every hand, not only the board's: a person's "I cannot take this on" is
+  // just as answered by the thing being done. Cleared by the board rather than
+  // by whoever happened to press Publish, because it is the completion that
+  // answers it, not them.
+  if (!row.done_at && patch.done_at) {
+    await run(
+      `UPDATE task_flags SET cleared_at = ?, cleared_by = NULL, cleared_name = ?
+       WHERE content_id = ? AND cleared_at IS NULL`,
+      patch.done_at, 'The board — finished', row.id)
+  }
+
   // People just handed a hat hear about it — only the NEW names, never the
   // ones already on the task, never the assigner.
   {

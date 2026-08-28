@@ -141,16 +141,16 @@ ok('the register has a door in the sidebar',
   (await admin.locator('.sidebar .nav-item', { hasText: /Attendance|Посещаемость|Davomat/ }).count()) === 1)
 await admin.goto(`${BASE}/attendance`)
 await admin.waitForTimeout(1800)
-ok('…which opens a page of people', (await admin.locator('table.tbl tbody tr').count()) > 0)
-ok('…where an admin marks who was late', (await admin.locator('.at-states .pill').count()) > 0)
+ok('…which opens a page of people', (await admin.locator('table.at-grid tbody tr').count()) > 0)
+ok('…where an admin marks who was late', (await admin.locator('.at-grid .at-mark:not([disabled])').count()) > 0)
 
 const member = await browser.newPage({ viewport: { width: 1400, height: 900 } })
 member.on('pageerror', (e) => errs.push(`member: ${e.message}`))
 await signIn(member, 'r80mem', 'm1234')
 await member.goto(`${BASE}/attendance`)
 await member.waitForTimeout(1800)
-ok('the team can read the register', (await member.locator('table.tbl tbody tr').count()) > 0)
-ok('…and cannot write to it', (await member.locator('.at-states .pill').count()) === 0)
+ok('the team can read the register', (await member.locator('table.at-grid tbody tr').count()) > 0)
+ok('…and cannot write to it', (await member.locator('.at-grid .at-mark:not([disabled])').count()) === 0)
 
 // ---- and the crew see what they owe an answer on, where they already look --
 const crew = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
