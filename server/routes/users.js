@@ -247,6 +247,15 @@ router.delete('/:id', adminOnly, wrap(async (req, res) => {
     ['UPDATE content SET editor_id = NULL WHERE editor_id = ?', req.params.id],
     ['UPDATE content SET designer_id = NULL WHERE designer_id = ?', req.params.id],
     ['DELETE FROM personal_tasks WHERE user_id = ?', req.params.id],
+    // Their register goes with them. The month grid draws a row per person,
+    // so rows for somebody who is gone are invisible — but the month's late
+    // and away counts were still adding them up, and a total that disagrees
+    // with the squares under it is worse than no total. Who MARKED a day is
+    // a different fact: that day still happened to somebody who is still here.
+    ['DELETE FROM attendance WHERE user_id = ?', req.params.id],
+    ['UPDATE attendance SET marked_by = NULL WHERE marked_by = ?', req.params.id],
+    // Nobody can ever open their bell again either.
+    ['DELETE FROM notifications WHERE user_id = ?', req.params.id],
     ['DELETE FROM users WHERE id = ?', req.params.id],
   ])
   res.json({ ok: true })

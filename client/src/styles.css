@@ -4258,6 +4258,7 @@ button.blame-person:hover { background: var(--surface-2); }
 .bk-wait { border-left-color: var(--warn, #d59a2b); background: var(--surface-2); }
 .bk-yes { border-left-color: var(--ok, #1D9E75); }
 .bk-no { border-left-color: var(--critical); background: var(--danger-bg); }
+.bk-gone { border-left-color: var(--border); opacity: 0.75; }
 .bk-slot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .bk-ico { flex: none; color: var(--muted); }
 .bk-yes .bk-ico { color: var(--ok, #1D9E75); }
@@ -4274,6 +4275,7 @@ button.blame-person:hover { background: var(--surface-2); }
 .bk-said.bk-yes { color: var(--ok, #1D9E75); }
 .bk-said.bk-no { color: var(--critical); }
 .bk-said.bk-wait { color: var(--ink-2); }
+.bk-said.bk-gone { color: var(--muted); font-weight: 600; }
 .bk-why { font-style: italic; font-weight: 500; color: var(--ink-2); }
 .bk-do { margin-left: auto; display: inline-flex; gap: 6px; }
 .bk-form { display: flex; flex-direction: column; gap: 8px; }

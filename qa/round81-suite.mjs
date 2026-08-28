@@ -29,6 +29,10 @@ const ok = (n, c, x = '') => { if (!c) fails++; console.log(`${c ? '✔' : '✘ 
 
 const srv = spawn('node', [join(ROOT, 'server/index.js')],
   { env: { ...process.env, DATA_DIR: dir, PORT: String(PORT) }, stdio: 'ignore' })
+// A suite that throws half way through must not leave its server holding the
+// port: the next run would then talk to the last run's data and fail for a
+// reason that has nothing to do with the code.
+process.on('exit', () => { try { srv.kill('SIGKILL') } catch { /* gone */ } })
 const wait = async () => {
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(`${A}/health`)).ok) return true } catch { /* not yet */ }
@@ -124,6 +128,65 @@ const again = ((await req(`/content/${one.id}`)).data.flags || []).filter((f) =>
 ok('…but a piece pulled back and still late is asked about afresh',
   again.length === 1 && !again[0].raised_by, JSON.stringify(again))
 
+// =============== 1b) the same shape, in the other queues =================
+// A queue that never empties is the bug, wherever it is kept. Two more had it.
+const delSt = statuses.find((st) => /^deleted$/i.test(st.label))
+const binned = (await req('/content', 'POST', {
+  title: 'r81: binned with a hand up', channels: [chan], type: 'video', release_date: iso(-4),
+})).data
+await req(`/content/${binned.id}/flags`, 'POST', {
+  kind: 'at_risk', reason: 'The interviewee cancelled and there is nothing to cut from yet.',
+})
+ok('a hand up on a live piece is in the queue',
+  ((await req('/content/flags/open')).data || []).some((f) => f.content_id === binned.id))
+await req(`/content/${binned.id}`, 'PATCH', { status_id: delSt.id })
+ok('…and a piece dragged to the bin takes its hand with it',
+  !((await req('/content/flags/open')).data || []).some((f) => f.content_id === binned.id))
+
+// The same for a day nobody answered about.
+const planner = (await req('/users', 'POST', {
+  name: 'Pulat Planner', username: 'r81plan', password: 'p1234',
+  departments: [chan], permissions: { manage_content: true, move_tasks: true },
+})).data
+const TP = await login('r81plan', 'p1234')
+const asked = (await req('/content', 'POST', {
+  title: 'r81: asked then binned', channels: [chan], type: 'video', release_date: iso(5),
+})).data
+const why = 'The sponsor needs another week to approve the copy before we can run it.'
+ok('a planner asks for the day to move',
+  (await req(`/content/${asked.id}/date-requests`, 'POST', { field: 'release_date', to_date: iso(9), reason: why }, TP)).status === 201)
+ok('…and an admin is asked to decide it',
+  ((await req('/content/date-requests/open')).data || []).some((d) => d.content_id === asked.id))
+await req(`/content/${asked.id}`, 'PATCH', { status_id: delSt.id })
+ok('…and binning the piece takes the question away too',
+  !((await req('/content/date-requests/open')).data || []).some((d) => d.content_id === asked.id))
+
+// And publishing answers a day question the same way it answers a hand.
+const ranAnyway = (await req('/content', 'POST', {
+  title: 'r81: asked then published', channels: [chan], type: 'video', release_date: iso(5),
+})).data
+await req(`/content/${ranAnyway.id}/date-requests`, 'POST', { field: 'release_date', to_date: iso(9), reason: why }, TP)
+await req(`/content/${ranAnyway.id}`, 'PATCH', { status_id: finalSt.id })
+ok('a piece that went out stops asking an admin to move its day',
+  !((await req('/content/date-requests/open')).data || []).some((d) => d.content_id === ranAnyway.id))
+const dropped = ((await req(`/content/${ranAnyway.id}`)).data.date_requests || [])[0]
+ok('…and the ask says why it was never decided',
+  dropped?.state === 'stale' && /went out/.test(dropped?.decided_note || ''), JSON.stringify(dropped))
+
+// ============ 1c) a booked day that has already gone by ==================
+const shooter = (await req('/users', 'POST', {
+  name: 'Otabek Operator', username: 'r81op', password: 'o1234', role: 'operator', crew_roles: ['operator'],
+})).data
+const TSH = await login('r81op', 'o1234')
+await req('/content', 'POST', {
+  title: 'r81: a Tuesday three weeks gone', channels: [chan], type: 'video',
+  operator_id: shooter.id, recording_date: iso(-21), recording_time: '10:00', recording_end: '12:00',
+})
+await req('/content', 'POST', {
+  title: 'r81: a day still ahead', channels: [chan], type: 'video',
+  operator_id: shooter.id, recording_date: iso(4), recording_time: '10:00', recording_end: '12:00',
+})
+
 // ==================== 2) the register is a month =========================
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const errs = []
@@ -216,6 +279,44 @@ await member.waitForTimeout(600)
 ok('the team read the month too', (await member.locator('.at-grid tbody tr').count()) >= 3)
 ok('…and cannot write to it', (await member.locator('.at-grid .at-mark:not([disabled])').count()) === 0)
 ok('…but still see who was late', (await member.locator('.at-grid .at-mark.at-late').count()) >= 1)
+
+// The tray asks about days still ahead, and stops nagging about days gone.
+const crew = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+crew.on('pageerror', (e) => errs.push(`crew: ${e.message}`))
+await signIn(crew, 'r81op', 'o1234')
+await crew.waitForTimeout(1500)
+const trayRows = await crew.locator('.ask-tray-row').count()
+ok('the crew are asked about the day still ahead, and only that one', trayRows === 1, `${trayRows} rows`)
+await crew.locator('.ask-tray-row').first().click()
+await crew.waitForTimeout(2000)
+ok('…and that one still offers both answers',
+  (await crew.locator('.bk').first().locator('.btn').count()) === 2)
+await crew.keyboard.press('Escape')
+await crew.waitForTimeout(600)
+
+// The day that went by is still on its task — it just stops asking.
+const past = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+past.on('pageerror', (e) => errs.push(`past: ${e.message}`))
+await signIn(past, 'admin', 'admin123')
+await past.goto(`${BASE}/dept/${chan}`)
+await past.waitForTimeout(3000)
+await past.locator('.tcard', { hasText: 'three weeks gone' }).first().click()
+await past.waitForTimeout(2000)
+const goneCard = past.locator('.bk-gone').first()
+ok('a booking whose day has passed says so instead of waiting', (await goneCard.count()) >= 1)
+ok('…and offers nobody a yes to a day that is over',
+  (await past.locator('.bk').first().locator('.btn').count()) === 0)
+
+// A person who is gone stops moving the month's totals.
+const ghost = (await req('/users', 'POST', {
+  name: 'Gulnora Gone', username: 'r81gone', password: 'g1234', departments: [chan],
+})).data
+await req(`/attendance/${ghost.id}/${iso(-1)}`, 'PUT', { status: 'late', arrived_at: '10:15' })
+ok('their late day is in the register', (await req('/attendance')).data.rows.some((r) => r.user_id === ghost.id))
+ok('the person is removed', (await req(`/users/${ghost.id}`, 'DELETE')).status === 200)
+const reg = (await req('/attendance')).data
+ok('…and the month stops counting somebody it cannot show',
+  !reg.rows.some((r) => r.user_id === ghost.id) && !reg.tally[ghost.id], JSON.stringify(reg.tally))
 
 ok('no page threw', errs.length === 0, errs.slice(0, 3).join(' | '))
 await browser.close()

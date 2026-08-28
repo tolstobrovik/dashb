@@ -1189,12 +1189,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {openFlags.map((f) => (
               <div key={f.id} className={`flag-item flag-${f.kind}`}>
                 <span className="flag-line">
-                  <b>{f.raised_name}</b> {f.kind === 'cant_take' ? 'cannot take this on' : 'says this will be late'}
+                  <b>{f.raised_name}</b> {f.kind === 'cant_take' ? tx('cannot take this on') : tx('says this will be late')}
                 </span>
                 <span className="flag-why">“{f.reason}”</span>
                 {(canEdit || f.raised_by === user.id) && (
                   <button type="button" className="btn btn-sm" disabled={busy} onClick={() => lowerHand(f.id)}>
-                    Sorted — hand down
+                    {tx('Sorted — hand down')}
                   </button>
                 )}
               </div>
@@ -1202,7 +1202,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {raising && (
               <div className="flag-form">
                 <div className="pravki-target">
-                  {[['at_risk', 'This will be late'], ['cant_take', 'I can’t take this on']].map(([k, label]) => (
+                  {[['at_risk', tx('This will be late')], ['cant_take', tx('I can’t take this on')]].map(([k, label]) => (
                     <button key={k} type="button" className={'tchip' + (raising.kind === k ? ' on' : '')}
                       onClick={() => setRaising({ ...raising, kind: k })}>{label}</button>
                   ))}
@@ -1214,7 +1214,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   <span className="stat-sub">{tx("Said now, it can still be planned around.")}</span>
                   <button type="button" className="btn btn-sm" onClick={() => setRaising(null)}>{tx("Cancel")}</button>
                   <button type="button" className="btn btn-sm btn-primary" disabled={busy || !raising.reason.trim()} onClick={raiseHand}>
-                    <Hand size={13} /> Say it now
+                    <Hand size={13} /> {tx('Say it now')}
                   </button>
                 </div>
               </div>
@@ -1948,7 +1948,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <span className="stat-sub">{tx("They see it in the bell and in Telegram. The day does not move until they say yes.")}</span>
             <button type="button" className="btn btn-sm" onClick={() => setAsking(null)}>{tx("Cancel")}</button>
             <button type="button" className="btn btn-sm btn-primary" disabled={busy || !asking.reason.trim()} onClick={sendAsk}>
-              <Send size={13} /> Ask
+              <Send size={13} /> {tx('Ask')}
             </button>
           </div>
         </div>
@@ -1964,15 +1964,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 <span className="ask-line">
                   <b>{PROMISED[r.field] || r.field}</b>: {r.from_date || '—'} → {r.to_date || 'cleared'}
                   <span className={`chip ask-state ask-chip-${r.state}`}>
-                    {r.state === 'open' ? 'waiting on an admin'
-                      : r.state === 'approved' ? 'moved'
-                        : r.state === 'stale' ? 'out of date' : 'kept where it was'}
+                    {r.state === 'open' ? tx('waiting on an admin')
+                      : r.state === 'approved' ? tx('moved')
+                        : r.state === 'stale' ? tx('out of date') : tx('kept where it was')}
                   </span>
                 </span>
                 <span className="ask-why">“{r.reason}” — {r.asked_name || 'someone'}</span>
                 {r.decided_at && (
                   <span className="ask-meta">
-                    {r.state === 'approved' ? 'Moved' : r.state === 'stale' ? 'Dropped' : 'Kept'} by {r.decided_name}
+                    {r.state === 'approved' ? tx('Moved by {name}', { name: r.decided_name })
+                      : r.state === 'stale' ? tx('Dropped by {name}', { name: r.decided_name })
+                        : tx('Kept by {name}', { name: r.decided_name })}
                     {r.decided_note ? ` — ${r.decided_note}` : ''}
                   </span>
                 )}
@@ -1980,7 +1982,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   <span className="ask-decide">
                     <button type="button" className="btn btn-sm" disabled={busy} onClick={() => decide(r.id, false)}>{tx("Keep the day")}</button>
                     <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => decide(r.id, true)}>
-                      <Check size={13} /> Move it
+                      <Check size={13} /> {tx('Move it')}
                     </button>
                   </span>
                 )}

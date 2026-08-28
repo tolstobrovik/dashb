@@ -3,6 +3,7 @@ import { CalendarCheck, CalendarX, Clock, Check, X, Hourglass } from 'lucide-rea
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
 import { tr as tx, locale } from '../lib/i18n.jsx'
+import { todayISO } from '../lib/constants.js'
 
 // ---- the time the crew agreed to ----
 // A shoot day used to be a fact the moment somebody typed it. It is not: the
@@ -47,6 +48,10 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
   const from = K.from ? item[K.from] : null
   const to = K.to ? item[K.to] : null
   const span = HOURS(from, to)
+  // A day that has already gone by is not a question any more. It still says
+  // that nobody ever answered — that is worth knowing — but it stops offering
+  // "I can make it" about an afternoon that is over.
+  const gone = day < todayISO()
 
   const answer = async (ok, note = '') => {
     setBusy(true)
@@ -60,7 +65,7 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
 
   const Icon = state === 'yes' ? CalendarCheck : state === 'no' ? CalendarX : Hourglass
   return (
-    <div className={`bk bk-${state || 'wait'}`}>
+    <div className={`bk bk-${state || (gone ? 'gone' : 'wait')}`}>
       <div className="bk-slot">
         <Icon size={15} className="bk-ico" />
         <span className="bk-when">
@@ -78,9 +83,10 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
             {item[K.note] ? <i className="bk-why">“{item[K.note]}”</i> : null}
           </span>
         )}
-        {!state && <span className="bk-said bk-wait">{tx('Waiting on {name}', { name: holderName })}</span>}
+        {!state && !gone && <span className="bk-said bk-wait">{tx('Waiting on {name}', { name: holderName })}</span>}
+        {!state && gone && <span className="bk-said bk-gone">{tx('The day passed with no answer from {name}', { name: holderName })}</span>}
 
-        {mine && !saying && (
+        {mine && !gone && !saying && (
           <span className="bk-do">
             {state !== 'yes' && (
               <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => answer(true)}>
@@ -96,7 +102,7 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
         )}
       </div>
 
-      {mine && saying && (
+      {mine && !gone && saying && (
         <div className="bk-form">
           <textarea className="input" rows={2} autoFocus value={saying.note}
             onChange={(e) => setSaying({ note: e.target.value })}

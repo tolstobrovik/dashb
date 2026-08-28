@@ -502,14 +502,17 @@ export default function Brief() {
   // work, because it is not work — it is one tap that lets somebody else
   // finish planning.
   const toAnswer = useMemo(() => {
+    // Only days still ahead. "Can you make Tuesday?" is not a question about a
+    // Tuesday three weeks gone — that day either happened or it did not, and
+    // asking about it for ever teaches people to scroll past the tray.
     const out = []
     for (const t of open) {
-      if (t.operator_id === user.id && t.recording_date && !t.shoot_ack) out.push({ t, which: 'shoot' })
-      if (t.editor_id === user.id && t.edit_ready_date && !t.edit_ack) out.push({ t, which: 'edit' })
+      if (t.operator_id === user.id && t.recording_date >= today && !t.shoot_ack) out.push({ t, which: 'shoot' })
+      if (t.editor_id === user.id && t.edit_ready_date >= today && !t.edit_ack) out.push({ t, which: 'edit' })
     }
     return out.sort((a, b) => (a.t[a.which === 'shoot' ? 'recording_date' : 'edit_ready_date'] || '')
       .localeCompare(b.t[b.which === 'shoot' ? 'recording_date' : 'edit_ready_date'] || ''))
-  }, [open, user.id])
+  }, [open, user.id, today])
 
   const recordToday = useMemo(
     () => open.filter((t) => t.recording_date === today)

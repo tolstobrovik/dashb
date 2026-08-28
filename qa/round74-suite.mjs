@@ -80,6 +80,26 @@ const RU = bookOf('ru'), UZ = bookOf('uz')
 ok('there is a Russian phrase book', RU.size > 200, String(RU.size))
 ok('there is an Uzbek one the same size', UZ.size === RU.size, `${UZ.size} vs ${RU.size}`)
 
+// A book is one object literal, so the SAME KEY WRITTEN TWICE is not an
+// error — the later line silently wins and the earlier translation is simply
+// never used again. That is how the attendance register came to head its Late
+// column "Штраф": a pay table further down the book had claimed the word for
+// its penalty line. Every check above reads the book into a Set, which is
+// exactly the shape that cannot see this. So it is counted in the text.
+const linesOf = (lang) => {
+  const at = i18n.indexOf(`  ${lang}: {`)
+  return [...i18n.slice(at, i18n.indexOf('\n  },', at))
+    .matchAll(/^    "((?:[^"\\]|\\.)*)":/gm)].map((m) => JSON.parse(`"${m[1]}"`))
+}
+const twice = (lang) => {
+  const seen = new Set(), dup = []
+  for (const k of linesOf(lang)) { if (seen.has(k)) dup.push(k); seen.add(k) }
+  return dup
+}
+ok('no phrase is written twice in the Russian book — the second would win in silence',
+  twice('ru').length === 0, JSON.stringify(twice('ru').slice(0, 8)))
+ok('…nor in the Uzbek one', twice('uz').length === 0, JSON.stringify(twice('uz').slice(0, 8)))
+
 // Every tx('…') the codebase asks for, gathered from the source itself.
 const walk = (dir) => readdirSync(dir).flatMap((f) => {
   const p = join(dir, f)

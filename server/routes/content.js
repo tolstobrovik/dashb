@@ -1561,7 +1561,9 @@ router.get('/flags/open', wrap(async (req, res) => {
     SELECT f.id, f.content_id, f.kind, f.reason, f.raised_name, f.created_at, c.title, c.channels,
            c.recording_date, c.edit_ready_date, c.release_date
     FROM task_flags f JOIN content c ON c.id = f.content_id
-    WHERE f.cleared_at IS NULL ORDER BY f.id`)
+    WHERE f.cleared_at IS NULL
+      AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
+    ORDER BY f.id`)
   // A channel admin is shown the channels they run; everyone else who can see
   // this queue sees what they could already see on the board.
   res.json(req.user.role === 'admin'
@@ -1594,7 +1596,9 @@ router.get('/date-requests/open', wrap(async (req, res) => {
     SELECT d.id, d.content_id, d.field, d.from_date, d.to_date, d.reason, d.asked_name, d.created_at,
            c.title, c.channels
     FROM date_requests d JOIN content c ON c.id = d.content_id
-    WHERE d.state = 'open' ORDER BY d.id`)
+    WHERE d.state = 'open'
+      AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
+    ORDER BY d.id`)
   // Only the channels this admin runs — a queue you cannot act on is noise.
   res.json(rows.filter((r) => isAdminOn(req.user, chansOf(r))))
 }))
@@ -2381,6 +2385,15 @@ router.patch('/:id', wrap(async (req, res) => {
       `UPDATE task_flags SET cleared_at = ?, cleared_by = NULL, cleared_name = ?
        WHERE content_id = ? AND cleared_at IS NULL`,
       patch.done_at, 'The board — finished', row.id)
+    // And the same for a day nobody ever answered about. "Can we move the
+    // release to Friday?" is a question the piece going out has answered —
+    // and left open it is an admin being asked for ever to decide a date on
+    // work that is finished. Dropped rather than approved: nothing moves, the
+    // ask keeps its reason, and the task shows why it was never decided.
+    await run(
+      `UPDATE date_requests SET state = 'stale', decided_by = NULL, decided_name = ?, decided_at = ?, decided_note = ?
+       WHERE content_id = ? AND state = 'open'`,
+      'The board — finished', patch.done_at, 'the piece went out before this was answered', row.id)
   }
 
   // People just handed a hat hear about it — only the NEW names, never the

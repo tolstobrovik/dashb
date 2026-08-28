@@ -999,7 +999,7 @@ function PayTab() {
               <span className="pay-op">+</span>
               <span className="pay-term pay-term-bonus">{tx('Bonus')}</span>
               <span className="pay-op">−</span>
-              <span className="pay-term pay-term-late">{tx('Late')}</span>
+              <span className="pay-term pay-term-late">{tx('Late penalty')}</span>
               <span className="pay-op">=</span>
               <span className="pay-term pay-term-total">{tx('Pay')}</span>
             </div>
@@ -1007,20 +1007,20 @@ function PayTab() {
               <li><b>{tx('Base')}</b> — {tx('paid for the period whatever the count')}</li>
               <li><b>{tx('Piecework')}</b> — {tx('what each finished piece is worth, added up')}</li>
               <li><b>{tx('Bonus')}</b> — {tx('paid for meeting the quota, and for hitting the on-time target')}</li>
-              <li><b>{tx('Late')}</b> — {tx('taken off for each piece delivered after its day')}</li>
+              <li><b>{tx('Late penalty')}</b> — {tx('taken off for each piece delivered after its day')}</li>
             </ul>
           </div>
 
           <div className="card table-wrap" style={{ marginTop: 14 }}>
             <table className="tbl pay-tbl">
               <thead><tr>
-                <th>{tx('Person')}</th>
+                <th>{tx('Member')}</th>
                 <th data-tip={tx('Finished pieces in this period, against the quota if one is set')}>{tx('Delivered')}</th>
-                <th data-tip={tx('How many of them landed on or before their day')}>{tx('On time')}</th>
+                <th data-tip={tx('How many of them landed on or before their day')}>{tx('Delivered on time')}</th>
                 <th data-tip={tx('Paid for the period whatever the count')}>{tx('Base')}</th>
                 <th data-tip={tx('What each finished piece is worth, added up')}>{tx('Piecework')}</th>
                 <th data-tip={tx('Paid for meeting the quota, and for hitting the on-time target')}>{tx('Bonus')}</th>
-                <th data-tip={tx('Taken off for each piece delivered after its day')}>{tx('Late')}</th>
+                <th data-tip={tx('Taken off for each piece delivered after its day')}>{tx('Late penalty')}</th>
                 <th data-tip={tx('Base plus piecework plus bonus, less late')}>{tx('Pay')}</th><th />
               </tr></thead>
               <tbody>
