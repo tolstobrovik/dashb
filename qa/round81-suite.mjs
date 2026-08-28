@@ -143,6 +143,23 @@ await req(`/content/${binned.id}`, 'PATCH', { status_id: delSt.id })
 ok('…and a piece dragged to the bin takes its hand with it',
   !((await req('/content/flags/open')).data || []).some((f) => f.content_id === binned.id))
 
+// A task can end up with NO stage at all — status_id is nullable, and a
+// deleted stage sets it null. It is not in the graveyard, so its hand must
+// still be up: written as NOT IN, the filter would have dropped it silently.
+const stageless = (await req('/content', 'POST', {
+  title: 'r81: no stage at all', channels: [chan], type: 'video', release_date: iso(-4),
+})).data
+await req(`/content/${stageless.id}/flags`, 'POST', {
+  kind: 'at_risk', reason: 'The kit is booked out all week and I cannot film this one.',
+})
+await req(`/content/${stageless.id}`, 'PATCH', { status_id: null })
+const noStage = (await req(`/content/${stageless.id}`)).data
+ok('a task can sit with no stage on it', noStage.status_id === null, `status_id=${noStage.status_id}`)
+ok('…but not on a stage that does not exist',
+  (await req(`/content/${stageless.id}`, 'PATCH', { status_id: 999999 })).status === 400)
+ok('…and its hand is still up, not lost to a null',
+  ((await req('/content/flags/open')).data || []).some((f) => f.content_id === stageless.id))
+
 // The same for a day nobody answered about.
 const planner = (await req('/users', 'POST', {
   name: 'Pulat Planner', username: 'r81plan', password: 'p1234',
@@ -217,9 +234,11 @@ ok('…and a square for each of them per day',
   (await admin.locator('.at-grid tbody .at-mark').count()) === dayCols * (await admin.locator('.at-grid tbody tr').count()))
 
 // Marking somebody late happens on the grid, without leaving the month.
-const monthNow = new Date().toISOString().slice(0, 7)
 const row = admin.locator('.at-grid tbody tr').filter({ hasText: 'Nodira' }).first()
-const todayIso = new Date().toISOString().slice(0, 10)
+// The board keeps a Tashkent calendar, on both sides. A suite that asks the
+// container what day it is would disagree with the page it is measuring for
+// five hours out of every twenty-four.
+const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
 const cell = row.locator(`.at-cell`).nth(Number(todayIso.slice(8, 10)) - 1)
 await cell.locator('.at-mark').click()
 await admin.waitForTimeout(400)
@@ -374,11 +393,18 @@ const ghost = (await req('/users', 'POST', {
   name: 'Gulnora Gone', username: 'r81gone', password: 'g1234', departments: [chan],
 })).data
 await req(`/attendance/${ghost.id}/${iso(-1)}`, 'PUT', { status: 'late', arrived_at: '10:15' })
+await req('/docs', 'POST', {
+  user_id: ghost.id, kind: 'sop', title: 'r81: their contract', file_name: 'contract.pdf',
+  mime: 'application/pdf', data: 'data:application/pdf;base64,JVBERi0xLjQK', size: 12,
+})
 ok('their late day is in the register', (await req('/attendance')).data.rows.some((r) => r.user_id === ghost.id))
+ok('…and their contract is on the shelf', ((await req('/docs?all')).data || []).some((d) => d.user_id === ghost.id))
 ok('the person is removed', (await req(`/users/${ghost.id}`, 'DELETE')).status === 200)
 const reg = (await req('/attendance')).data
 ok('…and the month stops counting somebody it cannot show',
   !reg.rows.some((r) => r.user_id === ghost.id) && !reg.tally[ghost.id], JSON.stringify(reg.tally))
+ok('…and their papers go with them, rather than being listed under a name that no longer resolves',
+  !((await req('/docs?all')).data || []).some((d) => d.user_id === ghost.id))
 
 ok('no page threw', errs.length === 0, errs.slice(0, 3).join(' | '))
 await browser.close()

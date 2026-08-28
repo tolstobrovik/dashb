@@ -26,9 +26,9 @@ import Avatar from '../components/Avatar.jsx'
 // making.
 
 const STATES = [
-  { key: 'on_time', label: 'On time', short: 'On time', cls: 'at-ontime', Icon: Check },
-  { key: 'late', label: 'Late', short: 'Late', cls: 'at-late', Icon: Clock },
-  { key: 'away', label: 'Away', short: 'Away', cls: 'at-away', Icon: Plane },
+  { key: 'on_time', label: 'On time', cls: 'at-ontime', Icon: Check },
+  { key: 'late', label: 'Late', cls: 'at-late', Icon: Clock },
+  { key: 'away', label: 'Away', cls: 'at-away', Icon: Plane },
 ]
 const byKey = Object.fromEntries(STATES.map((s) => [s.key, s]))
 
@@ -97,11 +97,21 @@ export default function Attendance() {
   useEffect(() => { api.get('/users').then(setUsers).catch(() => setUsers([])) }, [])
   useEffect(() => { load() }, [load])
   // Esc closes the picker, the same as every other transient thing on the board.
+  // So does turning the phone: the picker is placed from the square's position
+  // at the moment it was tapped, and a rotation moves every square out from
+  // under it — better to put it away than to leave it pointing at nothing.
   useEffect(() => {
     if (!picking) return
     const onKey = (e) => e.key === 'Escape' && setPicking(null)
+    const away = () => setPicking(null)
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('resize', away)
+    window.addEventListener('orientationchange', away)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', away)
+      window.removeEventListener('orientationchange', away)
+    }
   }, [picking])
 
   const days = useMemo(() => daysOf(month), [month])

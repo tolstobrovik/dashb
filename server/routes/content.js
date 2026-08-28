@@ -467,7 +467,11 @@ router.get('/revisions/mine', wrap(async (req, res) => {
       CASE WHEN c.photo IS NULL THEN 0 ELSE 1 END AS has_photo
     FROM revisions r JOIN content c ON c.id = r.content_id
     WHERE r.resolved_at IS NULL
-      AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
+      -- NOT EXISTS rather than NOT IN: status_id is nullable (a stage deleted
+      -- out from under a task sets it null), and NOT IN against a null left
+      -- side is itself null, which would quietly drop that task from the
+      -- queue — the same disappearance this filter exists to prevent.
+      AND NOT EXISTS (SELECT 1 FROM statuses s WHERE s.id = c.status_id AND LOWER(s.label) = 'deleted')
     ORDER BY r.created_at DESC`)
   const mine = rows.filter((r) =>
     (r.target === 'operator' && r.operator_id === req.user.id) ||
@@ -500,7 +504,7 @@ router.get('/open-revisions', wrap(async (req, res) => {
       c.title, c.channels, c.operator_id, c.editor_id, c.designer_id
     FROM revisions r JOIN content c ON c.id = r.content_id
     WHERE r.resolved_at IS NULL
-      AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
+      AND NOT EXISTS (SELECT 1 FROM statuses s WHERE s.id = c.status_id AND LOWER(s.label) = 'deleted')
     ORDER BY r.created_at DESC`))
   res.json(rows.map((r) => ({
     id: r.id, content_id: r.content_id, target: r.target, note: r.note, created_at: r.created_at, title: r.title,
@@ -1562,7 +1566,7 @@ router.get('/flags/open', wrap(async (req, res) => {
            c.recording_date, c.edit_ready_date, c.release_date
     FROM task_flags f JOIN content c ON c.id = f.content_id
     WHERE f.cleared_at IS NULL
-      AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
+      AND NOT EXISTS (SELECT 1 FROM statuses s WHERE s.id = c.status_id AND LOWER(s.label) = 'deleted')
     ORDER BY f.id`)
   // A channel admin is shown the channels they run; everyone else who can see
   // this queue sees what they could already see on the board.
@@ -1597,7 +1601,7 @@ router.get('/date-requests/open', wrap(async (req, res) => {
            c.title, c.channels
     FROM date_requests d JOIN content c ON c.id = d.content_id
     WHERE d.state = 'open'
-      AND c.status_id NOT IN (SELECT id FROM statuses WHERE LOWER(label) = 'deleted')
+      AND NOT EXISTS (SELECT 1 FROM statuses s WHERE s.id = c.status_id AND LOWER(s.label) = 'deleted')
     ORDER BY d.id`)
   // Only the channels this admin runs — a queue you cannot act on is noise.
   res.json(rows.filter((r) => isAdminOn(req.user, chansOf(r))))
@@ -1762,6 +1766,12 @@ router.patch('/:id', wrap(async (req, res) => {
   // exception is the reviewer publishing: review_publish alone unlocks the
   // Ready → Published move even without move_tasks.
   if (body.status_id !== undefined && body.status_id !== row.status_id) {
+    // A stage that does not exist is not a stage. Taken on trust, it put the
+    // task in a column no board draws — gone from the workspace without ever
+    // being deleted, which is the worst way for a task to disappear. Null is
+    // allowed on purpose: a task between stages is a real state.
+    if (body.status_id !== null && !(await get('SELECT 1 AS x FROM statuses WHERE id = ?', body.status_id)))
+      return res.status(400).json({ error: 'No such stage' })
     const intoFinal = await isFinal(body.status_id)
     if (!canOverride && !(intoFinal && canPublish(req.user, row)))
       return res.status(403).json({ error: 'You can see the stage but can’t move it — use your Shot / Edited tick, or ask an admin' })

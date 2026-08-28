@@ -256,6 +256,15 @@ router.delete('/:id', adminOnly, wrap(async (req, res) => {
     ['UPDATE attendance SET marked_by = NULL WHERE marked_by = ?', req.params.id],
     // Nobody can ever open their bell again either.
     ['DELETE FROM notifications WHERE user_id = ?', req.params.id],
+    // Their own papers and their own numbers. The Docs & KPI page reads
+    // person_docs with no join, so these rows do not quietly disappear when
+    // the person does — they go on being listed, under a name that no longer
+    // resolves, and a document blob is one of the heaviest rows here.
+    ['DELETE FROM person_docs WHERE user_id = ?', req.params.id],
+    ['DELETE FROM person_kpis WHERE user_id = ?', req.params.id],
+    // And the sprint board stops holding a seat for somebody who has gone.
+    ['DELETE FROM sprint_task_assignees WHERE user_id = ?', req.params.id],
+    ['DELETE FROM sprint_owners WHERE user_id = ?', req.params.id],
     ['DELETE FROM users WHERE id = ?', req.params.id],
   ])
   res.json({ ok: true })
