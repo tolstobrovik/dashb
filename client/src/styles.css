@@ -4311,3 +4311,32 @@ button.blame-person:hover { background: var(--surface-2); }
   .ask-tray-what { flex-basis: 100%; }
   .ask-tray-go { margin-left: auto; }
 }
+
+/* ---- which build is on screen, and taking a newer one ----
+   "Is the new thing live yet?" was a question nobody could answer by looking:
+   you went hunting for the feature, and not finding it told you nothing about
+   whether you were on the old bundle or looking in the wrong place. */
+.build-stamp {
+  font-size: 10.5px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+  color: currentColor; opacity: 0.45; padding: 6px 8px 0; white-space: nowrap;
+}
+.mob-sheet-foot .build-stamp { flex-basis: 100%; padding: 6px 2px 0; color: var(--muted); opacity: 1; }
+
+/* The tab is running a build the server has already replaced. Auto-update
+   takes it when the tab is next put down, which is the right moment on a desk
+   and the wrong one for somebody holding a phone waiting for a change. */
+.new-build {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--brand-50); color: var(--brand-700, var(--brand-600));
+  border: 1px solid var(--brand-200, #e3c3c9); border-radius: var(--radius-sm);
+  padding: 10px 14px; margin-bottom: 14px; font-size: 13.5px; font-weight: 600;
+}
+.new-build svg { flex: none; }
+.new-build-go {
+  margin-left: auto; flex: none; cursor: pointer;
+  background: var(--brand-600); color: #fff; border: none;
+  border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 700;
+  min-height: 40px;
+}
+.new-build-go:hover { background: var(--brand-700, var(--brand-600)); }
+@media (max-width: 640px) { .new-build-go { margin-left: auto; } }

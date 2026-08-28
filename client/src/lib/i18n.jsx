@@ -1191,6 +1191,9 @@ const PHRASES = {
     "nothing written down": "ничего не отмечено",
     "Waiting on your answer": "Ждут вашего ответа",
     "Answer": "Ответить",
+    "A newer version of the board is ready.": "Готова новая версия доски.",
+    "Load it": "Загрузить",
+    "Which build this is": "Какая это сборка",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -1840,6 +1843,9 @@ const PHRASES = {
     "nothing written down": "hech narsa yozilmagan",
     "Waiting on your answer": "Javobingiz kutilmoqda",
     "Answer": "Javob berish",
+    "A newer version of the board is ready.": "Doskaning yangi versiyasi tayyor.",
+    "Load it": "Yuklash",
+    "Which build this is": "Bu qaysi versiya",
   },
 }
 

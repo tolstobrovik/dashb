@@ -10,7 +10,8 @@ import ThemeToggle from './ThemeToggle.jsx'
 import LangToggle from './LangToggle.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { iconFor } from '../lib/constants.js'
-import { useT } from '../lib/i18n.jsx'
+import { useT, tr as tx } from '../lib/i18n.jsx'
+import { BUILD } from '../lib/useAutoUpdate.js'
 
 // ---- personal sidebar (this account, this browser) ----
 // Every group — the main pages, the channels, the admin's Manage links — can
@@ -221,6 +222,9 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
             <LogOut size={16} />
           </button>
         </div>
+        {/* Which build is on screen. "Is the new thing live yet?" should be a
+            question you can answer by looking. */}
+        <div className="build-stamp" data-tip={tx('Which build this is')}>{BUILD}</div>
       </div>
     </>
   )

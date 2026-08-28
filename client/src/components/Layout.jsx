@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import GetSetUp from './GetSetUp.jsx'
-import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert, Timer, LayoutGrid, User, UserCheck } from 'lucide-react'
+import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert, Timer, LayoutGrid, User, UserCheck, RefreshCw } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import MobileTabs, { MoreSheet } from './MobileTabs.jsx'
 import NewTask from './NewTask.jsx'
@@ -14,7 +14,7 @@ import LangToggle from './LangToggle.jsx'
 import { useT, tr as tx } from '../lib/i18n.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { useAutoUpdate } from '../lib/useAutoUpdate.js'
+import { useAutoUpdate, BUILD } from '../lib/useAutoUpdate.js'
 import { useIsPhone } from '../lib/usePhone.js'
 import { watchTables } from '../lib/stackTables.js'
 import { can, iconFor } from '../lib/constants.js'
@@ -33,6 +33,20 @@ function WeakPasswordBanner({ user }) {
         {tx('Anyone who finds the dashboard can sign in as {name}.', { name: user.name })}
       </span>
       <NavLink to="/profile" className="weak-pw-go">{tx('Change it')}</NavLink>
+    </div>
+  )
+}
+
+// A new build is on the server and this tab is still running the old one.
+// The auto-update takes it when the tab is next backgrounded; this is for the
+// person who is looking right now.
+function UpdateReady({ on, take }) {
+  if (!on) return null
+  return (
+    <div className="new-build" role="status">
+      <RefreshCw size={15} />
+      <span>{tx('A newer version of the board is ready.')}</span>
+      <button type="button" className="new-build-go" onClick={take}>{tx('Load it')}</button>
     </div>
   )
 }
@@ -61,7 +75,10 @@ export default function Layout() {
       return !v
     })
   }
-  useAutoUpdate() // long-lived tabs pick up new deploys on their own
+  // Long-lived tabs pick up new deploys on their own when they are put down.
+  // Somebody holding a phone and waiting for a change does not put it down,
+  // so they are told and handed the button.
+  const update = useAutoUpdate()
 
   useEffect(() => setOpen(false), [location.pathname])
 
@@ -177,6 +194,7 @@ export default function Layout() {
           <button className="icon-btn" onClick={logout} data-tip="Sign out" data-tip-left="" aria-label="Sign out"><LogOut size={17} /></button>
         </header>
         <main className="content">
+          <UpdateReady on={update.ready} take={update.take} />
           <GetSetUp />
           <WeakPasswordBanner user={user} />
           <Outlet />
@@ -190,6 +208,7 @@ export default function Layout() {
             <ThemeToggle />
             <LangToggle />
             <button type="button" className="mob-sheet-out" onClick={logout}><LogOut size={16} /> {tx('Sign out')}</button>
+            <span className="build-stamp" title={tx('Which build this is')}>{BUILD}</span>
           </>} />
         {giving && <NewTask onClose={() => setGiving(false)} />}
       </div>
@@ -231,6 +250,7 @@ export default function Layout() {
           <NotificationsBell user={user} />
         </header>
         <main className="content">
+          <UpdateReady on={update.ready} take={update.take} />
           <GetSetUp />
           <WeakPasswordBanner user={user} />
           <Outlet />
