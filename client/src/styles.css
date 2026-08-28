@@ -4360,7 +4360,7 @@ button.blame-person:hover { background: var(--surface-2); }
 .at-grid-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .at-grid { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 13px; }
 .at-grid th, .at-grid td { padding: 0; }
-.at-name-col {
+.at-grid .at-name-col {
   position: sticky; left: 0; z-index: 2;
   background: var(--surface); text-align: left; font-weight: 700;
   padding: 8px 14px; min-width: 190px; border-bottom: 1px solid var(--hairline);
@@ -4368,11 +4368,12 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 .at-grid thead .at-name-col {
   z-index: 3; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .at-who { display: flex; align-items: center; gap: 9px; }
 .at-who-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
 .at-who-meta b { font-size: 13.5px; white-space: nowrap; }
-.at-day-h {
+.at-grid .at-day-h {
   width: 30px; min-width: 30px; text-align: center;
   font-size: 11px; font-weight: 700; color: var(--muted);
   padding: 8px 0; border-bottom: 1px solid var(--hairline);
@@ -4380,23 +4381,24 @@ button.blame-person:hover { background: var(--surface-2); }
 .at-day-h.at-wknd, .at-cell.at-wknd { background: var(--surface-2); }
 .at-day-h.at-today, .at-cell.at-today { background: var(--brand-50); }
 .at-day-h.at-today { color: var(--brand-600); }
-.at-cell { position: relative; text-align: center; padding: 2px 0; }
+.at-grid .at-cell { position: relative; text-align: center; padding: 2px 0; }
 /* The counts stay on screen. They are the answer to the question that brings
    anybody here — who keeps coming in late — and scrolling thirty-one days to
    the right to read them is how the last version lost the plot. */
-.at-tot-col, .at-tot {
+.at-grid .at-tot-col, .at-grid .at-tot {
   position: sticky; right: 0; background: var(--surface);
   box-shadow: -1px 0 0 var(--hairline);
 }
-.at-tot-col.at-tot-late, .at-tot.at-tot-late { right: 62px; box-shadow: none; }
-.at-tot-col {
+.at-grid .at-tot-col.at-tot-late, .at-grid .at-tot.at-tot-late { right: 62px; box-shadow: none; }
+.at-grid .at-tot-col {
   z-index: 2;
   font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
   padding: 8px 12px; border-bottom: 1px solid var(--hairline); white-space: nowrap;
   text-align: center; min-width: 62px;
 }
-.at-grid thead .at-tot-col { z-index: 3; }
-.at-tot { text-align: center; padding: 4px 12px; min-width: 62px; }
+.at-grid thead .at-tot-col { z-index: 3; overflow: hidden; text-overflow: ellipsis; }
+.at-tot-ico { display: none; vertical-align: -2px; }
+.at-grid .at-tot { text-align: center; padding: 4px 12px; min-width: 62px; }
 .at-grid tbody tr:hover td, .at-grid tbody tr:hover .at-name-col,
 .at-grid tbody tr:hover .at-tot { background: var(--surface-2); }
 
@@ -4454,8 +4456,33 @@ button.blame-person:hover { background: var(--surface-2); }
 .at-leg { display: inline-flex; align-items: center; gap: 6px; }
 .at-leg .at-mark { width: 16px; height: 16px; border-radius: 5px; cursor: default; }
 
-/* A phone gets it as a sheet across the bottom rather than a popover pinned
-   to a 26px square somewhere in a sideways scroll. */
+/* On a phone the pinned columns were eating 314px of a 390px screen — names
+   at their full width plus two totals headed with a Russian word apiece —
+   which left room for roughly ONE day of the month. A register you cannot
+   read across days is the thing this replaced. So on a phone the name loses
+   its @handle and ellipsises, and the totals become their own icons with the
+   words left to the legend directly below: about seven days at a time, and
+   the month scrolls between two columns that still hold their ground. */
+@media (max-width: 640px) {
+  .at-who-at, .at-who-meta .stat-sub { display: none; }
+  .at-who-meta b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+  .at-who { gap: 7px; }
+  .at-grid .at-name-col { min-width: 0; width: 108px; max-width: 108px; padding: 6px 7px; }
+  .at-grid thead .at-name-col { font-size: 10px; letter-spacing: 0; }
+  .at-tot-word { display: none; }
+  .at-tot-ico { display: inline-block; }
+  .at-grid .at-tot-col, .at-grid .at-tot { min-width: 36px; width: 36px; padding: 6px 3px; }
+  .at-grid .at-tot-col.at-tot-late, .at-grid .at-tot.at-tot-late { right: 36px; }
+  /* Six days at a time with a square a thumb can still hit, and the month
+     scrolls between two columns that hold their ground. */
+  .at-grid .at-day-h { width: 30px; min-width: 30px; }
+  .at-mark { width: 24px; height: 24px; }
+  .at-count { min-width: 22px; height: 21px; padding: 0 5px; font-size: 12px; }
+  .at-month b { min-width: 110px; font-size: 13px; }
+}
+
+/* A phone gets the picker as a sheet across the bottom rather than a popover
+   pinned to a 26px square somewhere in a sideways scroll. */
 @media (max-width: 640px) {
   .at-pick {
     left: 10px; right: 10px; top: auto; width: auto; padding: 10px;
@@ -4468,11 +4495,4 @@ button.blame-person:hover { background: var(--surface-2); }
   .at-scrim { background: rgba(0, 0, 0, 0.28); }
 }
 
-@media (max-width: 640px) {
-  .at-name-col { min-width: 132px; padding: 8px 10px; }
-  .at-who-meta .stat-sub { display: none; }
-  .at-month b { min-width: 110px; font-size: 13px; }
-  /* A square a thumb can hit, and the month still scrolls to reach the rest. */
-  .at-day-h { width: 34px; min-width: 34px; }
-  .at-mark { width: 26px; height: 26px; }
-}
+

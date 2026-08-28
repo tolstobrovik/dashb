@@ -284,6 +284,32 @@ const pgeo = await phone.evaluate(() => ({
   sideways: Math.round(document.documentElement.scrollWidth - document.documentElement.clientWidth),
 }))
 ok('on a phone the month scrolls inside its own card, not the page', pgeo.sideways === 0, JSON.stringify(pgeo))
+// The pinned columns were eating 314px of a 390px screen, leaving room for
+// roughly ONE day — a register you cannot read across days is the thing this
+// replaced. Names ellipsise, the totals become their own icons.
+const week = await phone.evaluate(() => {
+  const vis = [...document.querySelectorAll('.at-grid thead .at-day-h')]
+    .filter((th) => { const r = th.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth }).length
+  const name = document.querySelector('.at-grid thead .at-name-col')
+  return { visibleDays: vis, nameW: Math.round(name.getBoundingClientRect().width),
+    words: document.querySelectorAll('.at-tot-word').length,
+    wordsShown: [...document.querySelectorAll('.at-tot-word')].filter((e) => e.getBoundingClientRect().width > 0).length }
+})
+ok('…and at least five days of it are on the screen at once',
+  week.visibleDays >= 5, JSON.stringify(week))
+ok('…with the totals down to their icons so the days get the room',
+  week.words === 2 && week.wordsShown === 0 && week.nameW <= 130, JSON.stringify(week))
+
+// `.at-grid th { padding: 0 }` out-ranks a bare class, so every column's
+// padding was being thrown away and the first letter of a header sat under
+// the card's rounded corner.
+const pad = await phone.evaluate(() => {
+  const th = document.querySelector('.at-grid thead .at-name-col')
+  const rng = document.createRange(); rng.selectNodeContents(th)
+  return { cell: Math.round(th.getBoundingClientRect().left), text: Math.round(rng.getBoundingClientRect().left) }
+})
+ok('…and a header is not printed under the card’s own edge',
+  pad.text - pad.cell >= 5, JSON.stringify(pad))
 ok('…with the names and the totals both pinned',
   pgeo.name >= 0 && pgeo.tot <= pgeo.vw + 2, JSON.stringify(pgeo))
 // On a phone the picker comes up as a sheet, where the thumb already is, and

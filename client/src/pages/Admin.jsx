@@ -35,7 +35,7 @@ const TABS = [
   { key: 'channels', label: 'Channels', icon: PanelLeft },
   { key: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
   { key: 'reports', label: 'Reports', icon: FileBarChart },
-  { key: 'pay', label: 'Pay', icon: Wallet },
+  { key: 'pay', label: 'Payroll', icon: Wallet },
   { key: 'ai', label: 'Language help', icon: Languages },
   { key: 'history', label: 'History', icon: History },
   { key: 'telegram', label: 'Telegram', icon: Send },
@@ -53,7 +53,7 @@ export default function Admin() {
           const Icon = t.icon
           return (
             <button key={t.key} className={'tab' + (tab === t.key ? ' active' : '')} onClick={() => setTab(t.key)}>
-              <Icon size={16} /> {t.label}
+              <Icon size={16} /> {tx(t.label)}
             </button>
           )
         })}

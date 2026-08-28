@@ -166,8 +166,12 @@ export default function Attendance() {
                     className={'at-day-h' + (d.weekend ? ' at-wknd' : '') + (d.iso === today ? ' at-today' : '')}
                     title={d.iso}>{d.n}</th>
                 ))}
-                <th className="at-tot-col at-tot-late">{tx('Late')}</th>
-                <th className="at-tot-col">{tx('Away')}</th>
+                <th className="at-tot-col at-tot-late" title={tx('Late')}>
+                  <Clock size={12} className="at-tot-ico" /><span className="at-tot-word">{tx('Late')}</span>
+                </th>
+                <th className="at-tot-col" title={tx('Away')}>
+                  <Plane size={12} className="at-tot-ico" /><span className="at-tot-word">{tx('Away')}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -179,7 +183,7 @@ export default function Attendance() {
                       <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
                       <span className="at-who-meta">
                         <b>{u.name}</b>
-                        <span className="stat-sub">@{u.username}</span>
+                        <span className="stat-sub at-who-at">@{u.username}</span>
                       </span>
                     </th>
                     {days.map((d) => {

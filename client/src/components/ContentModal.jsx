@@ -46,10 +46,14 @@ const docKind = (name) => {
 // Which deadlines are promises. Once one of these holds a day, only an admin
 // moves it — everyone else asks, in writing. Naming them here keeps the form's
 // warning and the server's refusal talking about the same four fields.
+// The names of the four promised days, as they read inside a sentence
+// ("Ask an admin to move the shoot day"). Looked up through tx at the call
+// site so they follow the language like everything else.
 const PROMISED = {
   recording_date: 'the shoot day', edit_ready_date: 'the day the cut is due',
   design_ready_date: 'the day the artwork is due', release_date: 'the release day',
 }
+const promisedDay = (field) => tx(PROMISED[field] || field)
 
 // Defined at module level — an inline component would remount its date/time
 // inputs on every keystroke elsewhere in the modal and drop their focus.
@@ -582,10 +586,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // button — it reads as the app being broken rather than as "not your call".
   const canAsk = !isAdmin && (can(user, 'manage_content') || can(user, 'move_tasks'))
   const confirmSet = (field, day) => window.confirm(
-    `Promise ${PROMISED[field]} for ${day}?\n\n`
-    + 'Everything on the board measures itself against this day, so once it is '
-    + 'set only an admin can move it — and only when somebody says why.\n\n'
-    + 'Set it?')
+    `${tx('Promise {day} for {date}?', { day: promisedDay(field), date: day })}\n\n`
+    + tx('Everything on the board measures itself against this day, so once it is set only an admin can move it — and only when somebody says why.')
+    + `\n\n${tx('Set it?')}`)
   const askToMove = (field) => {
     setErr('')
     setAsking({ field, to: form[field] || '', reason: '' })
@@ -1933,7 +1936,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {asking && (
         <div className="ask-move">
           <div className="ask-head">
-            <CalendarClock size={15} /> Ask an admin to move {PROMISED[asking.field]}
+            <CalendarClock size={15} /> {tx('Ask an admin to move {day}', { day: promisedDay(asking.field) })}
           </div>
           <div className="ask-row">
             <span className="ask-was">now <b>{item?.[asking.field] || '—'}</b></span>
@@ -1962,7 +1965,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {dateReqs.map((r) => (
               <div key={r.id} className={`ask-item ask-${r.state}`}>
                 <span className="ask-line">
-                  <b>{PROMISED[r.field] || r.field}</b>: {r.from_date || '—'} → {r.to_date || 'cleared'}
+                  <b>{promisedDay(r.field)}</b>: {r.from_date || '—'} → {r.to_date || tx('cleared')}
                   <span className={`chip ask-state ask-chip-${r.state}`}>
                     {r.state === 'open' ? tx('waiting on an admin')
                       : r.state === 'approved' ? tx('moved')
