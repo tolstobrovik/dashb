@@ -322,7 +322,10 @@ export default function Department() {
     manageContent && { sep: true },
     manageContent && {
       label: tx('Delete'), icon: Trash2, danger: true,
-      onClick: () => { if (confirm(`${tx('Delete')} “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) },
+      onClick: () => {
+        if (!confirm(`${tx('Delete')} “${item.title}”?`)) return
+        deleteContent(item).then(() => toast(tx('Task deleted'))).catch((err) => alert(err.message))
+      },
     },
   ])
 
