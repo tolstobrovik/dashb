@@ -435,12 +435,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const gaps = useMemo(() => {
     const probe = {
       ...form,
-      assignees: form.assignee_ids ?? (item?.assignees?.length ? item.assignees : item?.assignee_id ? [item.assignee_id] : []),
+      // Only an admin picks who a task is for; everybody else is creating it
+      // for themselves, so a brand-new task must not open by telling its
+      // author it needs an owner.
+      assignees: form.assignee_ids
+        ?? (item?.assignees?.length ? item.assignees : item?.assignee_id ? [item.assignee_id] : creating ? [user.id] : []),
       ready_at: item?.ready_at || null,
     }
     const g = gapsOf(probe, fieldRules?.crew, stageRank)
     return [...g.people, ...g.dates]
-  }, [form, item, fieldRules, stageRank])
+  }, [form, item, fieldRules, stageRank, creating, user.id])
 
   const liveStages = useMemo(() => statuses.filter((s) => !/^deleted$/i.test(s.label)), [statuses])
   const shootAt = liveStages.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))

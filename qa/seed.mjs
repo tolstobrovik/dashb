@@ -1,5 +1,7 @@
 // Seed a realistic dataset on the audit server so every page has content.
-const BASE = 'http://localhost:4090/api'
+// The audit server, 4090 by default — but overridable, because this script
+// hardcoding a port once re-seeded a gate that was running on it.
+const BASE = (process.env.SEED_BASE || 'http://localhost:4090') + '/api'
 const login = async (u, p) => (await (await fetch(BASE + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) })).json()).token
 const T = await login('admin', 'admin123')
 const req = async (p, m = 'GET', b, t = T) => {
