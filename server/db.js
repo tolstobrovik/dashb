@@ -667,6 +667,11 @@ export async function initSchema() {
       pinned         INTEGER NOT NULL DEFAULT 0,
       photo_thumb    TEXT,
       done_at        TEXT,
+      -- Whose miss was it, when the board cannot work it out and a person
+      -- decides instead. Null means "read it from the work" (deadlines.js).
+      miss_blame     TEXT,
+      miss_blame_note TEXT,
+      miss_blame_by  INTEGER,
       created_at     TEXT    NOT NULL
     );
 
@@ -1202,6 +1207,9 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_at TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_by INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_note TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame_note TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame_by INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_ready_date TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS assignees TEXT NOT NULL DEFAULT '[]'")
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_roles TEXT NOT NULL DEFAULT '[]'")
@@ -1331,6 +1339,7 @@ async function migrate() {
     for (const [col, decl] of [
       ['shoot_ack', "TEXT NOT NULL DEFAULT ''"], ['shoot_ack_at', 'TEXT'], ['shoot_ack_by', 'INTEGER'], ['shoot_ack_note', 'TEXT'],
       ['edit_ack', "TEXT NOT NULL DEFAULT ''"], ['edit_ack_at', 'TEXT'], ['edit_ack_by', 'INTEGER'], ['edit_ack_note', 'TEXT'],
+      ['miss_blame', 'TEXT'], ['miss_blame_note', 'TEXT'], ['miss_blame_by', 'INTEGER'],
     ]) if (!(await hasColumn('content', col))) await exec(`ALTER TABLE content ADD COLUMN ${col} ${decl}`)
     if (!(await hasColumn('trackers', 'content_type'))) await exec('ALTER TABLE trackers ADD COLUMN content_type TEXT')
     // Older databases stored a single channel per task — rebuild to the new shape.

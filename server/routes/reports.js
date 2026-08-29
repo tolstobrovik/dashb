@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, publicUser, tashkentDay } from '../db.js'
+import { all, get, run, publicUser, tashkentDay, dayISO } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 import { resolveGates, phasesOf, phasePassed } from '../deadlines.js'
 
@@ -104,6 +104,172 @@ export async function contributions({ from, to, channel, type }) {
 }
 
 router.use(authRequired)
+
+// ---- the month, with the answer written out --------------------------------
+// The statistics page showed numbers and left the reading of them to whoever
+// opened it — which meant everybody read them differently, or not at all. The
+// arithmetic happens here now, once, and it comes back with the CONCLUSIONS
+// alongside it: which step the month was lost at, which side the delays sit
+// on, which channel is carrying its plan and which is not.
+//
+// "Plan completion" is read off the work itself now that the typed-in plan
+// numbers are gone: a piece with a release day inside the window was PLANNED
+// for it, and one that went out is DELIVERED. That is a plan nobody has to
+// remember to update, and it cannot disagree with the board.
+function statsRange(q) {
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(q?.to || '') ? q.to : dayISO()
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(q?.from || '') ? q.from : `${to.slice(0, 7)}-01`
+  return { from, to }
+}
+const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null)
+
+router.get('/stats', wrap(async (req, res) => {
+  const { from, to } = statsRange(req.query)
+  const channel = req.query.channel && req.query.channel !== 'all' ? String(req.query.channel) : null
+  const today = dayISO()
+
+  const statuses = await all('SELECT * FROM statuses')
+  const resolved = resolveGates(statuses)
+  const dead = new Set(statuses.filter((s) => /^deleted$/i.test(s.label)).map((s) => s.id))
+  const channels = await all('SELECT key, label FROM channels ORDER BY sort, id')
+  const users = (await all('SELECT * FROM users')).map(publicUser)
+  const nameOf = (id) => users.find((u) => u.id === id)?.name || null
+
+  const rows = (await all(`
+    SELECT id, title, channels, type, status_id, assignee_id, operator_id, editor_id, designer_id,
+           reviewer_id, reviewers, recording_date, edit_ready_date, design_ready_date, release_date,
+           edit_due_revised, review_due_revised, shot_at, edited_at, done_at,
+           script, tz, reference_text, reference_links, miss_blame, miss_blame_note
+    FROM content
+  `)).map((r) => ({ ...r, channels: parseList(r.channels) }))
+
+  const mine = rows.filter((r) => !dead.has(r.status_id)
+    && (!channel || r.channels.includes(channel)))
+
+  // ---- what was planned, and what came out --------------------------------
+  // Planned: it had a release day inside the window. Delivered: it went out.
+  // On time: it went out on or before the day it promised.
+  const planned = mine.filter((r) => r.release_date && r.release_date >= from && r.release_date <= to)
+  const deliveredIn = mine.filter((r) => r.done_at && tashkentDay(r.done_at) >= from && tashkentDay(r.done_at) <= to)
+  const onTime = deliveredIn.filter((r) => !r.release_date || tashkentDay(r.done_at) <= r.release_date)
+  const plannedDone = planned.filter((r) => r.done_at)
+  // Still owed: promised inside the window, the day has gone, nothing out.
+  const owed = planned.filter((r) => !r.done_at && r.release_date < today)
+
+  // ---- where the month was lost -------------------------------------------
+  // Every late phase on every piece in the window, with the side it belongs
+  // to. A piece can lose time at more than one step and each one counts: that
+  // is the difference between "eleven late pieces" and "seven late edits".
+  const byPhase = { shoot: { late: 0, judged: 0 }, edit: { late: 0, judged: 0 }, review: { late: 0, judged: 0 } }
+  const bySide = { production: 0, make: 0 }
+  const blamed = []
+  const byPerson = new Map()
+  for (const r of mine) {
+    const touches = (r.release_date && r.release_date >= from && r.release_date <= to)
+      || (r.done_at && tashkentDay(r.done_at) >= from && tashkentDay(r.done_at) <= to)
+    if (!touches) continue
+    for (const ph of phasesOf(r, today, resolved)) {
+      if (ph.state === 'none' || ph.state === 'waiting') continue
+      byPhase[ph.phase].judged += 1
+      if (ph.state !== 'late') continue
+      byPhase[ph.phase].late += 1
+      bySide[ph.side] = (bySide[ph.side] || 0) + 1
+      blamed.push({
+        id: r.id, title: r.title, phase: ph.phase, label: ph.label,
+        side: ph.side, why: ph.blame_why, decided: ph.blame_decided,
+        days_late: ph.days_late, due: ph.due,
+        who: ph.owner_ids.map(nameOf).filter(Boolean),
+      })
+      for (const uid of ph.owner_ids) {
+        const e = byPerson.get(uid) || { id: uid, name: nameOf(uid), late: 0, phases: {} }
+        e.late += 1
+        e.phases[ph.phase] = (e.phases[ph.phase] || 0) + 1
+        byPerson.set(uid, e)
+      }
+    }
+  }
+
+  // ---- the same arithmetic per channel ------------------------------------
+  const byChannel = channels.map((c) => {
+    const set = rows.filter((r) => !dead.has(r.status_id) && r.channels.includes(c.key))
+    const p = set.filter((r) => r.release_date && r.release_date >= from && r.release_date <= to)
+    const d = p.filter((r) => r.done_at)
+    const ot = d.filter((r) => tashkentDay(r.done_at) <= r.release_date)
+    return {
+      key: c.key, label: c.label,
+      planned: p.length, delivered: d.length, onTime: ot.length,
+      completion: pct(d.length, p.length), punctuality: pct(ot.length, d.length),
+    }
+  }).sort((a, b) => (b.planned - a.planned) || a.label.localeCompare(b.label))
+
+  const rates = {
+    production: pct(deliveredIn.length, planned.length || deliveredIn.length),
+    completion: pct(plannedDone.length, planned.length),
+    punctuality: pct(onTime.length, deliveredIn.length),
+  }
+
+  // ---- and what it all means ----------------------------------------------
+  // A number nobody reads a conclusion out of is a number that changes
+  // nothing. These are deliberately few, ordered by what to do about them,
+  // and each one names the thing rather than describing the shape of a chart.
+  const say = []
+  const totalLate = byPhase.shoot.late + byPhase.edit.late + byPhase.review.late
+  if (planned.length === 0 && deliveredIn.length === 0) {
+    say.push({ tone: 'flat', text: 'Nothing was planned or delivered in this window — there is nothing to read yet.' })
+  } else {
+    if (rates.completion !== null) {
+      say.push(rates.completion >= 90
+        ? { tone: 'good', text: `${rates.completion}% of what was planned went out. The plan is being kept.` }
+        : rates.completion >= 60
+          ? { tone: 'warn', text: `${rates.completion}% of the plan went out — ${owed.length} ${owed.length === 1 ? 'piece is' : 'pieces are'} still owed past ${owed.length === 1 ? 'its' : 'their'} day.` }
+          : { tone: 'bad', text: `Only ${rates.completion}% of the plan went out. This is a planning problem before it is a delivery one — the month promised more than it made.` })
+    }
+    if (totalLate === 0 && deliveredIn.length > 0) {
+      say.push({ tone: 'good', text: 'Nothing missed a deadline at any step this window.' })
+    } else if (totalLate > 0) {
+      const worst = Object.entries(byPhase).sort((a, b) => b[1].late - a[1].late)[0]
+      const share = pct(worst[1].late, totalLate)
+      const LAB = { shoot: 'Shooting', edit: 'Editing', review: 'Review and publishing' }
+      say.push({
+        tone: share >= 50 ? 'bad' : 'warn',
+        text: `${LAB[worst[0]]} is where the time goes — ${worst[1].late} of ${totalLate} missed steps${share !== null ? ` (${share}%)` : ''}.`,
+      })
+      const p = bySide.production || 0, m = bySide.make || 0
+      if (p || m) {
+        say.push(p === m
+          ? { tone: 'warn', text: `The delays are split evenly: ${p} on production, ${m} on content.` }
+          : p > m
+            ? { tone: 'warn', text: `${pct(p, p + m)}% of the delay sits with production — the shoots and the cuts, not the briefs.` }
+            : { tone: 'warn', text: `${pct(m, p + m)}% of the delay sits with content — briefs that were not ready, and finished work that was not posted.` })
+      }
+      const person = [...byPerson.values()].sort((a, b) => b.late - a.late)[0]
+      if (person && person.late >= 3 && person.late >= totalLate * 0.4) {
+        say.push({ tone: 'warn', text: `${person.name} is carrying ${person.late} of them — worth asking what is in the way rather than adding more.` })
+      }
+    }
+    const weak = byChannel.filter((c) => c.planned >= 3 && c.completion !== null && c.completion < 60)
+    if (weak.length) {
+      say.push({ tone: 'warn', text: `${weak.map((c) => c.label).join(', ')} ${weak.length === 1 ? 'is' : 'are'} furthest behind the plan.` })
+    }
+    const strong = byChannel.find((c) => c.planned >= 3 && c.completion === 100 && c.punctuality === 100)
+    if (strong) say.push({ tone: 'good', text: `${strong.label} delivered everything it planned, on time.` })
+  }
+
+  res.json({
+    from, to, channel,
+    totals: {
+      planned: planned.length, delivered: deliveredIn.length, onTime: onTime.length,
+      owed: owed.length, lateSteps: totalLate,
+    },
+    rates,
+    byPhase, bySide,
+    byChannel,
+    byPerson: [...byPerson.values()].sort((a, b) => b.late - a.late),
+    blamed: blamed.sort((a, b) => b.days_late - a.days_late).slice(0, 40),
+    conclusions: say,
+  })
+}))
+
 
 // ---- what one person earned -------------------------------------------------
 // Declared BEFORE the admin gate below, deliberately: a person may see their

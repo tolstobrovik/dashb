@@ -48,6 +48,49 @@ export function ownersOfPhase(task, key) {
 
 export const PHASE_LABEL = { shoot: 'Shooting', edit: 'Editing', review: 'Review & publish' }
 
+// ---- whose miss was it -----------------------------------------------------
+// "It was late" is a fact nobody argues with and nobody can act on. The two
+// answers that change what happens next are PRODUCTION was late (the shoot did
+// not happen, the cut did not come back) and THE MAKER was late (there was
+// nothing to film from, or the finished piece sat unposted).
+//
+// The board can tell these apart most of the time, from what it already holds:
+//
+//   shoot late, and the task carries no script, no ТЗ and no reference
+//        → the maker's. Nobody can film a brief that was never written.
+//   shoot late, briefed              → production's
+//   edit late                        → production's, whether the footage came
+//                                      late or not: an editor handed footage
+//                                      late is excused as an INDIVIDUAL (see
+//                                      phaseState) but the delay is still the
+//                                      production side's
+//   review late                      → the maker's. The piece was finished and
+//                                      handed over; publishing it is their job
+//
+// Where it genuinely cannot tell — a script that arrived late but is sitting
+// there now, an agreement made in a corridor — an admin says so on the task
+// and their answer wins. That is what `miss_blame` is: not a second opinion,
+// the deciding one.
+export const SIDES = {
+  production: { key: 'production', label: 'Production' },
+  make: { key: 'make', label: 'Content' },
+}
+const BRIEFED = (t) => !!(String(t.script || '').trim() || String(t.tz || '').trim()
+  || String(t.reference_text || '').trim() || String(t.reference_links || '[]').length > 4)
+
+// The side a phase's lateness belongs to, and why. `decided` marks an answer a
+// person gave rather than one the board worked out.
+export function blameOfPhase(task, key) {
+  if (task.miss_blame === 'production' || task.miss_blame === 'make') {
+    return { side: task.miss_blame, why: task.miss_blame_note || 'an admin decided this one', decided: true }
+  }
+  if (key === 'review') return { side: 'make', why: 'the piece was finished and went out late', decided: false }
+  if (key === 'edit') return { side: 'production', why: 'the cut did not come back in time', decided: false }
+  // the shoot
+  if (!BRIEFED(task)) return { side: 'make', why: 'there was no brief to film from', decided: false }
+  return { side: 'production', why: 'the shoot did not happen on its day', decided: false }
+}
+
 // ---- which stage is which gate ------------------------------------------
 // Stages are the admin's data, not constants, so they are matched by label the
 // way the existing stage rules already do. Each gate answers "entering THIS
@@ -154,8 +197,10 @@ export function phaseState(task, key, today = dayISO(), resolved = null) {
   const delivered = deliveredIso ? tashkentDay(deliveredIso) : null
 
   const owner_ids = ownersOfPhase(task, key)
+  const blame = blameOfPhase(task, key)
   const base = {
     phase: key, label: PHASE_LABEL[key], role: f.role,
+    side: blame.side, blame_why: blame.why, blame_decided: blame.decided,
     owner_id: owner_ids[0] || null,
     owner_ids,
     promised, revised, due,

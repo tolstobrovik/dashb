@@ -229,6 +229,7 @@ const cleanChannels = async (v) => {
 const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id,
   operator_id, editor_id, designer_id, reviewer_id, reviewers,
   shot_at, edited_at, edit_due_revised, review_due_revised,
+  miss_blame, miss_blame_note, miss_blame_by,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
   shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note,
@@ -1762,6 +1763,32 @@ router.patch('/:id', wrap(async (req, res) => {
       if (sid) patch.status_id = sid
     } else {
       return res.status(403).json({ error: 'That isn’t your milestone to mark' })
+    }
+  }
+
+  // ---- whose miss was it ----------------------------------------------
+  // The board works this out from the work itself (see deadlines.js), and it
+  // is right most of the time. Where it cannot be — a script that arrived late
+  // but is sitting there now, an agreement made in a corridor — somebody with
+  // the whole picture says so, and their answer wins over the derivation for
+  // good. Only an admin on the channel: this is the number people are paid
+  // and judged against.
+  if (body.miss_blame !== undefined) {
+    if (!adminHere(req.user, row))
+      return res.status(403).json({ error: 'Only an admin on this channel decides whose delay it was' })
+    const v = body.miss_blame === null || body.miss_blame === '' ? null : String(body.miss_blame)
+    if (v !== null && v !== 'production' && v !== 'make')
+      return res.status(400).json({ error: 'A delay belongs to production or to content — or to neither, which is the board working it out' })
+    patch.miss_blame = v
+    patch.miss_blame_by = v ? req.user.id : null
+    // A verdict with no reason is the thing this replaces. Clearing it back to
+    // the derived answer needs none — that is undoing, not deciding.
+    if (v) {
+      const note = String(body.miss_blame_note ?? '').trim().slice(0, 600)
+      if (!note) return res.status(400).json({ error: 'Say why — a verdict nobody can read back is worse than the board’s guess' })
+      patch.miss_blame_note = note
+    } else {
+      patch.miss_blame_note = null
     }
   }
 

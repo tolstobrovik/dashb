@@ -4591,3 +4591,64 @@ button.blame-person:hover { background: var(--surface-2); }
 .doc-noprev { display: flex; flex-direction: column; align-items: center; gap: 8px;
   text-align: center; padding: 44px 20px; color: var(--muted); }
 .doc-noprev b { color: var(--ink); font-size: 14px; }
+
+/* ---------- statistics: the answer first, the working underneath ---------- */
+.st-chans { margin-bottom: 12px; max-width: 100%; flex: 0 1 auto; min-width: 0; }
+.st-say { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
+  border-left: 3px solid var(--brand-500); }
+.st-line { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; line-height: 1.45; }
+.st-line svg { flex: none; margin-top: 2px; }
+.st-line.st-good svg { color: var(--ok, #1D9E75); }
+.st-line.st-warn svg { color: var(--warn, #d59a2b); }
+.st-line.st-bad svg { color: var(--critical); }
+.st-line.st-bad span { font-weight: 600; }
+.st-line.st-flat svg { color: var(--muted); }
+
+.st-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.st-tile { padding: 12px 14px; display: flex; flex-direction: column; gap: 5px; }
+.st-tile .st-k { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.st-tile b { font-size: 26px; line-height: 1.05; font-weight: 800; }
+.st-sides { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-2); }
+.st-sides span { display: inline-flex; align-items: center; gap: 6px; }
+.st-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; flex: none; background: var(--muted); }
+.st-dot.st-prod { background: #b5324a; }
+.st-dot.st-make { background: #2a78d6; }
+.stat-bar { display: block; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.stat-bar-fill { display: block; height: 100%; background: var(--brand-500); border-radius: 999px; }
+.stat-bar-fill.sb-good { background: var(--ok, #1D9E75); }
+.stat-bar-fill.sb-warn { background: var(--warn, #d59a2b); }
+.stat-bar-fill.sb-bad { background: var(--critical); }
+
+.st-sec { margin-bottom: 10px; overflow: hidden; }
+.st-sec-head { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 11px 14px;
+  background: none; border: none; cursor: pointer; color: var(--ink); font-size: 14px; }
+.st-sec-head:hover { background: var(--surface-2); }
+.st-sec-body { border-top: 1px solid var(--hairline); padding: 12px 14px; overflow-x: auto; }
+.st-pie-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.pie { flex: none; }
+.pie-n { font-size: 19px; font-weight: 800; fill: var(--ink); }
+.pie-l { font-size: 10px; fill: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.st-legend { display: flex; flex-direction: column; gap: 9px; flex: 1 1 240px; min-width: 0; }
+.st-leg-row { display: grid; grid-template-columns: 10px 15px minmax(0, 1fr) auto auto 90px; align-items: center; gap: 8px; font-size: 13px; }
+.st-leg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-tbl th, .st-tbl td { white-space: nowrap; }
+.st-tbl td:first-child, .st-tbl th:first-child { white-space: normal; }
+
+.st-misses { display: flex; flex-direction: column; gap: 2px; }
+.st-miss { display: grid; grid-template-columns: 92px minmax(0, 1fr) 48px 140px; align-items: center; gap: 10px;
+  padding: 7px 2px; border-bottom: 1px solid var(--hairline); }
+.st-miss:last-child { border-bottom: none; }
+.st-miss-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.st-miss-main b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-miss-main .stat-sub { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-miss-days { font-weight: 800; color: var(--critical); text-align: right; font-size: 13px; }
+.st-miss-who { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-prod { background: var(--danger-bg); color: #b5324a; }
+.chip-make { background: rgba(42, 120, 214, 0.12); color: #2a78d6; }
+
+@media (max-width: 860px) {
+  .st-miss { grid-template-columns: 84px minmax(0, 1fr) 44px; }
+  .st-miss-who { display: none; }
+  .st-leg-row { grid-template-columns: 10px 15px minmax(0, 1fr) auto auto; }
+  .st-leg-row .stat-bar { display: none; }
+}
