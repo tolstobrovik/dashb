@@ -38,8 +38,11 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
   // columns on a 390px screen can only show a dot per piece of work, and the
   // day-to-day question is "what is on this week", which the week view answers
   // with the titles still readable. A choice, once made, is still remembered.
-  const [scale, setScaleState] = useState(() => localStorage.getItem('satashkent_cal_scale')
-    || (typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 'week' : 'month'))
+  // The month is the default everywhere now, a phone included. A week is a
+  // horizon you check; a month is the one you PLAN in, and the planning is
+  // what people open a calendar for. The week is still one press away and,
+  // once chosen, is still remembered.
+  const [scale, setScaleState] = useState(() => localStorage.getItem('satashkent_cal_scale') || 'month')
   const setScale = (s) => { setScaleState(s); localStorage.setItem('satashkent_cal_scale', s) }
   const today = todayISO()
   const dateField = mode === 'recording' ? 'recording_date' : 'release_date'

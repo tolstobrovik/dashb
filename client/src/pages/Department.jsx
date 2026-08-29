@@ -154,6 +154,8 @@ export default function Department() {
   const [err, setErr] = useState('')
   const [dragIdx, setDragIdx] = useState(null)
   // board | release | recording — the last view is remembered per browser.
+  // The board is the working view; the calendar is the planning one, and the
+  // month is what the rest of the product now opens on. A choice is remembered.
   const [view, setViewState] = useState(() => localStorage.getItem('satashkent_dept_view') || 'board')
   const setView = (v) => { setViewState(v); localStorage.setItem('satashkent_dept_view', v) }
   const [selectedDate, setSelectedDate] = useState(null)

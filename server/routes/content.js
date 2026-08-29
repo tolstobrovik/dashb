@@ -2290,6 +2290,24 @@ router.patch('/:id', wrap(async (req, res) => {
       //
       // To make any of them a wall again, refuse here on `shortfalls`.
       const shortfalls = []
+      // ---- is anybody actually on this? ------------------------------------
+      // Every gate below asks who does the NEXT step. None of them asked the
+      // plainer question: whose piece is this at all. A task can cross the
+      // whole board with no name on it — the shooter names an operator, the
+      // edit names an editor, and the piece itself belongs to nobody, which is
+      // how work arrives at Published with an empty owner column and no reason
+      // anyone can reconstruct. An idea owes nobody an owner; anything past it
+      // does.
+      const ownedBy = (() => {
+        const raw = patch.assignees !== undefined ? patch.assignees : row.assignees
+        let list = []
+        try { list = JSON.parse(raw || '[]') } catch { list = [] }
+        const one = patch.assignee_id !== undefined ? patch.assignee_id : row.assignee_id
+        return list.filter(Boolean).length > 0 || !!one
+      })()
+      const leavingIdea = /^idea$|^ideas$|g'oya|идея/i.test(String(resolved.ordered[at(row.status_id)]?.label || ''))
+      if (!ownedBy && !leavingIdea) shortfalls.push({ gate: 'own', missing: 'assignee_id' })
+
       for (const gate of gatesUpTo(patch.status_id, resolved)) {
         // Only the gates this move actually CROSSES — a stage already behind
         // the card was passed under whatever rules applied at the time.
@@ -2341,6 +2359,17 @@ router.patch('/:id', wrap(async (req, res) => {
       // which is why this is asked HERE and never at creation.
       if (filmedNow && g && at(patch.status_id) === g.index + 1 && !val('editor_id'))
         return res.status(400).json({ error: 'Name who cuts this — footage with no editor waiting is footage nobody is cutting' })
+
+      // And the third wall: a piece does not go OUT with nobody's name on it.
+      // Everywhere else the ownership check advises, because a task can be
+      // moved along while the owner is still being decided. Publishing is the
+      // one move after which nobody decides anything: it lands in the reports,
+      // in the pay run and in the statistics, and an empty owner column there
+      // is a hole nobody can reconstruct a month later. The admin walks
+      // through, as they do through every wall — they are usually the one
+      // catching the board up on work that already happened.
+      if (!free && !ownedBy && (await isFinal(patch.status_id)))
+        return res.status(400).json({ error: 'Give this an owner before it goes out — a published piece with nobody’s name on it is a hole in every report' })
 
       // The re-promise. When the stage being handed over finished after its
       // own deadline, the next owner cannot inherit a date that is already
@@ -2629,6 +2658,35 @@ router.get('/:id/handover', wrap(async (req, res) => {
   }
 
   const gates = []
+  // Whose piece is this at all — asked before any gate about the NEXT step,
+  // because a task can cross the whole board with every hat filled and no
+  // owner, and it is the owner column the reports read.
+  const owned = (() => {
+    let list = []
+    try { list = JSON.parse(row.assignees || '[]') } catch { list = [] }
+    return list.filter(Boolean).length > 0 || !!row.assignee_id
+  })()
+  const fromIdea = /^idea$|^ideas$|g'oya|идея/i.test(String(resolved.ordered[at(row.status_id)]?.label || ''))
+  if (!owned && !fromIdea) {
+    gates.push({
+      key: 'own',
+      stage: resolved.ordered.find((st) => st.id === to)?.label || '',
+      role: 'assignee',
+      what: 'owner',
+      owner_field: 'assignee_id',
+      many: true,
+      current: [],
+      candidates: team.map((u) => ({ id: u.id, name: u.name, color: u.color, position: u.position })),
+      others: [],
+      link_field: null,
+      link_ok: true,
+      what_link: null,
+      late: null,
+      // Publishing is the one move this refuses outright; everywhere else it
+      // is a question the mover can answer later.
+      wall: !!resolved.ordered.find((st) => st.id === to)?.is_final,
+    })
+  }
   for (const g of gatesUpTo(to, resolved)) {
     if (at(row.status_id) >= g.index) continue     // already behind us
     const need = NEEDS[g.key]
