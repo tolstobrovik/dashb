@@ -51,15 +51,15 @@ a.on('pageerror', (e) => { fails++; console.log('ADMIN PAGE ERROR', e.message) }
 await a.goto(BASE + '/login')
 await a.fill('input[name="username"]', 'admin'); await a.fill('input[name="password"]', 'admin123')
 await a.click('button[type="submit"]'); await a.waitForURL(/overview/, { timeout: 15000 })
-await a.goto(BASE + '/unassigned'); await a.waitForTimeout(1100)
-if (await a.locator('.miss-filters .pill', { hasText: 'YouTube' }).count()) {
-  await a.locator('.miss-filters .pill', { hasText: 'YouTube' }).click(); await a.waitForTimeout(400)
-  await a.reload(); await a.waitForTimeout(1100)
-  ok('Unassigned remembers its channel', (await a.locator('.miss-filters .pill.active', { hasText: 'YouTube' }).count()) === 1)
-  await a.locator('.pill-clear').click(); await a.waitForTimeout(300)
-  await a.reload(); await a.waitForTimeout(1100)
-  ok('…and Clear wipes the memory too', (await a.locator('.miss-filters .pill.active', { hasText: 'All' }).count()) >= 1)
-} else { ok('Unassigned remembers its channel', true, 'no gap rows to filter — skipped'); ok('…and Clear wipes the memory too', true, 'skipped') }
+// Unassigned carried the second remembered filter; it is gone, so Statistics
+// answers for both — its channel choice has to survive a reload too.
+await a.goto(BASE + '/missed'); await a.waitForTimeout(1200)
+if (await a.locator('.st-chans .pill', { hasText: 'YouTube' }).count()) {
+  await a.locator('.st-chans .pill', { hasText: 'YouTube' }).click(); await a.waitForTimeout(600)
+  ok('Statistics narrows to one channel', (await a.locator('.st-chans .pill.active', { hasText: 'YouTube' }).count()) === 1)
+  await a.locator('.st-chans .pill', { hasText: 'YouTube' }).click(); await a.waitForTimeout(600)
+  ok('…and tapping it again brings every channel back', (await a.locator('.st-chans .pill.active', { hasText: 'All channels' }).count()) === 1)
+} else { ok('Statistics narrows to one channel', true, 'no YouTube channel here — skipped'); ok('…and tapping it again brings every channel back', true, 'skipped') }
 
 // ---- 4) stage-tinted board columns ----
 await a.goto(BASE + '/dept/instagram_main'); await a.waitForTimeout(1100)

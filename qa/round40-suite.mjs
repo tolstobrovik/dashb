@@ -64,9 +64,12 @@ await hook({ message: { chat: { id: 900 }, text: `/start ${link.code}` } })
 // this suite actually wants — real work, past the Idea stage — without
 // pretending to book a shoot these tests are not about.
 const shotId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
-// Shot folded into Editing in round 82, so the second stage this suite
-// moves to is Ready — it needs two distinct stages, not two names for one.
-const editId = (await req('/statuses')).data.find((s) => /^ready$/i.test(s.label)).id
+// Shot folded into Editing in round 82, so the second stage has to come from
+// what is left. It cannot be Ready — arriving there is a review handoff with
+// its own ✅ message, not the plain 🔔 bell these three lines are about — and
+// To shoot is the booking the comment above steers clear of. That leaves
+// Idea: the piece gets sent back to the drawing board, then picked up again.
+const editId = (await req('/statuses')).data.find((s) => /^idea$/i.test(s.label)).id
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
 const task = (await req('/content', 'POST', {
   title: 'x40: rich video', channels: [chKey], type: 'video',

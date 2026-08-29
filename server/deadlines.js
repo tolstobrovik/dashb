@@ -34,6 +34,14 @@ const FIELDS = {
   },
 }
 
+// Does a phase have an upstream on THIS task? The shoot never does — it starts
+// with the task itself. The edit and the review do, but only on filmed work: a
+// written post has no shoot and no cut to wait for, so its release date answers
+// for itself exactly the way a shoot day does. Getting this wrong is how a post
+// published three days late used to count as on time — there was no `edited_at`
+// on it, so the review phase excused itself and the miss vanished.
+const HAS_UPSTREAM = (task, f) => !!f.started && (task.type === 'reel' || task.type === 'video')
+
 // The people answering for a phase. A shared phase answers as a group.
 export function ownersOfPhase(task, key) {
   const f = FIELDS[key]
@@ -84,7 +92,11 @@ export function blameOfPhase(task, key) {
   if (task.miss_blame === 'production' || task.miss_blame === 'make') {
     return { side: task.miss_blame, why: task.miss_blame_note || 'an admin decided this one', decided: true }
   }
-  if (key === 'review') return { side: 'make', why: 'the piece was finished and went out late', decided: false }
+  if (key === 'review') {
+    return task.done_at
+      ? { side: 'make', why: 'the piece was finished and went out late', decided: false }
+      : { side: 'make', why: 'the release day passed with nothing posted', decided: false }
+  }
   if (key === 'edit') return { side: 'production', why: 'the cut did not come back in time', decided: false }
   // the shoot
   if (!BRIEFED(task)) return { side: 'make', why: 'there was no brief to film from', decided: false }
@@ -210,7 +222,10 @@ export function phaseState(task, key, today = dayISO(), resolved = null) {
   }
 
   if (!due) return { ...base, state: 'none' }
-  if (f.started && !started) return { ...base, state: delivered ? 'ok' : 'waiting' }
+  // Nothing reached this owner. Work still in flight cannot be charged to them
+  // — but a piece that went out anyway crossed the line on a day everybody can
+  // read, so it is judged on that day like any other.
+  if (HAS_UPSTREAM(task, f) && !started && !delivered) return { ...base, state: 'waiting' }
 
   let state
   if (delivered) state = delivered <= due ? 'ok' : 'late'
@@ -223,10 +238,13 @@ export function phaseState(task, key, today = dayISO(), resolved = null) {
   // The upstream excuse: the work landed here after this phase's own date had
   // already gone, and no replacement date was agreed. Only a phase with an
   // upstream can be excused — the shoot answers for itself.
-  if (state === 'late' && started && !revised && tashkentDay(started) > due)
+  if (state === 'late' && HAS_UPSTREAM(task, f) && started && !revised && tashkentDay(started) > due)
     state = 'excused'
 
-  const days_late = state === 'late' ? Math.max(0, dayDiff(delivered || today, due)) : 0
+  // Excused work still ran late — the person is not charged for it, but the
+  // calendar does not care whose fault it was, and the report needs the days
+  // to attribute them to whoever handed over late.
+  const days_late = state === 'late' || state === 'excused' ? Math.max(0, dayDiff(delivered || today, due)) : 0
   return { ...base, state, days_late }
 }
 

@@ -4652,3 +4652,13 @@ button.blame-person:hover { background: var(--surface-2); }
   .st-leg-row { grid-template-columns: 10px 15px minmax(0, 1fr) auto auto; }
   .st-leg-row .stat-bar { display: none; }
 }
+
+/* Still missing — the stage checker in the open, on the task itself. Amber,
+   not red: these are holes to fill, not failures. */
+.cm-gaps .gap-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-gap {
+  background: var(--tint-warn);
+  color: var(--warn-ink);
+  border: 1px solid var(--warning);
+  font-weight: 700;
+}

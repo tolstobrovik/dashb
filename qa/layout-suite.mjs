@@ -63,8 +63,8 @@ const PROBE = `(() => {
   return out
 })()`
 
-const SCREENS = ['/', '/my-day', '/todo', '/releases', '/recordings', '/statistics',
-  '/missed', '/unassigned', '/docs', '/sprints', '/sprints/backlog', '/projects', '/team', '/admin', '/profile']
+const SCREENS = ['/', '/my-day', '/releases', '/recordings', '/statistics',
+  '/missed', '/design', '/docs', '/sprints', '/sprints/backlog', '/projects', '/team', '/admin', '/profile']
 
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const open = async (w, h, touch) => {

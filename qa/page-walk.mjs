@@ -61,8 +61,8 @@ await call('/programs', T, 'POST', { name: 'Walk program', channel: ch, start_da
 await call('/hiring', T, 'POST', { title: 'Walk vacancy', channel: ch }).catch(() => {})
 
 const PAGES = [
-  ['Overview', '/overview'], ['My Day', '/brief'], ['To-Do', '/todo'], ['Statistics', '/missed'],
-  ['Unassigned', '/unassigned'], ['Docs & KPIs', '/docs'], ['Projects', '/projects'],
+  ['Overview', '/overview'], ['My Day', '/brief'], ['Statistics', '/missed'],
+  ['Design', '/design'], ['Documents', '/docs'], ['Projects', '/projects'],
   ['Project', `/projects/${proj?.id}`], ['Campaign', `/campaigns/${camp?.id}`],
   ['Channel', `/dept/${ch}`], ['Post Production', '/crew'], ['Team & hiring', '/team'],
   ['Admin', '/admin'], ['Profile', '/profile'],

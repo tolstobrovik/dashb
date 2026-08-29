@@ -19,9 +19,9 @@ const api = async (p, m = 'GET', b) => {
 const tag = Math.random().toString(36).slice(2, 6)
 await api('/users', 'POST', { name: 'Sweep Member', username: 'sw' + tag, password: 'pass1234', role: 'member' })
 
-const PAGES = ['/', '/brief', '/todo', '/releases', '/recordings', '/missed', '/missed-tasks',
-  '/unassigned', '/docs', '/sprints', '/sprints/backlog', '/projects', '/crew', '/team', '/admin', '/profile']
-const TABS = ['Team', 'Tasks', 'Whiteboard', 'Channels', 'Pipeline', 'Reports', 'Pay', 'Attendance', 'Language help', 'History', 'Telegram']
+const PAGES = ['/', '/brief', '/releases', '/recordings', '/missed', '/design',
+  '/docs', '/sprints', '/sprints/backlog', '/projects', '/crew', '/team', '/admin', '/profile']
+const TABS = ['Team', 'Tasks', 'Whiteboard', 'Channels', 'Pipeline', 'Reports', 'Pay', 'Language help', 'History', 'Telegram']
 
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 let problems = 0
@@ -57,7 +57,7 @@ const run = async (who, user, pass, pages) => {
   problems += uniq.length
 }
 await run('admin ', 'admin', 'admin123', PAGES)
-await run('member', 'sw' + tag, 'pass1234', ['/', '/brief', '/todo', '/missed', '/missed-tasks', '/docs', '/sprints', '/sprints/backlog', '/profile'])
+await run('member', 'sw' + tag, 'pass1234', ['/', '/brief', '/missed', '/design', '/docs', '/sprints', '/sprints/backlog', '/profile'])
 await b.close()
 console.log(problems === 0 ? '\nSweep clean.' : `\n${problems} problems`)
 process.exit(problems ? 1 : 0)

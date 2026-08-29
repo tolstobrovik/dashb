@@ -1,6 +1,10 @@
-// Round 35: ideas are brainstorm material — a task in the Idea stage never
-// nags on the Unassigned page or in Overview's gap strip; the gaps start to
-// count the moment it moves into real work (To shoot onward).
+// Round 35: ideas are brainstorm material — a task in the Idea stage owes
+// nothing and says so; the gaps start to count the moment it moves into real
+// work (To shoot onward).
+//
+// Round 82 removed the Unassigned page and Overview's gap strip, the two
+// places this reading used to appear. The reading itself moved onto the task,
+// so that is where the same two questions get asked now.
 import { chromium } from 'playwright'
 const BASE = 'http://localhost:4090'
 const B = BASE + '/api'
@@ -34,24 +38,25 @@ await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
 await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 15000 })
 await p.waitForTimeout(1000)
-const stripN = async () => {
-  const el = p.locator('.ov-gaps')
-  if ((await el.count()) === 0) return 0
-  return Number(((await el.textContent()).match(/(\d+)\s+task/) || [0, 0])[1])
+const openIdea = async () => {
+  await p.goto(`${BASE}/brief?task=${idea.id}`)
+  await p.waitForSelector('.modal .cm-title', { timeout: 10000 })
+  await p.waitForTimeout(600)
 }
-const beforeN = await stripN()
-await p.goto(BASE + '/unassigned'); await p.waitForTimeout(1100)
-ok('an Idea-stage task never reaches Unassigned', (await p.locator('.ov-row', { hasText: 'x35: idea video' }).count()) === 0)
-// Move it into real work — now the gaps are real. Landing on Shot names the
+await openIdea()
+ok('an Idea-stage task is asked for nothing', (await p.locator('.cm-gaps').count()) === 0)
+await p.keyboard.press('Escape'); await p.waitForTimeout(300)
+// Move it into real work — now the gaps are real. Landing on Editing names the
 // editor (footage with nobody cutting it is refused since round 66); the days
 // are still missing, and those are the gaps this round is about.
 await req(`/content/${idea.id}`, 'PATCH', { editor_id: me.id })
 const movedIn = await req(`/content/${idea.id}`, 'PATCH', { status_id: shotId })
 ok('the idea really moved into real work', movedIn.status === 200, `${movedIn.status} ${movedIn.data.error || ''}`)
-await p.reload(); await p.waitForTimeout(1100)
-ok('…but the moment it leaves the brainstorm, it appears', (await p.locator('.ov-row', { hasText: 'x35: idea video' }).count()) === 1)
-await p.goto(BASE + '/overview'); await p.waitForTimeout(1100)
-ok('Overview’s strip agrees — the idea joined the count only now', (await stripN()) === beforeN + 1, `${beforeN} → ${await stripN()}`)
+await openIdea()
+const chips = await p.locator('.cm-gaps .chip-gap').allTextContents()
+ok('…but the moment it leaves the brainstorm, it starts owing', chips.length > 0, chips.join(' · '))
+ok('…and the days are what it owes', chips.some((c) => /shoot day/i.test(c)) && chips.some((c) => /release day/i.test(c)), chips.join(' · '))
+await p.keyboard.press('Escape'); await p.waitForTimeout(300)
 await p.close()
 await browser.close()
 await cleanup()

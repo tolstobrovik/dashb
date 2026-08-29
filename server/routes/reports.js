@@ -171,15 +171,27 @@ router.get('/stats', wrap(async (req, res) => {
     for (const ph of phasesOf(r, today, resolved)) {
       if (ph.state === 'none' || ph.state === 'waiting') continue
       byPhase[ph.phase].judged += 1
-      if (ph.state !== 'late') continue
+      // EXCUSED is not "on time". It means the work reached this owner after
+      // their own date had already gone, so they are not charged — and if the
+      // step simply disappeared here the month would show delays nobody owns
+      // and a conclusion that contradicts the list underneath it. The days are
+      // real, so they are counted, against PRODUCTION: somebody upstream
+      // handed over late, and that is the whole of the answer.
+      const excused = ph.state === 'excused'
+      if (ph.state !== 'late' && !excused) continue
       byPhase[ph.phase].late += 1
-      bySide[ph.side] = (bySide[ph.side] || 0) + 1
+      const side = excused ? 'production' : ph.side
+      bySide[side] = (bySide[side] || 0) + 1
       blamed.push({
         id: r.id, title: r.title, phase: ph.phase, label: ph.label,
-        side: ph.side, why: ph.blame_why, decided: ph.blame_decided,
+        side, why: excused ? 'the step before it handed over after this date had gone' : ph.blame_why,
+        decided: excused ? false : ph.blame_decided,
         days_late: ph.days_late, due: ph.due,
-        who: ph.owner_ids.map(nameOf).filter(Boolean),
+        // Nobody is personally charged for an excused step — the delay has a
+        // side, not a name.
+        who: excused ? [] : ph.owner_ids.map(nameOf).filter(Boolean),
       })
+      if (excused) continue
       for (const uid of ph.owner_ids) {
         const e = byPerson.get(uid) || { id: uid, name: nameOf(uid), late: 0, phases: {} }
         e.late += 1

@@ -15,6 +15,7 @@ import Booking from './Booking.jsx'
 import SlotPicker from './SlotPicker.jsx'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
+import { gapsOf, stageRankOf } from '../lib/gaps.js'
 import { toast } from '../lib/toast.js'
 import { activityLine } from '../lib/activity.js'
 import { rewardFinish } from '../lib/reward.js'
@@ -427,6 +428,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // an idea — a title and a maybe — and owes nobody a crew, a date or a brief.
   // From the shooting stage on it is a BOOKED shoot and owes all three; one
   // stage further, with footage in hand, it owes an editor as well.
+  // What this piece still owes at the stage it is on — the same reading the
+  // server's walls use to refuse a move, shown BEFORE the move is attempted so
+  // nobody drags a card into a wall to find out what it wanted.
+  const stageRank = useMemo(() => stageRankOf(statuses), [statuses])
+  const gaps = useMemo(() => {
+    const probe = {
+      ...form,
+      assignees: form.assignee_ids ?? (item?.assignees?.length ? item.assignees : item?.assignee_id ? [item.assignee_id] : []),
+      ready_at: item?.ready_at || null,
+    }
+    const g = gapsOf(probe, fieldRules?.crew, stageRank)
+    return [...g.people, ...g.dates]
+  }, [form, item, fieldRules, stageRank])
+
   const liveStages = useMemo(() => statuses.filter((s) => !/^deleted$/i.test(s.label)), [statuses])
   const shootAt = liveStages.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))
   const stageAt = liveStages.findIndex((s) => s.id === form.status_id)
@@ -1185,6 +1200,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           })}
         </div>
       </div>
+
+      {/* Still missing — the checker, in the open. */}
+      {gaps.length > 0 && (
+        <div className="cm-row cm-gaps">
+          <span className="cm-key">{tx('Still missing')}</span>
+          <div className="gap-chips">
+            {gaps.map((g) => <span key={g.key} className="chip chip-gap">{tx(g.label)}</span>)}
+          </div>
+        </div>
+      )}
 
       {/* A hand up: somebody on this piece saying early that it is in trouble.
           Sits directly under the stage, because it is about to change it. */}

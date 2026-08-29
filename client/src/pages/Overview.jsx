@@ -17,10 +17,10 @@ const DAY_LABEL = {
 }
 import { tr as tx } from '../lib/i18n.jsx'
 
-// The admin's landing view: every department's process on one screen —
-// plan meters, the pipeline as a colored strip, overdue counts — plus a
-// timeline of what is coming and what got done, closest first, each
-// department wearing its own color.
+// The admin's landing view: every department's process on one screen — the
+// pipeline as a colored strip, open and overdue counts, the campaigns that
+// are live or next, and whatever is waiting on an answer. Each department
+// wears its own color.
 /* Module-level: an inline component type changes identity on every render,
    remounting each row on poll ticks. */
 function CampRow({ c, navigate, byKey, colorOf }) {
@@ -59,18 +59,17 @@ export default function Overview() {
   const [boot] = useState(() => cache.get('overview'))
   const [content, setContent] = useState(boot?.content || [])
   const [statuses, setStatuses] = useState(boot?.statuses || [])
-  const [trackers, setTrackers] = useState(boot?.trackers || [])
   const [camps, setCamps] = useState(boot?.camps || [])
   const [loading, setLoading] = useState(!boot)
   const [openItem, setOpenItem] = useState(null)
 
   useEffect(() => {
-    Promise.all([api.get('/content'), api.get('/statuses'), api.get('/trackers'), api.get('/campaigns')])
-      .then(([ct, st, tr, cs]) => {
-        setContent(ct); setStatuses(st); setTrackers(tr); setCamps(cs)
+    Promise.all([api.get('/content'), api.get('/statuses'), api.get('/campaigns')])
+      .then(([ct, st, cs]) => {
+        setContent(ct); setStatuses(st); setCamps(cs)
         cache.set('overview', {
           content: ct.map(({ photo_thumb: _t, ...rest }) => rest),
-          statuses: st, trackers: tr,
+          statuses: st,
           camps: cs.map(({ photo_thumb: _p, ...rest }) => rest),
         })
       })
@@ -82,7 +81,6 @@ export default function Overview() {
     const refresh = () => {
       if (document.hidden || openItem) return
       api.poll('/content').then((f) => { if (f) setContent(f) }).catch(() => {})
-      api.poll('/trackers').then((f) => { if (f) setTrackers(f) }).catch(() => {})
       api.poll('/campaigns').then((f) => { if (f) setCamps(f) }).catch(() => {})
     }
     const id = setInterval(refresh, 10000)
@@ -109,11 +107,9 @@ export default function Overview() {
     const weekAgo = addDaysISO(today, -7)
     const doneWeek = tasks.filter((t) => t.done_at && tashkentDay(t.done_at) >= weekAgo)
     const byStage = statuses.map((s) => ({ s, n: open.filter((t) => t.status_id === s.id).length })).filter((x) => x.n > 0)
-    const plans = trackers.filter((t) => t.department === c.key && t.content_type)
-    const others = trackers.filter((t) => t.department === c.key && !t.content_type)
-    return { c, color: deptColor(i), open, overdue, doneWeek, byStage, meters: [...plans, ...others].slice(0, 3) }
+    return { c, color: deptColor(i), open, overdue, doneWeek, byStage }
     })
-  }, [channels, content, statuses, trackers, today])
+  }, [channels, content, statuses, today])
 
   // ---- campaigns strip: what's running, what's next ----
   const liveCamps = useMemo(() => camps.filter((c) => c.status === 'live' || c.status === 'blocked'), [camps])
@@ -242,7 +238,7 @@ export default function Overview() {
 
       {/* ---- every department, one card each ---- */}
       <div className="ov-grid">
-        {depts.map(({ c, color, open, overdue, doneWeek, byStage, meters }) => {
+        {depts.map(({ c, color, open, overdue, doneWeek, byStage }) => {
           const Icon = iconFor(c.icon)
           return (
             <button key={c.key} className="card ov-card" style={{ borderTopColor: color }} onClick={() => navigate(`/dept/${c.key}`)}>
@@ -277,19 +273,7 @@ export default function Overview() {
                 )}
               </div>
 
-              {meters.map((m) => {
-                const pct = Math.min(100, Math.round((m.current / Math.max(1, m.target)) * 100))
-                return (
-                  <div key={m.id} className="ov-meter">
-                    <span className="ov-meter-label">{m.label}</span>
-                    <div className="pace-track" style={{ height: 7, flex: 1 }}>
-                      <div className="pace-fill" style={{ width: `${pct}%`, background: pct >= 100 ? '#1D9E75' : color }} />
-                    </div>
-                    <span className="ov-meter-n">{m.current.toLocaleString()}/{m.target.toLocaleString()}</span>
-                  </div>
-                )
-              })}
-              {open.length === 0 && meters.length === 0 && <div className="stat-sub">{tx("Nothing in flight.")}</div>}
+              {open.length === 0 && <div className="stat-sub">{tx("Nothing in flight.")}</div>}
             </button>
           )
         })}

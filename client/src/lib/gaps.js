@@ -49,16 +49,3 @@ export const gapsOf = (t, crew, rank) => {
   if (!t.release_date) dates.push({ key: 'release', label: 'no release day' })
   return { people, dates }
 }
-
-// The date that makes a task urgent — the EARLIEST thing it owes.
-export const nearestOf = (t) => {
-  const dd = [
-    t.recording_date && { d: t.recording_date, kind: 'shoot' },
-    t.edit_ready_date && { d: t.edit_ready_date, kind: 'edit' },
-    t.design_ready_date && { d: t.design_ready_date, kind: 'design' },
-    t.release_date && { d: t.release_date, kind: 'release' },
-  ].filter(Boolean).sort((a, b) => a.d.localeCompare(b.d))
-  return dd[0] || null
-}
-
-export const DUE_SOON_DAYS = 3

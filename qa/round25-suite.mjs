@@ -35,13 +35,10 @@ await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
 await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 15000 })
 await p.waitForTimeout(1000)
-ok('Overview wears the gap strip', (await p.locator('.ov-gaps').count()) === 1)
-ok('…with a live count', /\d+ tasks? waiting/.test(await p.locator('.ov-gaps').textContent()))
-await p.locator('.ov-gaps').click()
-await p.waitForURL(/unassigned/, { timeout: 8000 })
-ok('the strip lands on Unassigned', p.url().includes('/unassigned'))
-await p.waitForTimeout(1200)
-ok('and the gap task is there', (await p.locator('.ov-row', { hasText: 'x25: gap video' }).count()) === 1)
+// The gap strip pointed at the Unassigned page; round 82 removed both, and
+// the reading moved onto the task itself. Overview keeps the channel grid.
+ok('Overview no longer carries a strip to a page that is gone', (await p.locator('.ov-gaps').count()) === 0)
+ok('…and still draws its channel cards', (await p.locator('.ov-grid .ov-card').count()) >= 1)
 
 await p.goto(BASE + '/missed'); await p.waitForTimeout(1200)
 const tile = p.locator('.miss-stat-btn')

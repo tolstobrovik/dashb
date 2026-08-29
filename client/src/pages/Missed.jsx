@@ -1,298 +1,656 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  BarChart3, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle2, TrendingUp,
-  Clapperboard, Scissors, Send, Lightbulb, ChevronDown,
-} from 'lucide-react'
-import { api } from '../lib/api.js'
+import { AlertTriangle, CheckCircle2, CalendarRange, ChevronDown, Scissors, Send, PenLine, Trash2, Palette, BarChart3 } from 'lucide-react'
+import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, dateLabel } from '../lib/constants.js'
-import { loadFailed } from '../lib/toast.js'
-import { tr as tx, locale } from '../lib/i18n.jsx'
+import { todayISO, addDaysISO, dateLabel, typeInfo, tashkentDay, isDeletedLabel } from '../lib/constants.js'
+import Avatar from '../components/Avatar.jsx'
+import ContentModal from '../components/ContentModal.jsx'
+import StatsMonth from '../components/StatsMonth.jsx'
+import { useContextMenu } from '../components/ContextMenu.jsx'
+import { toast, loadFailed } from '../lib/toast.js'
+import { rewardIfFinished } from '../lib/reward.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
-// ---- statistics that reach a conclusion ----
-//
-// The old page showed every missed deadline as a row and left the reading to
-// whoever opened it. Which meant everybody read it differently, or — more
-// often — scrolled past it. Numbers nobody draws a conclusion from change
-// nothing, and this page's whole job is to change what happens next.
-//
-// So the arithmetic happens on the server (GET /reports/stats), once, and it
-// comes back with the conclusions attached: which step the month is lost at,
-// which side the delay sits on, which channel is behind. The page leads with
-// those sentences and puts the numbers underneath them as evidence.
-//
-// One screen, a month at a time, channels across the top. Everything below the
-// conclusions folds away, because the answer is the point and the working is
-// only there for the person who wants to check it.
+// Missed deadlines — two clocks per task, each unforgiving:
+//   release    — the channel's deadline (release_date, resolved by done)
+//   edit ready — the MAKER's deadline (edit_ready_date, resolved the first
+//                time the piece reaches a ready/final stage): the designer
+//                on a post, the editor/operator on filmed content
+// Not resolved by the end of that day (Tashkent) = missed, even if it lands
+// later. Everyone sees their own misses; the admin sees the whole team,
+// filterable by channel and person, with day / week / custom statistics.
 
-const monthOf = (iso) => iso.slice(0, 7)
-const shiftMonth = (ym, by) => {
-  const [y, m] = ym.split('-').map(Number)
-  const d = new Date(Date.UTC(y, m - 1 + by, 1))
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+const whoOf = (t) => [
+  ...(t.assignees?.length ? t.assignees : t.assignee_id ? [t.assignee_id] : []),
+  t.operator_id, t.editor_id, t.designer_id,
+].filter((id, i, a) => id && a.indexOf(id) === i)
+
+// A task can miss several clocks — each miss is its own entry, judged by its
+// own person: the release by everyone on the task, the edit deadline by the
+// editor, the design deadline by the designer.
+const entriesOf = (t, today) => {
+  const out = []
+  if (t.release_date && t.release_date < today && (!t.done_at || tashkentDay(t.done_at) > t.release_date))
+    out.push({ t, kind: 'release', date: t.release_date, mark: t.done_at || null, who: whoOf(t) })
+  const readyMark = t.ready_at || t.done_at || null
+  if (t.edit_ready_date && t.edit_ready_date < today && (!readyMark || tashkentDay(readyMark) > t.edit_ready_date))
+    out.push({ t, kind: 'edit', date: t.edit_ready_date, mark: readyMark, who: [t.editor_id || t.operator_id].filter(Boolean) })
+  if (t.design_ready_date && t.design_ready_date < today && (!readyMark || tashkentDay(readyMark) > t.design_ready_date))
+    out.push({ t, kind: 'design', date: t.design_ready_date, mark: readyMark, who: [t.designer_id].filter(Boolean) })
+  return out
 }
-const monthEdges = (ym) => {
-  const [y, m] = ym.split('-').map(Number)
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
-  return { from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, '0')}` }
+
+const daysLate = (e, today) => {
+  const end = e.mark ? tashkentDay(e.mark) : today
+  return Math.max(1, Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${e.date}T00:00:00Z`)) / 864e5))
 }
-const monthWords = (ym) =>
-  new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(locale(), { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
-const PHASE_ICON = { shoot: Clapperboard, edit: Scissors, review: Send }
-const PHASE_LABEL = { shoot: 'Shooting', edit: 'Editing', review: 'Review & publish' }
-const TONE_ICON = { good: CheckCircle2, warn: AlertTriangle, bad: AlertTriangle, flat: Lightbulb }
+const RANGES = [
+  { key: 'all', label: 'All time', days: null },
+  { key: '1d', label: 'Last day', days: 1 },
+  { key: '7d', label: 'Last 7 days', days: 7 },
+  { key: '30d', label: 'Last 30 days', days: 30 },
+  { key: 'custom', label: tx('Custom…'), days: null },
+]
 
-// A pie, drawn by hand. Two slices and a hole — a chart library for this would
-// weigh more than the page it sits on.
-function Pie({ slices, size = 132 }) {
-  const total = slices.reduce((a, s) => a + s.value, 0)
-  const r = size / 2 - 10
-  const c = size / 2
-  if (total === 0) {
-    return (
-      <svg width={size} height={size} className="pie" role="img" aria-label={tx('Nothing to show')}>
-        <circle cx={c} cy={c} r={r} fill="none" stroke="var(--hairline-strong)" strokeWidth="18" strokeDasharray="4 6" />
-      </svg>
-    )
-  }
-  let at = -Math.PI / 2
-  const arcs = slices.filter((s) => s.value > 0).map((s) => {
-    const frac = s.value / total
-    const end = at + frac * Math.PI * 2
-    const big = frac > 0.5 ? 1 : 0
-    const x1 = c + r * Math.cos(at), y1 = c + r * Math.sin(at)
-    const x2 = c + r * Math.cos(end), y2 = c + r * Math.sin(end)
-    const d = frac >= 0.999
-      ? `M ${c} ${c - r} A ${r} ${r} 0 1 1 ${c - 0.01} ${c - r} Z`
-      : `M ${c} ${c} L ${x1} ${y1} A ${r} ${r} 0 ${big} 1 ${x2} ${y2} Z`
-    at = end
-    return { d, ...s, pct: Math.round(frac * 100) }
-  })
+/* "Where the time goes" used to be drawn here, from /warnings/report, over
+   all time. The month block above answers the same question with a window, a
+   pie and the per-person receipts underneath, so the second telling went. */
+/* Module-level row — poll ticks must not remount it. */
+function MissRow({ entry, today, byKey, usersById, isAdmin, onOpen, onMenu }) {
+  const { t, kind } = entry
+  const late = daysLate(entry, today)
+  const resolved = !!entry.mark
+  const who = entry.who.map((id) => usersById[id]?.name?.split(' ')[0]).filter(Boolean)
+  const verb = kind === 'edit' ? (resolved ? 'ready' : 'edit')
+    : kind === 'design' ? (resolved ? 'ready' : 'design')
+      : (resolved ? 'done' : '')
   return (
-    <svg width={size} height={size} className="pie" role="img"
-      aria-label={arcs.map((a) => `${tx(a.label)} ${a.pct}%`).join(', ')}>
-      {arcs.map((a) => <path key={a.label} d={a.d} fill={a.color} />)}
-      <circle cx={c} cy={c} r={r * 0.56} fill="var(--surface)" />
-      <text x={c} y={c - 2} textAnchor="middle" className="pie-n">{total}</text>
-      <text x={c} y={c + 14} textAnchor="middle" className="pie-l">{tx('steps')}</text>
-    </svg>
+    <button className="ov-row" onClick={() => onOpen(t)}
+      onContextMenu={onMenu ? (e) => onMenu(e, t) : undefined}>
+      <span className={'ov-date' + (resolved ? '' : ' late')}>
+        {dateLabel(entry.date)}
+      </span>
+      <span className="brief-main">
+        <span className={'ov-title' + (resolved ? ' done-txt' : '')}>{t.title}</span>
+        <span className="brief-note" style={{ color: resolved ? 'var(--muted)' : '#A32D2D' }}>
+          {resolved ? `${verb} ${late} day${late === 1 ? '' : 's'} late` : `${verb ? verb + ' ' : ''}${late} day${late === 1 ? '' : 's'} overdue`}
+        </span>
+      </span>
+      <span className="ov-chips">
+        {kind === 'edit'
+          ? <span className="chip miss-kind-edit"><Scissors size={11} />{' '}{tx("edit deadline")}</span>
+          : kind === 'design'
+            ? <span className="chip miss-kind-edit"><Palette size={11} />{' '}{tx("design deadline")}</span>
+            : <span className="chip miss-kind-rel"><Send size={11} />{' '}{tx("release")}</span>}
+        <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
+        {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
+        {isAdmin && who.map((n) => <span key={n} className="chip chip-danger">{n}</span>)}
+      </span>
+    </button>
   )
 }
 
-const Bar = ({ value, of, tone }) => (
-  <span className="stat-bar"><i className={'stat-bar-fill' + (tone ? ` sb-${tone}` : '')}
-    style={{ width: `${of > 0 ? Math.round((value / of) * 100) : 0}%` }} /></span>
-)
-
-export default function Statistics() {
+export default function Missed() {
   const { user } = useAuth()
-  const { visible: channels } = useChannels()
-  const today = todayISO()
-  const [month, setMonth] = useState(() => monthOf(today))
-  const [chan, setChan] = useState('all')
-  const [data, setData] = useState(null)
-  const [err, setErr] = useState('')
-  const [open, setOpen] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('satashkent_stats_open') || '["steps"]')) }
-    catch { return new Set(['steps']) }
-  })
-  const toggle = (k) => setOpen((prev) => {
-    const next = new Set(prev)
-    if (next.has(k)) next.delete(k); else next.add(k)
-    localStorage.setItem('satashkent_stats_open', JSON.stringify([...next]))
-    return next
-  })
+  const { channels, byKey } = useChannels()
+  const isAdmin = user.role === 'admin'
+  const [boot] = useState(() => cache.get(`missed:${user.id}`))
+  const [content, setContent] = useState(boot?.content || [])
+  const [users, setUsers] = useState(boot?.users || [])
+  const [statuses, setStatuses] = useState(boot?.statuses || [])
+  const [loading, setLoading] = useState(!boot)
+  const [openItem, setOpenItem] = useState(null)
+
+  // Filters: period (day / week / month / custom dates), channel, person,
+  // and project — the project narrows the numbers AND the missed list.
+  // They REMEMBER: the page reopens exactly as this account left it.
+  const remembered = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem(`satashkent_stats_${user.id}`) || '{}') || {} } catch { return {} }
+  }, [user.id])
+  const [range, setRange] = useState(remembered.range || 'all')
+  const [from, setFrom] = useState(remembered.from || '')
+  const [to, setTo] = useState(remembered.to || '')
+  const [chan, setChan] = useState(remembered.chan || 'all')
+  const [person, setPerson] = useState(remembered.person || 0) // 0 = everyone (admin only)
+  const [openPerson, setOpenPerson] = useState(0) // report row expanded to its tasks
+  const [project, setProject] = useState(remembered.project || 0) // 0 = all projects
+  // The numbers dashboard has its own window: this month by default.
+  const [statRange, setStatRange] = useState(remembered.statRange || 'tmonth')
+  const [statFrom, setStatFrom] = useState(remembered.statFrom || '')
+  const [statTo, setStatTo] = useState(remembered.statTo || '')
+  // Published-by-channel rides the same window as the numbers above it —
+  // one selector for the whole card; only the type filter is its own.
+  const [pubType, setPubType] = useState(remembered.pubType || 'all')
+  useEffect(() => {
+    try {
+      localStorage.setItem(`satashkent_stats_${user.id}`,
+        JSON.stringify({ range, from, to, chan, person, project, statRange, statFrom, statTo, pubType }))
+    } catch { /* ok */ }
+  }, [range, from, to, chan, person, project, statRange, statFrom, statTo, pubType, user.id])
+  const [campaigns, setCampaigns] = useState([])
+  const [projects, setProjects] = useState([])
+  useEffect(() => {
+    api.cached('/campaigns').then(setCampaigns).catch(() => {})
+    api.cached('/projects').then(setProjects).catch(() => {})
+  }, [])
 
   useEffect(() => {
-    const { from, to } = monthEdges(month)
-    setData(null); setErr('')
-    api.get(`/reports/stats?from=${from}&to=${to}&channel=${chan}`)
-      .then(setData).catch((e) => { setErr(e.message); loadFailed(e) })
-  }, [month, chan])
+    Promise.all([api.get('/content'), api.cached('/users'), api.cached('/statuses')])
+      .then(([ct, us, st]) => {
+        setContent(ct); setUsers(us); setStatuses(st)
+        cache.set(`missed:${user.id}`, { content: ct.map(({ photo_thumb: _t, ...r }) => r), users: us, statuses: st })
+      })
+      .catch(loadFailed)
+      .finally(() => setLoading(false))
+  }, [user.id])
+  useEffect(() => {
+    const refresh = () => {
+      if (document.hidden || openItem) return
+      api.poll('/content').then((f) => { if (f) setContent(f) }).catch(() => {})
+    }
+    const id = setInterval(refresh, 10000)
+    return () => clearInterval(id)
+  }, [openItem])
 
-  const pie = useMemo(() => {
-    if (!data) return []
-    return [
-      { label: 'Shooting', value: data.byPhase.shoot.late, color: '#fab219' },
-      { label: 'Editing', value: data.byPhase.edit.late, color: '#b5324a' },
-      { label: 'Review & publish', value: data.byPhase.review.late, color: '#2a78d6' },
-    ]
-  }, [data])
+  const today = todayISO()
+  const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users])
+  // Killed content (Deleted stage) is out of every judgement here: no misses
+  // haunt anyone for a piece that will never ship, and it can't be upcoming.
+  const deadIds = useMemo(() => new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id)), [statuses])
+  const alive = useMemo(() => content.filter((t) => !deadIds.has(t.status_id)), [content, deadIds])
+  const campById = useMemo(() => Object.fromEntries(campaigns.map((c) => [c.id, c])), [campaigns])
+  const projectOf = (t) => (t.campaign_id ? campById[t.campaign_id]?.project_id ?? null : null)
 
-  const Section = ({ k, title, count, children }) => (
-    <div className="card st-sec">
-      <button type="button" className="st-sec-head" onClick={() => toggle(k)} aria-expanded={open.has(k)}>
-        <b>{tx(title)}</b>
-        {count !== undefined && <span className="count">{count}</span>}
-        <span className="spacer" />
-        <ChevronDown size={16} className={'dz-caret' + (open.has(k) ? ' open' : '')} />
-      </button>
-      {open.has(k) && <div className="st-sec-body">{children}</div>}
-    </div>
-  )
+  // Does this person hold any hat on the task — assignee, operator, editor
+  // or designer?
+  const holdsHat = (t, id) =>
+    (t.assignees?.length ? t.assignees.includes(id) : t.assignee_id === id) ||
+    t.operator_id === id || t.editor_id === id || t.designer_id === id
+
+  // ---- the numbers: done, missed, upcoming, in one window ----------------
+  // Scope: admins see everything (narrowable by person), everyone else only
+  // the tasks where they hold a hat. The project filter narrows both.
+  const scoped = useMemo(() => alive.filter((t) =>
+    (isAdmin ? (!person || holdsHat(t, person)) : holdsHat(t, user.id)) &&
+    (!project || projectOf(t) === project)),
+  [alive, isAdmin, person, project, campById]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A task's next own deadline: release, un-met edit/design dates, or the
+  // shoot when nothing else is set.
+  const nextDeadline = (t) =>
+    [t.release_date, !t.ready_at ? t.edit_ready_date : null, !t.ready_at ? t.design_ready_date : null]
+      .filter(Boolean).sort()[0] || t.recording_date
+
+  // Calendar-honest windows: weeks start Monday, months and the year run
+  // their real span. Done and missed look at the past side of the window,
+  // upcoming at the future side — so "this week" shows both at once.
+  const STAT_RANGES = [
+    { key: 'today', label: tx('Today') },
+    { key: 'tweek', label: 'This week' },
+    { key: 'lweek', label: 'Last week' },
+    { key: 'tmonth', label: tx('This month') },
+    { key: 'lmonth', label: tx('Last month') },
+    { key: '6mo', label: tx('6 months') },
+    { key: 'tyear', label: 'This year' },
+    { key: 'custom', label: tx('Custom…') },
+  ]
+  const stats = useMemo(() => {
+    const mondayOf = (iso) => addDaysISO(iso, -((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7))
+    const monthEndOf = (iso) => {
+      const d = new Date(`${iso.slice(0, 7)}-01T12:00:00Z`)
+      d.setUTCMonth(d.getUTCMonth() + 1)
+      d.setUTCDate(0)
+      return d.toISOString().slice(0, 10)
+    }
+    const monday = mondayOf(today)
+    const prevMonth = (() => {
+      const d = new Date(`${today.slice(0, 7)}-01T12:00:00Z`)
+      d.setUTCDate(0)
+      return d.toISOString().slice(0, 10)
+    })()
+    const WINDOWS = {
+      today: [today, today],
+      tweek: [monday, addDaysISO(monday, 6)],
+      lweek: [addDaysISO(monday, -7), addDaysISO(monday, -1)],
+      tmonth: [`${today.slice(0, 8)}01`, monthEndOf(today)],
+      lmonth: [`${prevMonth.slice(0, 8)}01`, prevMonth],
+      '6mo': [addDaysISO(today, -180), today],
+      tyear: [`${today.slice(0, 4)}-01-01`, `${today.slice(0, 4)}-12-31`],
+      custom: [statFrom || null, statTo || null],
+    }
+    const [lo, hi] = WINDOWS[statRange] || WINDOWS.tmonth
+    const pastHi = hi && hi > today ? today : hi
+    const futLo = lo && lo < today ? today : lo
+    const inWin = (d, a, b) => d && (!a || d >= a) && (!b || d <= b)
+    const done = scoped.filter((t) => t.done_at && inWin(tashkentDay(t.done_at), lo, pastHi)).length
+    const missedN = scoped.flatMap((t) => entriesOf(t, today))
+      .filter((e) => (isAdmin ? (!person || e.who.includes(person)) : e.who.includes(user.id)))
+      .filter((e) => inWin(e.date, lo, pastHi)).length
+    const upcoming = hi && hi < today ? 0
+      : scoped.filter((t) => !t.done_at && inWin(nextDeadline(t), futLo, hi)).length
+    const openNow = scoped.filter((t) => !t.done_at).length
+    return { done, missedN, upcoming, openNow }
+  }, [scoped, statRange, statFrom, statTo, today, isAdmin, person, user.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- published, by channel: how many items went out in a window --------
+  // "Published" = reached the final stage (done_at stamped). Counted on the
+  // team's Tashkent clock, grouped per channel, filterable by type.
+  const PUB_TYPES = [
+    { key: 'all', label: 'All' }, { key: 'post', label: 'Post' }, { key: 'reel', label: 'Reel' },
+    { key: 'story', label: 'Story' }, { key: 'video', label: 'Video' },
+  ]
+  const published = useMemo(() => {
+    const finalId = (statuses.find((s) => s.is_final) || {}).id ?? null
+    const mondayOf = (iso) => addDaysISO(iso, -((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7))
+    const monthEndOf = (iso) => {
+      const d = new Date(`${iso.slice(0, 7)}-01T12:00:00Z`)
+      d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0)
+      return d.toISOString().slice(0, 10)
+    }
+    const monday = mondayOf(today)
+    const prevMonth = (() => {
+      const d = new Date(`${today.slice(0, 7)}-01T12:00:00Z`)
+      d.setUTCDate(0)
+      return d.toISOString().slice(0, 10)
+    })()
+    const WINDOWS = {
+      today: [today, today],
+      tweek: [monday, addDaysISO(monday, 6)],
+      lweek: [addDaysISO(monday, -7), addDaysISO(monday, -1)],
+      tmonth: [`${today.slice(0, 8)}01`, monthEndOf(today)],
+      lmonth: [`${prevMonth.slice(0, 8)}01`, prevMonth],
+      '6mo': [addDaysISO(today, -180), today],
+      tyear: [`${today.slice(0, 4)}-01-01`, `${today.slice(0, 4)}-12-31`],
+      custom: [statFrom || null, statTo || null],
+    }
+    const [lo, hi] = WINDOWS[statRange] || WINDOWS.tmonth
+    const inWin = (d) => d && (!lo || d >= lo) && (!hi || d <= hi)
+    const rows = {}
+    let total = 0
+    for (const t of content) {
+      if (!t.done_at) continue
+      if (finalId != null && t.status_id !== finalId) continue
+      if (pubType !== 'all' && t.type !== pubType) continue
+      if (!inWin(tashkentDay(t.done_at))) continue
+      total++
+      for (const c of t.channels) rows[c] = (rows[c] || 0) + 1
+    }
+    const list = Object.entries(rows).map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n)
+    return { list, total, max: list[0]?.n || 1, lo, hi }
+  }, [content, statuses, statRange, statFrom, statTo, pubType, today])
+
+  // Projects offered in the filter: all of them for admins, only the ones
+  // holding your visible tasks for everyone else.
+  const projectChoices = useMemo(() => {
+    if (isAdmin) return projects
+    const minePr = new Set(content.filter((t) => holdsHat(t, user.id)).map(projectOf).filter(Boolean))
+    return projects.filter((pr) => minePr.has(pr.id))
+  }, [projects, content, isAdmin, user.id, campById]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Every miss I answer for — as head, operator or editor of the entry.
+  const missedAll = useMemo(
+    () => alive.flatMap((t) => entriesOf(t, today)).filter((e) => isAdmin || e.who.includes(user.id)),
+    [alive, today, isAdmin, user.id])
+
+  // Period first (it scopes everything, counts included) …
+  const inRange = useMemo(() => {
+    let lo = null, hi = null
+    const r = RANGES.find((x) => x.key === range)
+    if (r?.days) lo = addDaysISO(today, -r.days)
+    if (range === 'custom') { lo = from || null; hi = to || null }
+    return missedAll.filter((e) => (!lo || e.date >= lo) && (!hi || e.date <= hi))
+  }, [missedAll, range, from, to, today])
+
+  // … then who and where, with live counts on every pill.
+  const chanCounts = useMemo(() => {
+    const m = {}
+    for (const e of inRange) {
+      if (person && !e.who.includes(person)) continue
+      for (const c of e.t.channels) m[c] = (m[c] || 0) + 1
+    }
+    return m
+  }, [inRange, person])
+  // Per person, in the current period + channel: total, still open, done late.
+  const personStats = useMemo(() => {
+    const m = {}
+    for (const e of inRange) {
+      if (chan !== 'all' && !e.t.channels.includes(chan)) continue
+      for (const id of e.who) {
+        const s = (m[id] ||= { n: 0, open: 0, late: 0 })
+        s.n++
+        if (e.mark) s.late++
+        else s.open++
+      }
+    }
+    return m
+  }, [inRange, chan])
+  const personCounts = useMemo(
+    () => Object.fromEntries(Object.entries(personStats).map(([id, s]) => [id, s.n])),
+    [personStats])
+
+  const missed = useMemo(
+    () => inRange.filter((e) =>
+      (chan === 'all' || e.t.channels.includes(chan)) &&
+      (!person || e.who.includes(person)) &&
+      (!project || projectOf(e.t) === project)),
+    [inRange, chan, person, project, campById]) // eslint-disable-line react-hooks/exhaustive-deps
+  const open = useMemo(
+    () => missed.filter((e) => !e.mark).sort((a, b) => a.date.localeCompare(b.date)),
+    [missed])
+  const late = useMemo(
+    () => missed.filter((e) => e.mark).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 50),
+    [missed])
+
+  // The person with the most misses in the current scope.
+  const worst = useMemo(() => {
+    if (!isAdmin) return null
+    let best = null
+    for (const [id, n] of Object.entries(personCounts))
+      if (!best || n > best.n) best = { id: Number(id), n }
+    return best && usersById[best.id] ? { ...best, name: usersById[best.id].name.split(' ')[0] } : null
+  }, [personCounts, usersById, isAdmin])
+
+  // Every channel is offered, not only the guilty ones.
+  const allChans = useMemo(() => {
+    const keys = channels.map((c) => c.key)
+    for (const k of Object.keys(chanCounts)) if (!keys.includes(k)) keys.push(k)
+    return keys.sort((a, b) => (chanCounts[b] || 0) - (chanCounts[a] || 0))
+  }, [channels, chanCounts])
+
+  const updateContent = async (item, payload) => {
+    const u = await api.patch(`/content/${item.id}`, payload)
+    rewardIfFinished(item, u)
+    setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
+  }
+  const deleteContent = async (item) => {
+    await api.del(`/content/${item.id}`)
+    setContent((prev) => prev.filter((x) => x.id !== item.id))
+  }
+
+  // Right-click: resolve or clear a miss without opening it.
+  const { openMenu } = useContextMenu()
+  const rowMenu = (e, item) => openMenu(e, [
+    { label: 'Open', icon: PenLine, onClick: () => setOpenItem(item) },
+    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: CheckCircle2, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast(tx('Saved — synced'))).catch((err) => alert(err.message)) },
+    { sep: true },
+    { label: 'Delete', icon: Trash2, danger: true, onClick: () => { if (confirm(`Delete “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) } },
+  ])
+
+  if (loading) return <div className="app-loading"><span className="spinner" /></div>
+
+  const activePeople = Object.keys(personCounts).map(Number)
+    .sort((a, b) => (personCounts[b] || 0) - (personCounts[a] || 0))
 
   return (
     <>
-      <div className="section-head">
-        <BarChart3 size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>{tx('Statistics')}</h2>
-        <span className="spacer" />
-        <div className="at-month">
-          <button className="icon-btn" onClick={() => setMonth((m) => shiftMonth(m, -1))}
-            aria-label={tx('Previous month')}><ChevronLeft size={18} /></button>
-          <b>{monthWords(month)}</b>
-          <button className="icon-btn" disabled={month >= monthOf(today)}
-            onClick={() => setMonth((m) => shiftMonth(m, 1))}
-            aria-label={tx('Next month')}><ChevronRight size={18} /></button>
+      <div className="card card-pad brief-hero">
+        <div className="brief-hello"><BarChart3 size={17} />{' '}{tx("Statistics")}</div>
+        <h2 className="brief-title">
+          {isAdmin ? `${tx('The whole team:')} ` : ''}
+          {missed.length === 0
+            ? tx('nothing missed — clean record.')
+            : `${open.length} still not done · ${late.length} finished late`}
+        </h2>
+        <div className="stat-sub" style={{ marginTop: 4 }}>
+          {tx('Done, upcoming and missed — across every task')}{' '}{isAdmin ? 'of the team' : 'assigned to you'},{' '}
+          {tx('each judged by its own clock: release, edit-ready, design-ready.')}
         </div>
       </div>
 
-      {/* the channels, across the top */}
-      <div className="pill-group st-chans">
-        <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')}>{tx('All channels')}</button>
-        {channels.map((c) => (
-          <button key={c.key} className={'pill' + (chan === c.key ? ' active' : '')}
-            onClick={() => setChan(chan === c.key ? 'all' : c.key)}>{c.label}</button>
-        ))}
+      {/* What the month says, before what the month contains. */}
+      <StatsMonth />
+
+      {/* ---- the numbers: one window, four honest counts ---- */}
+      <div className="card card-pad stats-card">
+        <div className="docs-sec-head">
+          <h2><BarChart3 size={17} />{' '}{tx("The numbers")}</h2>
+          <div className="docs-up">
+            <div className="pill-group">
+              {STAT_RANGES.map((r) => (
+                <button key={r.key} className={'pill' + (statRange === r.key ? ' active' : '')} onClick={() => setStatRange(r.key)}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {statRange === 'custom' && (
+              <span className="miss-custom">
+                <input className="input" type="date" value={statFrom} onChange={(e) => setStatFrom(e.target.value)} />
+                <span className="drow-dash">–</span>
+                <input className="input" type="date" value={statTo} onChange={(e) => setStatTo(e.target.value)} />
+              </span>
+            )}
+          </div>
+        </div>
+        {(isAdmin || projectChoices.length > 0) && (
+          <div className="stats-filters">
+            {isAdmin && (
+              <select className="select" value={person} data-tip={tx("Only this person's work")}
+                onChange={(e) => setPerson(Number(e.target.value))}>
+                <option value={0}>{tx("Everyone")}</option>
+                {[...users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            )}
+            {projectChoices.length > 0 && (
+              <select className="select" value={project} data-tip={tx("Only tasks tied to this project's campaigns")}
+                onChange={(e) => setProject(Number(e.target.value))}>
+                <option value={0}>{tx("All projects")}</option>
+                {projectChoices.map((pr) => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+        <div className="miss-stats">
+          <div className="miss-stat stat-done"><b>{stats.done}</b><span>{tx("done")}</span></div>
+          <div className="miss-stat stat-up"><b>{stats.upcoming}</b><span>{tx("upcoming")}</span></div>
+          <div className="miss-stat stat-missed"><b style={stats.missedN ? { color: '#A32D2D' } : undefined}>{stats.missedN}</b><span>{tx("missed")}</span></div>
+          <div className="miss-stat"><b>{stats.openNow}</b><span>{tx("open now")}</span></div>
+        </div>
+
+        {/* Published, by channel — same window as the tiles above; only the
+            content type is its own little filter. */}
+        <div className="pub-head">
+          <h3><Send size={14} />{' '}{tx("Published by channel")}</h3>
+          <div className="pub-types">
+            {PUB_TYPES.map((t) => (
+              <button key={t.key} className={'pill' + (pubType === t.key ? ' active' : '')} onClick={() => setPubType(t.key)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {published.total === 0 ? (
+          <div className="tt-none" style={{ padding: '4px 0 0' }}>{tx("Nothing published in this window.")}</div>
+        ) : (
+          <div className="pub-list">
+            {published.list.map((r) => (
+              <div key={r.key} className="pub-row">
+                <span className="pub-name">{byKey[r.key]?.label || r.key}</span>
+                <span className="pub-bar"><span style={{ width: `${Math.round((r.n / published.max) * 100)}%` }} /></span>
+                <b className="pub-n">{r.n}</b>
+              </div>
+            ))}
+            <div className="stat-sub" style={{ marginTop: 8 }}>
+              {published.total} item{published.total === 1 ? '' : 's'} published · counted on Asia/Tashkent time.
+            </div>
+          </div>
+        )}
       </div>
 
-      {err && <div className="form-error">{err}</div>}
-      {!data ? <div className="app-loading"><span className="spinner" /></div> : (
-        <>
-          {/* THE ANSWER. Everything under this is the working. */}
-          <div className="card st-say">
-            {data.conclusions.map((c, i) => {
-              const Icon = TONE_ICON[c.tone] || Lightbulb
+      <div className="section-head" style={{ marginTop: 6 }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} />{' '}{tx("Missed deadlines")}</h2>
+      </div>
+
+      {/* Period: a day, a week, a month, or any dates you pick */}
+      <div className="miss-filters">
+        <span className="miss-f-label"><CalendarRange size={14} />{' '}{tx("Period")}</span>
+        <div className="pill-group">
+          {RANGES.map((r) => (
+            <button key={r.key} className={'pill' + (range === r.key ? ' active' : '')} onClick={() => setRange(r.key)}>
+              {r.label}
+            </button>
+          ))}
+        </div>
+        {range === 'custom' && (
+          <span className="miss-custom">
+            <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <span className="drow-dash">–</span>
+            <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </span>
+        )}
+      </div>
+
+      {/* Where and who — live counts on every pill; every channel is listed */}
+      {(allChans.length > 1 || chan !== 'all') && (
+        <div className="miss-filters">
+          <span className="miss-f-label">{tx("Channel")}</span>
+          <div className="pill-group">
+            <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')}>
+              All <b className="pill-n">{inRange.filter((e) => !person || e.who.includes(person)).length}</b>
+            </button>
+            {allChans.map((c) => (
+              <button key={c} className={'pill' + (chan === c ? ' active' : '') + (chanCounts[c] ? '' : ' pill-zero')}
+                onClick={() => setChan(chan === c ? 'all' : c)}>
+                {byKey[c]?.label || c} <b className="pill-n">{chanCounts[c] || 0}</b>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {isAdmin && (activePeople.length > 0 || person !== 0) && (
+        <div className="miss-filters">
+          <span className="miss-f-label">{tx("Person")}</span>
+          <div className="pill-group">
+            <button className={'pill' + (person === 0 ? ' active' : '')} onClick={() => setPerson(0)}>{tx("Everyone")}</button>
+            {activePeople.map((id) => {
+              const u = usersById[id]
+              if (!u) return null
               return (
-                <div key={i} className={`st-line st-${c.tone}`}>
-                  <Icon size={15} /> <span>{c.text}</span>
-                </div>
+                <button key={id} className={'pill pill-person' + (person === id ? ' active' : '')}
+                  onClick={() => setPerson(person === id ? 0 : id)}>
+                  <Avatar name={u.name} color={u.color} src={u.avatar} size="xs" />
+                  {u.name.split(' ')[0]} <b className="pill-n">{personCounts[id]}</b>
+                </button>
               )
             })}
           </div>
+        </div>
+      )}
 
-          {/* the four numbers the conclusions are drawn from */}
-          <div className="st-tiles">
-            <div className="card st-tile">
-              <span className="st-k">{tx('Plan completion')}</span>
-              <b className={data.rates.completion !== null && data.rates.completion < 60 ? 'pay-bad' : ''}>
-                {data.rates.completion === null ? '—' : `${data.rates.completion}%`}
-              </b>
-              <Bar value={data.totals.planned - data.totals.owed} of={data.totals.planned} tone={data.rates.completion >= 90 ? 'good' : data.rates.completion >= 60 ? 'warn' : 'bad'} />
-              <span className="stat-sub">{data.totals.planned} {tx('planned')} · {data.totals.owed} {tx('still owed')}</span>
-            </div>
-            <div className="card st-tile">
-              <span className="st-k">{tx('Delivered')}</span>
-              <b>{data.totals.delivered}</b>
-              <Bar value={data.totals.onTime} of={data.totals.delivered} tone="good" />
-              <span className="stat-sub">{data.totals.onTime} {tx('on time')}</span>
-            </div>
-            <div className="card st-tile">
-              <span className="st-k">{tx('On time')}</span>
-              <b className={data.rates.punctuality !== null && data.rates.punctuality < 70 ? 'pay-bad' : ''}>
-                {data.rates.punctuality === null ? '—' : `${data.rates.punctuality}%`}
-              </b>
-              <Bar value={data.totals.onTime} of={data.totals.delivered} tone={data.rates.punctuality >= 80 ? 'good' : 'warn'} />
-              <span className="stat-sub">{tx('of what went out')}</span>
-            </div>
-            <div className="card st-tile">
-              <span className="st-k">{tx('Missed steps')}</span>
-              <b className={data.totals.lateSteps ? 'pay-bad' : ''}>{data.totals.lateSteps}</b>
-              <span className="st-sides">
-                <span><i className="st-dot st-prod" /> {data.bySide.production || 0} {tx('production')}</span>
-                <span><i className="st-dot st-make" /> {data.bySide.make || 0} {tx('content')}</span>
-              </span>
-            </div>
+      {/* The numbers for the chosen period */}
+      {/* One tile says how the period looks; the lists below carry the rest
+          (their headers already count "still not done" and "finished late"). */}
+      <div className="miss-stats">
+        <div className="miss-stat">
+          <b>{missed.length}</b>
+          <span>{tx("missed in this period")}</span>
+        </div>
+        {worst && worst.n > 0 && (
+          <button className="miss-stat miss-stat-btn" data-tip={tx("See exactly which ones, below")}
+            onClick={() => setOpenPerson(openPerson === worst.id ? 0 : worst.id)}>
+            <b>{worst.name}</b>
+            <span>most misses · {worst.n}</span>
+          </button>
+        )}
+      </div>
+
+      {/* Who missed how many — the report for the chosen period. */}
+      {isAdmin && activePeople.length > 0 && (
+        <div className="card card-pad miss-report">
+          <div className="pc-check-head" style={{ marginBottom: 8 }}>
+            <h3>{tx("Misses by person")}</h3>
+            <span className="stat-sub">
+              {range === 'custom'
+                ? `${from || 'start'} → ${to || 'today'}`
+                : RANGES.find((r) => r.key === range)?.label.toLowerCase()}
+              {chan !== 'all' ? ` · ${byKey[chan]?.label || chan}` : ''}
+            </span>
           </div>
-
-          <Section k="steps" title="Where the time goes">
-            <div className="st-pie-row">
-              <Pie slices={pie} />
-              <div className="st-legend">
-                {pie.map((s) => {
-                  const Icon = PHASE_ICON[Object.keys(PHASE_LABEL).find((k) => PHASE_LABEL[k] === s.label)] || Clapperboard
-                  const judged = data.byPhase[Object.keys(PHASE_LABEL).find((k) => PHASE_LABEL[k] === s.label)].judged
-                  return (
-                    <div key={s.label} className="st-leg-row">
-                      <i className="st-dot" style={{ background: s.color }} />
-                      <Icon size={13} />
-                      <span className="st-leg-name">{tx(s.label)}</span>
-                      <b>{s.value}</b>
-                      <span className="stat-sub">{tx('of')} {judged}</span>
-                      <Bar value={s.value} of={judged || 1} tone={s.value ? 'bad' : 'good'} />
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </Section>
-
-          <Section k="channels" title="By channel" count={data.byChannel.filter((c) => c.planned).length}>
-            <table className="tbl st-tbl">
-              <thead><tr>
-                <th>{tx('Channel')}</th><th>{tx('Planned')}</th><th>{tx('Delivered')}</th>
-                <th>{tx('Plan completion')}</th><th>{tx('On time')}</th>
-              </tr></thead>
-              <tbody>
-                {data.byChannel.filter((c) => c.planned > 0).map((c) => (
-                  <tr key={c.key}>
-                    <td><b>{c.label}</b></td>
-                    <td>{c.planned}</td>
-                    <td>{c.delivered}</td>
-                    <td className={c.completion !== null && c.completion < 60 ? 'pay-bad' : ''}>
-                      {c.completion === null ? '—' : `${c.completion}%`}
-                    </td>
-                    <td>{c.punctuality === null ? '—' : `${c.punctuality}%`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Section>
-
-          {data.byPerson.length > 0 && (
-            <Section k="people" title="Who is carrying the misses" count={data.byPerson.length}>
-              <table className="tbl st-tbl">
-                <thead><tr>
-                  <th>{tx('Person')}</th><th>{tx('Missed steps')}</th><th>{tx('Shooting')}</th>
-                  <th>{tx('Editing')}</th><th>{tx('Review & publish')}</th>
-                </tr></thead>
-                <tbody>
-                  {data.byPerson.map((p) => (
-                    <tr key={p.id}>
-                      <td><b>{p.name || '—'}</b></td>
-                      <td className={p.late >= 3 ? 'pay-bad' : ''}>{p.late}</td>
-                      <td>{p.phases.shoot || 0}</td>
-                      <td>{p.phases.edit || 0}</td>
-                      <td>{p.phases.review || 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Section>
-          )}
-
-          {data.blamed.length > 0 && (
-            <Section k="each" title="Every missed step, worst first" count={data.blamed.length}>
-              <div className="st-misses">
-                {data.blamed.map((m, i) => (
-                  <div key={`${m.id}-${m.phase}-${i}`} className="st-miss">
-                    <span className={'chip ' + (m.side === 'production' ? 'chip-prod' : 'chip-make')}>
-                      {tx(m.side === 'production' ? 'production' : 'content')}
-                    </span>
-                    <span className="st-miss-main">
-                      <b>{m.title}</b>
-                      <span className="stat-sub">{tx(m.label)} · {tx('due')} {dateLabel(m.due)} · {m.why}{m.decided ? ` — ${tx('an admin decided this')}` : ''}</span>
-                    </span>
-                    <span className="st-miss-days">{m.days_late}{tx('d')}</span>
-                    <span className="st-miss-who stat-sub">{m.who.join(', ') || tx('nobody')}</span>
+          {activePeople.map((id) => {
+            const u = usersById[id]
+            const s = personStats[id]
+            if (!u || !s) return null
+            const max = personCounts[activePeople[0]] || 1
+            const opened = openPerson === id
+            return (
+              <div key={id}>
+                <button className={'miss-person-row' + (opened ? ' on' : '')}
+                  onClick={() => setOpenPerson(opened ? 0 : id)}>
+                  <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
+                  <span className="miss-person-name">{u.name}</span>
+                  <span className="miss-person-bar">
+                    <span style={{ width: `${Math.round((s.n / max) * 100)}%` }} />
+                  </span>
+                  <b className="miss-person-n">{s.n}</b>
+                  <span className="miss-person-split">
+                    <span className="mp-open">{s.open} open</span>
+                    <span className="mp-late">{s.late} late</span>
+                  </span>
+                  <ChevronDown size={14} className={'miss-person-chev' + (opened ? ' open' : '')} />
+                </button>
+                {/* The receipts: exactly which deadlines this person missed,
+                    right under their name — no scrolling off to find them. */}
+                {opened && (
+                  <div className="miss-person-tasks">
+                    {inRange
+                      .filter((e) => e.who.includes(id) &&
+                        (chan === 'all' || e.t.channels.includes(chan)) &&
+                        (!project || projectOf(e.t) === project))
+                      .sort((a, b) => b.date.localeCompare(a.date))
+                      .slice(0, 30)
+                      .map((e) => (
+                        <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey}
+                          usersById={usersById} isAdmin={false} onOpen={setOpenItem} onMenu={rowMenu} />
+                      ))}
                   </div>
-                ))}
+                )}
               </div>
-            </Section>
-          )}
-        </>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="section-head">
+        <AlertTriangle size={17} style={{ color: '#A32D2D' }} />
+        <h2 style={{ color: '#A32D2D' }}>{tx("Still not done")}</h2>
+        <span className="count">· {open.length}</span>
+      </div>
+      {open.length === 0 ? (
+        <div className="card card-pad empty">{tx("Nothing overdue and undone. Keep it that way.")}</div>
+      ) : (
+        <div className="card card-pad brief-list">
+          {open.map((e) => (
+            <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
+          ))}
+        </div>
+      )}
+
+      <div className="section-head">
+        <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
+        <h2>{tx("Finished, but late")}</h2>
+        <span className="count">· {late.length}</span>
+      </div>
+      {late.length === 0 ? (
+        <div className="card card-pad empty">{tx("No late finishes on record.")}</div>
+      ) : (
+        <div className="card card-pad brief-list">
+          {late.map((e) => (
+            <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
+          ))}
+        </div>
+      )}
+
+      {openItem && (
+        <ContentModal key={openItem?.id || 'new'}
+          item={openItem}
+          statuses={statuses}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
+          onUpdate={updateContent}
+          onDelete={deleteContent}
+        />
       )}
     </>
   )

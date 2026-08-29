@@ -31,7 +31,7 @@ f = (await req('/fields', 'POST', { crew: { designer: [] } })).data
 ok('a partial update touches only the sent hat', f.crew.designer.length === 0 && f.crew.operator.includes('video'))
 ok('restoring the rule round-trips', (await req('/fields', 'POST', { crew: { designer: ['post'] } })).status === 200)
 
-// ---- Unassigned honors them ----
+// ---- the task honors them ----
 const sts = (await req('/statuses')).data
 const sid = (re) => sts.find((s) => re.test(s.label)).id
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
@@ -48,13 +48,19 @@ p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
 await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
 await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 15000 })
-await p.goto(BASE + '/unassigned'); await p.waitForTimeout(1400)
+const openPost = async () => {
+  await p.goto(`${BASE}/brief?task=${post.id}`)
+  await p.waitForSelector('.modal .cm-title', { timeout: 10000 })
+  await p.waitForTimeout(700)
+}
+await openPost()
 ok('by default a bare post begs for its designer',
-  (await p.locator('text=x43: bare post').count()) === 1 && (await p.locator('text=needs a designer').count()) >= 1)
+  (await p.locator('.cm-gaps .chip-gap', { hasText: 'needs a designer' }).count()) === 1)
 await req('/fields', 'POST', { crew: { designer: [] } })
-await p.reload(); await p.waitForTimeout(1400)
-ok('…untick the rule and the begging stops', (await p.locator('text=needs a designer').count()) === 0)
-ok('…the spam row leaves the page entirely', (await p.locator('text=x43: bare post').count()) === 0)
+await openPost()
+ok('…untick the rule and the begging stops', (await p.locator('.cm-gaps .chip-gap', { hasText: 'needs a designer' }).count()) === 0)
+ok('…and with its last hole filled the task owes nothing at all', (await p.locator('.cm-gaps').count()) === 0)
+await p.keyboard.press('Escape'); await p.waitForTimeout(300)
 await req('/fields', 'POST', { crew: { designer: ['post'] } })
 
 // ---- the Admin card edits the rules ----
