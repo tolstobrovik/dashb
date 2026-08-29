@@ -181,10 +181,10 @@ export default function StatsMonth() {
               <span className="stat-sub">{data.totals.planned} {tx('planned')} · {data.totals.owed} {tx('still owed')}</span>
             </div>
             <div className="card st-tile">
-              <span className="st-k">{tx('Delivered')}</span>
-              <b>{data.totals.delivered}</b>
-              <Bar value={data.totals.onTime} of={data.totals.delivered} tone="good" />
-              <span className="stat-sub">{data.totals.onTime} {tx('on time')}</span>
+              <span className="st-k">{tx('Production rate')}</span>
+              <b>{data.rates.production === null ? '—' : `${data.rates.production}%`}</b>
+              <Bar value={data.totals.delivered} of={data.totals.planned || data.totals.delivered} tone={data.rates.production >= 90 ? 'good' : data.rates.production >= 60 ? 'warn' : 'bad'} />
+              <span className="stat-sub">{data.totals.delivered} {tx('went out')}</span>
             </div>
             <div className="card st-tile">
               <span className="st-k">{tx('On time')}</span>

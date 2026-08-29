@@ -74,15 +74,26 @@ await page.waitForSelector('.modal', { timeout: 8000 })
 ok('campaign form has the checklist block', (await page.locator('.modal .pc-check-head').count()) === 1)
 await page.keyboard.press('Escape')
 
-// 4. Quick-add multi-department
+// 4. One task, several departments
+// This used to be the To-Do page's quick-add line, with a row of channel
+// checkboxes under the title. Round 82 removed that page; the capability it
+// offered did not go with it — the board's own quick-add starts the card and
+// the task itself carries the channel chips — so the same question is asked of
+// the path that survived.
 await page.goto(BASE + '/dept/instagram_main')
-await page.waitForSelector('.qa-extras', { timeout: 8000 })
-await page.locator('form input.input').first().fill('Cross-post announcement')
-await page.locator('.qa-extras .checkbox-chip', { hasText: 'YouTube' }).click()
-await page.getByRole('button', { name: 'Add', exact: true }).click()
+await page.waitForSelector('.board-col', { timeout: 10000 })
+await page.locator('.board-col').first().locator('.board-quick-btn').click()
+await page.locator('.board-quick-input').fill('Cross-post announcement')
+await page.keyboard.press('Enter')
+await page.waitForTimeout(900)
+await page.locator('.tcard', { hasText: 'Cross-post announcement' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await page.locator('.modal .checkbox-chip', { hasText: 'YouTube' }).first().click()
+await page.locator('.modal').getByRole('button', { name: 'Save', exact: true }).click()
+await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 await page.waitForTimeout(600)
 const multi = (await req('/content')).data.find((c) => c.title === 'Cross-post announcement')
-ok('quick-add lands on several departments at once', multi && multi.channels.length === 2 && multi.channels.includes('youtube'), JSON.stringify(multi?.channels))
+ok('a task lands on several departments at once', multi && multi.channels.length === 2 && multi.channels.includes('youtube'), JSON.stringify(multi?.channels))
 
 // 5. Quick department create from the task modal, icon guessed
 await page.locator('.tcard', { hasText: 'Cross-post announcement' }).first().click()

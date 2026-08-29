@@ -76,10 +76,13 @@ await page.keyboard.press('Escape')
 await page.waitForTimeout(300)
 
 // quick-add fires a toast after the server confirms
-await page.locator('form.card input.input').first().fill('r10: toast probe')
-await page.locator('form.card button[type="submit"]').click()
-await page.locator('.toast', { hasText: 'Task added' }).waitFor({ timeout: 6000 })
-ok('quick-add toast says added + synced', /synced/.test(await page.locator('.toast', { hasText: 'Task added' }).textContent()))
+// The To-Do page's add line is gone; the board's own column foot took the job
+// and toasts the same way, once the server has actually answered.
+await page.locator('.board-col').first().locator('.board-quick-btn').click()
+await page.locator('.board-quick-input').fill('r10: toast probe')
+await page.keyboard.press('Enter')
+await page.locator('.toast', { hasText: 'synced' }).waitFor({ timeout: 6000 })
+ok('quick-add toast says added + synced', /synced/.test(await page.locator('.toast', { hasText: 'synced' }).first().textContent()))
 await page.screenshot({ path: 'r10-toast.png' })
 await page.waitForTimeout(2800)
 

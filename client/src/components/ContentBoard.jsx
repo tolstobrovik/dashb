@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors, Plus, MessageSquare } from 'lucide-react'
+import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors, Palette, Plus, MessageSquare } from 'lucide-react'
 import { dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
@@ -10,9 +10,11 @@ import Zoom from './Zoom.jsx'
 // The stage that belongs to YOUR craft is tinted and labelled — an operator
 // walks in and sees the shooting column, an editor the editing one, without
 // reading six headings first.
+// With onMenu, a card answers a right-click the way the To-Do page's rows used
+// to before that page was removed: open it, tick it off, copy it, bin it.
 // With onQuickAdd, every working column grows a foot input: type a title,
 // Enter — the task lands in that stage without a modal round-trip.
-export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, onQuickAdd, campaignsById = {}, teamById = {}, myStages = [] }) {
+export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, onMenu, onQuickAdd, campaignsById = {}, teamById = {}, myStages = [] }) {
   const { byKey } = useChannels()
   // Ref = source of truth for the drop (a fast drop must never read a stale
   // state value); state only drives the dimmed styling.
@@ -64,6 +66,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                   <div
                     key={item.id}
                     className={`tcard${dragId === item.id ? ' dim' : ''}`}
+                    onContextMenu={onMenu ? (e) => onMenu(e, item) : undefined}
                     draggable={canMove}
                     onDragStart={(e) => {
                       dragRef.current = item.id
@@ -89,6 +92,12 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                       )}
                       {item.editor_id && teamById[item.editor_id] && (
                         <span className="chip chip-muted" data-tip={tx("Editor — cuts it")}><Scissors size={10} /> {teamById[item.editor_id].name.split(' ')[0]}</span>
+                      )}
+                      {/* The designer was shown on the To-Do row and nowhere
+                          else; that page is gone and this round gives design
+                          its own board, so the card names them too. */}
+                      {item.designer_id && teamById[item.designer_id] && (
+                        <span className="chip chip-muted" data-tip={tx("Designer — draws it")}><Palette size={10} /> {teamById[item.designer_id].name.split(' ')[0]}</span>
                       )}
                       {item.campaign_id && campaignsById[item.campaign_id] && (
                         <span className="chip chip-camp"><Megaphone size={10} /> {campaignsById[item.campaign_id].name}</span>

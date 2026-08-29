@@ -83,13 +83,15 @@ ok('…and the bot said hello', (await sentList()).some((s) => s.method === 'sen
 // pretending to book a shoot these tests are not about.
 const shotId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
 // Shot folded into Editing in round 82, so the second stage this suite
-// moves to is Ready — it needs two distinct stages, not two names for one.
-const editId = (await req('/statuses')).data.find((s) => /^ready$/i.test(s.label)).id
+// moves to has to come from what is left. Not Ready — arriving there is a
+// review handoff with its own ✅ message, and this line is about the plain
+// stage bell — so the piece goes back to Idea and the bell names that stage.
+const editId = (await req('/statuses')).data.find((s) => /^idea$/i.test(s.label)).id
 const task = (await req('/content', 'POST', { title: 'x37: bridge video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shotId })).data
 await fetch(MOCK + '/__reset', { method: 'POST' })
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 let sent = await sentList()
-ok('a status move rings in Telegram', sent.some((s) => String(s.chat_id) === '777' && /x37: bridge video.*Editing/.test(s.text || '')), JSON.stringify(sent.map((s) => s.text)))
+ok('a status move rings in Telegram', sent.some((s) => String(s.chat_id) === '777' && /x37: bridge video.*Idea/.test(s.text || '')), JSON.stringify(sent.map((s) => s.text)))
 await req(`/content/${task.id}/comments`, 'POST', { text: 'посмотри интро ещё раз' })
 sent = await sentList()
 ok('a comment rings in Telegram', sent.some((s) => String(s.chat_id) === '777' && /посмотри интро/.test(s.text || '')))

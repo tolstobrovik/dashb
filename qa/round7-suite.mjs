@@ -45,38 +45,37 @@ const cookies = await ctx.cookies(BASE)
 ok('username cookie set after signing in', cookies.some((c) => c.name === 'satashkent_login' && c.value === 'admin'))
 ok('token in localStorage when remembered', await page.evaluate(() => !!localStorage.getItem('satashkent_token')))
 
-// ---- the reported bug: stale filters must not kill the to-do workflow ----
-// Poison the remembered filters exactly how they rot in real life:
-// a channel that was deleted and a member who left the team.
-await page.evaluate(() => {
-  localStorage.setItem('satashkent_todo_chan', 'ghost_channel')
-  localStorage.setItem('satashkent_todo_member', '99999')
-})
+// ---- the reported bug: a task added by hand must show, and stay shown ----
+// This was the To-Do page's quick-add line, with its remembered channel and
+// member filters that could rot into a channel that had been deleted and a
+// member who had left. Round 82 removed that page; the two ways of writing a
+// task down without opening the full form went to the places they belong —
+// the board's own column foot for team work, My Day for your own list — and
+// both are asked the same question here: does it appear, and is it really
+// there afterwards?
 await page.goto(BASE + '/dept/instagram_main')
-await page.waitForSelector('form.card', { timeout: 10000 })
-await page.waitForTimeout(800)
-ok('poisoned channel filter heals itself', await page.evaluate(() => localStorage.getItem('satashkent_todo_chan')) === 'all')
-ok('poisoned member filter heals itself', await page.evaluate(() => localStorage.getItem('satashkent_todo_member')) === 'all')
-
-// team task: type, add, SEE it
-await page.locator('form.card input.input').first().fill('r7: team task adds fine')
-await page.locator('form.card button[type="submit"]').click()
-await page.waitForTimeout(700)
+await page.waitForSelector('.board-col', { timeout: 12000 })
+await page.waitForTimeout(600)
+await page.locator('.board-col').first().locator('.board-quick-btn').click()
+await page.locator('.board-quick-input').fill('r7: team task adds fine')
+await page.keyboard.press('Enter')
+await page.waitForTimeout(900)
 const bodyTxt = await page.locator('.content').textContent()
 ok('team task added AND visible right away', bodyTxt.includes('r7: team task adds fine'))
 ok('…and it really exists server-side', (await req('/content')).data.some((c) => c.title === 'r7: team task adds fine'))
 
-// personal task: switch the aim to Personal, add, SEE it
-await page.locator('form.card select').nth(1).selectOption('__personal')
-await page.locator('form.card input.input').first().fill('r7: personal one too')
-await page.locator('form.card button[type="submit"]').click()
-await page.waitForTimeout(700)
+// personal task: your own list, on your own page
+await page.goto(BASE + '/brief')
+await page.waitForSelector('.pers-add', { timeout: 12000 })
+await page.locator('.pers-add input.input').fill('r7: personal one too')
+await page.locator('.pers-add button[type="submit"]').click()
+await page.waitForTimeout(900)
 ok('personal task added AND visible', (await page.locator('.content').textContent()).includes('r7: personal one too'))
 
 // the just-added task survives a poll tick (stale instances can't erase it)
 await page.waitForTimeout(10500) // one full poll cycle
-ok('both tasks still on the list after a poll cycle', (await page.locator('.content').textContent()).includes('r7: team task adds fine'))
-await page.screenshot({ path: 'r7-todo.png', fullPage: true })
+ok('it is still on the list after a poll cycle', (await page.locator('.content').textContent()).includes('r7: personal one too'))
+await page.screenshot({ path: 'r7-lists.png', fullPage: true })
 
 // ---- session-only sign-in lands in sessionStorage ----
 const ctx2 = await browser.newContext({ viewport: { width: 1400, height: 950 } })
@@ -106,6 +105,10 @@ await browser.close()
 // ============ cleanup ============
 for (const c of (await req('/content')).data.filter((c) => /r7:/.test(c.title)))
   await req(`/content/${c.id}`, 'DELETE')
+// The personal one lives on its own list, and a shared stack that keeps it
+// would hand the next suite a My Day it did not seed.
+for (const p of (await req('/personal')).data.filter((p) => /r7:/.test(p.title)))
+  await req(`/personal/${p.id}`, 'DELETE')
 
 console.log(fails === 0 ? '\nRound-7 suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails === 0 ? 0 : 1)

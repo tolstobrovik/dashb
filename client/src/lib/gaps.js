@@ -41,6 +41,10 @@ export const gapsOf = (t, crew, rank) => {
   const where = rank ? rank(t.status_id) : 'shot'
   const people = []
   const dates = []
+  // An idea owes nothing. Brainstorm material with no owner and no dates is
+  // not a planning failure, it is a thought — nagging about it is how a board
+  // teaches people to stop writing thoughts down.
+  if (where === 'idea') return { people, dates }
   if (!(t.assignees?.length ? t.assignees.length : t.assignee_id)) people.push({ key: 'owner', label: 'needs an owner' })
   if (need('operator', ['reel', 'video']) && preEdit && !t.operator_id) people.push({ key: 'operator', label: 'needs an operator' })
   if (need('editor', ['reel', 'video']) && preEdit && where === 'shot' && !t.editor_id) people.push({ key: 'editor', label: 'needs an editor' })

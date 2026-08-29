@@ -40,11 +40,14 @@ const isImage = (m) => /^image\//.test(m || '')
 const isPdf = (m) => m === 'application/pdf'
 const isText = (m) => /^text\//.test(m || '')
 const isSheet = (m) => /excel|spreadsheet/i.test(m || '')
+const isWord = (m) => /wordprocessingml|msword/i.test(m || '')
 const docIcon = (mime) => (isImage(mime) ? FileImage : isPdf(mime) ? FileText : isSheet(mime) ? FileSpreadsheet : File)
-// What a browser can actually draw. Word, Excel and PowerPoint cannot be
-// rendered without shipping a converter, and saying so plainly beats a blank
-// grey box that looks like the app is broken.
-const canPreview = (m) => isPdf(m) || isImage(m) || isText(m)
+// What a browser can actually draw. PDFs, pictures and plain text it draws
+// itself; a .docx is a zip of XML, so it gets converted to HTML in the page —
+// the library is loaded only when somebody actually opens a Word file, so the
+// shelf costs nothing to visit. Excel and PowerPoint still say so plainly,
+// which beats a blank grey box that looks like the app is broken.
+const canPreview = (m) => isPdf(m) || isImage(m) || isText(m) || isWord(m)
 
 // The stored data URL, turned into a real browser tab / download.
 const blobUrlOf = (dataUrl) => {
@@ -131,7 +134,22 @@ export default function Docs() {
     try {
       const full = await api.get(`/docs/${d.id}`)
       const url = blobUrlOf(full.data)
-      setPreview({ doc: d, url, mime: full.mime || d.mime })
+      const mime = full.mime || d.mime
+      setPreview({ doc: d, url, mime, html: null, busy: isWord(mime) })
+      // .docx: unzip and turn it into HTML right here. mammoth is pulled in on
+      // demand so a shelf of PDFs never pays for it.
+      if (isWord(mime)) {
+        try {
+          const [{ default: mammoth }, buf] = await Promise.all([
+            import('mammoth/mammoth.browser.min.js'),
+            fetch(url).then((r) => r.arrayBuffer()),
+          ])
+          const out = await mammoth.convertToHtml({ arrayBuffer: buf })
+          setPreview((was) => (was && was.doc.id === d.id ? { ...was, html: out.value || '', busy: false } : was))
+        } catch {
+          setPreview((was) => (was && was.doc.id === d.id ? { ...was, html: null, busy: false, failed: true } : was))
+        }
+      }
     } catch (ex) { setErr(ex.message) }
   }
   const openDoc = async (d, download = false) => {
@@ -292,12 +310,25 @@ export default function Docs() {
             {isPdf(preview.mime) && <iframe title={preview.doc.title} src={preview.url} className="doc-frame" />}
             {isImage(preview.mime) && <img src={preview.url} alt={preview.doc.title} className="doc-img" />}
             {isText(preview.mime) && <iframe title={preview.doc.title} src={preview.url} className="doc-frame doc-frame-text" />}
+            {isWord(preview.mime) && (
+              preview.busy
+                ? <div className="doc-noprev"><span className="spinner" /><span className="stat-sub">{tx('Opening the document…')}</span></div>
+                : preview.html !== null
+                  ? <div className="doc-word" dangerouslySetInnerHTML={{ __html: preview.html }} />
+                  : (
+                    <div className="doc-noprev">
+                      <File size={34} />
+                      <b>{tx('This document could not be drawn')}</b>
+                      <span className="stat-sub">{tx('It may be an older .doc rather than a .docx. The file itself is one press away.')}</span>
+                    </div>
+                  )
+            )}
             {!canPreview(preview.mime) && (
               <div className="doc-noprev">
                 <File size={34} />
                 <b>{tx('A browser cannot draw this kind of file')}</b>
                 <span className="stat-sub">
-                  {tx('Word, Excel and PowerPoint open in their own app. Everything about it is above — the file itself is one press away.')}
+                  {tx('Excel and PowerPoint open in their own app. Everything about it is above — the file itself is one press away.')}
                 </span>
               </div>
             )}

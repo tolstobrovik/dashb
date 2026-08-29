@@ -62,9 +62,11 @@ await openTask(late.id)
 ok('the fully-planned late post owes nothing', (await p.locator('.cm-gaps').count()) === 0)
 await p.keyboard.press('Escape'); await p.waitForTimeout(300)
 // filling the holes clears the chips
-await req(`/content/${dateless.id}`, 'PATCH', { recording_date: iso(1), release_date: iso(3) })
+const filled = await req(`/content/${dateless.id}`, 'PATCH', { recording_date: iso(1), release_date: iso(3) })
+ok('the dates really got set', filled.status === 200, `${filled.status} ${filled.data.error || ''}`)
 await openTask(dateless.id)
-ok('dates filled → the begging stops', (await p.locator('.cm-gaps').count()) === 0)
+ok('dates filled → the begging stops', (await p.locator('.cm-gaps').count()) === 0,
+  (await p.locator('.cm-gaps .chip-gap').allTextContents()).join(' · '))
 await p.keyboard.press('Escape'); await p.waitForTimeout(300)
 
 // ---- 2) admin: person receipts on Statistics ----

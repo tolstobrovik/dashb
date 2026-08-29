@@ -33,9 +33,13 @@ const t1 = (await req('/content', 'POST', {
 ok('default: operator ticks shot from To shoot', (await req(`/content/${t1.id}`, 'PATCH', { milestone: 'shot' }, tOp)).status === 200)
 await req(`/content/${t1.id}`, 'PATCH', { status_id: sid('to shoot') })
 const rules = (await req('/statuses/rules')).data
+// Shot folded into Editing in round 82 — the editor's stage is Editing now,
+// and the operator's part ends when the footage is handed over, so To shoot is
+// the last stage they may leave.
 ok('effective rules answer the natural chain',
   rules.operator[sid('to shoot')] === true && rules.operator[sid('ready')] === false &&
-  rules.editor[sid('shot')] === true && rules.member[sid('editing')] === true)
+  rules.operator[sid('editing')] === false &&
+  rules.editor[sid('editing')] === true && rules.member[sid('editing')] === true)
 const tightened = { ...rules, operator: { ...rules.operator, [sid('to shoot')]: false, [sid('idea')]: false } }
 await req('/statuses/rules', 'POST', tightened)
 const denied = await req(`/content/${t1.id}`, 'PATCH', { milestone: 'shot' }, tOp)

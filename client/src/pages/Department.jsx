@@ -4,6 +4,7 @@ import {
   Lock, Plus, Pencil, Trash2, Gauge, CalendarRange, AlertCircle, Pin, PinOff, GripVertical, Minus,
   KanbanSquare, Send, Clapperboard, LineChart, Maximize2, Minimize2,
   SlidersHorizontal, Settings, Megaphone, CalendarClock, CheckCircle2, ArrowUp, ArrowDown, Rocket,
+  PenLine, Check, CopyPlus,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { toast, loadFailed } from '../lib/toast.js'
@@ -20,6 +21,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import StageGate from '../components/StageGate.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
 import Avatar from '../components/Avatar.jsx'
+import { useContextMenu } from '../components/ContextMenu.jsx'
 import { CampaignRow } from '../components/ProjectBits.jsx'
 import ProgramsGantt, { PLATFORMS } from '../components/ProgramsGantt.jsx'
 import { rewardIfFinished } from '../lib/reward.js'
@@ -295,6 +297,35 @@ export default function Department() {
     await api.del(`/content/${item.id}`)
     setContent((prev) => prev.filter((x) => x.id !== item.id))
   }
+  // Right-click a card: the four things people did to a row on the To-Do page
+  // before it was removed, on the board that replaced it. Everything here is
+  // already permission-checked by the server; the menu only offers what this
+  // account can actually do so nothing on it answers 403.
+  const { openMenu } = useContextMenu()
+  const cardMenu = (e, item) => openMenu(e, [
+    { label: tx('Open'), icon: PenLine, onClick: () => setOpenItem(item) },
+    manageContent && {
+      label: item.done_at ? tx('Mark as not done') : tx('Mark as done'), icon: Check,
+      onClick: () => updateContent(item, { done: !item.done_at })
+        .then(() => toast(tx('Saved — synced'))).catch((err) => alert(err.message)),
+    },
+    manageContent && !item.done_at && {
+      label: item.pinned ? tx('Unpin') : tx('Pin to the top'), icon: Pin,
+      onClick: () => updateContent(item, { pinned: !item.pinned }).catch((err) => alert(err.message)),
+    },
+    manageContent && {
+      label: tx('Duplicate'), icon: CopyPlus,
+      onClick: () => api.post(`/content/${item.id}/duplicate`)
+        .then((copy) => { setContent((prev) => [copy, ...prev].filter((x) => x.channels.includes(key))); toast(tx('Duplicated')) })
+        .catch((err) => alert(err.message)),
+    },
+    manageContent && { sep: true },
+    manageContent && {
+      label: tx('Delete'), icon: Trash2, danger: true,
+      onClick: () => { if (confirm(`${tx('Delete')} “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) },
+    },
+  ])
+
   // Taking a move back: the server keeps the previous shape of the task for
   // ten seconds and walks the plan numbers back with it, so an accidental drag
   // costs nothing. After that the move is on the record and stays there.
@@ -533,6 +564,7 @@ export default function Department() {
         />
       ) : view === 'board' ? (
         <ContentBoard items={wsContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} myStages={myStages}
+          onMenu={cardMenu}
           onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />
       ) : (
         <ContentCalendar

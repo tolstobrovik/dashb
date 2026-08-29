@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   Sun, Clapperboard, Scissors, Send, AlertCircle, CheckCircle2, CalendarRange, Check, StickyNote, ListTodo, PenLine, Trash2, Palette,
   Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, RotateCcw, ExternalLink, Link2,
-  SlidersHorizontal, Eye, EyeOff, CalendarClock,
+  SlidersHorizontal, Eye, EyeOff, CalendarClock, Plus,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
@@ -642,6 +642,24 @@ export default function Brief() {
     () => mine.filter((t) => t.done_at).sort((a, b) => b.done_at.localeCompare(a.done_at)).slice(0, 10),
     [mine])
 
+  // Your own list, added to from your own page. The To-Do page carried the
+  // only way to write one of these down, and when that page went the section
+  // below it could still be read and ticked off but never added to — a list
+  // nobody can put anything on stops being a list.
+  const [pDraft, setPDraft] = useState('')
+  const [pBusy, setPBusy] = useState(false)
+  const addPersonal = async () => {
+    const title = pDraft.trim()
+    if (!title || pBusy) return
+    setPBusy(true)
+    try {
+      const p = await api.post('/personal', { title })
+      setPersonal((prev) => [p, ...prev])
+      setPDraft('')
+      toast(tx('Added — synced'))
+    } catch (e) { alert(e.message) } finally { setPBusy(false) }
+  }
+
   const togglePersonal = async (p) => {
     try {
       if (!p.done_at) playDone()
@@ -784,7 +802,7 @@ export default function Brief() {
     </>
   )
 
-  const personalBlock = personalToday.length > 0 && (
+  const personalBlock = (
     <>
       <div className="section-head">
         <CheckCircle2 size={17} style={{ color: 'var(--brand-500)' }} />
@@ -792,6 +810,13 @@ export default function Brief() {
         <span className="count">· {personalToday.length}</span>
       </div>
       <div className="card card-pad brief-list">
+        <form className="pers-add" onSubmit={(e) => { e.preventDefault(); addPersonal() }}>
+          <input className="input" value={pDraft} onChange={(e) => setPDraft(e.target.value)}
+            placeholder={tx('Something of your own — Enter adds it')} />
+          <button className="btn btn-sm btn-primary" type="submit" disabled={!pDraft.trim() || pBusy}>
+            <Plus size={14} />{' '}{tx('Add')}
+          </button>
+        </form>
         {personalToday.map((p) => (
           <div key={p.id} className="ov-row" style={{ cursor: 'default' }}>
             <button className="todo-check" onClick={() => togglePersonal(p)} data-tip={tx("Mark as done")} aria-label={tx("Complete")}>

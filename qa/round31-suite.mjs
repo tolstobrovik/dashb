@@ -33,7 +33,7 @@ await req('/content', 'POST', { title: 'x31: due tomorrow', channels: ['instagra
 await req('/content', 'POST', { title: 'x31: due in a week', channels: ['instagram_main'], type: 'post', assignee_ids: [jas.id], release_date: iso(7) })
 const jasT = await login('jas', 'j1234')
 let notif = (await req('/notifications', 'GET', null, jasT)).data
-ok('a status move writes the event for the crew', notif.events.some((e) => /x31: moving video.*Shot.*Admin/.test(e.text)))
+ok('a status move writes the event for the crew', notif.events.some((e) => /x31: moving video.*Editing.*Admin/.test(e.text)), notif.events.map((e) => e.text).join(' | ').slice(0, 200))
 ok('the mover gets no echo', !(await req('/notifications')).data.events.some((e) => /x31: moving video/.test(e.text)))
 ok('the day-before reminder is computed', notif.reminders.some((r) => /x31: due tomorrow.*tomorrow/.test(r.text)))
 ok('…and the week-before one', notif.reminders.some((r) => /x31: due in a week.*in a week/.test(r.text)))
