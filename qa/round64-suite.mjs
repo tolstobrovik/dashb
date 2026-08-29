@@ -76,7 +76,7 @@ const chKey = (await req('/channels')).data[0]?.key
 // BOOKING and demands a crew, three days and a brief. Shot is what this suite
 // actually wants — real work past the Idea stage — without pretending to book
 // a shoot these tests are not about.
-const shotId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
+const shotId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
 const mkUser = async (name, username) => (await req('/users', 'POST', {
   name, username, password: 'probe123', role: 'member', departments: [chKey],
 })).data

@@ -89,8 +89,10 @@ ok('the OLD code is dead after re-linking', (await sentList()).some((s) => Strin
 // BOOKING and demands a crew, three days and a brief. Shot is the same thing
 // this suite actually wants — real work, past the Idea stage — without
 // pretending to book a shoot these tests are not about.
-const shotId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
-const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
+const shotId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
+// Shot folded into Editing in round 82, so the second stage this suite
+// moves to is Ready — it needs two distinct stages, not two names for one.
+const editId = (await req('/statuses')).data.find((s) => /^ready$/i.test(s.label)).id
 const task = (await req('/content', 'POST', { title: 'x39: moved phone video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shotId })).data
 await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })

@@ -24,7 +24,7 @@ const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' 
 // since round 66 the shooting stage is a BOOKING that refuses exactly the
 // holes this page exists to show. Work logged after the fact is where those
 // holes really live now, and Shot is where it lands.
-const shootId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
+const shootId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
 const orphan = (await req('/content', 'POST', { title: 'x24: orphan video', channels: ['youtube'], type: 'video', status_id: shootId })).data
 const dateless = (await req('/content', 'POST', { title: 'x24: staffed dateless', channels: ['instagram_main'], type: 'reel', assignees: [jas.id], operator_id: jas.id, editor_id: jas.id, status_id: shootId })).data
 await req('/content', 'POST', { title: 'x24: late post', channels: ['instagram_main'], type: 'post', assignees: [jas.id], designer_id: jas.id, release_date: iso(-2), status_id: shootId })

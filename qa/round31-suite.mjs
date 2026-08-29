@@ -24,7 +24,7 @@ const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
 const statuses = (await req('/statuses')).data
 const delSt = statuses.find((s) => /^deleted$/i.test(s.label))
-const shotSt = statuses.find((s) => /^shot$/i.test(s.label))
+const shotSt = statuses.find((s) => /^editing$/i.test(s.label))
 
 // ---- 1) the API: events + computed reminders ----
 const moving = (await req('/content', 'POST', { title: 'x31: moving video', channels: ['instagram_main'], type: 'video', editor_id: jas.id })).data

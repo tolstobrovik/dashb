@@ -127,9 +127,9 @@ ok('…and says when it actually landed, so it reads as history not homework',
 const parked = (await mk({
   title: 'r72 filmed and parked', recording_date: day(-8), edit_ready_date: day(4), release_date: day(9),
 })).data
-await req(`/content/${parked.id}`, 'PATCH', { status_id: sid(/^shot$/i) })
+await req(`/content/${parked.id}`, 'PATCH', { status_id: sid(/^editing$/i) })
 const p2 = (await req(`/content/${parked.id}`)).data
-ok('it sits on Shot with nothing handed over', p2.status_id === sid(/^shot$/i) && !p2.shot_at,
+ok('it sits on Shot with nothing handed over', p2.status_id === sid(/^editing$/i) && !p2.shot_at,
   JSON.stringify({ status: p2.status_id, shot_at: p2.shot_at }))
 ok('…and its shoot is not late, because the filming happened',
   !(await req('/content/late/mine', 'GET', null, opT)).data.some((r) => r.content_id === parked.id && r.phase === 'shoot'),

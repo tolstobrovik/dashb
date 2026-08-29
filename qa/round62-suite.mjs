@@ -46,7 +46,7 @@ const zarina = (await api('/users', 'POST', {
   name: `${tag} Zarina`, username: `${tag}zar`, password: 'probe123', role: 'member', departments: ['instagram_main'],
 }, T)).data
 const mk = (over) => api('/content', 'POST', {
-  channels: ['instagram_main'], type: 'video', status_id: sid(/^shot$/i), assignee_ids: [], ...over,
+  channels: ['instagram_main'], type: 'video', status_id: sid(/^editing$/i), assignee_ids: [], ...over,
 }, T).then((r) => r.data)
 
 // One the admin owns, one he only edits (a different seat, still his work),

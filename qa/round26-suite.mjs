@@ -25,7 +25,7 @@ const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' 
 // All in Shot: round 35 keeps Idea-stage tasks off the gap views, and since
 // round 66 the shooting stage is a BOOKING that refuses exactly the holes this
 // page exists to show — work logged after the fact is where they live now.
-const shootId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
+const shootId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
 await req('/content', 'POST', { title: 'x26: designer post', channels: ['telegram_main'], type: 'post', assignee_ids: [jas.id], release_date: iso(0), status_id: shootId })
 await req('/content', 'POST', { title: 'x26: editor reel', channels: ['instagram_main'], type: 'reel', assignee_ids: [jas.id], operator_id: jas.id, release_date: iso(1), recording_date: iso(0), status_id: shootId })
 await req('/content', 'POST', { title: 'x26: dateless video', channels: ['youtube'], type: 'video', status_id: shootId })

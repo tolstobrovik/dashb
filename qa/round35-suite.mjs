@@ -22,7 +22,7 @@ const statuses = (await req('/statuses')).data
 // definition — so it has no gaps left to show, which would test nothing. Shot
 // is the same step in this round's terms (out of the brainstorm, into the
 // pipeline) and still carries the holes the gap views exist for.
-const shotId = statuses.find((s) => /^shot$/i.test(s.label)).id
+const shotId = statuses.find((s) => /^editing$/i.test(s.label)).id
 const me = (await req('/auth/me')).data.user
 // an idea with every gap in the book (default status = the Idea stage)
 const idea = (await req('/content', 'POST', { title: 'x35: idea video', channels: ['youtube'], type: 'video' })).data

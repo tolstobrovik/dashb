@@ -61,8 +61,9 @@ const stages = (await req('/statuses')).data
 const sid = (re) => stages.find((s) => re.test(s.label))?.id
 const ideaId = sid(/^idea$/i)
 const shootId = sid(/to shoot/i)
-const shotId = sid(/^shot$/i)
-const editId = sid(/editing/i)
+const shotId = sid(/^editing$/i)
+// Shot folded into Editing in round 82; this needs a SECOND stage.
+const editId = sid(/^ready$/i)
 const shooter = (await req('/users', 'POST', {
   name: 'R66 Shooter', username: 'r66op', password: 'probe123', role: 'operator', departments: [ch],
 })).data

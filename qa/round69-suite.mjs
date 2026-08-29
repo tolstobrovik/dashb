@@ -66,7 +66,7 @@ const booked = {
 const mk = (over) => req('/content', 'POST', { channels: [ch], ...over })
 const fresh = async (title) => {
   const t = (await mk({ title, type: 'reel', ...booked })).data
-  await req(`/content/${t.id}`, 'PATCH', { status_id: sid(/^shot$/i) })
+  await req(`/content/${t.id}`, 'PATCH', { status_id: sid(/^editing$/i) })
   return t
 }
 
@@ -76,7 +76,7 @@ let r = await req(`/content/${t.id}`, 'PATCH', { milestone: 'edited' }, edT)
 ok('“edited” with nothing attached is refused', r.status === 400, `${r.status} ${r.data.error || ''}`)
 ok('…and the refusal names the box to fill', r.data.needs_link === 'ready_link', JSON.stringify(r.data.needs_link))
 ok('…and the piece did not move to review',
-  (await req(`/content/${t.id}`)).data.status_id === sid(/^shot$/i))
+  (await req(`/content/${t.id}`)).data.status_id === sid(/^editing$/i))
 
 r = await req(`/content/${t.id}`, 'PATCH', { milestone: 'edited', ready_link: 'https://drive.google.com/cut-1' }, edT)
 ok('…the cut goes in with the tick, in one press', r.status === 200, `${r.status} ${r.data.error || ''}`)

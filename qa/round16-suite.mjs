@@ -22,7 +22,7 @@ for (const u of (await req('/users')).data.filter((u) => ['r16op', 'r16ed'].incl
 const op = (await req('/users', 'POST', { name: 'Oybek Operator', username: 'r16op', password: 'o1234', role: 'operator' })).data
 const ed = (await req('/users', 'POST', { name: 'Eldor Editor', username: 'r16ed', password: 'e1234', role: 'editor' })).data
 const statuses = (await req('/statuses')).data
-const shotSt = statuses.find((s) => /^shot$/i.test(s.label))
+const shotSt = statuses.find((s) => /^editing$/i.test(s.label))
 const readySt = statuses.find((s) => /^ready$/i.test(s.label))
 
 // operator: a shoot TODAY + a shoot that's OVERDUE (haunting)

@@ -35,7 +35,7 @@ const tag = Date.now().toString(36).slice(-4)
 const statuses = (await api('/statuses', 'GET', null, T)).data
 const sid = (re) => statuses.find((s) => re.test(s.label))?.id
 const mk = (over) => api('/content', 'POST', {
-  channels: ['instagram_main'], type: 'video', status_id: sid(/^shot$/i), ...over,
+  channels: ['instagram_main'], type: 'video', status_id: sid(/^editing$/i), ...over,
 }, T).then((r) => r.data)
 
 const relA = await mk({ title: `r60 ${tag} release on IG`, release_date: day(2), release_time: '18:00' })

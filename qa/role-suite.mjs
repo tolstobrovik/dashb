@@ -71,6 +71,15 @@ ok('editor lands on the brief', page.url().includes('/brief'), page.url())
 await page.waitForSelector('.brief-title', { timeout: 10000 })
 await page.waitForTimeout(600)
 ok('their video sits in the edit lane (still-haunting, open by default)', (await page.locator('.cb-col').first().textContent()).includes('Edit: campus film'))
+// Scoping, checked HERE rather than after the milestone tick below: the tick
+// moves the piece to Ready, which correctly takes it out of the editor's
+// lane, so a scoping check after it would be reading an empty board. (This
+// used to read the To-Do page, which listed every one of their tasks
+// whatever stage it was on; that page went in round 82.)
+const mineTxt = await page.locator('.content').textContent()
+ok('their day holds their video, not foreign work',
+  mineTxt.includes('Edit: campus film') && !mineTxt.includes('Foreign post'))
+ok('no channel tabs for crew', !mineTxt.includes('Telegram Main') && !mineTxt.includes('Instagram'))
 const header = await page.locator('header').textContent()
 // The crew's top bar carries the pages that are theirs and nothing that is
 // not. It named To-Do, which went in round 82; My Day is still the one they
@@ -91,15 +100,7 @@ await page.waitForTimeout(400)
 ok('the tick moved it to Ready', (await req(`/content/${vid.id}`)).data.status_id === sid('ready'))
 await page.screenshot({ path: 'role-editor.png', fullPage: true })
 
-// My Day for crew: only their items, no channel tabs, no team quick-add.
-// This used to read the To-Do page; a crew account has no channels, so the
-// channel board is not theirs to open and My Day is where their work is.
-await page.goto(BASE + '/brief')
-await page.waitForSelector('.brief-title', { timeout: 10000 })
-await page.waitForTimeout(800)
-const todoTxt = await page.locator('.content').textContent()
-ok('their day holds their video, not foreign work', todoTxt.includes('Edit: campus film') && !todoTxt.includes('Foreign post'))
-ok('no channel tabs for crew', !(todoTxt.includes('Telegram Main')) && !(todoTxt.includes('Instagram')))
+
 
 // admin table shows the new badges
 const actx = await browser.newContext({ viewport: { width: 1440, height: 950 } })

@@ -84,7 +84,7 @@ const pill = cell.locator('.rel-ev', { hasText: 'x36: piece 1' })
 ok('a pill wears its type icon and stage glyph', (await pill.locator('svg').count()) === 2)
 
 // ---- 3) the paper trail, UI side ----
-await p.goto(BASE + `/todo?task=${hist.id}`); await p.waitForTimeout(1300)
+await p.goto(BASE + `/brief?task=${hist.id}`); await p.waitForTimeout(1300)
 const hsec = p.locator('.cm-history')
 ok('the modal shows History', (await hsec.count()) === 1)
 ok('…with the change as a sentence', /10:00 → 11:00/.test((await hsec.textContent().catch(() => '')) || ''))

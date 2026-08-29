@@ -80,7 +80,7 @@ const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' })
 await reset()
 const task = (await req('/content', 'POST', {
   title: 'x42 <b>&clip', channels: [chKey], type: 'video',
-  assignee_ids: [m2.id], editor_id: m1.id, status_id: sid(/^shot$/i), recording_date: tomorrow,
+  assignee_ids: [m2.id], editor_id: m1.id, status_id: sid(/^editing$/i), recording_date: tomorrow,
 })).data
 let sent = await sentList()
 let m = sent.find((s) => String(s.chat_id) === '121' && /📌/.test(s.text || ''))
@@ -97,7 +97,7 @@ sent = await sentList()
 const toAdmin = sent.find((s) => String(s.chat_id) === '120' && /✅/.test(s.text || ''))
 ok('the ADMIN hears the cut is ready — without being on the task', !!toAdmin && /Ready for your review/.test(toAdmin.text))
 ok('…the message hands over the file', !!toAdmin && /Watch it/.test(toAdmin.text) && toAdmin.text.includes('https://drive.google.com/x42cut'))
-ok('…and the task link', !!toAdmin && toAdmin.text.includes(`/todo?task=${task.id}`))
+ok('…and the task link', !!toAdmin && toAdmin.text.includes(`/brief?task=${task.id}`))
 ok('…names who finished it', !!toAdmin && /finished by Rita Editor/.test(toAdmin.text))
 ok('the owner hears it too', sent.some((s) => String(s.chat_id) === '122' && /Ready for your review/.test(s.text || '')))
 ok('the editor never hears their own delivery', !sent.some((s) => String(s.chat_id) === '121' && /✅/.test(s.text || '')))
@@ -245,7 +245,7 @@ await p.goto(MAIN + '/brief'); await p.waitForTimeout(1400)
 const rqRow = p.locator('.rq-row', { hasText: 'x42ui review me' })
 ok('the review row shows a watch-the-cut button', (await rqRow.locator('a.rq-open').count()) === 1 &&
   (await rqRow.locator('a.rq-open').getAttribute('href')) === 'https://drive.google.com/x42uicut')
-await p.goto(MAIN + `/todo?task=${review.id}`); await p.waitForTimeout(1400)
+await p.goto(MAIN + `/brief?task=${review.id}`); await p.waitForTimeout(1400)
 ok('the modal’s Review block opens with the cut in reach', (await p.locator('.review-links a', { hasText: 'Watch the cut' }).count()) === 1)
 await p.screenshot({ path: SP + 'r42-review.png' })
 await p.close()

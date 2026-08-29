@@ -1,6 +1,6 @@
 // Round 29: the workflow's little levers. Duplicate spawns the recurring
 // piece (brief, crew, platforms kept — dates, stage, delivery cleared);
-// every task has a pasteable link (…/todo?task=id) that opens it on arrival;
+// every task has a pasteable link (…/brief?task=id) that opens it on arrival;
 // and a timetable drag can be taken back from its toast (Undo).
 import { chromium } from 'playwright'
 const BASE = 'http://localhost:4090'
@@ -30,11 +30,11 @@ await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="passw
 await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 15000 })
 
 // ---- 1) the pasteable task link ----
-await p.goto(BASE + `/todo?task=${src.id}`); await p.waitForTimeout(1400)
+await p.goto(BASE + `/brief?task=${src.id}`); await p.waitForTimeout(1400)
 ok('a pasted link opens its task', (await p.locator('.modal .cm-title').inputValue().catch(() => '')) === 'x29: rubric video')
 await p.locator('.modal button[aria-label="Copy link"]').click(); await p.waitForTimeout(400)
 const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '')
-ok('Copy link writes the task URL', clip.includes(`/todo?task=${src.id}`))
+ok('Copy link writes the task URL', clip.includes(`/brief?task=${src.id}`))
 
 // ---- 2) Duplicate from the modal ----
 await p.locator('.modal .btn-ghost', { hasText: 'Duplicate' }).click(); await p.waitForTimeout(900)
