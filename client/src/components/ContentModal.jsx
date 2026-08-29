@@ -12,6 +12,7 @@ import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useIsPhone } from '../lib/usePhone.js'
 import Booking from './Booking.jsx'
+import SlotPicker from './SlotPicker.jsx'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { toast } from '../lib/toast.js'
@@ -171,6 +172,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // booking is about what is actually saved, and answering one sends back the
   // fresh row rather than making the whole sheet reload.
   const [booked, setBooked] = useState(() => item || null)
+  // The operator's week, folded away until asked for.
+  const [slotsOpen, setSlotsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [subText, setSubText] = useState('')
   const [form, setForm] = useState(() => ({
@@ -1911,6 +1914,35 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           const at = (k) => ({ ...shared, bad: badField === k })
           return (<>
             <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" {...at('recording_date')} />
+            {/* …or pick the time out of the operator's actual week. Typing a
+                date and a time was guessing at somebody else's diary and
+                being corrected afterwards; this asks how long the shoot is
+                and then offers only the times that exist. Folded away by
+                default — the boxes above are still the fast path for a
+                planner who already agreed the time in the corridor. */}
+            {!detailsLocked && form.operator_id && (
+              <div className="cm-row cm-slots">
+                <span className="cm-key">
+                  <CalendarClock size={13} style={{ verticalAlign: -2 }} /> {tx('Free times')}
+                </span>
+                <div className="cm-slot-wrap">
+                  <button type="button" className="btn btn-sm cm-slot-toggle" onClick={() => setSlotsOpen((v) => !v)}>
+                    {slotsOpen ? tx('Hide the calendar') : tx('Find a free slot')}
+                  </button>
+                  {slotsOpen && (
+                    <SlotPicker
+                      userId={Number(form.operator_id) || null}
+                      excludeId={item?.id}
+                      value={form.recording_date && form.recording_time
+                        ? { date: form.recording_date, from: form.recording_time } : null}
+                      onPick={({ date, from, to }) => {
+                        setForm((f) => ({ ...f, recording_date: date, recording_time: from, recording_end: to }))
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
             {/* The booked slot, and whether the person holding it has agreed
                 to it. A date typed into a box is a plan; this is where it
                 becomes an arrangement between two people. */}

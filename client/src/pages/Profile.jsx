@@ -264,11 +264,11 @@ export default function Profile() {
 
       <WarningRecord />
 
-      <div className="section-head" style={{ marginTop: 22 }}><h2><Clock size={16} style={{ verticalAlign: -2 }} /> Working schedule</h2></div>
+      <div className="section-head" style={{ marginTop: 22 }}><h2><Clock size={16} style={{ verticalAlign: -2 }} /> {tx('My working hours')}</h2></div>
       <div className="card card-pad">
         {schedErr && <div className="form-error"><AlertCircle size={16} /> {schedErr}</div>}
         <div className="stat-sub" style={{ marginBottom: 10 }}>
-          Shoots are booked only inside these hours — plan yours honestly.
+          {tx('The days and hours you can be booked for. The board offers only these when somebody plans a shoot with you.')}
         </div>
         <div className="wd-row">
           {WORK_DAYS.map((d) => (
@@ -279,10 +279,10 @@ export default function Profile() {
           ))}
         </div>
         <div className="sched-hours">
-          <label className="sched-field">from
+          <label className="sched-field">{tx('From')}
             <input className="input" type="time" value={wStart} onChange={(e) => setWStart(e.target.value)} />
           </label>
-          <label className="sched-field">to
+          <label className="sched-field">{tx('To')}
             <input className="input" type="time" value={wEnd} onChange={(e) => setWEnd(e.target.value)} />
           </label>
         </div>

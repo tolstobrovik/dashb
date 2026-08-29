@@ -4496,3 +4496,98 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 
 
+
+/* ---------- picking a time out of somebody else's week ---------- */
+/* A calendar, not a form: the week across, the day down, and every button on
+   it is a time that actually exists. Grey is somebody else's already. */
+.sp { display: flex; flex-direction: column; gap: 10px; }
+.sp-empty { flex-direction: row; align-items: center; gap: 8px; padding: 10px 12px;
+  border: 1px dashed var(--hairline-strong); border-radius: var(--radius-sm); color: var(--muted); }
+.sp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.sp-len { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
+.sp-len .pill-group { flex: 0 1 auto; min-width: 0; }
+.sp-nav { display: inline-flex; gap: 2px; flex: none; }
+.sp-note { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted);
+  background: var(--surface-2); border-radius: var(--radius-xs); padding: 8px 10px; }
+.sp-note svg { flex: none; color: var(--warn, #d59a2b); }
+.sp-load { display: grid; place-items: center; padding: 24px; color: var(--muted); }
+
+.sp-week { max-height: 340px; overflow-y: auto; display: grid; grid-template-columns: repeat(7, minmax(62px, 1fr)); gap: 5px; overflow-x: auto; }
+.sp-day { display: flex; flex-direction: column; gap: 5px; min-width: 0;
+  background: var(--surface-2); border-radius: var(--radius-sm); padding: 7px 6px; }
+.sp-day.sp-off { opacity: 0.55; }
+.sp-day.sp-today { outline: 1.5px solid var(--brand-400); outline-offset: -1.5px; }
+.sp-day-h { display: flex; flex-direction: column; line-height: 1.2; padding: 0 2px 2px; }
+.sp-day-h b { font-size: 11.5px; }
+.sp-day-h .stat-sub { font-size: 10.5px; }
+.sp-busy { display: flex; flex-direction: column; gap: 3px; }
+.sp-taken { font-size: 10.5px; color: var(--muted); background: var(--surface);
+  border-radius: var(--radius-xs); padding: 2px 5px; text-decoration: line-through; }
+.sp-slots { display: flex; flex-direction: column; gap: 4px; }
+.sp-none { font-size: 11px; padding: 2px; }
+.sp-slot {
+  border: 1px solid var(--hairline-strong); background: var(--surface); color: var(--ink);
+  border-radius: var(--radius-xs); padding: 5px 2px; font-size: 11.5px; font-weight: 700;
+  cursor: pointer; min-height: 30px;
+}
+.sp-slot:hover { border-color: var(--brand-400); color: var(--brand-600); }
+.sp-slot.on { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+.cm-slot-wrap { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.cm-slot-toggle { align-self: flex-start; }
+
+@media (max-width: 640px) {
+  /* One column at a time, snapping — the same shape the kanban uses. */
+  .sp-week { grid-auto-flow: column; grid-auto-columns: 43%; grid-template-columns: none;
+    scroll-snap-type: x mandatory; }
+  .sp-day { scroll-snap-align: start; }
+  .sp-slot { min-height: 38px; font-size: 13px; }
+}
+
+/* ---------- the designer's board ---------- */
+.dz-filters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.dz-filters .pill-group { max-width: 100%; flex: 0 1 auto; min-width: 0; }
+.dz-lane { margin-bottom: 12px; overflow: hidden; }
+.dz-lane-head {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: 12px 14px; color: var(--ink);
+}
+.dz-lane-head:hover { background: var(--surface-2); }
+.dz-lane-head b { font-size: 14px; }
+.dz-hint { font-size: 12px; }
+.dz-caret { transition: transform 0.15s ease; color: var(--muted); flex: none; }
+.dz-caret.open { transform: rotate(180deg); }
+.dz-rows { display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
+.dz-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 132px 132px auto;
+  align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--hairline);
+}
+.dz-row:last-child { border-bottom: none; }
+.dz-row:hover { background: var(--surface-2); }
+.dz-row.dz-late { box-shadow: inset 3px 0 0 var(--critical); }
+.dz-main { display: flex; align-items: center; gap: 8px; min-width: 0; background: none; border: none;
+  cursor: pointer; text-align: left; color: var(--ink); padding: 0; }
+.dz-title { font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-chans { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.dz-due, .dz-who { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.dz-links { display: inline-flex; gap: 6px; justify-content: flex-end; }
+.btn-ok { border-color: var(--ok, #1D9E75); color: var(--ok, #1D9E75); }
+
+@media (max-width: 860px) {
+  .dz-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .dz-links { justify-content: flex-start; }
+  .dz-due, .dz-who { font-size: 12px; }
+}
+
+/* ---------- documents: the filter row and the preview ---------- */
+.docs-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 0 14px 10px; min-width: 0; }
+.docs-filters .pill-group { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.docs-search { display: inline-flex; align-items: center; gap: 6px; }
+.docs-search .input { width: 190px; }
+.doc-preview { display: flex; flex-direction: column; min-height: 340px; }
+.doc-frame { width: 100%; flex: 1; min-height: 60vh; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: #fff; }
+.doc-frame-text { background: var(--surface); }
+.doc-img { max-width: 100%; max-height: 70vh; object-fit: contain; align-self: center; }
+.doc-noprev { display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center; padding: 44px 20px; color: var(--muted); }
+.doc-noprev b { color: var(--ink); font-size: 14px; }

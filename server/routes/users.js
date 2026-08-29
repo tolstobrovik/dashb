@@ -270,4 +270,87 @@ router.delete('/:id', adminOnly, wrap(async (req, res) => {
   res.json({ ok: true })
 }))
 
+// ---- when is somebody actually free -----------------------------------------
+// Booking a shoot used to be typing a date and a time and finding out
+// afterwards — from a 409, or from the operator on the day — whether that time
+// existed. The person holding the camera knows their week; the board did not,
+// so the board guessed and the guess was corrected by a human every time.
+//
+// This turns the same three facts the account already carries (which days they
+// work, from when, to when) plus the bookings they already have into the only
+// question a planner actually has: SHOW ME WHEN THEY ARE FREE, for this long.
+//
+// It is deliberately not a new store. An availability system that has to be
+// filled in separately from the working hours already on the account is two
+// sources of truth for one fact, and the second one goes stale in a fortnight.
+const SLOT_STEP = 30           // half-hour starts, like every calendar people know
+const DEFAULT_LEN = 120
+const toMin = (t) => Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5))
+const toHHMM = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
+const addDays = (iso, n) => {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+router.get('/:id/slots', wrap(async (req, res) => {
+  const who = Number(req.params.id)
+  const u = await get('SELECT id, name, work_start, work_end, work_days FROM users WHERE id = ?', who)
+  if (!u) return res.status(404).json({ error: 'No such person' })
+
+  const from = isDay(req.query.from) ? req.query.from : new Date().toISOString().slice(0, 10)
+  const days = Math.min(31, Math.max(1, Number(req.query.days) || 14))
+  const mins = Math.min(600, Math.max(15, Number(req.query.mins) || DEFAULT_LEN))
+  const excludeId = Number(req.query.exclude) || 0
+
+  // A day with no hours set is not a day with no work — it is a day nobody
+  // wrote hours for. Treated as a normal working day between sensible ends,
+  // so the picker is useful before anybody has filled anything in, and the
+  // answer says which it was so the UI can ask them to set theirs.
+  const setHours = !!(u.work_start && u.work_end)
+  const openAt = setHours ? toMin(u.work_start) : toMin('09:00')
+  const shutAt = setHours ? toMin(u.work_end) : toMin('18:00')
+  let workDays = null
+  try { workDays = JSON.parse(u.work_days || 'null') } catch { /* unset */ }
+  const setDays = Array.isArray(workDays) && workDays.length > 0
+
+  const to = addDays(from, days - 1)
+  // Everything already in their day — their shoots and their edit deadlines
+  // both, because an editor with a cut due on Thursday is not free all
+  // Thursday just because nobody booked an hour of it.
+  const booked = await all(
+    `SELECT id, title, recording_date, recording_time, recording_end
+     FROM content
+     WHERE operator_id = ? AND recording_date >= ? AND recording_date <= ?
+       AND recording_time IS NOT NULL AND done_at IS NULL`, who, from, to)
+
+  const out = []
+  for (let i = 0; i < days; i++) {
+    const day = addDays(from, i)
+    const weekday = new Date(`${day}T12:00:00Z`).getUTCDay()
+    const working = !setDays || workDays.includes(weekday)
+    const busy = booked.filter((b) => b.recording_date === day && b.id !== excludeId).map((b) => ({
+      id: b.id, title: b.title, from: b.recording_time,
+      to: b.recording_end || toHHMM(toMin(b.recording_time) + DEFAULT_LEN),
+    })).sort((a, b) => a.from.localeCompare(b.from))
+
+    const slots = []
+    if (working) {
+      for (let t = openAt; t + mins <= shutAt; t += SLOT_STEP) {
+        const clash = busy.some((b) => t < toMin(b.to) && toMin(b.from) < t + mins)
+        if (!clash) slots.push({ from: toHHMM(t), to: toHHMM(t + mins) })
+      }
+    }
+    out.push({ day, weekday, working, slots, busy })
+  }
+  res.json({
+    user: { id: u.id, name: u.name },
+    hours: setHours ? { from: u.work_start, to: u.work_end } : null,
+    days: setDays ? workDays : null,
+    mins,
+    calendar: out,
+  })
+}))
+
 export default router
