@@ -88,9 +88,9 @@ ok('timetable blocks say the channel', (await page.locator('.crew-tt .tt-ch').co
   && (await page.locator('.crew-tt').textContent()).includes(igLabel))
 await page.screenshot({ path: 'r14-timetable.png' })
 
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'r14: launch video' }).locator('.todo-main').click()
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'r14: launch video' }).first().click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const labels = await page.locator('.modal .crew-field .crew-label').allTextContents()
 // Round 78 took the designer hat off the picker — this board runs
@@ -119,7 +119,7 @@ await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 await page.waitForTimeout(400)
 const savedVid = (await req('/content')).data.find((c) => c.id === vid.data.id)
 ok('both assignees persisted', (savedVid.assignees || []).length === 2, JSON.stringify(savedVid.assignees))
-const rowTxt = await page.locator('.todo-row', { hasText: 'r14: launch video' }).textContent()
+const rowTxt = await page.locator('.tcard', { hasText: 'r14: launch video' }).first().textContent()
 ok('the to-do row shows the crowd (+1)', /\+1/.test(rowTxt), rowTxt.slice(0, 140))
 
 await page.goto(BASE + '/missed')

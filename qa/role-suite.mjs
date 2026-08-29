@@ -88,7 +88,7 @@ ok('the tick moved it to Ready', (await req(`/content/${vid.id}`)).data.status_i
 await page.screenshot({ path: 'role-editor.png', fullPage: true })
 
 // To-Do for crew: only their items, no channel tabs, no team quick-add
-await page.goto(BASE + '/todo')
+await page.goto(BASE + '/dept/instagram_main')
 await page.waitForTimeout(800)
 const todoTxt = await page.locator('.content').textContent()
 ok('to-do holds their video, not foreign work', todoTxt.includes('Edit: campus film') && !todoTxt.includes('Foreign post'))

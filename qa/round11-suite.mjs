@@ -60,9 +60,9 @@ await page.fill('input[name="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'r11: designed post' }).locator('.todo-main').click()
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'r11: designed post' }).first().click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 // The designer hat came off the picker in round 78: this board runs
 // idea → shoot → edit and a designer has no stage in it, so the hat was
@@ -100,7 +100,7 @@ await page.waitForTimeout(300)
 const savedP1 = (await req('/content')).data.find((c) => c.id === p1.data.id)
 ok('the designer the API set is kept through a form save', savedP1.designer_id === dez.id)
 
-const rowTxt = await page.locator('.todo-row', { hasText: 'r11: designed post' }).textContent()
+const rowTxt = await page.locator('.tcard', { hasText: 'r11: designed post' }).first().textContent()
 ok('to-do row shows the designer chip', rowTxt.includes('Dana'))
 
 await page.goto(BASE + '/missed')

@@ -78,13 +78,12 @@ await call(`/content/${tasks[0].id}/comments`, T, 'POST', { text: 'smoke comment
 const WHO = { admin: T, member: MT, editor: ET, operator: OT, designer: DT }
 const PATHS = [
   '/health', '/auth/me', '/channels', '/statuses', '/fields', '/users', '/notifications',
-  `/trackers?department=${ch}`, `/trackers/history?department=${ch}`,
   '/content', `/content?department=${ch}`, `/content?department=${ch}&thumbs=1`,
   '/content/revisions/mine', '/content/open-revisions', '/content/activity/all',
   `/content/${tasks[0]?.id}`, `/content/${tasks[0]?.id}/files`,
   '/campaigns', `/campaigns/${camp?.id}`, '/projects', `/projects/${proj?.id}`,
   '/programs', `/programs?channel=${ch}`, '/boards', '/personal',
-  '/hiring', '/candidates', '/docs', '/kpis', '/reports',
+  '/hiring', '/candidates', '/docs', '/reports',
   '/telegram/status', '/telegram/templates', '/telegram/audience', '/telegram/admin',
 ]
 const problems = []

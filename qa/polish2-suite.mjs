@@ -75,7 +75,7 @@ ok('campaign form has the checklist block', (await page.locator('.modal .pc-chec
 await page.keyboard.press('Escape')
 
 // 4. Quick-add multi-department
-await page.goto(BASE + '/todo')
+await page.goto(BASE + '/dept/instagram_main')
 await page.waitForSelector('.qa-extras', { timeout: 8000 })
 await page.locator('form input.input').first().fill('Cross-post announcement')
 await page.locator('.qa-extras .checkbox-chip', { hasText: 'YouTube' }).click()
@@ -85,7 +85,7 @@ const multi = (await req('/content')).data.find((c) => c.title === 'Cross-post a
 ok('quick-add lands on several departments at once', multi && multi.channels.length === 2 && multi.channels.includes('youtube'), JSON.stringify(multi?.channels))
 
 // 5. Quick department create from the task modal, icon guessed
-await page.locator('.todo-row', { hasText: 'Cross-post announcement' }).locator('.todo-main').click()
+await page.locator('.tcard', { hasText: 'Cross-post announcement' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
 await page.locator('.modal .chip-add').click()
 await page.locator('.modal .chip-add-form input').fill('TikTok Ads')

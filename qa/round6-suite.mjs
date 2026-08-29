@@ -80,9 +80,9 @@ ok('shoot task sits in the Shooting table only',
 await page.screenshot({ path: 'r6-timetables.png', fullPage: true })
 
 // ---- crew dropdowns: operators & editors only (legacy picks stay) ----
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'r6: shoot in two days' }).locator('.todo-main').click()
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'r6: shoot in two days' }).first().click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 // Round 27 freed the pickers: specialists lead their own group, everyone
 // else waits in the one-time-duty group below.
@@ -94,7 +94,7 @@ ok('operator specialists lead their own group', opSpecial.some((o) => o.includes
 ok('…and anyone can take a one-time duty', opAnyone.some((o) => o.includes('Jasmina')), opAnyone.join(' | '))
 await page.keyboard.press('Escape')
 await page.waitForTimeout(200)
-await page.locator('.todo-row', { hasText: 'r6: legacy member crew' }).locator('.todo-main').click()
+await page.locator('.tcard', { hasText: 'r6: legacy member crew' }).first().click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const legacyOptions = await page.locator('.modal .crew-field select').first().locator('option').allTextContents()
 ok('an old pick stays selectable on its task', legacyOptions.some((o) => o.includes('Jasmina')))

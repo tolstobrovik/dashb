@@ -1,5 +1,7 @@
-// Round 81: a finished piece stops saying it is late, and the register is a
-// month rather than a day.
+// Round 81: a finished piece stops saying it is late.
+//
+// (This round also made the attendance register a month grid. The register
+// was removed in round 82; the checks that outlived it are still here.)
 //
 // Two bugs, one shape between them: something raised and never lowered. A
 // hand goes up while a piece is running late — by a person, or by the board
@@ -7,10 +9,6 @@
 // finished card still read "says this will be late", with the same hand
 // sitting in the planners' queue of open problems for ever. Publishing is the
 // answer to "will this be late"; the answer just was not being written down.
-//
-// And the register: every question it exists to answer is about a run of days
-// — who keeps coming in late, who was away last week — and it showed one day
-// at a time behind a date picker. Thirty-one clicks to see a month.
 //
 // Brings its own server on 4132 so it can be run alone.
 import { spawn } from 'child_process'
@@ -204,7 +202,11 @@ await req('/content', 'POST', {
   operator_id: shooter.id, recording_date: iso(4), recording_time: '10:00', recording_end: '12:00',
 })
 
-// ==================== 2) the register is a month =========================
+// ==================== 2) the rest, in the browser =========================
+// This suite also covered the attendance register becoming a month grid. The
+// register was removed in round 82; what follows is the half that still
+// stands — the tray, a booked day that has gone by, and a person's rows going
+// with them when they leave.
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const errs = []
 const signIn = async (pg, u, p) => {
@@ -214,152 +216,9 @@ const signIn = async (pg, u, p) => {
   await pg.click('button[type=submit]')
   await pg.waitForTimeout(2500)
 }
-const mem = (await req('/users', 'POST', {
+await req('/users', 'POST', {
   name: 'Nodira Nobody', username: 'r81mem', password: 'n1234', departments: [chan],
-})).data
-await req('/users', 'POST', { name: 'Sardor Second', username: 'r81two', password: 's1234', departments: [chan] })
-
-const admin = await browser.newPage({ viewport: { width: 1400, height: 900 } })
-admin.on('pageerror', (e) => errs.push(`admin: ${e.message}`))
-await signIn(admin, 'admin', 'admin123')
-await admin.goto(`${BASE}/attendance`)
-await admin.waitForSelector('.at-grid', { timeout: 15000 })
-await admin.waitForTimeout(800)
-
-const dayCols = await admin.locator('.at-grid thead .at-day-h').count()
-ok('the whole month is on screen at once, not one day', dayCols >= 28 && dayCols <= 31, `${dayCols} day columns`)
-ok('…with every person on their own row',
-  (await admin.locator('.at-grid tbody tr').count()) >= 3, `${await admin.locator('.at-grid tbody tr').count()} rows`)
-ok('…and a square for each of them per day',
-  (await admin.locator('.at-grid tbody .at-mark').count()) === dayCols * (await admin.locator('.at-grid tbody tr').count()))
-
-// Marking somebody late happens on the grid, without leaving the month.
-const row = admin.locator('.at-grid tbody tr').filter({ hasText: 'Nodira' }).first()
-// The board keeps a Tashkent calendar, on both sides. A suite that asks the
-// container what day it is would disagree with the page it is measuring for
-// five hours out of every twenty-four.
-const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
-const cell = row.locator(`.at-cell`).nth(Number(todayIso.slice(8, 10)) - 1)
-await cell.locator('.at-mark').click()
-await admin.waitForTimeout(400)
-ok('clicking a square asks what happened', (await admin.locator('.at-pick').count()) === 1)
-// The month scrolls sideways inside its own box, and a box that scrolls clips
-// whatever hangs out of it — which cut the bottom off this and took the
-// arrival time and Clear with it. Drawn over the page now, so: all of it.
-const pickBox = await admin.evaluate(() => {
-  const p = document.querySelector('.at-pick')
-  const r = p.getBoundingClientRect()
-  const last = p.lastElementChild.getBoundingClientRect()
-  return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right),
-    lastBottom: Math.round(last.bottom), vw: window.innerWidth, vh: window.innerHeight,
-    fixed: getComputedStyle(p).position }
 })
-ok('…and the whole picker is on the screen, not clipped by the month',
-  pickBox.fixed === 'fixed' && pickBox.top >= 0 && pickBox.left >= 0
-  && pickBox.right <= pickBox.vw && pickBox.lastBottom <= pickBox.vh, JSON.stringify(pickBox))
-ok('…including the time field and everything under it',
-  (await admin.locator('.at-pick .at-pick-time input').isVisible())
-  && (await admin.locator('.at-pick .at-pick-opt').count()) === 3)
-await admin.locator('.at-pick .at-pick-opt', { hasText: /Late|Опозда|Kech/ }).first().click()
-await admin.waitForTimeout(1400)
-ok('…the square fills in, still on the month view',
-  (await cell.locator('.at-mark.at-late').count()) === 1 && (await admin.locator('.at-grid').count()) === 1)
-ok('…and the register agrees', (await req('/attendance')).data.rows.some(
-  (r) => r.user_id === mem.id && r.day === todayIso && r.status === 'late'))
-ok('…and their month total counts it',
-  (await row.locator('.at-tot-late').textContent()).trim() === '1',
-  await row.locator('.at-tot-late').textContent())
-
-// The totals are the summary you most want, so they are pinned where a wide
-// month cannot scroll them off.
-const geo = await admin.evaluate(() => {
-  const t = document.querySelector('.at-grid thead .at-tot-col')
-  return { right: Math.round(t.getBoundingClientRect().right), vw: window.innerWidth,
-    sideways: Math.round(document.documentElement.scrollWidth - document.documentElement.clientWidth) }
-})
-ok('the Late/Away totals stay in view on a wide month',
-  geo.right <= geo.vw + 2 && geo.right > geo.vw - 260, JSON.stringify(geo))
-ok('…and the page never scrolls sideways', geo.sideways === 0, `${geo.sideways}px`)
-
-// Walking back a month is one button, and there is no walking into the future.
-await admin.locator('.at-month .icon-btn').first().click()
-await admin.waitForTimeout(1200)
-ok('the month before is one click away',
-  (await admin.locator('.at-month b').textContent()) !== '' && (await admin.locator('.at-grid thead .at-day-h').count()) >= 28)
-await admin.locator('.at-month .icon-btn').last().click()
-await admin.waitForTimeout(1200)
-ok('…and forward again', (await admin.locator('.at-month .icon-btn').last().isDisabled()) === true)
-
-const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
-phone.on('pageerror', (e) => errs.push(`phone: ${e.message}`))
-await signIn(phone, 'admin', 'admin123')
-await phone.goto(`${BASE}/attendance`)
-await phone.waitForSelector('.at-grid', { timeout: 15000 })
-await phone.waitForTimeout(800)
-const pgeo = await phone.evaluate(() => ({
-  name: Math.round(document.querySelector('.at-name-col').getBoundingClientRect().left),
-  tot: Math.round(document.querySelector('.at-grid thead .at-tot-col').getBoundingClientRect().right),
-  vw: window.innerWidth,
-  sideways: Math.round(document.documentElement.scrollWidth - document.documentElement.clientWidth),
-}))
-ok('on a phone the month scrolls inside its own card, not the page', pgeo.sideways === 0, JSON.stringify(pgeo))
-// The pinned columns were eating 314px of a 390px screen, leaving room for
-// roughly ONE day — a register you cannot read across days is the thing this
-// replaced. Names ellipsise, the totals become their own icons.
-const week = await phone.evaluate(() => {
-  const vis = [...document.querySelectorAll('.at-grid thead .at-day-h')]
-    .filter((th) => { const r = th.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth }).length
-  const name = document.querySelector('.at-grid thead .at-name-col')
-  return { visibleDays: vis, nameW: Math.round(name.getBoundingClientRect().width),
-    words: document.querySelectorAll('.at-tot-word').length,
-    wordsShown: [...document.querySelectorAll('.at-tot-word')].filter((e) => e.getBoundingClientRect().width > 0).length }
-})
-ok('…and at least five days of it are on the screen at once',
-  week.visibleDays >= 5, JSON.stringify(week))
-ok('…with the totals down to their icons so the days get the room',
-  week.words === 2 && week.wordsShown === 0 && week.nameW <= 130, JSON.stringify(week))
-
-// `.at-grid th { padding: 0 }` out-ranks a bare class, so every column's
-// padding was being thrown away and the first letter of a header sat under
-// the card's rounded corner.
-const pad = await phone.evaluate(() => {
-  const th = document.querySelector('.at-grid thead .at-name-col')
-  const rng = document.createRange(); rng.selectNodeContents(th)
-  return { cell: Math.round(th.getBoundingClientRect().left), text: Math.round(rng.getBoundingClientRect().left) }
-})
-ok('…and a header is not printed under the card’s own edge',
-  pad.text - pad.cell >= 5, JSON.stringify(pad))
-ok('…with the names and the totals both pinned',
-  pgeo.name >= 0 && pgeo.tot <= pgeo.vw + 2, JSON.stringify(pgeo))
-// On a phone the picker comes up as a sheet, where the thumb already is, and
-// clear of the tab bar rather than under it.
-await phone.locator('.at-grid tbody tr').first().locator('.at-cell').first().locator('.at-mark').click()
-await phone.waitForTimeout(500)
-const sheet = await phone.evaluate(() => {
-  const p = document.querySelector('.at-pick')
-  if (!p) return { none: true }
-  const r = p.getBoundingClientRect()
-  const bar = document.querySelector('.mob-tabs')
-  return { left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom),
-    width: Math.round(r.width), vw: window.innerWidth, vh: window.innerHeight,
-    barTop: bar ? Math.round(bar.getBoundingClientRect().top) : null }
-})
-ok('the picker is a sheet across the phone, not a popover on a 26px square',
-  sheet.width > 300 && sheet.left >= 0 && sheet.right <= sheet.vw, JSON.stringify(sheet))
-ok('…and sits clear of the tab bar',
-  sheet.barTop === null || sheet.bottom <= sheet.barTop, JSON.stringify(sheet))
-ok('…with the arrival time reachable on a phone',
-  await phone.locator('.at-pick .at-pick-time input').isVisible())
-
-const member = await browser.newPage({ viewport: { width: 1400, height: 900 } })
-member.on('pageerror', (e) => errs.push(`member: ${e.message}`))
-await signIn(member, 'r81mem', 'n1234')
-await member.goto(`${BASE}/attendance`)
-await member.waitForSelector('.at-grid', { timeout: 15000 })
-await member.waitForTimeout(600)
-ok('the team read the month too', (await member.locator('.at-grid tbody tr').count()) >= 3)
-ok('…and cannot write to it', (await member.locator('.at-grid .at-mark:not([disabled])').count()) === 0)
-ok('…but still see who was late', (await member.locator('.at-grid .at-mark.at-late').count()) >= 1)
 
 // The tray asks about days still ahead, and stops nagging about days gone.
 const crew = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
@@ -388,21 +247,19 @@ ok('a booking whose day has passed says so instead of waiting', (await goneCard.
 ok('…and offers nobody a yes to a day that is over',
   (await past.locator('.bk').first().locator('.btn').count()) === 0)
 
-// A person who is gone stops moving the month's totals.
+// A person who is gone takes their rows with them. The attendance half of
+// this went with the register in round 82; the papers are the part that
+// still matters — the Docs page reads person_docs with no join, so a document
+// left behind goes on being listed under a name that no longer resolves.
 const ghost = (await req('/users', 'POST', {
   name: 'Gulnora Gone', username: 'r81gone', password: 'g1234', departments: [chan],
 })).data
-await req(`/attendance/${ghost.id}/${iso(-1)}`, 'PUT', { status: 'late', arrived_at: '10:15' })
 await req('/docs', 'POST', {
   user_id: ghost.id, kind: 'sop', title: 'r81: their contract', file_name: 'contract.pdf',
   mime: 'application/pdf', data: 'data:application/pdf;base64,JVBERi0xLjQK', size: 12,
 })
-ok('their late day is in the register', (await req('/attendance')).data.rows.some((r) => r.user_id === ghost.id))
-ok('…and their contract is on the shelf', ((await req('/docs?all')).data || []).some((d) => d.user_id === ghost.id))
+ok('their contract is on the shelf', ((await req('/docs?all')).data || []).some((d) => d.user_id === ghost.id))
 ok('the person is removed', (await req(`/users/${ghost.id}`, 'DELETE')).status === 200)
-const reg = (await req('/attendance')).data
-ok('…and the month stops counting somebody it cannot show',
-  !reg.rows.some((r) => r.user_id === ghost.id) && !reg.tally[ghost.id], JSON.stringify(reg.tally))
 ok('…and their papers go with them, rather than being listed under a name that no longer resolves',
   !((await req('/docs?all')).data || []).some((d) => d.user_id === ghost.id))
 

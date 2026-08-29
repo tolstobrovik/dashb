@@ -91,7 +91,7 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, shooterT)
 
   // While it is the shooter's, the editor cannot move it.
-  let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, editorT)
+  let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, editorT)
   ok('a non-owner cannot move work in someone else’s hands', r.status === 403, `${r.status}`)
   ok('  and is told who has it', Array.isArray(r.data.held_by) && r.data.held_by.includes(shooter), JSON.stringify(r.data.held_by))
 
@@ -102,12 +102,12 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   ok('the owner hands it on', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
   // …and loses the right to move it.
-  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, shooterT)
+  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
   ok('the previous owner can no longer drag it back', r.status === 403, `${r.status}`)
   ok('  the message names the new holder', /Eldor/.test(r.data.error || ''), r.data.error || '')
 
   // The new owner can.
-  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, editorT)
+  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, editorT)
   ok('the new owner can move it', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
   // An admin is never locked out.
@@ -118,9 +118,6 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
 // ---- ten seconds of regret ----------------------------------------------
 {
   const t = await newTask({ operator_id: shooter })
-  const planBefore = (await req('/trackers?department=instagram_main')).data
-  const reelBefore = (planBefore.find?.((x) => x.content_type === 'reel') || {}).current ?? 0
-
   // A move that completes the task also moves the numbers.
   await req(`/content/${t.id}`, 'PATCH', {
     status_id: S['Editing'], editor_id: editor, shot_link: 'https://drive.google.com/raw2',
@@ -143,27 +140,25 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   ok('there is only one move to take back', again.status === 404, `${again.status}`)
 }
 
-// ---- the statistics are walked back too ---------------------------------
+// ---- publishing is walked back too --------------------------------------
+// This used to watch the channel's plan counter go up and back down. The
+// typed-in plan is gone (round 82) and completion is read off the work now,
+// so the thing to check is the work itself: the piece went out, and taking
+// the move back un-published it.
 {
   const t = await newTask({
     operator_id: shooter, editor_id: editor, reviewer_ids: [rev1],
     shot_link: 'https://drive.google.com/raw-p', ready_link: 'https://drive.google.com/cut-p',
   })
-  const cur = async () => {
-    const { data } = await req('/trackers?department=instagram_main')
-    return (data.find?.((x) => x.content_type === 'reel') || {}).current ?? 0
-  }
-  const before = await cur()
   await req(`/content/${t.id}`, 'PATCH', { status_id: S['Published'] })
-  const after = await cur()
-  ok('publishing fills the plan', after === before + 1, `${before} → ${after}`)
+  const { data: out } = await req(`/content/${t.id}`)
+  ok('publishing stamps it finished', !!out.done_at, String(out.done_at))
 
   const un = await req(`/content/${t.id}/undo`, 'POST', {})
   ok('an admin can undo it', un.status === 200, `${un.status} ${un.data.error || ''}`)
-  const restored = await cur()
-  ok('undoing empties it again', restored === before, `${after} → ${restored} (expected ${before})`)
   const { data: back } = await req(`/content/${t.id}`)
   ok('  and the completion is cleared', !back.done_at, String(back.done_at))
+  ok('  and the stage came back with it', back.status_id !== S['Published'], String(back.status_id))
 }
 
 // ---- the window really closes -------------------------------------------

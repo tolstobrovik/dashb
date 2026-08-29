@@ -47,8 +47,5 @@ await req('/personal', 'POST', { title: 'Prepare board slides for Friday' })
 await req('/personal', 'POST', { title: 'Review Q3 ad budget' })
 await req('/personal', 'POST', { title: 'Call the print shop about banners', user_id: jas.id })
 
-// --- metrics: update a few tracker values ---
-const trackers = await req('/trackers')
-for (const [i, t] of trackers.slice(0, 4).entries()) await req(`/trackers/${t.id}`, 'PATCH', { value: 1200 * (i + 1) + 34 })
 
 console.log('seeded:', { jas: jas.id, mir: mir.id, azi: azi.id, live: live.id, blocked: blocked.id, kaz: kaz.id })

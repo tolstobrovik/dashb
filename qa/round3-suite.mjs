@@ -201,10 +201,10 @@ ok('member card edit persisted', (await jasCard.textContent()).includes('SMM lea
 const probe = (await mk({ title: 'Conflict UI probe', channels: ['instagram_main'], type: 'video' })).data
 // The to-do list always shows your own tasks, whatever the channel dashboards
 // are configured to display — the stable way to reach the task modal.
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
 await page.waitForTimeout(500)
-await page.locator('.todo-row', { hasText: 'Conflict UI probe' }).locator('.todo-main').click()
+await page.locator('.tcard', { hasText: 'Conflict UI probe' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
 ok('shoot row has from–to time inputs', (await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').count()) === 2)
 await page.locator('.modal .crew-row select').first().selectOption(String(rav.id))

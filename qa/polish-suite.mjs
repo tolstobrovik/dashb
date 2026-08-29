@@ -1,5 +1,6 @@
-// This round's four changes, verified in the real UI: the add-metric tile
-// under pinned metrics, the bigger Gantt, site-wide text size, crew on
+// This round's changes, verified in the real UI: the bigger Gantt, site-wide
+// text size, and crew on a post. (The fourth — an add-metric tile under the
+// pinned metrics — went with the metrics themselves in round 82.) Crew on
 // every task type.
 import { chromium } from 'playwright'
 const BASE = 'http://localhost:4090'
@@ -22,9 +23,6 @@ const post = (await req('/content', 'POST', { title: 'Crew on a post', channels:
 ok('post carries optional crew', post.operator_id === jas.id && post.editor_id === jas.id)
 ok('crew clears with null', (await req(`/content/${post.id}`, 'PATCH', { operator_id: null })).data.operator_id === null)
 
-// pin a metric so the hero row renders (Brand Awareness case)
-const tr = (await req('/trackers', 'POST', { department: 'instagram_main', label: 'Brand Awareness', current: 40, target: 100, unit: 'pts', period: 'monthly' })).data
-await req(`/trackers/${tr.id}`, 'PATCH', { is_primary: 1 })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await browser.newPage({ viewport: { width: 1440, height: 950 } })
@@ -34,17 +32,6 @@ await page.fill('input[name="username"]', 'admin')
 await page.fill('input[name="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
-
-// 1. Add-metric tile under the pinned metric
-await page.goto(BASE + '/dept/instagram_main')
-await page.waitForSelector('.hero-metric', { timeout: 10000 })
-const tile = page.locator('.add-metric-tile')
-ok('add-metric tile sits under Brand Awareness', (await tile.count()) === 1)
-await tile.click()
-await page.waitForSelector('.modal', { timeout: 8000 })
-ok('tile opens the metric form', (await page.locator('.modal').textContent()).includes('Add metric'))
-await page.screenshot({ path: 'polish-metric.png' })
-await page.keyboard.press('Escape')
 
 // 2. Gantt is bigger
 await page.goto(BASE + '/projects')
@@ -78,9 +65,9 @@ ok('Medium resets to normal', (await page.evaluate(() => document.documentElemen
 // a post now gets the same two hats every other type has, not a design
 // pipeline of its own. The column and anyone already holding it are
 // untouched; it is simply not offered any more.
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'Crew on a post' }).locator('.todo-main').click()
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'Crew on a post' }).first().click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const hats = await page.locator('.modal .crew-label').allTextContents()
 ok('a post carries the two hats with a stage', hats.length === 2, hats.join(' / '))
@@ -95,6 +82,5 @@ await browser.close()
 await req(`/content/${post.id}`, 'DELETE')
 await req(`/users/${polop.id}`, 'DELETE')
 await req(`/users/${poldes.id}`, 'DELETE')
-await req(`/trackers/${tr.id}`, 'DELETE')
 console.log(fails === 0 ? '\nPolish suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails === 0 ? 0 : 1)

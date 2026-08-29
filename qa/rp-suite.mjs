@@ -65,9 +65,9 @@ ok('clickable colored channel chips', await page.locator('.rp-chan').count() ===
 ok('person cards show big totals', await page.locator('.rp-person-total b').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize) >= 30))
 await page.screenshot({ path: 'reports-new.png' })
 
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-const vidRow = page.locator('.todo-row', { hasText: 'Крю видео' })
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+const vidRow = page.locator('.tcard', { hasText: 'Крю видео' }).first()
 ok('crew chips on the to-do row', (await vidRow.textContent()).includes('Jasmina'))
 await vidRow.locator('.todo-main').click()
 await page.waitForSelector('.modal', { timeout: 8000 })

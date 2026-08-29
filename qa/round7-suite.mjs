@@ -52,7 +52,7 @@ await page.evaluate(() => {
   localStorage.setItem('satashkent_todo_chan', 'ghost_channel')
   localStorage.setItem('satashkent_todo_member', '99999')
 })
-await page.goto(BASE + '/todo')
+await page.goto(BASE + '/dept/instagram_main')
 await page.waitForSelector('form.card', { timeout: 10000 })
 await page.waitForTimeout(800)
 ok('poisoned channel filter heals itself', await page.evaluate(() => localStorage.getItem('satashkent_todo_chan')) === 'all')

@@ -1,11 +1,12 @@
-// Round 80: the admin is not made to fill in a form, the register has a door,
-// and booked time is answered by the person who has to be there.
+// Round 80: the admin is not made to fill in a form, and booked time is
+// answered by the person who has to be there.
 //
-// Three asks, one suite, because they are one idea: the board was making the
+// Two asks, one suite, because they are one idea: the board was making the
 // wrong people do the typing. The rules that stop half-briefed work going out
-// were being applied to the person who wrote them; the lateness register was
-// built and then hidden as tab eight of eleven; and a shoot day was a fact the
-// moment somebody typed it, with the camera operator finding out on the day.
+// were being applied to the person who wrote them, and a shoot day was a fact
+// the moment somebody typed it, with the camera operator finding out on the
+// day. (A third — the lateness register getting its own door — went with the
+// register itself in round 82.)
 //
 // Brings its own server on 4131 so it can be run alone.
 import { spawn } from 'child_process'
@@ -124,7 +125,10 @@ const idea = (await req('/content', 'POST', { title: 'r80: just an idea', channe
 ok('an unbooked task owes nobody an answer',
   (await req(`/content/${idea.id}/confirm`, 'POST', { which: 'shoot', ok: true }, TO)).status === 400)
 
-// ===================== 3) the register has a door ========================
+// ===================== 3) the crew answer where they look ================
+// This section also covered the attendance register getting its own door.
+// The register was removed in round 82, so what is left is the half that
+// still stands: the crew are asked about booked time on My Day.
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const errs = []
 const signIn = async (pg, u, p) => {
@@ -137,21 +141,6 @@ const signIn = async (pg, u, p) => {
 const admin = await browser.newPage({ viewport: { width: 1400, height: 900 } })
 admin.on('pageerror', (e) => errs.push(`admin: ${e.message}`))
 await signIn(admin, 'admin', 'admin123')
-ok('the register has a door in the sidebar',
-  (await admin.locator('.sidebar .nav-item', { hasText: /Attendance|Посещаемость|Davomat/ }).count()) === 1)
-await admin.goto(`${BASE}/attendance`)
-await admin.waitForTimeout(1800)
-ok('…which opens a page of people', (await admin.locator('table.at-grid tbody tr').count()) > 0)
-ok('…where an admin marks who was late', (await admin.locator('.at-grid .at-mark:not([disabled])').count()) > 0)
-
-const member = await browser.newPage({ viewport: { width: 1400, height: 900 } })
-member.on('pageerror', (e) => errs.push(`member: ${e.message}`))
-await signIn(member, 'r80mem', 'm1234')
-await member.goto(`${BASE}/attendance`)
-await member.waitForTimeout(1800)
-ok('the team can read the register', (await member.locator('table.at-grid tbody tr').count()) > 0)
-ok('…and cannot write to it', (await member.locator('.at-grid .at-mark:not([disabled])').count()) === 0)
-
 // ---- and the crew see what they owe an answer on, where they already look --
 const crew = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
 crew.on('pageerror', (e) => errs.push(`crew: ${e.message}`))

@@ -36,7 +36,7 @@ await page.click('button[type=submit]')
 await page.waitForTimeout(2500)
 
 // ---- 1. the tab bar ----
-await page.goto(`${BASE}/todo`)
+await page.goto(`${BASE}/dept/instagram_main`)
 await page.waitForTimeout(1600)
 const bar = await page.evaluate(() => {
   const el = document.querySelector('.mob-tabs')
@@ -121,9 +121,9 @@ const gone = (await page.locator('.modal').count()) === 0
 ok('a task given from the tab bar saves', gone)
 
 // ---- 4. an existing task: the tools are behind one button ----
-await page.goto(`${BASE}/todo`)
+await page.goto(`${BASE}/dept/instagram_main`)
 await page.waitForTimeout(1800)
-await page.locator('.todo-main').first().click()
+await page.locator('.tcard').first().click()
 await page.waitForTimeout(1800)
 ok('the tools sit behind one button', await page.locator('.cm-more-btn').isVisible())
 const footH = await page.evaluate(() => Math.round(document.querySelector('.modal-foot').getBoundingClientRect().height))
