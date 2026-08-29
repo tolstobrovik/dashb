@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors, Palette, Plus, MessageSquare } from 'lucide-react'
+import { Clapperboard, Send, CheckSquare, ImageIcon, Megaphone, Video, Scissors, Palette, UserRound, Plus, MessageSquare } from 'lucide-react'
 import { dateLabel, typeInfo, isDeletedLabel } from '../lib/constants.js'
 import { useChannels } from '../lib/channels.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
@@ -87,6 +87,20 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                       {item.release_date && (
                         <span className="chip chip-muted"><Send size={10} /> {dateLabel(item.release_date)}</span>
                       )}
+                      {/* Who the task is FOR. The board named the crew and
+                          never the assignees; the To-Do row named both, and
+                          "who owns this" is the first thing anyone asks of a
+                          card. One name, +N for the rest. */}
+                      {(() => {
+                        const ids = (item.assignees?.length ? item.assignees : item.assignee_id ? [item.assignee_id] : [])
+                          .filter((id) => teamById[id])
+                        if (ids.length === 0) return null
+                        return (
+                          <span className="chip chip-muted" data-tip={tx('Whose task this is')}>
+                            <UserRound size={10} /> {teamById[ids[0]].name.split(' ')[0]}{ids.length > 1 ? ` +${ids.length - 1}` : ''}
+                          </span>
+                        )
+                      })()}
                       {item.operator_id && teamById[item.operator_id] && (
                         <span className="chip chip-muted" data-tip={tx("Operator — films it")}><Video size={10} /> {teamById[item.operator_id].name.split(' ')[0]}</span>
                       )}

@@ -437,8 +437,11 @@ router.get('/pay', wrap(async (req, res) => {
   const { from, to } = req.query
   const out = await payRun({ from, to })
   const { hasDefault } = await rateCards()
-  // Nobody with no card and nothing delivered clutters the payroll.
-  out.people = out.people.filter((p) => p.source !== 'none' || p.delivered > 0 || p.kpis.length > 0)
+  // The KPI component of pay went with the KPIs in round 82, and this line kept
+  // reading p.kpis — which payRun stopped producing, so every call to the
+  // payroll answered 500. Nobody with no card and nothing delivered clutters
+  // the payroll; that is the whole of the rule now.
+  out.people = out.people.filter((p) => p.source !== 'none' || p.delivered > 0)
   out.people.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
   res.json({ ...out, hasDefault, currency: out.people[0]?.currency || 'UZS' })
 }))

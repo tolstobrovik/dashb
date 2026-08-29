@@ -4625,8 +4625,10 @@ button.blame-person:hover { background: var(--surface-2); }
 
 .st-sec { margin-bottom: 10px; overflow: hidden; }
 .st-sec-head { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 11px 14px;
-  background: none; border: none; cursor: pointer; color: var(--ink); font-size: 14px; }
+  background: none; border: none; cursor: pointer; color: var(--ink); font-size: 14px;   min-height: 40px;
+}
 .st-sec-head:hover { background: var(--surface-2); }
+@media (pointer: coarse) { .st-sec-head { min-height: 44px; } }
 .st-sec-body { border-top: 1px solid var(--hairline); padding: 12px 14px; overflow-x: auto; }
 .st-pie-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
 .pie { flex: none; }

@@ -81,8 +81,10 @@ await page.waitForTimeout(300)
 await page.locator('.board-col').first().locator('.board-quick-btn').click()
 await page.locator('.board-quick-input').fill('r10: toast probe')
 await page.keyboard.press('Enter')
-await page.locator('.toast', { hasText: 'synced' }).waitFor({ timeout: 6000 })
-ok('quick-add toast says added + synced', /synced/.test(await page.locator('.toast', { hasText: 'synced' }).first().textContent()))
+// "Added", not just any synced toast: the saves above leave their own on
+// screen and a strict locator matching two of them is a false failure.
+await page.locator('.toast', { hasText: 'Added' }).first().waitFor({ timeout: 6000 })
+ok('quick-add toast says added + synced', /synced/.test(await page.locator('.toast', { hasText: 'Added' }).first().textContent()))
 await page.screenshot({ path: 'r10-toast.png' })
 await page.waitForTimeout(2800)
 

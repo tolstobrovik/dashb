@@ -237,9 +237,9 @@ ok('the operator is paid for all three shoots', pOp?.lines.find((l) => l.hat ===
   JSON.stringify(pOp?.lines.filter((l) => l.count)))
 ok('…two of three late, so a third on time', pOp?.onTimePct === 33, String(pOp?.onTimePct))
 ok('…which misses the 90% bonus', pOp?.bonus === 0, String(pOp?.bonus))
-ok('…and costs one deduction', pOp?.penalty === 20000, String(pOp?.penalty))
+ok('…and costs two deductions', pOp?.penalty === 40000, String(pOp?.penalty))
 ok('the operator’s arithmetic adds up',
-  pOp?.total === 1000000 + 3 * 50000 - 20000, String(pOp?.total))
+  pOp?.total === 1000000 + 3 * 50000 - 2 * 20000, String(pOp?.total))
 
 const pEd = payroll.people.find((p) => p.name === 'R73 Sanjar')
 ok('the editor is paid for two cuts, none of them late',

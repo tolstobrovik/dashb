@@ -168,7 +168,12 @@ const wk = await phone.evaluate(() => {
     items: c.querySelectorAll('.wk-card, .rel-ev, .cal-ev').length,
   }))
   const quiet = rows.filter((r) => !r.items)
-  const busiest = rows.reduce((a, b) => (b.items > a.items ? b : a), rows[0] || { h: 0, items: 0 })
+  // Two rows can carry the same number of pieces and still differ by a line of
+  // wrapped title, so "the busiest" is the TALLEST of the rows holding the most
+  // — picking the first of them made this a test of title lengths.
+  const most = Math.max(0, ...rows.map((r) => r.items))
+  const busiest = rows.filter((r) => r.items === most)
+    .reduce((a, b) => (b.h > a.h ? b : a), { h: 0, items: most })
   return {
     n: rows.length,
     emptiest: quiet.length ? Math.max(...quiet.map((r) => r.h)) : 0,

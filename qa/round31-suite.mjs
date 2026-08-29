@@ -53,7 +53,10 @@ ok('the badge counts the fresh reminders', Number(await p.locator('.notif-badge'
 await p.locator('.notif-wrap button').first().click(); await p.waitForTimeout(400)
 ok('the panel lists them', (await p.locator('.notif-row').count()) >= 2)
 await p.locator('.notif-row', { hasText: 'x31: due tomorrow' }).first().click()
-await p.waitForURL(/todo\?task=/, { timeout: 8000 }); await p.waitForTimeout(1200)
+// The bell's rows pointed at /todo?task=; round 82 removed that page and the
+// links land on My Day, which fetches a task that is not already in your list
+// instead of refusing it.
+await p.waitForURL(/brief\?task=/, { timeout: 8000 }); await p.waitForTimeout(1400)
 ok('a row opens its task', (await p.locator('.modal .cm-title').inputValue().catch(() => '')).includes('x31: due tomorrow'))
 await p.keyboard.press('Escape')
 await p.close()

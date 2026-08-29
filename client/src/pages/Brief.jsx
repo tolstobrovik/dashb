@@ -429,11 +429,17 @@ export default function Brief() {
     const id = Number(new URLSearchParams(location.search).get('task'))
     if (!id || linkOpened.current === location.search) return
     linkOpened.current = location.search
+    // Always from the server, never from the copy this browser happens to
+    // hold: My Day boots from a cache so the page paints instantly, and a link
+    // opened against that cache showed the task as it was last time — dates
+    // somebody has since filled in still missing, a stage it has since left.
     const mine = content.find((x) => x.id === id)
-    if (mine) { setOpenItem(mine); return }
     api.get(`/content/${id}`)
       .then((t) => setOpenItem(t))
-      .catch(() => toast(tx('That task isn’t on your channels — ask an admin to show it to you'), 'err'))
+      .catch(() => {
+        if (mine) { setOpenItem(mine); return }
+        toast(tx('That task isn’t on your channels — ask an admin to show it to you'), 'err')
+      })
   }, [loading, content, location.search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // the simple view's custom horizon — folded until asked for
