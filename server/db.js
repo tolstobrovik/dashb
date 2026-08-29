@@ -1480,7 +1480,10 @@ export function defaultMayLeave(actor, label) {
   const l = String(label || '').toLowerCase()
   if (/^deleted$/.test(l)) return actor === 'member'
   if (actor === 'member') return true
-  if (actor === 'operator') return /idea|to shoot|shot/.test(l)
+  // "shot" was the stage folded into Editing in round 82. The operator's part
+  // ends when the footage is handed over, which the milestone tick now does,
+  // so To shoot is the last stage they may leave.
+  if (actor === 'operator') return /idea|to shoot/.test(l)
   if (actor === 'editor' || actor === 'designer') return /idea|to shoot|editing/.test(l)
   return false
 }

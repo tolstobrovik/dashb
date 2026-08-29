@@ -61,7 +61,17 @@ await db.execute({
 const monday = (await req('/sprints/current')).data
 ok('a week nobody closed does not hold the board', monday.sprint.start_at === start.start_at,
   `${monday.sprint.code} ${monday.sprint.start_at}`)
-ok('…so the board is not frozen on a Monday', monday.frozen === false)
+// The board freezes at Saturday noon Tashkent, so a gate that happens to run
+// on a Saturday afternoon would read this week as legitimately frozen and fail
+// a check about Mondays. The scenario is "before the freeze", so the freeze is
+// put where a Monday would find it — tomorrow — rather than left to the clock.
+await db.execute({
+  sql: 'UPDATE sprints SET freeze_at = ?, meeting_at = ? WHERE id = ?',
+  args: [new Date(Date.now() + 86400e3).toISOString(),
+    new Date(Date.now() + 86400e3 + 3 * 3600e3).toISOString(), monday.sprint.id],
+})
+const preFreeze = (await req('/sprints/current')).data
+ok('…so the board is not frozen on a Monday', preFreeze.frozen === false, JSON.stringify({ frozen: preFreeze.frozen, freeze_at: preFreeze.sprint.freeze_at }))
 ok('…and an ordinary member can still put work on it',
   (await req('/sprints/tasks', 'POST', { title: 'Work in the new week' }, N)).status === 201)
 ok('…on exactly one row for the week',

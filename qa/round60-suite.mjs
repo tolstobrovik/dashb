@@ -90,8 +90,11 @@ await page.goto(BASE + '/brief')
 // Wait for the shell to actually paint rather than guessing at a duration —
 // the first load after a restart is slower than any number worth hard-coding.
 await page.waitForSelector('a[href="/dept/instagram_main"]', { timeout: 20000 })
-ok('the sidebar offers Releases', await page.locator('a[href="/releases"]').count() === 1)
-ok('…and Recordings', await page.locator('a[href="/recordings"]').count() === 1)
+// Scoped to the sidebar: round 82 gave the phone's tab bar the slot To-Do used
+// to hold, and that bar is in the DOM on a desktop too (CSS hides it), so a
+// bare href count sees Releases twice and says the sidebar has lost it.
+ok('the sidebar offers Releases', await page.locator('.sidebar a[href="/releases"]').count() === 1)
+ok('…and Recordings', await page.locator('.sidebar a[href="/recordings"]').count() === 1)
 
 // ---- Releases: every channel at once ----
 await openPage('/releases')

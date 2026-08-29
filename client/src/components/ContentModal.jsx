@@ -1182,6 +1182,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* Stage — the pipeline, in its own colours */}
       <div className="cm-row">
         <span className="cm-key">{t('task.stage')}</span>
+        <div className="stage-wrap">
         <div className="stage-chips">
           {statuses.map((s) => {
             const active = form.status_id === s.id
@@ -1203,17 +1204,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             )
           })}
         </div>
-      </div>
-
-      {/* Still missing — the checker, in the open. */}
-      {gaps.length > 0 && (
-        <div className="cm-row cm-gaps">
-          <span className="cm-key">{tx('Still missing')}</span>
-          <div className="gap-chips">
+        {/* Still missing — the checker, in the open, on the row it is about. */}
+        {gaps.length > 0 && (
+          <div className="cm-gaps">
+            <span className="gap-key">{tx('Still missing')}</span>
             {gaps.map((g) => <span key={g.key} className="chip chip-gap">{tx(g.label)}</span>)}
           </div>
+        )}
         </div>
-      )}
+      </div>
 
       {/* A hand up: somebody on this piece saying early that it is in trouble.
           Sits directly under the stage, because it is about to change it. */}

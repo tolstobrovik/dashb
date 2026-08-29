@@ -4576,7 +4576,11 @@ button.blame-person:hover { background: var(--surface-2); }
   .dz-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .dz-links { justify-content: flex-start; }
   .dz-due, .dz-who { font-size: 12px; }
+  /* The title is how the task is opened; stacked, it is the row's whole width
+     and has to be tall enough to hit. */
+  .dz-main { min-height: 40px; width: 100%; }
 }
+@media (pointer: coarse) { .dz-main { min-height: 44px; } }
 
 /* ---------- documents: the filter row and the preview ---------- */
 .docs-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -4654,8 +4658,12 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 
 /* Still missing — the stage checker in the open, on the task itself. Amber,
-   not red: these are holes to fill, not failures. */
-.cm-gaps .gap-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+   not red: these are holes to fill, not failures. It rides inside the stage
+   row rather than taking one of its own; a phone has no spare rows. */
+.stage-wrap { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cm-gaps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gap-key { font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted); }
 .chip-gap {
   background: var(--tint-warn);
   color: var(--warn-ink);
@@ -4670,8 +4678,9 @@ button.blame-person:hover { background: var(--surface-2); }
   display: flex; align-items: center; gap: 8px;
   background: none; border: 0; padding: 0; margin: 0;
   font: inherit; color: inherit; cursor: pointer; text-align: left;
-  min-height: 32px;
+  min-height: 40px;
 }
+@media (pointer: coarse) { .fold-btn { min-height: 44px; } }
 .fold-btn h2 { margin: 0; }
 .fold-caret { color: var(--muted); transition: transform 0.15s ease; flex: none; }
 .fold-caret.open { transform: rotate(180deg); }

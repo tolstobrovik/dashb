@@ -152,7 +152,12 @@ await phone.setViewportSize({ width: 390, height: 1200 })
 // state rather than a calendar, and an empty state proves nothing here.
 await phone.goto(BASE + '/releases'); await phone.waitForTimeout(1700)
 const scale = await phone.locator('.cal-scale .pill.active').textContent()
-ok('a phone opens the calendar on the week, where titles are readable', /week/i.test(scale || ''), scale)
+// Round 82 made the month the default in every view, a phone included: a week
+// is a horizon you check, a month is the one you plan in. The week is still
+// there, one press away, and the rest of this block measures it there.
+ok('a phone opens the calendar on the month', /month/i.test(scale || ''), scale)
+await phone.locator('.cal-scale .pill', { hasText: 'Week' }).click()
+await phone.waitForTimeout(900)
 // The rule is "a row is as tall as what is on it", and the way to check it is
 // to compare rows against each other — not against a number. A flat ceiling
 // said the same thing until the board filled up: one legitimately busy

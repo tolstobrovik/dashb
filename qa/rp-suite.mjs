@@ -65,11 +65,14 @@ ok('clickable colored channel chips', await page.locator('.rp-chan').count() ===
 ok('person cards show big totals', await page.locator('.rp-person-total b').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize) >= 30))
 await page.screenshot({ path: 'reports-new.png' })
 
-await page.goto(BASE + '/dept/instagram_main')
+// The fixture is on YouTube, and a channel board shows its own channel — the
+// To-Do page this replaced listed every channel at once, and its rows had an
+// inner .todo-main to click; a board card is the target itself.
+await page.goto(BASE + '/dept/youtube')
 await page.waitForSelector('.tcard', { timeout: 12000 })
 const vidRow = page.locator('.tcard', { hasText: 'Крю видео' }).first()
-ok('crew chips on the to-do row', (await vidRow.textContent()).includes('Jasmina'))
-await vidRow.locator('.todo-main').click()
+ok('crew chips on the board card', (await vidRow.textContent()).includes('Jasmina'))
+await vidRow.click()
 await page.waitForSelector('.modal', { timeout: 8000 })
 // Round 78 took the designer hat off the picker: this board runs
 // idea → shoot → edit, so every type carries the same two hats now instead

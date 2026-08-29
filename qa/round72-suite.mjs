@@ -121,15 +121,19 @@ ok('the record still says the shoot came in late, because it did', !!mine, JSON.
 ok('…and says when it actually landed, so it reads as history not homework',
   !!mine?.delivered && mine?.open === false, JSON.stringify({ delivered: mine?.delivered, open: mine?.open }))
 
-// ===================== a card parked on Shot =====================
-// The case the timestamp cannot answer: filmed, sitting on Shot, nothing
-// handed over — so shot_at is still null and the day has gone by.
+// ===================== a card past the shoot, dragged by hand =====================
+// This section used to test a card PARKED ON SHOT: filmed, handed to nobody,
+// shot_at still null because the stage the operator left it on recorded
+// nothing. Round 82 removed that stage — the tick hands the footage straight
+// to the editor — so the state cannot happen any more. What can still happen
+// is a card dragged past the shoot by hand rather than ticked, and the same
+// question is asked of it: the shoot HAPPENED, so nobody is late for it.
 const parked = (await mk({
   title: 'r72 filmed and parked', recording_date: day(-8), edit_ready_date: day(4), release_date: day(9),
 })).data
 await req(`/content/${parked.id}`, 'PATCH', { status_id: sid(/^editing$/i) })
 const p2 = (await req(`/content/${parked.id}`)).data
-ok('it sits on Shot with nothing handed over', p2.status_id === sid(/^editing$/i) && !p2.shot_at,
+ok('it sits past the shoot', p2.status_id === sid(/^editing$/i),
   JSON.stringify({ status: p2.status_id, shot_at: p2.shot_at }))
 ok('…and its shoot is not late, because the filming happened',
   !(await req('/content/late/mine', 'GET', null, opT)).data.some((r) => r.content_id === parked.id && r.phase === 'shoot'),

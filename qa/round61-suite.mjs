@@ -256,17 +256,17 @@ const mErrs = []
 mp.on('pageerror', (e) => mErrs.push(e.message))
 await signIn(mp, 'admin', 'admin123')
 await openPage(mp, '/releases')
-// Round 77 changed what a phone opens on, and this check changed with it. A
-// month of seven columns on a 390px screen can only carry a dot per piece of
-// work, so the phone opens on the WEEK, where the titles are readable — and
-// the month is still one tap away, still all seven columns.
-ok('the phone gets the calendar too, opened on the week',
-  (await mp.locator('.wk-col').count()) === 7,
-  String(await mp.locator('.wk-col').count()))
-await mp.locator('.cal-scale .pill', { hasText: 'Month' }).click()
-await mp.waitForTimeout(800)
-ok('…and the month is still there when asked for', await mp.locator('.cal-day').count() === 42,
+// Round 77 opened a phone on the WEEK, where titles are readable; round 82
+// asked for the month to be the default in every view, a phone included — a
+// week is a horizon you check, a month is the one you plan in. So the phone
+// opens on the month now, and the week is the tap away instead.
+ok('the phone gets the calendar too, opened on the month',
+  (await mp.locator('.cal-day').count()) === 42,
   String(await mp.locator('.cal-day').count()))
+await mp.locator('.cal-scale .pill', { hasText: 'Week' }).click()
+await mp.waitForTimeout(800)
+ok('…and the week is one press away, all seven columns', await mp.locator('.wk-col').count() === 7,
+  String(await mp.locator('.wk-col').count()))
 ok('…and the page never scrolls sideways',
   !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)))
 // The controls above the grid must be reachable without a sideways scroll.

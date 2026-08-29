@@ -180,20 +180,24 @@ ok('both of the operator’s shoots are counted', rustam?.total === 2, JSON.stri
 ok('…and the one handed over after its day is marked late', rustam?.late === 1, JSON.stringify(rustam?.late))
 ok('…the other is not', rustam?.items.find((i) => i.title.includes('on its day'))?.late === false)
 
-// The one that was silently wrong: shot_at is stamped at the HANDOVER, so a
-// shoot sitting on Shot with no editor yet had, by that column alone, never
-// happened. Round 72 settled that everywhere else; the report has to agree.
+// This used to be the case nothing could date: shot_at was stamped at the
+// HANDOVER, and a shoot sitting on Shot with no editor had, by that column
+// alone, never happened — so the report fell back to the day it was due and
+// refused to call it late. Round 82 removed that stage: the tick IS the
+// handover now, so the day is recorded the moment the operator says the
+// footage is ready, and a tick two days after the shoot day is exactly that.
 const parked = (await mk2({ title: 'r73 filmed, nobody has picked it up', recording_date: day(-2), edit_ready_date: day(5) })).data
 await req(`/content/${parked.id}`, 'PATCH', { milestone: 'shot' }, op2T)
-ok('a shoot with nothing stamped on it is still counted once the card says Shot',
+ok('a shoot ticked past its day is still counted',
   (await rOp()).data.report.find((r) => r.name === 'R73 Rustam')?.total === 3,
   JSON.stringify((await rOp()).data.report.find((r) => r.name === 'R73 Rustam')?.total))
-ok('…dated on the day it was due, since nothing recorded when it happened',
+ok('…dated on the day the footage was actually handed over',
   (await rOp()).data.report.find((r) => r.name === 'R73 Rustam')
-    ?.items.find((i) => i.title.includes('nobody has picked')).day === day(-2))
-ok('…and not called late, because nothing here knows when it happened',
+    ?.items.find((i) => i.title.includes('nobody has picked')).day === day(0),
+  JSON.stringify((await rOp()).data.report.find((r) => r.name === 'R73 Rustam')?.items.find((i) => i.title.includes('nobody has picked'))))
+ok('…and called late, because that is two days after the day it was booked for',
   (await rOp()).data.report.find((r) => r.name === 'R73 Rustam')
-    ?.items.find((i) => i.title.includes('nobody has picked')).late === false)
+    ?.items.find((i) => i.title.includes('nobody has picked')).late === true)
 
 // The editor delivers both cuts today.
 for (const t of [onTime, overdue]) {
@@ -231,7 +235,7 @@ const payroll = (await req(`/reports/pay?from=${from}&to=${to}`)).data
 const pOp = payroll.people.find((p) => p.name === 'R73 Rustam')
 ok('the operator is paid for all three shoots', pOp?.lines.find((l) => l.hat === 'operator')?.count === 3,
   JSON.stringify(pOp?.lines.filter((l) => l.count)))
-ok('…one of three late, so two thirds on time', pOp?.onTimePct === 67, String(pOp?.onTimePct))
+ok('…two of three late, so a third on time', pOp?.onTimePct === 33, String(pOp?.onTimePct))
 ok('…which misses the 90% bonus', pOp?.bonus === 0, String(pOp?.bonus))
 ok('…and costs one deduction', pOp?.penalty === 20000, String(pOp?.penalty))
 ok('the operator’s arithmetic adds up',
