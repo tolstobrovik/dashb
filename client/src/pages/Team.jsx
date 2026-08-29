@@ -7,6 +7,7 @@ import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
 import { scheduleLabel, WORK_DAYS, PERMISSIONS, dateLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
+import Fold from '../components/Fold.jsx'
 import Modal from '../components/Modal.jsx'
 import { playDone } from '../lib/sound.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
@@ -397,11 +398,11 @@ export default function Team() {
       </div>
 
       {/* ---- who we need ---- */}
-      <div className="section-head">
-        <UserRoundPlus size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>{tx("Hiring — who we need")}</h2>
-        <span className="count">· {open.length}</span>
-      </div>
+      {/* Hiring and the candidate pipeline are a season's work, not a day's,
+          and they sit above the team everybody actually came to look at. Both
+          fold, and stay folded for whoever folds them. */}
+      <Fold id="team-hiring" title={tx("Hiring — who we need")} count={open.length}
+        icon={<UserRoundPlus size={17} style={{ color: 'var(--brand-500)' }} />}>
       {err && <div className="form-error">{err}</div>}
       <div className="hire-add card">
         <input className="input" value={title} placeholder={tx("Position — e.g. Mobile videographer")}
@@ -457,11 +458,12 @@ export default function Team() {
         </div>
       )}
 
+      </Fold>
+
       {/* ---- candidates: whom we're considering ---- */}
-      <div className="section-head" style={{ marginTop: 20 }}>
-        <UserSearch size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>{tx("Candidates")}</h2>
-        <span className="count">· {inPlay} in play</span>
+      <Fold id="team-candidates" title={tx("Candidates")} count={`${inPlay} in play`}
+        icon={<UserSearch size={17} style={{ color: 'var(--brand-500)' }} />}
+        extra={<>
         <span className="spacer" />
         <div className="pill-group">
           <button className={'pill' + (candStage === 'all' ? ' active' : '')} onClick={() => setCandStage('all')}>{tx("In play")}</button>
@@ -473,7 +475,7 @@ export default function Team() {
           ))}
         </div>
         <button className="btn btn-primary btn-sm" onClick={() => setCandModal('new')}><Plus size={15} />{' '}{tx("Add candidate")}</button>
-      </div>
+        </>}>
       {candList.length === 0 ? (
         <div className="card card-pad empty">
           {cands.length === 0 ? tx('Nobody under consideration yet — add the first candidate.') : 'Nobody in this stage.'}
@@ -506,6 +508,8 @@ export default function Team() {
           })}
         </div>
       )}
+
+      </Fold>
 
       {/* ---- the team we have ---- */}
       <div className="section-head" style={{ marginTop: 20 }}>

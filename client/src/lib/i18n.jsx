@@ -1288,6 +1288,8 @@ const PHRASES = {
     "an admin decided this": "так решил админ",
     "d": "д",
     "nobody": "никто",
+    "Fold this away": "Свернуть",
+    "Open this again": "Развернуть",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -2043,6 +2045,8 @@ const PHRASES = {
     "an admin decided this": "buni admin hal qildi",
     "d": "k",
     "nobody": "hech kim",
+    "Fold this away": "Yig‘ish",
+    "Open this again": "Ochish",
   },
 }
 

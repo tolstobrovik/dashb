@@ -7,6 +7,7 @@ import { todayISO, addDaysISO, dateLabel, typeInfo, tashkentDay, isDeletedLabel 
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import StatsMonth from '../components/StatsMonth.jsx'
+import Fold from '../components/Fold.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { rewardIfFinished } from '../lib/reward.js'
@@ -480,9 +481,8 @@ export default function Missed() {
         )}
       </div>
 
-      <div className="section-head" style={{ marginTop: 6 }}>
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} />{' '}{tx("Missed deadlines")}</h2>
-      </div>
+      <Fold id="miss-register" title={tx("Missed deadlines")} count={missed.length}
+        icon={<AlertTriangle size={16} />}>
 
       {/* Period: a day, a week, a month, or any dates you pick */}
       <div className="miss-filters">
@@ -613,35 +613,33 @@ export default function Missed() {
         </div>
       )}
 
-      <div className="section-head">
-        <AlertTriangle size={17} style={{ color: '#A32D2D' }} />
-        <h2 style={{ color: '#A32D2D' }}>{tx("Still not done")}</h2>
-        <span className="count">· {open.length}</span>
-      </div>
-      {open.length === 0 ? (
-        <div className="card card-pad empty">{tx("Nothing overdue and undone. Keep it that way.")}</div>
-      ) : (
-        <div className="card card-pad brief-list">
-          {open.map((e) => (
-            <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
-          ))}
-        </div>
-      )}
+      </Fold>
 
-      <div className="section-head">
-        <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
-        <h2>{tx("Finished, but late")}</h2>
-        <span className="count">· {late.length}</span>
-      </div>
-      {late.length === 0 ? (
-        <div className="card card-pad empty">{tx("No late finishes on record.")}</div>
-      ) : (
-        <div className="card card-pad brief-list">
-          {late.map((e) => (
-            <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
-          ))}
-        </div>
-      )}
+      <Fold id="miss-open" title={tx("Still not done")} count={open.length} tone="#A32D2D"
+        icon={<AlertTriangle size={17} style={{ color: '#A32D2D' }} />}>
+        {open.length === 0 ? (
+          <div className="card card-pad empty">{tx("Nothing overdue and undone. Keep it that way.")}</div>
+        ) : (
+          <div className="card card-pad brief-list">
+            {open.map((e) => (
+              <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
+            ))}
+          </div>
+        )}
+      </Fold>
+
+      <Fold id="miss-late" title={tx("Finished, but late")} count={late.length}
+        icon={<CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />}>
+        {late.length === 0 ? (
+          <div className="card card-pad empty">{tx("No late finishes on record.")}</div>
+        ) : (
+          <div className="card card-pad brief-list">
+            {late.map((e) => (
+              <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
+            ))}
+          </div>
+        )}
+      </Fold>
 
       {openItem && (
         <ContentModal key={openItem?.id || 'new'}

@@ -12,6 +12,7 @@ import { useChannels } from '../lib/channels.jsx'
 import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
 import { useFullscreen } from '../lib/useFullscreen.js'
 import Modal from '../components/Modal.jsx'
+import Fold from '../components/Fold.jsx'
 import ContentBoard from '../components/ContentBoard.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
 import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
@@ -444,51 +445,40 @@ export default function Department() {
         <ProgramsGantt channel={key} canManage={isAdmin || manageContent} isAdmin={isAdmin} lens={hasLens ? lens : 'all'} big={fsProg} />
       </div>
     )
+    // Which of these matter depends on who is looking, so each one folds and
+    // remembers. The channel's LAYOUT is the admin's call for everybody; the
+    // fold is this account's call for itself.
     if (k === 'campaigns') return (
-      <>
-        <div className="section-head">
-          <Megaphone size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>{tx("Campaigns")}</h2>
-          <span className="count">· {deptCampaigns.length}</span>
-        </div>
+      <Fold id={`dept-${key}-campaigns`} title={tx("Campaigns")} count={deptCampaigns.length}
+        icon={<Megaphone size={17} style={{ color: 'var(--brand-500)' }} />}>
         <DeptCampaigns camps={deptCampaigns} byKey={byKey} navigate={navigate} />
-      </>
+      </Fold>
     )
     if (k === 'timetable') return (
       <>
-        <div className="section-head">
-          <Send size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>{tx("Releasing")}</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>
-        </div>
-        <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="release" />
-        <div className="section-head" style={{ marginTop: 14 }}>
-          <Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>{tx("Shooting")}</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>
-        </div>
-        <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="recording" />
+        <Fold id={`dept-${key}-releasing`} title={tx("Releasing")}
+          icon={<Send size={17} style={{ color: 'var(--brand-500)' }} />}
+          extra={<span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>}>
+          <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="release" />
+        </Fold>
+        <Fold id={`dept-${key}-shooting`} title={tx("Shooting")}
+          icon={<Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />}
+          extra={<span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>}>
+          <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="recording" />
+        </Fold>
       </>
     )
     if (k === 'upcoming') return (
-      <>
-        <div className="section-head">
-          <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>{tx("Upcoming")}</h2>
-          <span className="count">· {upcomingRows.length}</span>
-        </div>
+      <Fold id={`dept-${key}-upcoming`} title={tx("Upcoming")} count={upcomingRows.length}
+        icon={<CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />}>
         <DeptTaskList rows={upcomingRows} empty="Nothing dated yet." onOpen={setOpenItem} />
-      </>
+      </Fold>
     )
     if (k === 'done') return (
-      <>
-        <div className="section-head">
-          <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
-          <h2>{tx("Done")}</h2>
-          <span className="count">· {doneRows.length}</span>
-        </div>
+      <Fold id={`dept-${key}-done`} title={tx("Done")} count={doneRows.length}
+        icon={<CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />}>
         <DeptTaskList rows={doneRows} empty="Nothing completed yet." onOpen={setOpenItem} done />
-      </>
+      </Fold>
     )
     if (k === 'content') return renderContent()
     return null
