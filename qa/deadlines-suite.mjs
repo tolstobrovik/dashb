@@ -96,12 +96,20 @@ const newTask = async (over = {}) => {
   ok('the board is told the editing gate has a gap', (ask.data.gates || []).some((g) => g.key === 'edit'),
     JSON.stringify(ask.data.gates || []).slice(0, 200))
 
+  // The wall that asks for an editor stands on the stage AFTER the shoot.
+  // That used to be a stage called Shot — which left a hole, because a card
+  // dragged straight to Editing skipped the exact stage the wall matched and
+  // was never asked. Round 82 folded Shot away, so the stage after the shoot
+  // IS Editing, the rule lands where it always meant to, and the hole is
+  // closed. The crew's own tick is unaffected: it never met this gate.
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
-  ok('…and a REEL still moves to Editing with no editor named', r.status === 200, `${r.status} ${r.data.error || ''}`)
-  ok('  and it really moved', r.data.status_id === S['Editing'], String(r.data.status_id))
+  ok('…and a REEL is asked who cuts it before it reaches Editing', r.status === 400, `${r.status} ${r.data.error || ''}`)
+  ok('  and the card did not move',
+    (await req(`/content/${t.id}`)).data.status_id !== S['Editing'], String(r.data.status_id))
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'], editor_id: editor }, shooterT)
-  ok('naming the editor is accepted too', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('naming the editor lets it through', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and now it really moved', r.data.status_id === S['Editing'], String(r.data.status_id))
 
   r = await req(`/content/${t.id}`, 'PATCH', {
     status_id: S['Editing'], editor_id: editor, shot_link: 'https://drive.google.com/raw-1',
