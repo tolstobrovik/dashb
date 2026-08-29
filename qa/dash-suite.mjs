@@ -102,6 +102,15 @@ await mp.waitForSelector('.section-head', { timeout: 10000 })
 await mp.waitForTimeout(600)
 const mheads = await mp.locator('.section-head h2').allTextContents()
 ok('member sees the customized layout too', mheads[0] === 'Content' && mheads.includes('Releasing') && mheads.includes('Shooting'), mheads.join(','))
+
+// Put the channel back the way it was found, the moment the custom layout
+// stops being needed. This suite is the only one that customizes a dashboard,
+// and it runs FIRST on a stack sixty-odd other suites share — so the layout
+// it leaves behind is the layout they all inherit, and a layout without the
+// content workspace means that channel's board has no kanban, which is what
+// most of them open it for. Restored here rather than at the end so a failure
+// further down cannot skip it.
+await req(`/channels/${ig.id}/dashboard`, 'PATCH', { dashboard: ['content'] })
 ok('member without rights sees no Customize button', (await mp.getByRole('button', { name: 'Customize' }).count()) === 0)
 await mctx.close()
 
