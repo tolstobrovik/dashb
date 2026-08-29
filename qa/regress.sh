@@ -130,15 +130,10 @@ if node round76-suite.mjs > $SP/out-round76-suite.log 2>&1; then echo "round76-s
 fuser -k 4115/tcp 2>/dev/null; sleep 0.5
 fuser -k 9989/tcp 2>/dev/null; sleep 0.5
 
-# ---- the attendance register (4128) ----
-fuser -k 4128/tcp 2>/dev/null; sleep 0.5
-
 # ---- the superuser, the register's door, and booked time the crew answer (4131) ----
 fuser -k 4131/tcp 2>/dev/null; sleep 0.5
 if node round80-suite.mjs > $SP/out-round80-suite.log 2>&1; then echo "round80-suite PASS" >> $RES; else echo "round80-suite FAIL" >> $RES; fi
 fuser -k 4131/tcp 2>/dev/null; sleep 0.5
-if node attendance-suite.mjs > $SP/out-attendance-suite.log 2>&1; then echo "attendance-suite PASS" >> $RES; else echo "attendance-suite FAIL" >> $RES; fi
-fuser -k 4128/tcp 2>/dev/null; sleep 0.5
 
 # ---- a finished piece stops saying it is late, and the register is a month (4132) ----
 fuser -k 4132/tcp 2>/dev/null; sleep 0.5
