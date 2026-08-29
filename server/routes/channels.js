@@ -10,7 +10,7 @@ const slugify = (s) =>
 
 // Sections a channel dashboard can show, in any order. The client renders
 // exactly this set — keep the two lists in step.
-export const DASH_WIDGETS = ['programs', 'metrics', 'growth', 'campaigns', 'timetable', 'upcoming', 'done', 'content']
+export const DASH_WIDGETS = ['programs', 'campaigns', 'timetable', 'upcoming', 'done', 'content']
 
 // The head of each department rides along (live name/avatar for the UI).
 router.get('/', wrap(async (req, res) => {
