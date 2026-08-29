@@ -72,7 +72,11 @@ await page.waitForSelector('.brief-title', { timeout: 10000 })
 await page.waitForTimeout(600)
 ok('their video sits in the edit lane (still-haunting, open by default)', (await page.locator('.cb-col').first().textContent()).includes('Edit: campus film'))
 const header = await page.locator('header').textContent()
-ok('crew chrome: My Day + To-Do, nothing else', header.includes('My Day') && header.includes('To-Do') && !header.includes('Projects'))
+// The crew's top bar carries the pages that are theirs and nothing that is
+// not. It named To-Do, which went in round 82; My Day is still the one they
+// live on, and Projects is still not for them.
+ok('crew chrome: their own pages, nothing else',
+  header.includes('My Day') && header.includes('Statistics') && !header.includes('Projects'), header.replace(/\s+/g, ' ').slice(0, 120))
 
 // move the stage through the modal
 await page.locator('.cb-row', { hasText: 'Edit: campus film' }).first().click()
@@ -87,11 +91,14 @@ await page.waitForTimeout(400)
 ok('the tick moved it to Ready', (await req(`/content/${vid.id}`)).data.status_id === sid('ready'))
 await page.screenshot({ path: 'role-editor.png', fullPage: true })
 
-// To-Do for crew: only their items, no channel tabs, no team quick-add
-await page.goto(BASE + '/dept/instagram_main')
+// My Day for crew: only their items, no channel tabs, no team quick-add.
+// This used to read the To-Do page; a crew account has no channels, so the
+// channel board is not theirs to open and My Day is where their work is.
+await page.goto(BASE + '/brief')
+await page.waitForSelector('.brief-title', { timeout: 10000 })
 await page.waitForTimeout(800)
 const todoTxt = await page.locator('.content').textContent()
-ok('to-do holds their video, not foreign work', todoTxt.includes('Edit: campus film') && !todoTxt.includes('Foreign post'))
+ok('their day holds their video, not foreign work', todoTxt.includes('Edit: campus film') && !todoTxt.includes('Foreign post'))
 ok('no channel tabs for crew', !(todoTxt.includes('Telegram Main')) && !(todoTxt.includes('Instagram')))
 
 // admin table shows the new badges

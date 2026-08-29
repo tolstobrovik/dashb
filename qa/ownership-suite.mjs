@@ -101,14 +101,20 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   }, shooterT)
   ok('the owner hands it on', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
-  // …and loses the right to move it.
-  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
+  // …and loses the right to move it. Dragging it BACK is the move to refuse,
+  // and this used to ask for the stage the card was already on — which is not
+  // a move at all, so it was answered 200 for a reason that had nothing to do
+  // with ownership. It passed until round 82 shortened the pipeline and the
+  // no-op became visible. It drags it back now.
+  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, shooterT)
   ok('the previous owner can no longer drag it back', r.status === 403, `${r.status}`)
   ok('  the message names the new holder', /Eldor/.test(r.data.error || ''), r.data.error || '')
 
-  // The new owner can.
-  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, editorT)
+  // The new owner can — the same move, from the person who now holds it.
+  // Backwards, so this asks about ownership and not about a handover gate.
+  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, editorT)
   ok('the new owner can move it', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] })
 
   // An admin is never locked out.
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] })
