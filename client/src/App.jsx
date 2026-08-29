@@ -11,19 +11,16 @@ const Overview = lazy(() => import('./pages/Overview.jsx'))
 const Projects = lazy(() => import('./pages/Projects.jsx'))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail.jsx'))
 const CampaignDetail = lazy(() => import('./pages/CampaignDetail.jsx'))
-const Todo = lazy(() => import('./pages/Todo.jsx'))
 const Brief = lazy(() => import('./pages/Brief.jsx'))
 const Missed = lazy(() => import('./pages/Missed.jsx'))
-const MissedTasks = lazy(() => import('./pages/MissedTasks.jsx'))
 const Schedule = lazy(() => import('./pages/Schedule.jsx'))
-const Unassigned = lazy(() => import('./pages/Unassigned.jsx'))
 const Crew = lazy(() => import('./pages/Crew.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
 const Docs = lazy(() => import('./pages/Docs.jsx'))
+const Design = lazy(() => import('./pages/Design.jsx'))
 const Sprints = lazy(() => import('./pages/Sprints.jsx'))
 const SprintBacklog = lazy(() => import('./pages/SprintBacklog.jsx'))
 const Admin = lazy(() => import('./pages/Admin.jsx'))
-const Attendance = lazy(() => import('./pages/Attendance.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
 
 const Loading = () => <div className="app-loading"><span className="spinner" /></div>
@@ -72,19 +69,9 @@ export default function App() {
           <Route path="/campaigns/:id" element={<CampaignDetail />} />
           <Route path="/dept/:key" element={<Department />} />
           <Route path="/brief" element={<Brief />} />
-          <Route path="/todo" element={<Todo />} />
           <Route path="/releases" element={<Schedule mode="release" />} />
           <Route path="/recordings" element={<Schedule mode="recording" />} />
           <Route path="/missed" element={<Missed />} />
-          <Route path="/missed-tasks" element={<MissedTasks />} />
-          <Route
-            path="/unassigned"
-            element={
-              <Protected adminOnly>
-                <Unassigned />
-              </Protected>
-            }
-          />
           <Route
             path="/crew"
             element={
@@ -101,9 +88,9 @@ export default function App() {
               </Protected>
             }
           />
-          {/* Everybody reads the register — a counter nobody can see counts
-              nothing. Only an admin marks it, which the page enforces. */}
-          <Route path="/attendance" element={<Attendance />} />
+          {/* The designer's own board — every piece waiting on artwork, with
+              its Drive folder, its brief and somewhere to hand the file back. */}
+          <Route path="/design" element={<Design />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/sprints" element={<Sprints />} />
           <Route path="/sprints/backlog" element={<SprintBacklog />} />

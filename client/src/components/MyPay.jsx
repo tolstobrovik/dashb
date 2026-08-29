@@ -27,9 +27,7 @@ export default function MyPay() {
     api.get(`/reports/pay/mine?from=${from}&to=${t}`).then(setPay).catch(() => setPay(null))
   }, [])
 
-  // Somebody with no rate card but a KPI carrying money still has a month
-  // worth showing them.
-  if (!pay || (pay.source === 'none' && !(pay.kpis || []).length)) return null
+  if (!pay || pay.source === 'none') return null
   const cur = pay.currency
   const earning = pay.lines.filter((l) => l.count > 0)
 
@@ -64,29 +62,6 @@ export default function MyPay() {
               <b>{money(l.amount, cur)}</b>
             </div>
           ))}
-          {/* The KPIs the team keeps, each with what the board counted and
-              whether that reached the target. This is the part people argue
-              about at the end of the month, so it shows the arithmetic rather
-              than the conclusion. */}
-          {(pay.kpis || []).length > 0 && (
-            <>
-              <div className="my-pay-line my-pay-sub"><span>KPI</span><span /><span /></div>
-              {pay.kpis.map((k) => (
-                <div className="my-pay-line" key={k.id}>
-                  <span className={k.met ? 'pay-good' : ''}>
-                    {k.met ? '✓ ' : ''}{k.name}
-                  </span>
-                  <span className="stat-sub">
-                    {k.actual === null ? '—' : k.actual}{k.unit ? ` ${k.unit}` : ''}
-                    {k.target !== null && ` · ${k.direction === 'atmost' ? '≤' : '≥'} ${k.target}`}
-                  </span>
-                  {k.earned > 0
-                    ? <b className="pay-good">+{money(k.earned, cur)}</b>
-                    : <span className="stat-sub">{k.reward > 0 ? money(k.reward, cur) : ''}</span>}
-                </div>
-              ))}
-            </>
-          )}
           {pay.quotaBonus > 0 && (
             <div className="my-pay-line">
               <span>Quota bonus</span>

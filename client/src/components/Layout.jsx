@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import GetSetUp from './GetSetUp.jsx'
-import { Menu, ListChecks, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, AlertTriangle, ShieldAlert, Timer, LayoutGrid, User, UserCheck, RefreshCw } from 'lucide-react'
+import { Menu, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, Send, Palette, ShieldAlert, Timer, LayoutGrid, User, RefreshCw } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import MobileTabs, { MoreSheet } from './MobileTabs.jsx'
 import NewTask from './NewTask.jsx'
@@ -102,16 +102,12 @@ export default function Layout() {
   if (location.pathname.startsWith('/admin')) title = t('nav.adminpanel')
   else if (location.pathname.startsWith('/overview')) title = t('nav.overview')
   else if (location.pathname.startsWith('/brief')) title = t('nav.brief')
-  else if (location.pathname.startsWith('/todo')) title = t('nav.todo')
   else if (location.pathname.startsWith('/releases')) title = t('nav.releases')
   else if (location.pathname.startsWith('/recordings')) title = t('nav.recordings')
-  else if (location.pathname.startsWith('/unassigned')) title = t('nav.unassigned')
-  else if (location.pathname.startsWith('/missed-tasks')) title = t('nav.missedtasks')
   else if (location.pathname.startsWith('/missed')) title = t('nav.stats')
   else if (location.pathname.startsWith('/crew')) title = t('nav.crew')
   else if (location.pathname.startsWith('/team')) title = t('nav.team')
   else if (location.pathname.startsWith('/docs')) title = t('nav.docs')
-  else if (location.pathname.startsWith('/attendance')) title = t('nav.attendance')
   else if (location.pathname.startsWith('/sprints')) title = t('nav.sprints')
   else if (location.pathname.startsWith('/profile')) title = t('nav.myprofilepage')
   else if (location.pathname.startsWith('/projects') || location.pathname.startsWith('/campaigns')) title = t('nav.projectspage')
@@ -131,15 +127,14 @@ export default function Layout() {
     soloChannel
       ? { key: 'ch', to: `/dept/${soloChannel.key}`, label: soloChannel.label, icon: SoloIcon }
       : { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
-    { key: 'todo', to: '/todo', label: t('nav.todo'), icon: ListChecks },
+    { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
     { key: 'more', onClick: () => setMore((v) => !v), on: more, label: tx('More'), icon: LayoutGrid },
   ]
   const soloMore = [
     ...(soloChannel ? [{ key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer }] : []),
     { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
-    { key: 'missed-tasks', to: '/missed-tasks', label: t('nav.missedtasks'), icon: AlertTriangle },
+    { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
     { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
-    { key: 'attendance', to: '/attendance', label: t('nav.attendance'), icon: UserCheck },
     { key: 'profile', to: '/profile', label: t('nav.myprofilepage'), icon: User },
   ]
 
@@ -160,14 +155,11 @@ export default function Layout() {
               <SoloIcon size={16} /> {soloChannel.label}
             </NavLink>
           )}
-          <NavLink to="/todo" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <ListChecks size={16} /> {t('nav.todo')}
-          </NavLink>
           <NavLink to="/missed" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <BarChart3 size={16} /> {t('nav.stats')}
           </NavLink>
-          <NavLink to="/missed-tasks" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <AlertTriangle size={16} /> {t('nav.missedtasks')}
+          <NavLink to="/design" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+            <Palette size={16} /> {t('nav.design')}
           </NavLink>
           <NavLink to="/docs" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <ScrollText size={16} /> {t('nav.docs')}
@@ -179,9 +171,6 @@ export default function Layout() {
               missing. */}
           <NavLink to="/sprints" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
             <Timer size={16} /> {t('nav.sprints')}
-          </NavLink>
-          <NavLink to="/attendance" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <UserCheck size={16} /> {t('nav.attendance')}
           </NavLink>
           <button className="icon-btn" onClick={() => setFinding(true)} data-tip={t('nav.find')} aria-label={t('nav.quickfind')}><Search size={17} /></button>
           <NotificationsBell user={user} />
@@ -217,7 +206,7 @@ export default function Layout() {
 
   const tabs = [
     { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun },
-    { key: 'todo', to: '/todo', label: t('nav.todo'), icon: ListChecks },
+    { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
     { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
     { key: 'more', onClick: () => setOpen((v) => !v), on: open, label: tx('More'), icon: LayoutGrid },
   ]

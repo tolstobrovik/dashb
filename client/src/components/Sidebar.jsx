@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import {
-  Shield, LogOut, ListChecks, Briefcase, LayoutDashboard, Sun, BarChart3, UserX, Clapperboard, UsersRound, ScrollText, Send,
-  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, AlertTriangle, Timer, UserCheck,
+  Shield, LogOut, Briefcase, LayoutDashboard, Sun, BarChart3, Clapperboard, UsersRound, ScrollText, Send, Palette,
+  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, Timer,
 } from 'lucide-react'
 import { LogoLockup } from './Logo.jsx'
 import Avatar from './Avatar.jsx'
@@ -66,17 +66,13 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
     main: [
       isAdmin && { key: 'overview', to: '/overview', label: t('nav.overview'), icon: LayoutDashboard },
       { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun, locked: true },
-      { key: 'todo', to: '/todo', label: t('nav.todo'), icon: ListChecks },
       // Every channel at once: what is going out, and what is being filmed.
       { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
       { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
       { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
-      { key: 'missed-tasks', to: '/missed-tasks', label: t('nav.missedtasks'), icon: AlertTriangle },
-      isAdmin && { key: 'unassigned', to: '/unassigned', label: t('nav.unassigned'), icon: UserX },
+      // The designer's own board, beside the work rather than inside a channel.
+      { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
       { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
-      // Who came in and when. It lived as tab eight of eleven inside the
-      // Admin panel, which is not where anybody looks for it.
-      { key: 'attendance', to: '/attendance', label: t('nav.attendance'), icon: UserCheck },
       { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
       isAdmin && { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },
     ].filter(Boolean),

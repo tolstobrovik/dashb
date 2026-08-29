@@ -9,7 +9,7 @@ import compression from 'compression'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { existsSync } from 'fs'
-import { initDb, all, snapshotTracker, dayISO, storageStatus, squashData } from './db.js'
+import { initDb, dayISO, storageStatus, squashData } from './db.js'
 import { wrap } from './auth.js'
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
@@ -17,13 +17,11 @@ import channelRoutes from './routes/channels.js'
 import statusRoutes from './routes/statuses.js'
 import fieldRoutes from './routes/fields.js'
 import notificationRoutes from './routes/notifications.js'
-import trackerRoutes from './routes/trackers.js'
 import contentRoutes, { autoFlagSilentlyLate } from './routes/content.js'
 import reportRoutes from './routes/reports.js'
 import rewardRoutes from './routes/rewards.js'
 import aiRoutes from './routes/ai.js'
 import sprintRoutes from './routes/sprints.js'
-import attendanceRouter from './routes/attendance.js'
 import campaignRoutes from './routes/campaigns.js'
 import projectRoutes from './routes/projects.js'
 import boardRoutes from './routes/boards.js'
@@ -32,7 +30,7 @@ import programRoutes from './routes/programs.js'
 import hiringRoutes from './routes/hiring.js'
 import candidateRoutes from './routes/candidates.js'
 import telegramRoutes from './routes/telegram.js'
-import { docsRouter, kpisRouter } from './routes/docs.js'
+import { docsRouter } from './routes/docs.js'
 import warningRoutes from './routes/warnings.js'
 import { tgDailyReminders, tgRunSchedules } from './telegram.js'
 
@@ -61,8 +59,6 @@ app.get('/api/health', async (req, res) => {
 // days nobody edits anything. Idempotent — safe to call any number of times.
 app.get('/api/cron/daily', wrap(async (req, res) => {
   await initDb()
-  const trackers = await all('SELECT id FROM trackers')
-  for (const t of trackers) await snapshotTracker(t.id)
   // The morning half of the bell, delivered instead of waited for: deadline
   // reminders pushed to every Telegram-linked member.
   let reminded = 0
@@ -77,7 +73,7 @@ app.get('/api/cron/daily', wrap(async (req, res) => {
   let flagged = 0
   try { flagged = await autoFlagSilentlyLate() } catch (e) { console.error('auto-flag failed:', e.message) }
   try { await squashData(); squashed = true } catch (e) { console.error('squash failed:', e.message) }
-  res.json({ ok: true, day: dayISO(), snapped: trackers.length, reminded, flagged, squashed })
+  res.json({ ok: true, day: dayISO(), reminded, flagged, squashed })
 }))
 // A Monday-morning nudge should not wait for midnight. The host's cron runs
 // once a night, so the schedules are also checked as the team works: at most
@@ -98,13 +94,11 @@ app.use('/api/channels', channelRoutes)
 app.use('/api/statuses', statusRoutes)
 app.use('/api/fields', fieldRoutes)
 app.use('/api/notifications', notificationRoutes)
-app.use('/api/trackers', trackerRoutes)
 app.use('/api/content', contentRoutes)
 app.use('/api/reports', reportRoutes)
 app.use('/api/rewards', rewardRoutes)
 app.use('/api/ai', aiRoutes)
 app.use('/api/sprints', sprintRoutes)
-app.use('/api/attendance', attendanceRouter)
 app.use('/api/campaigns', campaignRoutes)
 app.use('/api/projects', projectRoutes)
 app.use('/api/boards', boardRoutes)
@@ -114,7 +108,6 @@ app.use('/api/hiring', hiringRoutes)
 app.use('/api/candidates', candidateRoutes)
 app.use('/api/telegram', telegramRoutes)
 app.use('/api/docs', docsRouter)
-app.use('/api/kpis', kpisRouter)
 app.use('/api/warnings', warningRoutes)
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }))

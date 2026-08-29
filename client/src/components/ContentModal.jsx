@@ -985,7 +985,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   }
   // A task URL anyone on the team can open — pasteable into any chat.
   const copyLink = () => {
-    const url = `${window.location.origin}/todo?task=${item.id}`
+    const url = `${window.location.origin}/brief?task=${item.id}`
     navigator.clipboard?.writeText(url)
       .then(() => toast(tx('Link copied — paste it anywhere')))
       .catch(() => toast(url, 'err'))

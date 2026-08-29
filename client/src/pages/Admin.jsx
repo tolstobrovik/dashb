@@ -364,7 +364,7 @@ function HistoryTab() {
             <span className="alog-text">
               {activityLine(a)} on{' '}
               {a.kind !== 'deleted' && a.content_id
-                ? <a className="alog-task" href={`/todo?task=${a.content_id}`}>«{a.content_title}»</a>
+                ? <a className="alog-task" href={`/brief?task=${a.content_id}`}>«{a.content_title}»</a>
                 : <>«{a.content_title}»</>}
             </span>
           </div>

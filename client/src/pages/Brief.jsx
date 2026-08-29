@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Sun, Clapperboard, Scissors, Send, AlertCircle, CheckCircle2, CalendarRange, Check, StickyNote, ListTodo, PenLine, Trash2, Palette,
   Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, RotateCcw, ExternalLink, Link2,
@@ -416,6 +416,26 @@ export default function Brief() {
   const [pravki, setPravki] = useState(boot?.pravki || [])
   const [loading, setLoading] = useState(!boot)
   const [openItem, setOpenItem] = useState(null)
+
+  // A task link (…/brief?task=123) opens that task. The bell, Telegram and a
+  // pasted link all land here now that the To-Do page is gone — and unlike
+  // that page, a task that is not in MY list is fetched rather than refused,
+  // because "somebody sent you this task" and "this task is yours" are
+  // different things and the link should work either way.
+  const location = useLocation()
+  const linkOpened = useRef('')
+  useEffect(() => {
+    if (loading) return
+    const id = Number(new URLSearchParams(location.search).get('task'))
+    if (!id || linkOpened.current === location.search) return
+    linkOpened.current = location.search
+    const mine = content.find((x) => x.id === id)
+    if (mine) { setOpenItem(mine); return }
+    api.get(`/content/${id}`)
+      .then((t) => setOpenItem(t))
+      .catch(() => toast(tx('That task isn’t on your channels — ask an admin to show it to you'), 'err'))
+  }, [loading, content, location.search]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // the simple view's custom horizon — folded until asked for
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')

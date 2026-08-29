@@ -20,7 +20,7 @@ const KIND = {
 // and deadline reminders standing a day / a week out. Reminders are derived
 // server-side and never stored, so "read" for them lives in localStorage;
 // events are marked read on the server. A row opens its task via the
-// pasteable /todo?task= link machinery.
+// pasteable /brief?task= link machinery.
 const SEEN_KEY = (uid) => `satashkent_rem_seen_${uid}`
 const readSeen = (uid) => {
   try { const a = JSON.parse(localStorage.getItem(SEEN_KEY(uid)) || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
@@ -65,7 +65,7 @@ export default function NotificationsBell({ user }) {
   }
   const go = (n) => {
     setOpen(false)
-    if (n.content_id) navigate(`/todo?task=${n.content_id}`)
+    if (n.content_id) navigate(`/brief?task=${n.content_id}`)
   }
 
   return (

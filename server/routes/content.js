@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { createHmac } from 'crypto'
-import { all, get, run, batch, bumpPlan, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO, taskChildDeletes } from '../db.js'
+import { all, get, run, batch, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO, taskChildDeletes } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { resolveGates, gatesUpTo, phasesOf, holderOf, phasePassed } from '../deadlines.js'
 import { readText, hasSubstance, hasLink, isSentence, clip, scriptKey, MIN_SENTENCE_WORDS } from '../text.js'
@@ -102,18 +102,24 @@ async function userExists(id) {
 }
 const isFinal = async (statusId) => !!(await get('SELECT 1 AS x FROM statuses WHERE id = ? AND is_final = 1', statusId))
 // The Deleted stage: killed content that stays on the record. It counts for
-// the planner/operator (their work happened) but never for the editor, and it
-// leaves the channel plan.
-const isDead = async (statusId) =>
-  !!(statusId && (await get("SELECT 1 AS x FROM statuses WHERE id = ? AND LOWER(label) = 'deleted'", statusId)))
+// the planner/operator (their work happened) but never for the editor.
 
 // The crew move their work with one tick — "shot" for the operator, "edited"
 // or "designed" for the maker — which lands the task on the matching pipeline
-// stage (Shot / Ready) rather than letting them pick any stage freely.
+// stage rather than letting them pick any stage freely.
+//
+// The operator's tick used to land on a stage of its own called Shot, where a
+// filmed piece sat waiting for somebody to notice it and move it on. That was
+// a step that existed only to be left: footage that is shot is footage the
+// editor can start on, and the board now says so — the tick hands it straight
+// to EDITING. Boards that still carry a Shot column (it is the admin's
+// pipeline to arrange) are honoured, so nobody's stage disappears under them.
 async function milestoneStatusId(kind) {
   const rows = await all('SELECT id, label, sort FROM statuses ORDER BY sort, id')
   const find = (re) => rows.find((s) => re.test(s.label))
-  if (kind === 'shot') return (find(/^shot$/i) || find(/\bshot\b/i))?.id ?? null
+  if (kind === 'shot') {
+    return (find(/^shot$/i) || find(/^editing$|^edit$|montaj|монтаж/i) || find(/\bedit/i))?.id ?? null
+  }
   // edited / designed both mean "the piece is ready"
   return (find(/^ready$/i) || find(/ready|final|approv|posted|got/i))?.id ?? null
 }
@@ -1053,7 +1059,6 @@ router.post('/', wrap(async (req, res) => {
   addRole(roles, crew.reviewer_id, 'reviewer')
   await notifyAssigned(req, info.lastInsertRowid, String(title).trim(), roles, dateBit(recording_date, release_date))
   // A new task raises each channel's plan: 15/16 → 15/17.
-  for (const ch of channels) await bumpPlan(ch, safeType, { target: +1 }, true)
   res.status(201).json(await listRow(info.lastInsertRowid))
 }))
 
@@ -1136,7 +1141,6 @@ router.post('/:id/duplicate', wrap(async (req, res) => {
   addRole(roles, row.designer_id, 'designer')
   addRole(roles, row.reviewer_id, 'reviewer')
   await notifyAssigned(req, info.lastInsertRowid, title, roles, dateBit(null, null))
-  for (const ch of channels) await bumpPlan(ch, row.type, { target: +1 }, true)
 
   res.status(201).json(await listRow(info.lastInsertRowid))
 }))
@@ -1190,7 +1194,6 @@ router.post('/:id/revisions', wrap(async (req, res) => {
   const sid = await revisionStageId(target)
   if (sid && sid !== row.status_id) {
     await run('UPDATE content SET status_id = ?, done_at = NULL WHERE id = ?', sid, row.id)
-    if (row.done_at) for (const ch of JSON.parse(row.channels || '[]')) await bumpPlan(ch, row.type, { current: -1 })
     await logPatch(req.user, row, { status_id: sid })
   }
   await run(...actRow(req.user, row.id, row.title, 'updated', 'pravki', null, target, new Date().toISOString()))
@@ -1719,8 +1722,9 @@ router.patch('/:id', wrap(async (req, res) => {
   const canOverride = can(req.user, 'move_tasks')
 
   // The crew move their own work with a single tick — not a free stage picker.
-  // "shot" (operator) lands it on Shot; "edited"/"designed" (editor/designer)
-  // land it on Ready. Anyone with move_tasks may also tick on their behalf.
+  // "shot" (operator) hands it to Editing; "edited"/"designed" (editor and
+  // designer) land it on Ready. Anyone with move_tasks may tick on their
+  // behalf.
   if (body.milestone) {
     const m = body.milestone
     // Marking work finished is a claim, and for the two stages that produce a
@@ -2503,34 +2507,6 @@ router.patch('/:id', wrap(async (req, res) => {
   if (activityCampaign && (patch.status_id !== undefined || patch.done_at !== undefined || patch.campaign_id !== undefined))
     await bumpProjectOfCampaign(activityCampaign)
 
-  // ---- keep the channel plans in sync ----
-  const wasDone = !!row.done_at
-  const nowDone = patch.done_at !== undefined ? !!patch.done_at : wasDone
-  const newChannels = patch.channels !== undefined ? JSON.parse(patch.channels) : oldChannels
-  const newType = patch.type !== undefined ? patch.type : row.type
-
-  // Killing a piece (→ Deleted) takes it out of the channel plan — the slot
-  // will never be filled; restoring it re-enters the plan. Skipped when the
-  // platforms/type changed in the same save (the rebuild below handles those).
-  if (patch.channels === undefined && patch.type === undefined && patch.status_id !== undefined) {
-    const wasDead = await isDead(row.status_id)
-    const nowDead = await isDead(nextStatus)
-    if (wasDead !== nowDead) {
-      for (const ch of newChannels) await bumpPlan(ch, newType, { target: nowDead ? -1 : +1 }, !nowDead)
-    }
-  }
-
-  if (patch.channels !== undefined || patch.type !== undefined) {
-    // Moved to other platforms / another type: walk the old plans back, then
-    // count toward the new ones (carrying the completion along if done).
-    for (const ch of oldChannels) await bumpPlan(ch, row.type, { target: -1, current: wasDone ? -1 : 0 })
-    for (const ch of newChannels) await bumpPlan(ch, newType, { target: +1, current: nowDone ? +1 : 0 }, true)
-  } else if (!wasDone && nowDone) {
-    for (const ch of newChannels) await bumpPlan(ch, newType, { current: +1 }, true) // 15/16 → 16/16
-  } else if (wasDone && !nowDone) {
-    for (const ch of newChannels) await bumpPlan(ch, newType, { current: -1 })
-  }
-
   res.json(await listRow(row.id))
 }))
 
@@ -2660,8 +2636,7 @@ router.get('/:id/handover', wrap(async (req, res) => {
 // ---- undoing the last move -------------------------------------------------
 // Ten seconds to take a move back. It restores the stage AND everything the
 // move stamped on the way — the handover clocks, the hats it forced you to
-// name, the deadline it made you re-promise — and walks the channel plan back
-// so the numbers say what they said before. The undo itself is logged: taking
+// name, the deadline it made you re-promise. The undo itself is logged: taking
 // a move back is a move, and the paper trail is the whole point of this.
 router.post('/:id/undo', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
@@ -2699,17 +2674,6 @@ router.post('/:id/undo', wrap(async (req, res) => {
   await run(`UPDATE content SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`,
     ...keys.map((k) => before[k]), row.id)
 
-  // Walk the plan back: the same two questions the move itself asked, read in
-  // the other direction.
-  const channels = (() => { try { return JSON.parse(before.channels || '[]') } catch { return [] } })()
-  const type = before.type || row.type
-  const wasDead = await isDead(row.status_id)          // where the move left it
-  const backDead = await isDead(before.status_id)      // where it is going back to
-  if (wasDead !== backDead) await Promise.all(channels.map((ch) => bumpPlan(ch, type, { target: backDead ? -1 : +1 }, !backDead)))
-  const wasDone = !!row.done_at
-  const backDone = !!before.done_at
-  if (wasDone !== backDone) await Promise.all(channels.map((ch) => bumpPlan(ch, type, { current: backDone ? +1 : -1 }, backDone)))
-
   const two = await all('SELECT id, label FROM statuses WHERE id IN (?, ?)', row.status_id ?? 0, before.status_id ?? 0)
   const lab = (id) => two.find((s) => s.id === id)?.label || null
   await run(...actRow(req.user, row.id, row.title, 'updated', 'stage undone',
@@ -2725,9 +2689,6 @@ router.delete('/:id', wrap(async (req, res) => {
   if (!row) return res.status(404).json({ error: 'Not found' })
   const allowed = adminHere(req.user, row) || (can(req.user, 'manage_content') && canTouch(req.user, row))
   if (!allowed) return res.status(403).json({ error: 'You don’t have permission to delete this' })
-  // Removing a task lowers each channel's plan again (and its count if done).
-  for (const ch of JSON.parse(row.channels || '[]'))
-    await bumpPlan(ch, row.type, { target: -1, current: row.done_at ? -1 : 0 })
   await logEvent(req.user, row.id, row.title, 'deleted')
   // Everything the task was carrying goes with it. This used to take only the
   // attachments, which left the heaviest rows in the database behind for good:

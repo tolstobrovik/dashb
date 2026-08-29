@@ -1472,7 +1472,7 @@ export function defaultMayLeave(actor, label) {
   if (/^deleted$/.test(l)) return actor === 'member'
   if (actor === 'member') return true
   if (actor === 'operator') return /idea|to shoot|shot/.test(l)
-  if (actor === 'editor' || actor === 'designer') return /idea|to shoot|shot|editing/.test(l)
+  if (actor === 'editor' || actor === 'designer') return /idea|to shoot|editing/.test(l)
   return false
 }
 export async function getStageRules() {
@@ -1653,47 +1653,9 @@ export async function getCrewNeeds() {
   return out
 }
 
-// Record today's value for a metric (upsert), so comparisons have data.
-export async function snapshotTracker(trackerId) {
-  const row = await get('SELECT current FROM trackers WHERE id = ?', trackerId)
-  if (!row) return
-  await run(`
-    INSERT INTO metric_history (tracker_id, date, value) VALUES (?, ?, ?)
-    ON CONFLICT(tracker_id, date) DO UPDATE SET value = excluded.value
-  `, trackerId, dayISO(0), row.current)
-}
-
-// Task types that can bind to a channel's plan metric.
-// 'target' is paid promotion — a creative made for an ad set rather than
-// for the feed. It plans and counts like anything else.
+// Task types a piece can be. 'target' is paid promotion — a creative made
+// for an ad set rather than for the feed.
 export const CONTENT_TYPES = ['post', 'reel', 'story', 'video', 'target', 'other']
-export const TYPE_PLAN_LABELS = { post: 'Posts', reel: 'Reels', story: 'Stories', video: 'Videos', target: 'Target' }
-
-// The plan metric for (channel, type) — optionally created on first use, so a
-// new task always has a plan to count toward.
-export async function planTracker(channel, type, createIfMissing = false) {
-  if (!TYPE_PLAN_LABELS[type]) return null
-  let t = await get('SELECT * FROM trackers WHERE department = ? AND content_type = ? ORDER BY sort, id', channel, type)
-  if (!t && createIfMissing) {
-    const maxSort = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM trackers WHERE department = ?', channel)).m
-    const info = await run(`
-      INSERT INTO trackers (department, label, current, target, unit, period, content_type, sort, updated_at)
-      VALUES (?, ?, 0, 0, ?, 'monthly', ?, ?, ?)
-    `, channel, TYPE_PLAN_LABELS[type], TYPE_PLAN_LABELS[type].toLowerCase(), type, maxSort + 1, new Date().toISOString())
-    t = await get('SELECT * FROM trackers WHERE id = ?', info.lastInsertRowid)
-  }
-  return t
-}
-
-// Move a channel plan: creating a task raises the plan (target +1), completing
-// it fills it (current +1); deleting / un-completing walks both back.
-export async function bumpPlan(channel, type, { target = 0, current = 0 }, createIfMissing = false) {
-  const t = await planTracker(channel, type, createIfMissing)
-  if (!t) return
-  await run('UPDATE trackers SET target = ?, current = ?, updated_at = ? WHERE id = ?',
-    Math.max(0, t.target + target), Math.max(0, t.current + current), new Date().toISOString(), t.id)
-  await snapshotTracker(t.id)
-}
 
 const now = () => new Date().toISOString()
 
@@ -1712,14 +1674,17 @@ export async function seedIfEmpty() {
     ['youtube', 'YouTube', 'youtube'],
   ]
 
-  // ---- pipeline statuses (mirrors the team's ClickUp board) ----
-  // Deleted is the graveyard: a planned/shot piece that was killed. It stays
-  // on the record (the planner's and operator's work happened) but stops
-  // counting for the editor and leaves the channel plan.
+  // ---- pipeline statuses ----
+  // Five working stages and a graveyard. There used to be a sixth, Shot,
+  // between the shoot and the edit — a column whose only job was to be left,
+  // because footage that is shot is footage the editor can start on.
+  //
+  // Deleted is the graveyard: a planned or filmed piece that was killed. It
+  // stays on the record (the planner's and operator's work happened) but
+  // stops counting for the editor.
   const statusList = [
     ['Idea', '#8b8388', 0],
     ['To shoot', '#fab219', 0],
-    ['Shot', '#ec835a', 0],
     ['Editing', '#b5324a', 0],
     ['Ready', '#2a78d6', 0],
     ['Published', '#0ca30c', 1],
@@ -1976,6 +1941,55 @@ async function seedTemplatesOnce() {
 // not cached: the next request starts a fresh one instead of replaying the
 // same rejection forever.
 let initPromise
+// ---- folding the Shot stage away -------------------------------------------
+// The pipeline carried six working stages, and one of them existed only to be
+// left: a piece landed on Shot the moment the operator ticked "filmed", and
+// then waited for somebody to notice it and drag it to Editing. Footage that
+// is shot IS footage the editor can start on, so the tick hands it straight
+// over now and the column goes.
+//
+// A board that is already running cannot simply lose a column with work in
+// it. Everything standing on Shot moves to the stage that follows it — the
+// piece keeps its place in the pipeline, it just stops waiting in a room with
+// no door. Runs once, on both engines, and does nothing at all on a board
+// where an admin has since made their own stage called Shot again: the marker
+// is written whether or not there was anything to fold.
+async function foldShotStage() {
+  if (await get("SELECT 1 AS x FROM meta WHERE key = 'fold_shot_stage'")) return
+  const stages = await all('SELECT id, label, sort FROM statuses ORDER BY sort, id')
+  const shot = stages.find((s) => /^shot$/i.test(String(s.label || '').trim()))
+  if (shot) {
+    // Where the work goes: the next stage along, which on the shipped
+    // pipeline is Editing. Never the graveyard, and never nowhere.
+    const after = stages.filter((s) => (s.sort > shot.sort || (s.sort === shot.sort && s.id > shot.id))
+      && !/^deleted$/i.test(String(s.label || '')))
+    const target = after.find((s) => /^editing$|^edit$/i.test(String(s.label || ''))) || after[0]
+    if (target) {
+      await run('UPDATE content SET status_id = ? WHERE status_id = ?', target.id, shot.id)
+      // The admin's stage rules are keyed by status id in a meta blob; the
+      // entry for a stage that no longer exists is an answer to a question
+      // nobody can ask, so it goes with it.
+      try {
+        const raw = await get("SELECT value FROM meta WHERE key = 'stage_rules'")
+        const rules = JSON.parse(raw?.value || '{}')
+        let touched = false
+        for (const actor of Object.keys(rules || {})) {
+          if (rules[actor] && rules[actor][String(shot.id)] !== undefined) {
+            delete rules[actor][String(shot.id)]
+            touched = true
+          }
+        }
+        if (touched) {
+          await run("INSERT INTO meta (key, value) VALUES ('stage_rules', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            JSON.stringify(rules))
+        }
+      } catch { /* no rules stored, or unreadable — the stage still goes */ }
+      await run('DELETE FROM statuses WHERE id = ?', shot.id)
+    }
+  }
+  await run("INSERT INTO meta (key, value) VALUES ('fold_shot_stage', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+}
+
 export function initDb() {
   initPromise ||= (async () => {
     await initSchema()
@@ -1988,11 +2002,12 @@ export function initDb() {
     await ensureAdminAccess()
     await importJulyIgPlan()
     await seedTemplatesOnce()
+    await foldShotStage()
     // The Target team's dashboard leads with launch programs — once, and only
     // if the admin hasn't customized that channel's layout yet.
     if (!(await get("SELECT 1 AS x FROM meta WHERE key = 'target_programs_default'"))) {
       await run("UPDATE channels SET dashboard = ? WHERE key = 'target' AND dashboard IS NULL",
-        JSON.stringify(['programs', 'metrics', 'growth', 'content']))
+        JSON.stringify(['programs', 'content']))
       await run("INSERT INTO meta (key, value) VALUES ('target_programs_default', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     }
     // Instagram Main outranks Instagram Uzb in the sidebar — once; after that

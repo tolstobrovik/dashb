@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarClock, Check, AlertCircle, Megaphone, Rows3, UserX, ArrowRight, Hand } from 'lucide-react'
+import { CalendarClock, Check, AlertCircle, Megaphone, Hand } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { rewardIfFinished } from '../lib/reward.js'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, typeInfo, isDeletedLabel, isIdeaLabel, tashkentDay } from '../lib/constants.js'
+import { todayISO, addDaysISO, dateLabel, deptColor, onColor, iconFor, isDeletedLabel, tashkentDay } from '../lib/constants.js'
 import { loadFailed, toast } from '../lib/toast.js'
 import Avatar from '../components/Avatar.jsx'
 import ContentModal from '../components/ContentModal.jsx'
@@ -15,7 +15,6 @@ const DAY_LABEL = {
   recording_date: 'the shoot day', edit_ready_date: 'the day the cut is due',
   design_ready_date: 'the day the artwork is due', release_date: 'the release day',
 }
-import { gapsOf, stageRankOf, DUE_SOON_DAYS, nearestOf } from './Unassigned.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
 
 // The admin's landing view: every department's process on one screen —
@@ -63,7 +62,6 @@ export default function Overview() {
   const [trackers, setTrackers] = useState(boot?.trackers || [])
   const [camps, setCamps] = useState(boot?.camps || [])
   const [loading, setLoading] = useState(!boot)
-  const [tab, setTab] = useState('upcoming') // upcoming | done | lanes
   const [openItem, setOpenItem] = useState(null)
 
   useEffect(() => {
@@ -123,24 +121,6 @@ export default function Overview() {
     () => camps.filter((c) => c.status === 'incoming').sort((a, b) => a.start_date.localeCompare(b.start_date)),
     [camps])
 
-  // ---- department lanes: 14 days, one row per channel, synced with the
-  // same tasks the department calendars show ----
-  const laneDays = useMemo(() => [...Array(14)].map((_, i) => addDaysISO(today, i - 2)), [today])
-  const lanes = useMemo(() => channels.map((c, i) => ({
-    c,
-    color: deptColor(i),
-    byDay: Object.fromEntries(laneDays.map((d) => [d,
-      content.filter((t) => !t.done_at && t.channels.includes(c.key) && (t.release_date === d || t.recording_date === d)),
-    ])),
-  })), [channels, content, laneDays])
-
-  // Planning gaps — live tasks missing people or dates, counted by the same
-  // admin-tuned crew rules the Unassigned page uses; the strip below the
-  // campaigns points at the Unassigned page only while there's work to do.
-  const [crewNeeds, setCrewNeeds] = useState(null)
-  useEffect(() => {
-    api.cached('/fields').then((f) => setCrewNeeds(f.crew || null)).catch(() => {})
-  }, [])
   // Waiting on this admin. Non-admins get an empty list from the server, so
   // there is nothing to guard here.
   const [asks, setAsks] = useState([])
@@ -169,35 +149,6 @@ export default function Overview() {
     } catch (e) { toast(e.message, 'err') } finally { setBusyAsk(0) }
   }
 
-  const gapCount = useMemo(() => {
-    const skip = new Set(statuses.filter((s) => isDeletedLabel(s.label) || isIdeaLabel(s.label)).map((s) => s.id))
-    const horizon = addDaysISO(todayISO(), DUE_SOON_DAYS)
-    const rank = stageRankOf(statuses)
-    return content.filter((t) => {
-      if (t.done_at || skip.has(t.status_id)) return false
-      const g = gapsOf(t, crewNeeds, rank)
-      if (!(g.people.length > 0 || g.dates.length > 0)) return false
-      // the strip keeps the Unassigned page's "due soon" horizon, so its
-      // number and the page it opens always tell the same story
-      const near = nearestOf(t)
-      return !near || near.d <= horizon
-    }).length
-  }, [content, statuses, crewNeeds])
-
-  // ---- timeline ----
-  const dateOf = (t) => t.release_date || t.recording_date || null
-  const upcoming = useMemo(() =>
-    content
-      .filter((t) => !t.done_at && dateOf(t))
-      .sort((a, b) => dateOf(a).localeCompare(dateOf(b))), // ascending — closest (and overdue) on top
-    [content])
-  const done = useMemo(() =>
-    content
-      .filter((t) => t.done_at)
-      .sort((a, b) => b.done_at.localeCompare(a.done_at)) // most recently finished on top
-      .slice(0, 40),
-    [content])
-
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
     rewardIfFinished(item, u)
@@ -209,8 +160,6 @@ export default function Overview() {
   }
 
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
-
-  const rows = tab === 'upcoming' ? upcoming : done
 
   return (
     <>
@@ -252,7 +201,7 @@ export default function Overview() {
           </div>
           {asks.map((a) => (
             <div key={a.id} className="ov-ask">
-              <button className="ov-ask-main" onClick={() => navigate(`/todo?task=${a.content_id}`)}>
+              <button className="ov-ask-main" onClick={() => navigate(`/brief?task=${a.content_id}`)}>
                 <span className="ov-ask-title">{a.title}</span>
                 <span className="ov-ask-move">
                   {DAY_LABEL[a.field] || a.field}: <b>{a.from_date}</b> → <b>{a.to_date || 'cleared'}</b>
@@ -277,7 +226,7 @@ export default function Overview() {
             <b>{hands.length} hand{hands.length === 1 ? '' : 's'} up</b>
           </div>
           {hands.map((h) => (
-            <button key={h.id} className="ov-ask" onClick={() => navigate(`/todo?task=${h.content_id}`)}>
+            <button key={h.id} className="ov-ask" onClick={() => navigate(`/brief?task=${h.content_id}`)}>
               <span className="ov-ask-main">
                 <span className="ov-ask-title">{h.title}</span>
                 <span className="ov-ask-move">
@@ -290,15 +239,6 @@ export default function Overview() {
         </div>
       )}
 
-      {/* Planning gaps — one quiet strip, only while something is unowned
-          or undated; it opens the Unassigned page where the fixing happens. */}
-      {gapCount > 0 && (
-        <button className="card ov-gaps" onClick={() => navigate('/unassigned')}>
-          <UserX size={15} />
-          <span><b>{gapCount}</b> task{gapCount === 1 ? '' : 's'} waiting for a person or dates</span>
-          <ArrowRight size={14} className="ov-gaps-go" />
-        </button>
-      )}
 
       {/* ---- every department, one card each ---- */}
       <div className="ov-grid">
@@ -355,88 +295,6 @@ export default function Overview() {
         })}
       </div>
 
-      {/* ---- timeline: what's coming, what's done — closest first ---- */}
-      <div className="section-head" style={{ marginTop: 20 }}>
-        <CalendarClock size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>{tx("Timeline")}</h2>
-        <span className="spacer" />
-        <div className="pill-group">
-          <button className={'pill' + (tab === 'upcoming' ? ' active' : '')} onClick={() => setTab('upcoming')}
-            data-tip={tx("Open tasks by date — overdue and today on top")}>{tx('Upcoming')} · {upcoming.length}</button>
-          <button className={'pill' + (tab === 'done' ? ' active' : '')} onClick={() => setTab('done')}
-            data-tip={tx("Recently completed, newest first")}>Done · {done.length}</button>
-          <button className={'pill' + (tab === 'lanes' ? ' active' : '')} onClick={() => setTab('lanes')}
-            data-tip={tx("Two weeks, one lane per department — the same tasks as the channel calendars")} data-tip-left="">
-            <Rows3 size={13} />{' '}{tx('By department')}
-          </button>
-        </div>
-      </div>
-
-      {tab === 'lanes' ? (
-        <div className="card lanes-card">
-          <div className="lanes-scroll">
-            <div className="lanes" style={{ minWidth: 720 }}>
-              <div className="lane lane-head">
-                <div className="lane-label" />
-                {laneDays.map((d) => (
-                  <div key={d} className={'lane-day-head' + (d === today ? ' now' : '')}>
-                    <span>{dateLabel(d)}</span>
-                  </div>
-                ))}
-              </div>
-              {lanes.map(({ c, color, byDay }) => (
-                <div key={c.key} className="lane">
-                  <button className="lane-label" style={{ borderLeft: `4px solid ${color}` }} onClick={() => navigate(`/dept/${c.key}`)}
-                    data-tip={tx("Open this channel's calendar")}>
-                    {c.label}
-                  </button>
-                  {laneDays.map((d) => (
-                    <div key={d} className={'lane-cell' + (d === today ? ' now' : '')}>
-                      {byDay[d].map((t) => (
-                        <button key={t.id} className="lane-chip" style={{ background: color, color: onColor(color) }}
-                          onClick={() => setOpenItem(t)} data-tip={`${t.title} · ${statusesById[t.status_id]?.label || ''}`}>
-                          {t.title}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="stat-sub" style={{ padding: '8px 12px' }}>
-            The same tasks as the channel calendars — edits here appear there within seconds, and the other way round.
-          </div>
-        </div>
-      ) : (
-      <div className="card" style={{ padding: '4px 14px' }}>
-        {rows.map((t) => {
-          const d = tab === 'done' ? tashkentDay(t.done_at) : dateOf(t)
-          const late = tab === 'upcoming' && d < today
-          const st = statusesById[t.status_id]
-          return (
-            <button key={t.id} className="ov-row" onClick={() => setOpenItem(t)}>
-              <span className={'ov-date' + (late ? ' late' : '')}>{late ? `${dateLabel(d)} ⚠` : dateLabel(d)}</span>
-              <span className={'ov-title' + (tab === 'done' ? ' done-txt' : '')}>{t.title}</span>
-              <span className="ov-chips">
-                {t.channels.map((k) => (
-                  <span key={k} className="chip" style={{ background: colorOf[k] || '#6d6a70', color: onColor(colorOf[k] || '#6d6a70') }}>
-                    {byKey[k]?.label || k}
-                  </span>
-                ))}
-                <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
-                {tab === 'done'
-                  ? <span className="chip" style={{ background: '#1D9E75', color: '#fff' }}><Check size={10} />{' '}{tx("Done")}</span>
-                  : st && <span className="chip" style={{ background: st.color, color: onColor(st.color) }}>{st.label}</span>}
-              </span>
-            </button>
-          )
-        })}
-        {rows.length === 0 && (
-          <div className="empty">{tab === 'upcoming' ? tx('Nothing scheduled — plan some tasks.') : 'Nothing completed yet.'}</div>
-        )}
-      </div>
-      )}
 
       {openItem && (
         <ContentModal key={openItem?.id || 'new'}

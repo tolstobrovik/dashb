@@ -128,7 +128,7 @@ export async function tgMirror(userIds, text, contentId = null, fallbackOrigin =
   let line = text
   if (contentId) {
     const origin = (await tgPublicUrl().catch(() => '')) || fallbackOrigin
-    if (origin) line += `\n<a href="${origin}/todo?task=${contentId}">Open the task ↗</a>`
+    if (origin) line += `\n<a href="${origin}/brief?task=${contentId}">Open the task ↗</a>`
   }
   await Promise.allSettled([...new Set(userIds)].map((id) => tgSendTo(id, line)))
 }
@@ -231,7 +231,7 @@ export async function tgDailyReminders() {
     shot_at, edited_at, done_at, ready_at,
     recording_date, edit_ready_date, design_ready_date, release_date, status_id FROM content WHERE done_at IS NULL`)
   const origin = await tgPublicUrl().catch(() => '')
-  const link = (t) => (origin ? ` · <a href="${origin}/todo?task=${t.id}">open ↗</a>` : '')
+  const link = (t) => (origin ? ` · <a href="${origin}/brief?task=${t.id}">open ↗</a>` : '')
   const daysAgo = (iso) =>
     Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${iso}T12:00:00Z`)) / 86400000)
   let sent = 0
