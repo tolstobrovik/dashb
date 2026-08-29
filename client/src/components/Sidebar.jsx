@@ -9,6 +9,7 @@ import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
 import LangToggle from './LangToggle.jsx'
 import { useChannels } from '../lib/channels.jsx'
+import { usePages } from '../lib/pages.jsx'
 import { iconFor } from '../lib/constants.js'
 import { useT, tr as tx } from '../lib/i18n.jsx'
 import { BUILD } from '../lib/useAutoUpdate.js'
@@ -56,33 +57,36 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   const hidden = useMemo(() => new Set(prefs.hidden), [prefs])
   const customized = prefs.hidden.length > 0 || Object.values(prefs.order).some((l) => l.length > 0)
 
+  const { shows } = usePages()
   const isAdmin = user.role === 'admin'
   // The Admin panel is where accounts, channels and the pipeline rules live —
   // the whole board's furniture. A CHANNEL admin runs content on their own
   // channels and would meet a refusal on every tab in there, so they are not
   // shown the door. Post Production and Team stay: both are about the work.
   const runsEverything = isAdmin && !(user.admin_channels || []).length
+  // A page the admin switched off in Settings has no door here. Only the ones
+  // that ARE switchable are asked; My Day and the channels are the work.
   const groups = useMemo(() => ({
     main: [
-      isAdmin && { key: 'overview', to: '/overview', label: t('nav.overview'), icon: LayoutDashboard },
+      isAdmin && shows('overview') && { key: 'overview', to: '/overview', label: t('nav.overview'), icon: LayoutDashboard },
       { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun, locked: true },
       // Every channel at once: what is going out, and what is being filmed.
-      { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
-      { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
-      { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
+      shows('releases') && { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
+      shows('recordings') && { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
+      shows('missed') && { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
       // The designer's own board, beside the work rather than inside a channel.
-      { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
-      { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
-      { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
-      isAdmin && { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },
+      shows('design') && { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
+      shows('docs') && { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
+      shows('sprints') && { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
+      isAdmin && shows('projects') && { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },
     ].filter(Boolean),
     channels: visible.map((c) => ({ key: `ch:${c.key}`, to: `/dept/${c.key}`, label: c.label, icon: iconFor(c.icon) })),
     manage: isAdmin ? [
-      { key: 'crew', to: '/crew', label: t('nav.crew'), icon: Clapperboard },
-      { key: 'team', to: '/team', label: t('nav.team'), icon: UsersRound },
+      shows('crew') && { key: 'crew', to: '/crew', label: t('nav.crew'), icon: Clapperboard },
+      shows('team') && { key: 'team', to: '/team', label: t('nav.team'), icon: UsersRound },
       ...(runsEverything ? [{ key: 'admin', to: '/admin', label: t('nav.admin'), icon: Shield }] : []),
-    ] : [],
-  }), [isAdmin, runsEverything, visible, t])
+    ].filter(Boolean) : [],
+  }), [isAdmin, runsEverything, visible, t, shows])
 
   // Personal order first; unknown items (new channels) keep their place at
   // the end, visible — nothing is ever born hidden.

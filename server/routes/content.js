@@ -766,7 +766,7 @@ const cleanTime = (v) => (v && /^\d{2}:\d{2}/.test(String(v)) ? String(v).slice(
 // The briefing fields the admin can demand (Admin → Pipeline → The task
 // form). A required field blocks creating a task of a scoped type without
 // it — and blocks clearing it later.
-const FIELD_LABELS = { format: 'Format', rubrika: 'Rubrika', script: 'Script', reference: 'Reference', description: 'Description' }
+const FIELD_LABELS = { format: 'Format', rubrika: 'Rubrika', script: 'Script', tz: 'ТЗ', reference: 'Reference', description: 'Description' }
 const cleanShort = (v) => (v ? String(v).trim().slice(0, 120) : null) || null
 const cleanScript = (v) => (v ? String(v).trim().slice(0, 20000) : null) || null
 
@@ -887,6 +887,7 @@ router.post('/', wrap(async (req, res) => {
   const format = cleanShort(req.body?.format)
   const rubrika = cleanShort(req.body?.rubrika)
   const script = cleanScript(req.body?.script)
+  const tzText = cleanScript(req.body?.tz)
   const fieldRules = await getTaskFields()
   // The admin is not made to fill in a form; see `unfettered` above.
   const free = unfettered(req.user, channels)
@@ -897,6 +898,7 @@ router.post('/', wrap(async (req, res) => {
     format: { present: !!format, thin: !hasSubstance(format), raw: format },
     rubrika: { present: !!rubrika, thin: !hasSubstance(rubrika), raw: rubrika },
     script: { present: !!script, thin: !isSentence(script), raw: script },
+    tz: { present: !!tzText, thin: !isSentence(tzText), raw: tzText },
     description: {
       present: !!(description && String(description).trim()),
       thin: !hasSubstance(description), raw: description,
@@ -932,7 +934,7 @@ router.post('/', wrap(async (req, res) => {
   // storing either — it reaches the card and reads as content. It comes to
   // rest as empty, which is what it means.
   const briefText = {
-    format: orBlank(format), rubrika: orBlank(rubrika), script: orBlank(script),
+    format: orBlank(format), rubrika: orBlank(rubrika), script: orBlank(script), tz: orBlank(tzText),
   }
   const cleanDescription = hasSubstance(description) ? description : ''
 
@@ -1045,7 +1047,7 @@ router.post('/', wrap(async (req, res) => {
     cleanDescription, cleanLink(req.body?.ready_link) || null,
     cleanLink(req.body?.shot_link) || null, cleanLink(req.body?.design_link) || null,
     reference_text ? String(reference_text).slice(0, 4000) : null, JSON.stringify(referenceLinks),
-    briefText.format, briefText.rubrika, briefText.script, cleanScript(req.body?.tz), scriptKey(briefText.script),
+    briefText.format, briefText.rubrika, briefText.script, briefText.tz, scriptKey(briefText.script),
     photo || null, photo_thumb || null, JSON.stringify(Array.isArray(checklist) ? checklist : []),
     maxSort + 1, new Date().toISOString(),
   )

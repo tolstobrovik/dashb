@@ -150,6 +150,11 @@ fuser -k 4116/tcp 2>/dev/null; sleep 0.5
 if node sprint-backlog-suite.mjs > $SP/out-sprint-backlog-suite.log 2>&1; then echo "sprint-backlog-suite PASS" >> $RES; else echo "sprint-backlog-suite FAIL" >> $RES; fi
 fuser -k 4116/tcp 2>/dev/null; sleep 0.5
 
+# ---- one page in Admin where the board's switches live (4133) ----
+fuser -k 4133/tcp 2>/dev/null; sleep 0.5
+if node settings-suite.mjs > $SP/out-settings-suite.log 2>&1; then echo "settings-suite PASS" >> $RES; else echo "settings-suite FAIL" >> $RES; fi
+fuser -k 4133/tcp 2>/dev/null; sleep 0.5
+
 # ---- pc-suite + journey on 4081 ----
 if bash pc-suite.sh > $SP/out-pc-suite.log 2>&1; then echo "pc-suite PASS" >> $RES; else echo "pc-suite FAIL" >> $RES; fi
 # By exit code, not by grepping the log for a word the log could never contain

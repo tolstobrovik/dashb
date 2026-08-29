@@ -1,19 +1,21 @@
 import { Router } from 'express'
-import { run, getTaskFields, DEFAULT_TASK_FIELDS, TASK_FIELD_KEYS, CONTENT_TYPES, getCrewNeeds, CREW_NEED_KEYS } from '../db.js'
+import { run, getTaskFields, DEFAULT_TASK_FIELDS, TASK_FIELD_KEYS, CONTENT_TYPES, getCrewNeeds, CREW_NEED_KEYS, getPageRules, PAGE_KEYS } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 
-// The task form, tuned by the admin: which briefing fields exist (Format,
-// Rubrika, Script, Reference, Description), whether each is optional or
-// required, which content types it applies to, and the option lists behind
-// the Format / Rubrika dropdowns. GET answers the effective config so the
-// client never re-implements the defaults; POST stores what the admin set.
+// How this board is set up, in one place: which briefing fields the task form
+// asks for (Format, Rubrika, Script, ТЗ, Reference, Description) and whether
+// each is off, optional or required for which content types; who a task of
+// each type must carry; and which pages the team has at all. GET answers the
+// EFFECTIVE config so the client never re-implements the defaults; POST stores
+// what the admin set. Everybody may read it — the shell needs the page list to
+// draw a sidebar — and only an admin may write.
 const router = Router()
 router.use(authRequired)
 
 router.get('/', wrap(async (req, res) => {
   // The brief fields plus the crew rules ride together — one fetch tells the
   // client both what a task asks for and who it is expected to carry.
-  res.json({ ...(await getTaskFields()), crew: await getCrewNeeds() })
+  res.json({ ...(await getTaskFields()), crew: await getCrewNeeds(), pages: await getPageRules() })
 }))
 
 router.post('/', adminOnly, wrap(async (req, res) => {
@@ -49,7 +51,16 @@ router.post('/', adminOnly, wrap(async (req, res) => {
     await run("INSERT INTO meta (key, value) VALUES ('crew_needs', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       JSON.stringify(crew))
   }
-  res.json({ ...(await getTaskFields()), crew: await getCrewNeeds() })
+  // Which pages the team has. Only sent keys change, so a client that knows
+  // about fewer pages than the server does cannot switch off the rest.
+  if (body.pages && typeof body.pages === 'object') {
+    const eff = await getPageRules()
+    const pages = {}
+    for (const k of PAGE_KEYS) pages[k] = typeof body.pages[k] === 'boolean' ? body.pages[k] : eff[k]
+    await run("INSERT INTO meta (key, value) VALUES ('page_rules', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      JSON.stringify(pages))
+  }
+  res.json({ ...(await getTaskFields()), crew: await getCrewNeeds(), pages: await getPageRules() })
 }))
 
 export default router

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './lib/auth.jsx'
+import { usePages } from './lib/pages.jsx'
 import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
 
@@ -25,12 +26,18 @@ const Profile = lazy(() => import('./pages/Profile.jsx'))
 
 const Loading = () => <div className="app-loading"><span className="spinner" /></div>
 
-function Protected({ children, adminOnly = false }) {
+function Protected({ children, adminOnly = false, page = null }) {
   const { user, loading } = useAuth()
+  const { shows } = usePages()
   const location = useLocation()
   if (loading) return <Loading />
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />
   if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />
+  // A page the admin switched off has no address either. Its own door is gone
+  // from the sidebar, so what this catches is a bookmark, a pasted link and a
+  // browser's back button — all of which would otherwise land on a page the
+  // team has been told they do not have.
+  if (page && !shows(page)) return <Navigate to="/" replace />
   return children
 }
 
@@ -59,23 +66,23 @@ export default function App() {
           <Route
             path="/overview"
             element={
-              <Protected adminOnly>
+              <Protected adminOnly page="overview">
                 <Overview />
               </Protected>
             }
           />
-          <Route path="/projects" element={<Projects />} />
+          <Route path="/projects" element={<Protected page="projects"><Projects /></Protected>} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/campaigns/:id" element={<CampaignDetail />} />
           <Route path="/dept/:key" element={<Department />} />
           <Route path="/brief" element={<Brief />} />
-          <Route path="/releases" element={<Schedule mode="release" />} />
-          <Route path="/recordings" element={<Schedule mode="recording" />} />
-          <Route path="/missed" element={<Missed />} />
+          <Route path="/releases" element={<Protected page="releases"><Schedule mode="release" /></Protected>} />
+          <Route path="/recordings" element={<Protected page="recordings"><Schedule mode="recording" /></Protected>} />
+          <Route path="/missed" element={<Protected page="missed"><Missed /></Protected>} />
           <Route
             path="/crew"
             element={
-              <Protected adminOnly>
+              <Protected adminOnly page="crew">
                 <Crew />
               </Protected>
             }
@@ -83,17 +90,17 @@ export default function App() {
           <Route
             path="/team"
             element={
-              <Protected adminOnly>
+              <Protected adminOnly page="team">
                 <Team />
               </Protected>
             }
           />
           {/* The designer's own board — every piece waiting on artwork, with
               its Drive folder, its brief and somewhere to hand the file back. */}
-          <Route path="/design" element={<Design />} />
-          <Route path="/docs" element={<Docs />} />
-          <Route path="/sprints" element={<Sprints />} />
-          <Route path="/sprints/backlog" element={<SprintBacklog />} />
+          <Route path="/design" element={<Protected page="design"><Design /></Protected>} />
+          <Route path="/docs" element={<Protected page="docs"><Docs /></Protected>} />
+          <Route path="/sprints" element={<Protected page="sprints"><Sprints /></Protected>} />
+          <Route path="/sprints/backlog" element={<Protected page="sprints"><SprintBacklog /></Protected>} />
           <Route path="/profile" element={<Profile />} />
           <Route
             path="/admin"

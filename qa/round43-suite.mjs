@@ -65,8 +65,10 @@ await req('/fields', 'POST', { crew: { designer: ['post'] } })
 
 // ---- the Admin card edits the rules ----
 await p.goto(BASE + '/admin'); await p.waitForTimeout(900)
-await p.locator('.tab', { hasText: 'Pipeline' }).click(); await p.waitForTimeout(900)
-ok('Pipeline shows "Who must be on a task"', (await p.locator('.section-head', { hasText: 'Who must be on a task' }).count()) === 1)
+// The crew rules moved out of Pipeline into Settings, where every switch that
+// governs a page now lives; Pipeline keeps the stages and the stage rules.
+await p.locator('.tab', { hasText: 'Settings' }).click(); await p.waitForTimeout(900)
+ok('Settings shows "Who must be on a task"', (await p.locator('.section-head', { hasText: 'Who must be on a task' }).count()) === 1)
 const dRow = p.locator('.crew-tbl tr', { hasText: 'who draws the artwork' })
 ok('the Designer row wears its Post pill', (await dRow.locator('.pill.active', { hasText: 'Post' }).count()) === 1)
 await dRow.locator('.pill', { hasText: 'Post' }).click()

@@ -121,8 +121,11 @@ await ap.goto(BASE + '/login')
 await ap.fill('input[name="username"]', 'admin'); await ap.fill('input[name="password"]', 'admin123')
 await ap.click('button[type="submit"]'); await ap.waitForURL(/overview/, { timeout: 15000 })
 await ap.goto(BASE + '/admin'); await ap.waitForTimeout(1200)
-await ap.locator('button', { hasText: 'Pipeline' }).first().click(); await ap.waitForTimeout(800)
-ok('the task-form card renders all five fields', (await ap.locator('.fields-tbl tbody tr').count()) === 5)
+// The task form moved from Pipeline to Settings, and ТЗ joined the fields the
+// admin governs — six now, not five.
+await ap.locator('button', { hasText: 'Settings' }).first().click(); await ap.waitForTimeout(900)
+ok('the task-form card renders every field', (await ap.locator('.fields-tbl tbody tr').count()) === 6,
+  String(await ap.locator('.fields-tbl tbody tr').count()))
 const scriptRow = ap.locator('.fields-tbl tr', { hasText: 'the words and shots' })
 ok('the stored rule shows: script required', (await scriptRow.locator('.pill.active', { hasText: 'required' }).count()) === 1)
 await scriptRow.locator('.pill', { hasText: 'optional' }).click(); await ap.waitForTimeout(600)

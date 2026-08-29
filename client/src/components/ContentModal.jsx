@@ -372,6 +372,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     reference: true,
     delivery: false,
     script: false,
+    // ТЗ has always been on the form when you can edit it; the admin's switch
+    // decides whether it exists, not whether it hides behind a button.
+    tz: true,
     docs: (item?.documents?.length || 0) > 0,
   }))
 
@@ -871,11 +874,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         ['format', 'Format', form.format],
         ['rubrika', 'Rubrika', form.rubrika],
         ['script', 'Script', form.script.trim()],
+        ['tz', 'ТЗ', form.tz.trim()],
         ['description', 'Description', form.description.trim()],
         ['reference', 'Reference', form.reference_text || form.reference_links.length > 0 || form.photo],
       ].find(([k, , v]) => fReq(k) && !v)
       if (missing) {
-        setShow((s) => ({ ...s, script: true, reference: true, description: true }))
+        setShow((s) => ({ ...s, script: true, tz: true, reference: true, description: true }))
         refuse(missing[0], `«${missing[1]}» is required for this type of task`)
         return
       }
@@ -886,6 +890,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         ['format', 'Format', form.format, hasSubstance],
         ['rubrika', 'Rubrika', form.rubrika, hasSubstance],
         ['script', 'Script', form.script.trim(), isSentence],
+        ['tz', 'ТЗ', form.tz.trim(), isSentence],
         ['description', 'Description', form.description.trim(), hasSubstance],
       ].find(([k, , v, real]) => fReq(k) && v && !real(v))
       if (thin) {
@@ -1360,9 +1365,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           script is what the operator films, the ТЗ is what the editor is told
           to make of it. A shoot can be scripted with no ТЗ written yet, and
           an edit cannot start without one. */}
-      {!crewViewer && canEdit && (
+      {fOn('tz') && !crewViewer && canEdit && (form.tz || fReq('tz') || show.tz) && (
         <div className={'cm-row' + (badField === 'tz' ? ' field-bad' : '')} data-field="tz">
-          <span className="cm-key"><ClipboardList size={13} style={{ verticalAlign: -2 }} /> {tx('ТЗ')}</span>
+          <span className="cm-key"><ClipboardList size={13} style={{ verticalAlign: -2 }} /> {tx('ТЗ')}{fReq('tz') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
           <div>
             <textarea className="input cm-script" rows={5} disabled={detailsLocked}
               placeholder={tx('What the editor is asked to make — length, cuts, captions, music…')}

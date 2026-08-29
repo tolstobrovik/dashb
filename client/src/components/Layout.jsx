@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import GetSetUp from './GetSetUp.jsx'
-import { Menu, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, Send, Palette, ShieldAlert, Timer, LayoutGrid, User, RefreshCw } from 'lucide-react'
+import { Menu, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, Send, Palette, ShieldAlert, Timer, LayoutGrid, User, RefreshCw, Clapperboard, Briefcase } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import MobileTabs, { MoreSheet } from './MobileTabs.jsx'
 import NewTask from './NewTask.jsx'
@@ -12,6 +12,7 @@ import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
 import LangToggle from './LangToggle.jsx'
 import { useT, tr as tx } from '../lib/i18n.jsx'
+import { usePages } from '../lib/pages.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAutoUpdate, BUILD } from '../lib/useAutoUpdate.js'
@@ -117,24 +118,36 @@ export default function Layout() {
   // everything fits in the top bar.
   const solo = user.role !== 'admin' && visible.length <= 1
   const soloChannel = solo ? visible[0] : null
+  const { shows } = usePages()
   const SoloIcon = soloChannel ? iconFor(soloChannel.icon) : null
 
   // Four destinations and the action, which is all a phone has room for. A
   // member with one channel gets that channel in the bar — it is their whole
   // job — and everything else moves behind More.
-  const soloTabs = [
-    { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun },
-    soloChannel
-      ? { key: 'ch', to: `/dept/${soloChannel.key}`, label: soloChannel.label, icon: SoloIcon }
-      : { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
+  // The bar has room for two destinations beside My Day and More, and a slot
+  // cannot hold a page an admin switched off — so they are taken from what is
+  // still there, in the order they matter, and the rest fall into More.
+  const CANDIDATES = [
     { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
-    { key: 'more', onClick: () => setMore((v) => !v), on: more, label: tx('More'), icon: LayoutGrid },
-  ]
-  const soloMore = [
-    ...(soloChannel ? [{ key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer }] : []),
+    { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
     { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
     { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
     { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
+    { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
+    { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },
+  ].filter((c) => shows(c.key))
+  const soloFirst = soloChannel
+    ? { key: 'ch', to: `/dept/${soloChannel.key}`, label: soloChannel.label, icon: SoloIcon }
+    : CANDIDATES[0]
+  const soloSecond = CANDIDATES.find((c) => c.key !== soloFirst?.key)
+  const soloTabs = [
+    { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun },
+    soloFirst,
+    soloSecond,
+    { key: 'more', onClick: () => setMore((v) => !v), on: more, label: tx('More'), icon: LayoutGrid },
+  ].filter(Boolean)
+  const soloMore = [
+    ...CANDIDATES.filter((c) => c.key !== soloFirst?.key && c.key !== soloSecond?.key),
     { key: 'profile', to: '/profile', label: t('nav.myprofilepage'), icon: User },
   ]
 
@@ -155,23 +168,31 @@ export default function Layout() {
               <SoloIcon size={16} /> {soloChannel.label}
             </NavLink>
           )}
-          <NavLink to="/missed" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <BarChart3 size={16} /> {t('nav.stats')}
-          </NavLink>
-          <NavLink to="/design" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <Palette size={16} /> {t('nav.design')}
-          </NavLink>
-          <NavLink to="/docs" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <ScrollText size={16} /> {t('nav.docs')}
-          </NavLink>
+          {shows('missed') && (
+            <NavLink to="/missed" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+              <BarChart3 size={16} /> {t('nav.stats')}
+            </NavLink>
+          )}
+          {shows('design') && (
+            <NavLink to="/design" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+              <Palette size={16} /> {t('nav.design')}
+            </NavLink>
+          )}
+          {shows('docs') && (
+            <NavLink to="/docs" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+              <ScrollText size={16} /> {t('nav.docs')}
+            </NavLink>
+          )}
           {/* Sprints is for the whole team, whatever hats they wear. It was in
               the sidebar and ungated there, but somebody with no channels
               gets this bar instead of a sidebar, so for them it did not exist
               at all. The page itself always let them in; only the door was
               missing. */}
-          <NavLink to="/sprints" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
-            <Timer size={16} /> {t('nav.sprints')}
-          </NavLink>
+          {shows('sprints') && (
+            <NavLink to="/sprints" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+              <Timer size={16} /> {t('nav.sprints')}
+            </NavLink>
+          )}
           <button className="icon-btn" onClick={() => setFinding(true)} data-tip={t('nav.find')} aria-label={t('nav.quickfind')}><Search size={17} /></button>
           <NotificationsBell user={user} />
           {/* Named so a phone can put it away: theme, language, the profile
@@ -204,10 +225,18 @@ export default function Layout() {
     )
   }
 
-  const tabs = [
-    { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun },
+  // Same two slots, same rule: what is switched off is not offered.
+  const barPicks = [
     { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
     { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
+    { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
+    { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
+    { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
+    { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
+  ].filter((c) => shows(c.key)).slice(0, 2)
+  const tabs = [
+    { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun },
+    ...barPicks,
     { key: 'more', onClick: () => setOpen((v) => !v), on: open, label: tx('More'), icon: LayoutGrid },
   ]
 

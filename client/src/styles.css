@@ -4710,3 +4710,24 @@ button.blame-person:hover { background: var(--surface-2); }
 .doc-word td, .doc-word th { border: 1px solid var(--hairline-strong); padding: 5px 8px; }
 .doc-word img { max-width: 100%; height: auto; }
 .doc-word a { color: var(--brand-500); }
+
+/* An on/off switch that says which it is. A bare track is a guess about which
+   way means on; the word next to it is not. */
+.switch {
+  display: inline-flex; align-items: center; gap: 9px; min-height: 40px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; font-weight: 700; font-size: 12.5px; color: var(--muted);
+}
+.switch i {
+  width: 38px; height: 22px; border-radius: 999px; flex: none;
+  background: var(--hairline-strong); position: relative; transition: background 0.15s ease;
+}
+.switch i::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; transition: transform 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.switch.on { color: var(--brand-500); }
+.switch.on i { background: var(--brand-500); }
+.switch.on i::after { transform: translateX(16px); }
+.pages-tbl td { vertical-align: middle; }

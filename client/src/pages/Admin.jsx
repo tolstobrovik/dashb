@@ -3,6 +3,7 @@ import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
   X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Palette, UserCheck, RotateCcw, Languages, Loader2,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { rewardIfFinished } from '../lib/reward.js'
@@ -34,6 +35,7 @@ const TABS = [
   { key: 'board', label: 'Whiteboard', icon: Network },
   { key: 'channels', label: 'Channels', icon: PanelLeft },
   { key: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
+  { key: 'settings', label: 'Settings', icon: SlidersHorizontal },
   { key: 'reports', label: 'Reports', icon: FileBarChart },
   { key: 'pay', label: 'Payroll', icon: Wallet },
   { key: 'ai', label: 'Language help', icon: Languages },
@@ -63,6 +65,7 @@ export default function Admin() {
       {tab === 'board' && <Whiteboard />}
       {tab === 'channels' && <ChannelsTab onOpenReport={openReport} />}
       {tab === 'pipeline' && <PipelineTab />}
+      {tab === 'settings' && <SettingsTab />}
       {tab === 'reports' && <ReportsTab channel={reportChannel} setChannel={setReportChannel} />}
       {tab === 'pay' && <PayTab />}
       {tab === 'ai' && <AiTab />}
@@ -1505,23 +1508,31 @@ const TASK_FIELD_DEFS = [
   { key: 'format', label: 'Format', hint: 'talking head, split screen…' },
   { key: 'rubrika', label: 'Rubrika', hint: 'the recurring column it belongs to' },
   { key: 'script', label: 'Script', hint: 'the words and shots the crew films by' },
+  { key: 'tz', label: 'ТЗ', hint: 'what the editor is asked to make of the footage' },
   { key: 'reference', label: 'Reference', hint: 'examples, mood, style — the brief' },
   { key: 'description', label: 'Description', hint: 'free notes on the task' },
 ]
 
-function PipelineTab() {
-  const [statuses, setStatuses] = useState([])
-  const [modal, setModal] = useState(null)
-  const [err, setErr] = useState('')
-  const [rules, setRules] = useState(null)
+// Every page an admin can switch off, in the order the sidebar draws them.
+// My Day and the channel boards are not here on purpose: they are the work
+// itself, and a board with no way into the work is not a tidier board.
+const PAGE_DEFS = [
+  { key: 'overview', label: 'Overview', hint: 'every channel’s process on one screen' },
+  { key: 'releases', label: 'Releases', hint: 'what is going out, every channel' },
+  { key: 'recordings', label: 'Recordings', hint: 'what is being filmed, every channel' },
+  { key: 'missed', label: 'Statistics', hint: 'the month, its conclusions and the misses behind them' },
+  { key: 'design', label: 'Design', hint: 'the designer’s own board' },
+  { key: 'docs', label: 'Documents', hint: 'the shelf of SOPs and papers' },
+  { key: 'sprints', label: 'Sprints', hint: 'the weekly board and its backlog' },
+  { key: 'projects', label: 'Projects', hint: 'projects and the campaigns under them' },
+  { key: 'crew', label: 'Post Production', hint: 'the editors’ and designers’ desk' },
+  { key: 'team', label: 'Team & hiring', hint: 'the team, candidates and vacancies' },
+]
+
+function SettingsTab() {
   const [fields, setFields] = useState(null)
   const [optDraft, setOptDraft] = useState({})
-
-  const load = () => Promise.all([
-    api.get('/statuses').then(setStatuses),
-    api.get('/statuses/rules').then(setRules).catch(() => {}),
-    api.get('/fields').then(setFields).catch(() => {}),
-  ])
+  const load = () => api.get('/fields').then(setFields).catch(() => {})
   useEffect(() => { load() }, [])
 
   // One change = one save; the server answers the effective config back.
@@ -1540,8 +1551,8 @@ function PipelineTab() {
     setOptDraft({ ...optDraft, [k]: '' })
     patchField(k, { options: [...new Set([...(fields[k].options || []), v])] })
   }
-  // The crew rules: which types DEMAND each hat — what the Unassigned page
-  // and Overview's gap strip count as a real gap.
+  // The crew rules: which types DEMAND each hat — what the task itself counts
+  // as a real gap, and what the stage walls refuse a move over.
   const patchCrew = (hat, type) => {
     const cur = fields.crew?.[hat] || []
     const next = {
@@ -1552,6 +1563,199 @@ function PipelineTab() {
     api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Crew rules saved — synced')) })
       .catch((e) => { alert(e.message); load() })
   }
+
+  // Which pages the team has. Switching one off takes it out of the sidebar,
+  // the phone's More sheet and its own route, for everybody — the admin turns
+  // it back on here.
+  const togglePage = (key) => {
+    const cur = fields.pages || {}
+    const next = { ...fields, pages: { ...cur, [key]: !cur[key] } }
+    setFields(next)
+    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Pages saved — synced')) })
+      .catch((e) => { alert(e.message); load() })
+  }
+
+  if (!fields) return <div className="app-loading"><span className="spinner" /></div>
+  return (
+    <>
+      {/* ---- the pages this board shows ---- */}
+      <div className="section-head">
+        <h2>{tx('Pages')}</h2>
+        <span className="count">· {tx('which of them the team has at all')}</span>
+      </div>
+      <div className="card table-wrap">
+        <table className="tbl pages-tbl">
+          <thead>
+            <tr><th>{tx('Page')}</th><th>{tx('Shown to the team')}</th></tr>
+          </thead>
+          <tbody>
+            {PAGE_DEFS.map((pg) => {
+              const on = (fields.pages || {})[pg.key] !== false
+              return (
+                <tr key={pg.key}>
+                  <td>
+                    <b>{tx(pg.label)}</b>
+                    <div className="stat-sub">{tx(pg.hint)}</div>
+                  </td>
+                  <td>
+                    <button type="button" className={'switch' + (on ? ' on' : '')} role="switch" aria-checked={on}
+                      data-tip={on ? tx('Switch this page off for everyone') : tx('Bring this page back')}
+                      onClick={() => togglePage(pg.key)}>
+                      <i />
+                      <span>{on ? tx('On') : tx('Off')}</span>
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
+          {tx('This is tidying, not permission: a page switched off leaves the sidebar and its own address for everybody, but the work behind it is still on the board and still counted.')}
+        </div>
+      </div>
+
+      {/* ---- the task form: which brief fields exist, and which are demanded ---- */}
+      {fields && (
+        <>
+          <div className="section-head" style={{ marginTop: 18 }}>
+            <h2>The task form</h2>
+            <span className="count">· which brief fields a task carries — and which are demanded</span>
+          </div>
+          <div className="card table-wrap">
+            <table className="tbl fields-tbl">
+              <thead>
+                <tr><th>Field</th><th>Rule</th><th>Applies to</th><th>Options</th></tr>
+              </thead>
+              <tbody>
+                {TASK_FIELD_DEFS.map((f) => {
+                  const cfg = fields[f.key]
+                  if (!cfg) return null
+                  return (
+                    <tr key={f.key}>
+                      <td>
+                        <b>{f.label}</b>
+                        <div className="stat-sub">{f.hint}</div>
+                      </td>
+                      <td>
+                        <div className="pill-group">
+                          {['off', 'optional', 'required'].map((st) => (
+                            <button key={st} type="button"
+                              className={'pill' + (cfg.state === st ? ' active' : '') + (st === 'required' && cfg.state === st ? ' pill-req' : '')}
+                              onClick={() => patchField(f.key, { state: st })}>
+                              {st}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="pill-group">
+                          {CONTENT_TYPES.map((t) => (
+                            <button key={t.key} type="button"
+                              className={'pill' + (cfg.types.includes(t.key) ? ' active' : '')}
+                              data-tip={cfg.types.includes(t.key) ? `${t.label}s carry ${f.label}` : `${t.label}s don’t carry ${f.label}`}
+                              onClick={() => toggleFieldType(f.key, t.key)}>
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        {cfg.options !== undefined ? (
+                          <div className="opt-chips">
+                            {cfg.options.map((o) => (
+                              <span key={o} className="chip chip-muted opt-chip">
+                                {o}
+                                <button type="button" className="opt-chip-x" aria-label={`Remove ${o}`}
+                                  onClick={() => patchField(f.key, { options: cfg.options.filter((x) => x !== o) })}>
+                                  <X size={11} />
+                                </button>
+                              </span>
+                            ))}
+                            <span className="opt-add">
+                              <input className="input pc-mini" placeholder="Add…" value={optDraft[f.key] || ''}
+                                onChange={(e) => setOptDraft({ ...optDraft, [f.key]: e.target.value })}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption(f.key) } }} />
+                              <button type="button" className="btn btn-sm" onClick={() => addOption(f.key)}>Add</button>
+                            </span>
+                          </div>
+                        ) : <span className="stat-sub">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
+              A required field blocks saving a task of those types without it — and blocks clearing it later.
+              Off hides the field from the task card entirely; the crew always see what’s filled in.
+            </div>
+          </div>
+
+          {/* ---- who must be on a task: the hats the gap views count ---- */}
+          {fields.crew && (
+            <>
+              <div className="section-head" style={{ marginTop: 18 }}>
+                <h2>Who must be on a task</h2>
+                <span className="count">· only these hats count as missing on a task</span>
+              </div>
+              <div className="card table-wrap">
+                <table className="tbl crew-tbl">
+                  <thead>
+                    <tr><th>Hat</th><th>Demanded on</th></tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { key: 'operator', label: tx('Operator'), hint: 'who films it' },
+                      { key: 'editor', label: tx('Editor'), hint: 'who cuts it' },
+                      { key: 'designer', label: tx('Designer'), hint: 'who draws the artwork' },
+                    ].map((h) => (
+                      <tr key={h.key}>
+                        <td>
+                          <b>{h.label}</b>
+                          <div className="stat-sub">{h.hint}</div>
+                        </td>
+                        <td>
+                          <div className="pill-group">
+                            {CONTENT_TYPES.map((t) => (
+                              <button key={t.key} type="button"
+                                className={'pill' + ((fields.crew[h.key] || []).includes(t.key) ? ' active' : '')}
+                                data-tip={(fields.crew[h.key] || []).includes(t.key)
+                                  ? `A ${t.label.toLowerCase()} without ${h.label.toLowerCase()} says so on the task`
+                                  : `${t.label}s never ask for ${h.label.toLowerCase()}`}
+                                onClick={() => patchCrew(h.key, t.key)}>
+                                {t.label}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
+                  Untick a type and its tasks stop asking for that hat — the “still missing” line on the task drops it at once, and no stage wall refuses a move over it.
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
+function PipelineTab() {
+  const [statuses, setStatuses] = useState([])
+  const [modal, setModal] = useState(null)
+  const [err, setErr] = useState('')
+  const [rules, setRules] = useState(null)
+
+  const load = () => Promise.all([
+    api.get('/statuses').then(setStatuses),
+    api.get('/statuses/rules').then(setRules).catch(() => {}),
+  ])
+  useEffect(() => { load() }, [])
 
   const toggleRule = async (actor, sid) => {
     const next = { ...rules, [actor]: { ...rules[actor], [sid]: !rules[actor]?.[sid] } }
@@ -1655,133 +1859,6 @@ function PipelineTab() {
               the crew still work through their ticks.
             </div>
           </div>
-        </>
-      )}
-
-      {/* ---- the task form: which brief fields exist, and which are demanded ---- */}
-      {fields && (
-        <>
-          <div className="section-head" style={{ marginTop: 18 }}>
-            <h2>The task form</h2>
-            <span className="count">· which brief fields a task carries — and which are demanded</span>
-          </div>
-          <div className="card table-wrap">
-            <table className="tbl fields-tbl">
-              <thead>
-                <tr><th>Field</th><th>Rule</th><th>Applies to</th><th>Options</th></tr>
-              </thead>
-              <tbody>
-                {TASK_FIELD_DEFS.map((f) => {
-                  const cfg = fields[f.key]
-                  if (!cfg) return null
-                  return (
-                    <tr key={f.key}>
-                      <td>
-                        <b>{f.label}</b>
-                        <div className="stat-sub">{f.hint}</div>
-                      </td>
-                      <td>
-                        <div className="pill-group">
-                          {['off', 'optional', 'required'].map((st) => (
-                            <button key={st} type="button"
-                              className={'pill' + (cfg.state === st ? ' active' : '') + (st === 'required' && cfg.state === st ? ' pill-req' : '')}
-                              onClick={() => patchField(f.key, { state: st })}>
-                              {st}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="pill-group">
-                          {CONTENT_TYPES.map((t) => (
-                            <button key={t.key} type="button"
-                              className={'pill' + (cfg.types.includes(t.key) ? ' active' : '')}
-                              data-tip={cfg.types.includes(t.key) ? `${t.label}s carry ${f.label}` : `${t.label}s don’t carry ${f.label}`}
-                              onClick={() => toggleFieldType(f.key, t.key)}>
-                              {t.label}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        {cfg.options !== undefined ? (
-                          <div className="opt-chips">
-                            {cfg.options.map((o) => (
-                              <span key={o} className="chip chip-muted opt-chip">
-                                {o}
-                                <button type="button" className="opt-chip-x" aria-label={`Remove ${o}`}
-                                  onClick={() => patchField(f.key, { options: cfg.options.filter((x) => x !== o) })}>
-                                  <X size={11} />
-                                </button>
-                              </span>
-                            ))}
-                            <span className="opt-add">
-                              <input className="input pc-mini" placeholder="Add…" value={optDraft[f.key] || ''}
-                                onChange={(e) => setOptDraft({ ...optDraft, [f.key]: e.target.value })}
-                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption(f.key) } }} />
-                              <button type="button" className="btn btn-sm" onClick={() => addOption(f.key)}>Add</button>
-                            </span>
-                          </div>
-                        ) : <span className="stat-sub">—</span>}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
-              A required field blocks saving a task of those types without it — and blocks clearing it later.
-              Off hides the field from the task card entirely; the crew always see what’s filled in.
-            </div>
-          </div>
-
-          {/* ---- who must be on a task: the hats the gap views count ---- */}
-          {fields.crew && (
-            <>
-              <div className="section-head" style={{ marginTop: 18 }}>
-                <h2>Who must be on a task</h2>
-                <span className="count">· only these hats count as gaps on Unassigned and Overview</span>
-              </div>
-              <div className="card table-wrap">
-                <table className="tbl crew-tbl">
-                  <thead>
-                    <tr><th>Hat</th><th>Demanded on</th></tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      { key: 'operator', label: tx('Operator'), hint: 'who films it' },
-                      { key: 'editor', label: tx('Editor'), hint: 'who cuts it' },
-                      { key: 'designer', label: tx('Designer'), hint: 'who draws the artwork' },
-                    ].map((h) => (
-                      <tr key={h.key}>
-                        <td>
-                          <b>{h.label}</b>
-                          <div className="stat-sub">{h.hint}</div>
-                        </td>
-                        <td>
-                          <div className="pill-group">
-                            {CONTENT_TYPES.map((t) => (
-                              <button key={t.key} type="button"
-                                className={'pill' + ((fields.crew[h.key] || []).includes(t.key) ? ' active' : '')}
-                                data-tip={(fields.crew[h.key] || []).includes(t.key)
-                                  ? `A ${t.label.toLowerCase()} without ${h.label.toLowerCase()} shows on Unassigned`
-                                  : `${t.label}s never ask for ${h.label.toLowerCase()}`}
-                                onClick={() => patchCrew(h.key, t.key)}>
-                                {t.label}
-                              </button>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
-                  Untick a type and its tasks stop shouting for that hat — the Unassigned page quiets down instantly.
-                </div>
-              </div>
-            </>
-          )}
         </>
       )}
 

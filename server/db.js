@@ -1510,15 +1510,45 @@ export async function mayLeaveStage(actor, statusId) {
 // types; Format and Rubrika also carry admin-managed option lists. Stored
 // in meta 'task_fields'; getTaskFields always answers the EFFECTIVE config
 // (stored overrides merged over these defaults).
-export const TASK_FIELD_KEYS = ['format', 'rubrika', 'script', 'reference', 'description']
+export const TASK_FIELD_KEYS = ['format', 'rubrika', 'script', 'tz', 'reference', 'description']
 const ALL_TYPES = ['post', 'reel', 'story', 'video', 'target', 'other']
 export const DEFAULT_TASK_FIELDS = {
   format:      { state: 'optional', types: ['reel', 'video'], options: ['Talking head', 'Split screen', 'Voiceover', 'Interview', 'Vlog', 'Skit'] },
   rubrika:     { state: 'optional', types: [...ALL_TYPES], options: [] },
   script:      { state: 'optional', types: ['reel', 'video'] },
+  // ТЗ is what the editor is told to make of the footage — a different thing
+  // from the script the operator films by, and the one most boards want to
+  // insist on, so it is switchable like the rest.
+  tz:          { state: 'optional', types: ['reel', 'video'] },
   reference:   { state: 'optional', types: [...ALL_TYPES] },
   description: { state: 'optional', types: [...ALL_TYPES] },
 }
+// ---- which pages this board shows ------------------------------------------
+// Round 82 removed eight destinations because there were too many; the answer
+// to "too many" should not be a permanent decision taken once by whoever built
+// the thing. So the switchable ones are switchable: an admin turns a page off
+// and it leaves the sidebar, the phone's More sheet and its own route for
+// everybody, and comes back the same way.
+//
+// This is TIDYING, not permission. The data behind a hidden page is still
+// served — a hidden Statistics page does not make anybody's misses secret —
+// and the pages that are the job itself (My Day, the channel boards) cannot be
+// switched off at all, because a board with no way into the work is not a
+// tidier board, it is a broken one.
+export const PAGE_KEYS = ['overview', 'releases', 'recordings', 'missed', 'design', 'docs', 'sprints', 'projects', 'crew', 'team']
+const DEFAULT_PAGES = Object.fromEntries(PAGE_KEYS.map((k) => [k, true]))
+
+export async function getPageRules() {
+  let stored = {}
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'page_rules'"))?.value || '{}')
+    if (!stored || typeof stored !== 'object') stored = {}
+  } catch { stored = {} }
+  const out = { ...DEFAULT_PAGES }
+  for (const k of PAGE_KEYS) if (typeof stored[k] === 'boolean') out[k] = stored[k]
+  return out
+}
+
 export async function getTaskFields() {
   let stored = {}
   try {
