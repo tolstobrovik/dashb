@@ -230,6 +230,7 @@ const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, ass
   operator_id, editor_id, designer_id, reviewer_id, reviewers,
   shot_at, edited_at, edit_due_revised, review_due_revised,
   miss_blame, miss_blame_note, miss_blame_by,
+  views, views_at, views_by,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
   shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note,
@@ -1794,6 +1795,37 @@ router.patch('/:id', wrap(async (req, res) => {
     }
   }
 
+  // ---- what it actually got ------------------------------------------------
+  // The number is entered by hand because the board is not plugged into
+  // Instagram, YouTube and Telegram — and pretending otherwise would put a
+  // made-up figure next to somebody's pay. Whoever the piece is FOR may write
+  // it, and so may an admin on the channel: the content maker is the one who
+  // opens the app and reads the count off it.
+  //
+  // NULL is not zero. Clearing the box means "nobody has written it down",
+  // which is what an unmeasured piece honestly is; 0 means it was measured and
+  // got none. The sums and the KPI depend on being able to tell them apart.
+  if (body.views !== undefined) {
+    const madeIt = [row.assignee_id, ...assigneesOf(row)].filter(Boolean).includes(req.user.id)
+    if (!adminHere(req.user, row) && !madeIt)
+      return res.status(403).json({ error: 'Only an admin on this channel, or somebody the piece is for, records its views' })
+    if (body.views === null || body.views === '') {
+      patch.views = null
+      patch.views_at = null
+      patch.views_by = null
+    } else {
+      const n = Number(body.views)
+      if (!Number.isFinite(n) || n < 0 || Math.floor(n) !== n)
+        return res.status(400).json({ error: 'Views is a whole number of views, or empty for “nobody has counted yet”' })
+      // A billion views on a school's Instagram is a typo, and a typo that
+      // reaches the payroll is worse than a refusal.
+      if (n > 1e10) return res.status(400).json({ error: 'That is more views than the internet has — check the number' })
+      patch.views = n
+      patch.views_at = new Date().toISOString()
+      patch.views_by = req.user.id
+    }
+  }
+
   // Setting the stage directly still needs move_tasks — the crew no longer get
   // a free hand here; their ticks above are the sanctioned path. The one
   // exception is the reviewer publishing: review_publish alone unlocks the
@@ -1939,7 +1971,18 @@ router.patch('/:id', wrap(async (req, res) => {
   // shoot is actually booked — an idea has no crew to lose, and a guard on
   // every patch would make every pre-rule task unmovable, so dragging one to
   // another day would fail for a reason that has nothing to do with the drag.
-  if ((body.operator_id !== undefined || body.type !== undefined) && !isIdea(row.status_id, await all('SELECT id, label, sort, is_final FROM statuses'))) {
+  //
+  // Two things it must not do, both found by trying to type a view count into
+  // a published reel. It fired for the ADMIN, who walks through every other
+  // wall on this board since round 80 — and it fired on work that is already
+  // OUT, where there is no shoot left to protect and no crew left to lose.
+  // The task form sends the whole form on every save, `type` included, so
+  // "touches the type" meant "was saved at all": a published reel filmed on
+  // somebody's phone, with no operator ever named, could not be edited again
+  // by anybody, for any reason.
+  if (!free && !row.done_at
+      && (body.operator_id !== undefined || body.type !== undefined)
+      && !isIdea(row.status_id, await all('SELECT id, label, sort, is_final FROM statuses'))) {
     const nType = patch.type !== undefined ? patch.type : row.type
     const nOperator = body.operator_id !== undefined
       ? (body.operator_id === null || body.operator_id === '' ? null : Number(body.operator_id))

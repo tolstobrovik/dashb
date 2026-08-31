@@ -835,8 +835,13 @@ const RATE_ROWS = [
   { key: 'ontime_bonus', label: 'On-time bonus', hint: 'Paid whole, or not at all' },
   { key: 'ontime_target', label: 'On-time target %', hint: 'The share of deliveries that earns the bonus', pct: true },
   { key: 'late_penalty', label: 'Per late piece', hint: 'Taken off for each delivery after its promised day' },
+  // What the work was WORTH. Both are 0 on a card nobody has set, so a board
+  // that does not pay on views never has to think about them.
+  { key: 'per_1k_views', label: 'Per 1,000 views', hint: 'Paid on the views the pieces they made actually got' },
+  { key: 'views_target', label: 'Views a month', hint: 'What a full month of watching looks like. 0 means no target', plain: true },
+  { key: 'views_bonus', label: 'Views bonus', hint: 'Paid whole when their month reaches that many views' },
 ]
-const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0 }
+const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0, per_1k_views: 0, views_target: 0, views_bonus: 0 }
 
 /* ---- working a card out from one number ----
  *
@@ -1020,6 +1025,7 @@ function PayTab() {
                 <th>{tx('Member')}</th>
                 <th data-tip={tx('Finished pieces in this period, against the quota if one is set')}>{tx('Delivered')}</th>
                 <th data-tip={tx('How many of them landed on or before their day')}>{tx('Delivered on time')}</th>
+                <th data-tip={tx('Views on the pieces made for them, and the target if one is set')}>{tx('Views')}</th>
                 <th data-tip={tx('Paid for the period whatever the count')}>{tx('Base')}</th>
                 <th data-tip={tx('What each finished piece is worth, added up')}>{tx('Piecework')}</th>
                 <th data-tip={tx('Paid for meeting the quota, and for hitting the on-time target')}>{tx('Bonus')}</th>
@@ -1053,13 +1059,34 @@ function PayTab() {
                     </td>
                     <td>{p.onTimePct === null ? <span className="stat-sub">—</span>
                       : <span className={p.onTimePct >= (p.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>{p.onTimePct}%</span>}</td>
+                    <td>
+                      <b>{(p.views || 0).toLocaleString()}</b>
+                      {p.viewsTarget > 0 && <span className="stat-sub"> / {p.viewsTarget.toLocaleString()}</span>}
+                      {p.viewsTarget > 0 && (
+                        <div className={p.viewsMet ? 'pay-good' : 'stat-sub'} style={{ fontSize: 11 }}>
+                          {p.viewsMet ? tx('target met') : `${(p.viewsLeft || 0).toLocaleString()} ${tx('to go')}`}
+                        </div>
+                      )}
+                      {/* A sum drawn from a third of the pieces reads as if it
+                          were all of them, so it says how many it is from. */}
+                      {p.viewsCounted > 0 && p.viewsCounted < p.delivered && (
+                        <div className="stat-sub" style={{ fontSize: 11 }}>
+                          {p.viewsCounted}/{p.delivered} {tx('counted')}
+                        </div>
+                      )}
+                    </td>
                     <td>{money(p.base, p.currency)}</td>
-                    <td>{money(p.piecework, p.currency)}</td>
+                    <td>
+                      {money(p.piecework + (p.viewsPay || 0), p.currency)}
+                      {p.viewsPay > 0 && (
+                        <div className="stat-sub" style={{ fontSize: 11 }}>{tx('incl. views')} {money(p.viewsPay, p.currency)}</div>
+                      )}
+                    </td>
                     <td>
                       {p.bonus ? <span className="pay-good">+{money(p.bonus, p.currency)}</span> : <span className="stat-sub">—</span>}
                       {p.bonus > 0 && (
                         <div className="stat-sub" style={{ fontSize: 11 }}>
-                          {[p.quotaBonus > 0 && 'quota', p.onTimeBonus > 0 && 'on time'].filter(Boolean).join(' + ')}
+                          {[p.quotaBonus > 0 && tx('quota'), p.onTimeBonus > 0 && tx('on time'), p.viewsBonus > 0 && tx('views')].filter(Boolean).join(' + ')}
                         </div>
                       )}
                     </td>
@@ -1072,7 +1099,7 @@ function PayTab() {
                           never showed that. */}
                       {p.total > 0 && (
                         <div className="pay-bar" data-tip={payShape(p)}>
-                          {[['base', p.base], ['piece', p.piecework], ['bonus', p.bonus]]
+                          {[['base', p.base], ['piece', p.piecework + (p.viewsPay || 0)], ['bonus', p.bonus]]
                             .filter(([, v]) => v > 0)
                             .map(([k, v]) => (
                               <span key={k} className={`pay-bar-${k}`}
@@ -1207,6 +1234,7 @@ const payShape = (p) => {
   const bits = []
   if (p.base > 0) bits.push(`${p.base.toLocaleString()} base`)
   if (p.piecework > 0) bits.push(`${p.piecework.toLocaleString()} piecework`)
+  if (p.viewsPay > 0) bits.push(`${p.viewsPay.toLocaleString()} on views`)
   if (p.bonus > 0) bits.push(`${p.bonus.toLocaleString()} bonus`)
   const sum = bits.join(' + ') || '0'
   return p.penalty > 0 ? `${sum}, less ${p.penalty.toLocaleString()} late` : sum
@@ -1935,6 +1963,15 @@ function ReportsTab({ channel, setChannel }) {
       .then(setData).catch(() => setData(null))
   }, [range.from, range.to, hat, type])
 
+  // What it all got watched — the same window and the same channel lens, so
+  // the two blocks on this page can never be talking about different months.
+  const [views, setViews] = useState(null)
+  useEffect(() => {
+    setViews(null)
+    api.get(`/reports/views?from=${range.from}&to=${range.to}&channel=${channel}`)
+      .then(setViews).catch(() => setViews(null))
+  }, [range.from, range.to, channel])
+
   const colorOf = useMemo(() => Object.fromEntries(channels.map((c, i) => [c.key, deptColor(i)])), [channels])
   const chStats = channel !== 'all' ? data?.byChannel?.[channel] : null
   const shownTotal = channel === 'all' ? data?.totalDone : (chStats?.total || 0)
@@ -1979,6 +2016,111 @@ function ReportsTab({ channel, setChannel }) {
           </button>
         ))}
       </div>
+
+      {/* ---- what it all got watched ---- */}
+      {/* The delivery report says how much went out. It said nothing at all
+          about whether anybody watched it, which is a strange thing for a
+          marketing board to be quiet about. Same window, same channel lens. */}
+      {views && (
+        <>
+          <div className="section-head" style={{ marginTop: 4 }}>
+            <h2>{tx('Views')}</h2>
+            <span className="count">· {tx('what the work actually got')}</span>
+          </div>
+          <div className="card card-pad vw-card">
+            <div className="vw-tiles">
+              <div className="vw-tile">
+                <b>{views.totals.views.toLocaleString()}</b>
+                <span>{tx('views in this period')}</span>
+              </div>
+              <div className="vw-tile">
+                <b>{views.totals.avg === null ? '—' : views.totals.avg.toLocaleString()}</b>
+                <span>{tx('average per counted piece')}</span>
+              </div>
+              <div className="vw-tile">
+                <b>{views.totals.counted}<span className="stat-sub"> / {views.totals.pieces}</span></b>
+                <span>{tx('pieces with a number on them')}</span>
+              </div>
+            </div>
+            {/* A total drawn from a third of the month reads as if it were the
+                whole month unless it says so. */}
+            {views.uncounted > 0 && (
+              <div className="vw-warn">
+                <AlertCircle size={14} />
+                {views.uncounted === 1
+                  ? tx('One piece went out with nobody counting its views — this total is what has been counted, not what the month got.')
+                  : `${views.uncounted} ${tx('pieces went out with nobody counting their views — this total is what has been counted, not what the month got.')}`}
+              </div>
+            )}
+            {views.totals.pieces === 0 && (
+              <div className="stat-sub">{tx('Nothing went out in this period.')}</div>
+            )}
+
+            {views.byType.length > 0 && (
+              <div className="vw-split">
+                <div className="vw-col">
+                  <h3>{tx('By type')}</h3>
+                  {views.byType.map((r) => (
+                    <div key={r.key} className="vw-row">
+                      <span className={`chip ct-${r.key}`}>{typeInfo(r.key).label}</span>
+                      <span className="vw-bar">
+                        <span style={{ width: `${views.byType[0].views > 0 ? Math.round((r.views / views.byType[0].views) * 100) : 0}%` }} />
+                      </span>
+                      <b>{r.views.toLocaleString()}</b>
+                      <span className="stat-sub">{r.counted}/{r.pieces}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="vw-col">
+                  <h3>{tx('By channel')}</h3>
+                  {views.byChannel.map((r) => (
+                    <div key={r.key} className="vw-row">
+                      <span className="vw-name">
+                        <span className="rp-dot" style={{ background: colorOf[r.key] }} />{r.label}
+                      </span>
+                      <span className="vw-bar">
+                        <span style={{ width: `${views.byChannel[0].views > 0 ? Math.round((r.views / views.byChannel[0].views) * 100) : 0}%` }} />
+                      </span>
+                      <b>{r.views.toLocaleString()}</b>
+                      <span className="stat-sub">{r.counted}/{r.pieces}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {views.byPerson.length > 0 && (
+              <div className="vw-col" style={{ marginTop: 14 }}>
+                <h3>{tx('By content maker')}</h3>
+                {views.byPerson.map((r) => (
+                  <div key={r.id} className="vw-row">
+                    <span className="vw-name">{r.name || `#${r.id}`}</span>
+                    <span className="vw-bar">
+                      <span style={{ width: `${views.byPerson[0].views > 0 ? Math.round((r.views / views.byPerson[0].views) * 100) : 0}%` }} />
+                    </span>
+                    <b>{r.views.toLocaleString()}</b>
+                    <span className="stat-sub">{r.counted}/{r.pieces}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {views.top.length > 0 && (
+              <div className="vw-col" style={{ marginTop: 14 }}>
+                <h3>{tx('What worked best')}</h3>
+                {views.top.slice(0, 8).map((r) => (
+                  <div key={r.id} className="vw-row">
+                    <span className="vw-name vw-title">{r.title}</span>
+                    <span className={`chip ct-${r.type}`}>{typeInfo(r.type).label}</span>
+                    <b>{r.views.toLocaleString()}</b>
+                    <span className="stat-sub">{dateLabel(r.day)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Whose work. The report counted only the ASSIGNEE — the planner —
           which made the crew invisible: an editor who cut forty videos in a

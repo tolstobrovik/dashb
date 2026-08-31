@@ -46,6 +46,14 @@ export default function MyPay() {
               <b>{pay.onTimePct}%</b> on time
             </span>
           )}
+          {/* The sum of what their work was watched. Shown once there is a
+              number to show, or once the card pays on views at all. */}
+          {(pay.views > 0 || pay.viewsTarget > 0 || pay.rates.per_1k_views > 0) && (
+            <span className={pay.viewsTarget > 0 && pay.viewsMet ? 'pay-good' : undefined}>
+              <b>{(pay.views || 0).toLocaleString()}</b>
+              {pay.viewsTarget > 0 ? ` / ${pay.viewsTarget.toLocaleString()} views` : ' views'}
+            </span>
+          )}
         </span>
         <ChevronDown size={16} className={'my-pay-caret' + (open ? ' open' : '')} />
       </button>
@@ -62,6 +70,35 @@ export default function MyPay() {
               <b>{money(l.amount, cur)}</b>
             </div>
           ))}
+          {pay.viewsPay > 0 && (
+            <div className="my-pay-line">
+              <span>On views</span>
+              <span className="stat-sub">{(pay.views || 0).toLocaleString()} × {money(pay.rates.per_1k_views, cur)} / 1,000</span>
+              <b>{money(pay.viewsPay, cur)}</b>
+            </div>
+          )}
+          {pay.viewsBonus > 0 && (
+            <div className="my-pay-line">
+              <span>Views bonus</span>
+              <span className="stat-sub">{pay.viewsTarget.toLocaleString()} in the month</span>
+              <b className="pay-good">+{money(pay.viewsBonus, cur)}</b>
+            </div>
+          )}
+          {!pay.viewsBonus && pay.rates.views_bonus > 0 && pay.viewsLeft > 0 && (
+            <div className="my-pay-line">
+              <span className="stat-sub">Views bonus</span>
+              <span className="stat-sub">{pay.viewsLeft.toLocaleString()} more views to go</span>
+              <span className="stat-sub">{money(pay.rates.views_bonus, cur)}</span>
+            </div>
+          )}
+          {/* A sum drawn from a third of the pieces reads as the whole month. */}
+          {pay.viewsCounted > 0 && pay.viewsCounted < pay.delivered && (
+            <div className="my-pay-line">
+              <span className="stat-sub">Counted so far</span>
+              <span className="stat-sub">{pay.viewsCounted} of {pay.delivered} pieces have a number on them</span>
+              <span />
+            </div>
+          )}
           {pay.quotaBonus > 0 && (
             <div className="my-pay-line">
               <span>Quota bonus</span>

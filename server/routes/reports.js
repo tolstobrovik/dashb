@@ -53,7 +53,7 @@ export async function contributions({ from, to, channel, type }) {
   const rows = (await all(`
     SELECT id, title, channels, type, status_id, assignee_id, operator_id, editor_id, designer_id,
            reviewer_id, reviewers, recording_date, edit_ready_date, design_ready_date, release_date,
-           edit_due_revised, review_due_revised, shot_at, edited_at, done_at
+           edit_due_revised, review_due_revised, shot_at, edited_at, done_at, views
     FROM content
   `)).map((r) => ({ ...r, channels: parseList(r.channels) }))
 
@@ -337,6 +337,97 @@ router.get('/', wrap(async (req, res) => {
   res.json({ hat, report, totalDone: list.length, byChannel })
 }))
 
+// ---- what it all got watched -----------------------------------------------
+// The board knew what went out and when, and nothing about whether anybody
+// watched it. A month of twenty pieces and a month of three are the same month
+// to a delivery report, which is a strange thing for a marketing board to
+// believe.
+//
+// The numbers are typed in by hand on the task (nobody is plugged into
+// Instagram's API here), so this only adds them up — by type, by channel, by
+// the person the piece was for — and says plainly how much of the month has
+// actually been counted, because a total drawn from a third of the pieces is
+// a number that will be read as if it were all of them.
+//
+// A piece counts in the window by the day it went out, which is the day its
+// views started being earned.
+router.get('/views', wrap(async (req, res) => {
+  const { from, to } = statsRange(req.query)
+  const channel = req.query.channel && req.query.channel !== 'all' ? String(req.query.channel) : null
+
+  const statuses = await all('SELECT * FROM statuses')
+  const dead = new Set(statuses.filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
+  const channels = await all('SELECT key, label FROM channels ORDER BY sort, id')
+  const users = (await all('SELECT * FROM users')).map(publicUser)
+  const nameOf = (id) => users.find((u) => u.id === id)?.name || null
+
+  const rows = (await all(`
+    SELECT id, title, channels, type, status_id, assignee_id, assignees, done_at, release_date, views, views_at
+    FROM content
+  `)).map((r) => ({ ...r, channels: parseList(r.channels) }))
+
+  const out = rows.filter((r) => {
+    if (dead.has(r.status_id)) return false
+    if (channel && !r.channels.includes(channel)) return false
+    if (!r.done_at) return false
+    const day = tashkentDay(r.done_at)
+    return day >= from && day <= to
+  })
+
+  const zero = () => ({ pieces: 0, counted: 0, views: 0 })
+  const add = (bucket, r) => {
+    bucket.pieces += 1
+    if (r.views !== null && r.views !== undefined) { bucket.counted += 1; bucket.views += Number(r.views) || 0 }
+  }
+  const totals = zero()
+  const byType = {}
+  const byChannelMap = {}
+  const byPersonMap = new Map()
+  for (const r of out) {
+    add(totals, r)
+    const ty = r.type || 'other'
+    add((byType[ty] = byType[ty] || zero()), r)
+    for (const ch of r.channels) add((byChannelMap[ch] = byChannelMap[ch] || zero()), r)
+    // The people the piece was FOR. One piece, several makers, is counted for
+    // each of them — the same way the delivery report counts it.
+    let made = []
+    try { made = JSON.parse(r.assignees || '[]').map(Number).filter(Boolean) } catch { made = [] }
+    if (!made.length && r.assignee_id) made = [r.assignee_id]
+    for (const uid of made) {
+      if (!byPersonMap.has(uid)) byPersonMap.set(uid, { id: uid, name: nameOf(uid), ...zero() })
+      add(byPersonMap.get(uid), r)
+    }
+  }
+
+  const withAvg = (b) => ({ ...b, avg: b.counted > 0 ? Math.round(b.views / b.counted) : null })
+  res.json({
+    from,
+    to,
+    channel,
+    totals: withAvg(totals),
+    // How much of the month is actually measured. A total nobody can weigh is
+    // a number that gets read as the whole truth.
+    uncounted: totals.pieces - totals.counted,
+    byType: Object.entries(byType)
+      .map(([key, b]) => ({ key, ...withAvg(b) }))
+      .sort((a, b) => b.views - a.views || a.key.localeCompare(b.key)),
+    byChannel: channels
+      .map((c) => ({ key: c.key, label: c.label, ...withAvg(byChannelMap[c.key] || zero()) }))
+      .filter((c) => c.pieces > 0)
+      .sort((a, b) => b.views - a.views),
+    byPerson: [...byPersonMap.values()].map(withAvg).sort((a, b) => b.views - a.views),
+    // The pieces themselves, best first — the answer to "what actually worked".
+    top: out
+      .filter((r) => r.views !== null && r.views !== undefined)
+      .sort((a, b) => Number(b.views) - Number(a.views))
+      .slice(0, 20)
+      .map((r) => ({
+        id: r.id, title: r.title, type: r.type, channels: r.channels,
+        views: Number(r.views) || 0, day: tashkentDay(r.done_at),
+      })),
+  })
+}))
+
 // ---- pay --------------------------------------------------------------------
 // The board already knows, to the day, what every person delivered and how
 // much of it landed on the day they promised. Payroll was being rebuilt from
@@ -350,10 +441,16 @@ router.get('/', wrap(async (req, res) => {
 export const RATE_FIELDS = [
   'base', 'per_shoot', 'per_edit', 'per_design', 'per_publish', 'per_review',
   'quota', 'quota_bonus', 'ontime_bonus', 'ontime_target', 'late_penalty',
+  // What the work was WORTH, not just how much of it there was. A month of
+  // twenty pieces nobody watched and a month of three that half the city saw
+  // are the same month to a piece-rate card, which is why this one counts
+  // views too: per thousand, and a target that pays whole when it is reached.
+  'per_1k_views', 'views_target', 'views_bonus',
 ]
 const BLANK_RATES = {
   currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0,
   per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0,
+  per_1k_views: 0, views_target: 0, views_bonus: 0,
 }
 const HAT_RATE = {
   operator: 'per_shoot', editor: 'per_edit', designer: 'per_design',
@@ -384,15 +481,22 @@ async function payRun({ from, to, only }) {
 
   const counted = {}
   for (const c of list) {
-    const e = (counted[c.userId] = counted[c.userId] || { hats: {}, late: 0, done: 0, items: [] })
+    const e = (counted[c.userId] = counted[c.userId] || { hats: {}, late: 0, done: 0, views: 0, counted: 0, items: [] })
     e.hats[c.hat] = (e.hats[c.hat] || 0) + 1
     e.done += 1
     if (c.late) e.late += 1
-    e.items.push({ id: c.row.id, title: c.row.title, hat: c.hat, day: c.day, late: c.late })
+    // Views belong to the person the piece was FOR — the content maker — and
+    // are counted once even though they wear several hats on the same task.
+    // A piece nobody has counted yet adds nothing rather than adding zero.
+    if (c.hat === 'assignee' && Number.isFinite(Number(c.row.views)) && c.row.views !== null) {
+      e.views += Number(c.row.views)
+      e.counted += 1
+    }
+    e.items.push({ id: c.row.id, title: c.row.title, hat: c.hat, day: c.day, late: c.late, views: c.row.views ?? null })
   }
 
   const people = wanted.map((u) => {
-    const e = counted[u.id] || { hats: {}, late: 0, done: 0, items: [] }
+    const e = counted[u.id] || { hats: {}, late: 0, done: 0, views: 0, counted: 0, items: [] }
     const rates = pick(u.id)
     const lines = []
     let piecework = 0
@@ -418,15 +522,25 @@ async function payRun({ from, to, only }) {
     const quotaMet = quota > 0 && e.done >= quota
     const quotaBonus = quotaMet ? (rates.quota_bonus || 0) : 0
     const penalty = e.late * (rates.late_penalty || 0)
-    const bonus = onTimeBonus + quotaBonus
-    const total = (rates.base || 0) + piecework + bonus - penalty
+    // The views KPI: paid by the thousand, and a target that pays whole when
+    // the month's views reach it. Both are 0 on a card nobody has set, so a
+    // board that does not care about views never sees either.
+    const views = e.views
+    const viewsPay = Math.round((views / 1000) * (rates.per_1k_views || 0))
+    const viewsTarget = rates.views_target || 0
+    const viewsMet = viewsTarget > 0 && views >= viewsTarget
+    const viewsBonus = viewsMet ? (rates.views_bonus || 0) : 0
+    const bonus = onTimeBonus + quotaBonus + viewsBonus
+    const total = (rates.base || 0) + piecework + viewsPay + bonus - penalty
     return {
       id: u.id, name: u.name, color: u.color, avatar: u.avatar, role: u.role, crew_roles: u.crew_roles,
       currency: rates.currency, source: rates.source, rates,
       delivered: e.done, late: e.late, onTime, onTimePct,
       quota, quotaMet, quotaLeft: quota > 0 ? Math.max(0, quota - e.done) : null,
+      views, viewsCounted: e.counted, viewsPay, viewsTarget, viewsMet,
+      viewsLeft: viewsTarget > 0 ? Math.max(0, viewsTarget - views) : null,
       lines, base: rates.base || 0, piecework,
-      onTimeBonus, quotaBonus, bonus, penalty, total,
+      onTimeBonus, quotaBonus, viewsBonus, bonus, penalty, total,
       items: e.items.sort((a, b) => String(b.day).localeCompare(String(a.day))),
     }
   })

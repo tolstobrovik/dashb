@@ -198,6 +198,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     editor_id: item?.editor_id ?? null,
     designer_id: item?.designer_id ?? null,
     tz: item?.tz ?? '',
+    // '' means nobody has counted yet; '0' means it was counted and got none.
+    views: item?.views === null || item?.views === undefined ? '' : String(item.views),
     reviewer_ids: (() => {
       try {
         const l = Array.isArray(item?.reviewers) ? item.reviewers : JSON.parse(item?.reviewers || '[]')
@@ -588,6 +590,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const readyStatus = statuses.find((s) => /^ready$/i.test(s.label))
   const finalStatusObj = statuses.find((s) => s.is_final)
   const atReady = !!item && !!readyStatus && item.status_id === readyStatus.id
+  // ---- what it got ----
+  // Only worth asking once the piece is out: views on something unpublished is
+  // a box that can only be answered wrongly. Whoever it is FOR may write the
+  // number, and so may an admin — the maker is the one who opens the app and
+  // reads the count off it.
+  const isOut = !!item?.done_at || (!!finalStatusObj && item?.status_id === finalStatusObj.id)
+  const madeIt = !!item && [item.assignee_id, ...(item.assignees || [])].filter(Boolean).includes(user.id)
+  const canCount = !!item && (user.role === 'admin' || madeIt)
+  const showViews = !!item && (isOut || item.views !== null && item.views !== undefined)
   const onChannel = user.role === 'admin' || (item?.channels || []).some((ch) => (user.departments || []).includes(ch))
   const canReview = (user.role === 'admin' || can(user, 'review_publish')) && onChannel && !!finalStatusObj
   const canRequest = (user.role === 'admin' || can(user, 'request_changes')) && onChannel
@@ -931,6 +942,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         rubrika: form.rubrika.trim() || null,
         script: form.script.trim() || null,
         tz: form.tz.trim() || null,
+        // Empty means "nobody has counted yet"; the server keeps null and 0
+        // apart on purpose, so the box does too.
+        ...(showViews && canCount ? { views: form.views.trim() === '' ? null : Number(form.views) } : {}),
         recording_date: form.recording_date || null,
         recording_time: form.recording_time || null,
         recording_end: form.recording_end || null,
@@ -1218,6 +1232,30 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         )}
         </div>
       </div>
+
+      {/* ---- what it got ---- */}
+      {showViews && (
+        <div className="cm-row cm-views">
+          <span className="cm-key"><Eye size={13} style={{ verticalAlign: -2 }} /> {tx('Views')}</span>
+          <div className="views-box">
+            {canCount ? (
+              <input className="input views-input" type="number" min="0" step="1" inputMode="numeric"
+                placeholder={tx('Not counted yet')}
+                value={form.views}
+                onChange={(e) => setForm({ ...form, views: e.target.value.replace(/[^0-9]/g, '') })} />
+            ) : (
+              <b className="views-read">
+                {form.views === '' ? tx('Not counted yet') : Number(form.views).toLocaleString()}
+              </b>
+            )}
+            <span className="stat-sub">
+              {form.views === ''
+                ? tx('Leave it empty until somebody has actually looked — an empty box is not zero views.')
+                : tx('Counts towards the maker’s month.')}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* A hand up: somebody on this piece saying early that it is in trouble.
           Sits directly under the stage, because it is about to change it. */}

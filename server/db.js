@@ -672,6 +672,12 @@ export async function initSchema() {
       miss_blame     TEXT,
       miss_blame_note TEXT,
       miss_blame_by  INTEGER,
+      -- What it actually got. NULL is not zero: it means nobody has written a
+      -- number down yet, and a board that cannot tell those apart reports a
+      -- month of unmeasured work as a month of no views.
+      views          INTEGER,
+      views_at       TEXT,
+      views_by       INTEGER,
       created_at     TEXT    NOT NULL
     );
 
@@ -997,6 +1003,9 @@ export async function initSchema() {
       ontime_bonus  REAL    NOT NULL DEFAULT 0,    -- paid whole, or not at all
       ontime_target REAL    NOT NULL DEFAULT 90,   -- the per cent that earns it
       late_penalty  REAL    NOT NULL DEFAULT 0,    -- per piece delivered late
+      per_1k_views  REAL    NOT NULL DEFAULT 0,    -- paid per thousand views the maker's pieces got
+      views_target  REAL    NOT NULL DEFAULT 0,    -- views expected in the period
+      views_bonus   REAL    NOT NULL DEFAULT 0,    -- paid whole when the views target is met
       updated_by    INTEGER,
       created_at    TEXT    NOT NULL,
       updated_at    TEXT    NOT NULL
@@ -1210,6 +1219,9 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame_note TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame_by INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS views INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS views_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS views_by INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_ready_date TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS assignees TEXT NOT NULL DEFAULT '[]'")
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_roles TEXT NOT NULL DEFAULT '[]'")
@@ -1252,6 +1264,9 @@ export async function initSchema() {
     await exec('ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS reward REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota_bonus REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS per_1k_views REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS views_target REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS views_bonus REAL NOT NULL DEFAULT 0')
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_channels TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script_key TEXT')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
@@ -1340,6 +1355,7 @@ async function migrate() {
       ['shoot_ack', "TEXT NOT NULL DEFAULT ''"], ['shoot_ack_at', 'TEXT'], ['shoot_ack_by', 'INTEGER'], ['shoot_ack_note', 'TEXT'],
       ['edit_ack', "TEXT NOT NULL DEFAULT ''"], ['edit_ack_at', 'TEXT'], ['edit_ack_by', 'INTEGER'], ['edit_ack_note', 'TEXT'],
       ['miss_blame', 'TEXT'], ['miss_blame_note', 'TEXT'], ['miss_blame_by', 'INTEGER'],
+      ['views', 'INTEGER'], ['views_at', 'TEXT'], ['views_by', 'INTEGER'],
     ]) if (!(await hasColumn('content', col))) await exec(`ALTER TABLE content ADD COLUMN ${col} ${decl}`)
     if (!(await hasColumn('trackers', 'content_type'))) await exec('ALTER TABLE trackers ADD COLUMN content_type TEXT')
     // Older databases stored a single channel per task — rebuild to the new shape.
@@ -1386,6 +1402,9 @@ async function migrate() {
     if (!(await hasColumn('person_kpis', 'reward'))) await exec('ALTER TABLE person_kpis ADD COLUMN reward REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'quota'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'quota_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota_bonus REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'per_1k_views'))) await exec('ALTER TABLE pay_rules ADD COLUMN per_1k_views REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'views_target'))) await exec('ALTER TABLE pay_rules ADD COLUMN views_target REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'views_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN views_bonus REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
