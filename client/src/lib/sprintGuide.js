@@ -39,7 +39,9 @@ export const SPRINT_GUIDE = {
       h: 'Deadlines',
       p: [
         'Every new task is given Saturday at 12:00 as its deadline.',
-        'You can set an earlier date inside the card.',
+        'You can set an earlier date inside the card. Anybody can put the first real date on a task.',
+        'Once a date is on a task it is a promise. Only a sprint owner can move it, or clear it. Ask one, and say what happened.',
+        'Every move is written down under “What changed”, with who made it.',
         'A card shows a date only when that date is earlier than Saturday.',
       ],
     },
@@ -108,7 +110,22 @@ export const SPRINT_GUIDE = {
       h: 'Sprint owners',
       p: [
         'A sprint owner is a separate role. Being an admin of the board does not make you one.',
-        'Owners can do two things nobody else can: promote an idea from the Backlog, and change a sprint after it freezes.',
+        'Owners can do four things nobody else can: promote an idea from the Backlog, change a sprint after it freezes, move a day somebody already promised, and put a dropped task back.',
+      ],
+    },
+    {
+      h: 'Dropping a task',
+      p: [
+        'A task you are not going to do is dropped, not deleted. Drop it from inside the card and say what happened.',
+        'It leaves the board and stays on the week, under “Dropped this week”. The count of what was promised does not change. A week that promised twelve and dropped two reads as twelve promised and two dropped, for ever.',
+        'A sprint owner can put it back.',
+      ],
+    },
+    {
+      h: 'What changed',
+      p: [
+        'Under the board is the list of everything that moved after the fact: deadlines pushed, tasks dropped and put back, cards pulled out of Done.',
+        'Newest first, with the name of whoever did it. It is what the Saturday meeting reads when a number does not look like it did on Monday.',
       ],
     },
     {
@@ -150,7 +167,9 @@ export const SPRINT_GUIDE = {
       h: 'Сроки',
       p: [
         'Каждой новой задаче ставится срок: суббота, 12:00.',
-        'Внутри карточки можно поставить более раннюю дату.',
+        'Внутри карточки можно поставить более раннюю дату. Первую настоящую дату может поставить кто угодно.',
+        'Как только дата стоит, это обещание. Передвинуть или убрать её может только владелец спринта. Попросите его и скажите, что случилось.',
+        'Каждый перенос записывается в «Что изменилось» вместе с тем, кто его сделал.',
         'Дата показывается на карточке только если она раньше субботы.',
       ],
     },
@@ -219,7 +238,22 @@ export const SPRINT_GUIDE = {
       h: 'Владельцы спринта',
       p: [
         'Владелец спринта это отдельная роль. Права администратора доски её не дают.',
-        'Владелец может две вещи, недоступные остальным: взять идею в спринт и менять спринт после заморозки.',
+        'Владелец может четыре вещи, недоступные остальным: взять идею в спринт, менять спринт после заморозки, передвинуть уже обещанную дату и вернуть снятую задачу.',
+      ],
+    },
+    {
+      h: 'Как снять задачу',
+      p: [
+        'Задачу, которую делать не будут, снимают, а не удаляют. Снимите её из карточки и скажите, что случилось.',
+        'Она уходит с доски и остаётся на неделе, в разделе «Сняли на этой неделе». Число обещанного не меняется: неделя, которая обещала двенадцать и сняла две, навсегда читается как двенадцать обещанных и две снятых.',
+        'Владелец спринта может вернуть её обратно.',
+      ],
+    },
+    {
+      h: 'Что изменилось',
+      p: [
+        'Под доской список всего, что поменяли задним числом: перенесённые сроки, снятые и возвращённые задачи, карточки, вынутые из «Готово».',
+        'Сначала свежее, с именем того, кто это сделал. Именно это читают в субботу, когда число выглядит не так, как в понедельник.',
       ],
     },
     {
@@ -261,7 +295,9 @@ export const SPRINT_GUIDE = {
       h: 'Muddatlar',
       p: [
         'Har bir yangi vazifaga shanba soat 12:00 muddat qilib qoʻyiladi.',
-        'Kartochka ichida undan erta sana qoʻyish mumkin.',
+        'Kartochka ichida undan erta sana qoʻyish mumkin. Birinchi haqiqiy sanani istalgan kishi qoʻya oladi.',
+        'Sana qoʻyilgandan keyin u vaʼda boʻladi: uni faqat sprint egasi koʻchira yoki oʻchira oladi. Undan soʻrang va nima boʻlganini ayting.',
+        'Har bir koʻchirish «Nima oʻzgardi» boʻlimiga, kim qilgani bilan birga yoziladi.',
         'Sana kartochkada faqat shanbadan erta boʻlsa koʻrinadi.',
       ],
     },
@@ -330,7 +366,22 @@ export const SPRINT_GUIDE = {
       h: 'Sprint egalari',
       p: [
         'Sprint egasi alohida rol. Doska administratori boʻlish uni bermaydi.',
-        'Ega ikki ishni qila oladi: gʻoyani sprintga olish va muzlatilgandan keyin sprintni oʻzgartirish.',
+        'Ega toʻrt ishni qila oladi: gʻoyani sprintga olish, muzlatilgandan keyin sprintni oʻzgartirish, allaqachon vaʼda qilingan sanani koʻchirish va olib tashlangan vazifani qaytarish.',
+      ],
+    },
+    {
+      h: 'Vazifani olib tashlash',
+      p: [
+        'Qilinmaydigan vazifa oʻchirilmaydi, balki olib tashlanadi. Kartochka ichidan olib tashlang va nima boʻlganini ayting.',
+        'U doskadan chiqadi, lekin «Bu hafta olib tashlanganlar» boʻlimida haftada qoladi. Vaʼda qilinganlar soni oʻzgarmaydi: oʻn ikkitani vaʼda qilib ikkitasini olib tashlagan hafta abadiy oʻn ikki vaʼda va ikki olib tashlangan boʻlib oʻqiladi.',
+        'Sprint egasi uni qaytara oladi.',
+      ],
+    },
+    {
+      h: 'Nima oʻzgardi',
+      p: [
+        'Doska ostida keyinchalik oʻzgartirilgan hamma narsa roʻyxati: koʻchirilgan muddatlar, olib tashlangan va qaytarilgan vazifalar, «Tayyor» dan chiqarilgan kartochkalar.',
+        'Yangisi birinchi, kim qilgani ismi bilan. Shanba yigʻilishida son dushanbadagidek koʻrinmasa, aynan shu oʻqiladi.',
       ],
     },
     {

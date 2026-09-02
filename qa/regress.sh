@@ -150,6 +150,11 @@ fuser -k 4116/tcp 2>/dev/null; sleep 0.5
 if node sprint-backlog-suite.mjs > $SP/out-sprint-backlog-suite.log 2>&1; then echo "sprint-backlog-suite PASS" >> $RES; else echo "sprint-backlog-suite FAIL" >> $RES; fi
 fuser -k 4116/tcp 2>/dev/null; sleep 0.5
 
+# ---- Sprints: the week keeps what it promised (4135) ----
+fuser -k 4135/tcp 2>/dev/null; sleep 0.5
+if node sprint-account-suite.mjs > $SP/out-sprint-account-suite.log 2>&1; then echo "sprint-account-suite PASS" >> $RES; else echo "sprint-account-suite FAIL" >> $RES; fi
+fuser -k 4135/tcp 2>/dev/null; sleep 0.5
+
 # ---- one page in Admin where the board's switches live (4133) ----
 fuser -k 4133/tcp 2>/dev/null; sleep 0.5
 if node settings-suite.mjs > $SP/out-settings-suite.log 2>&1; then echo "settings-suite PASS" >> $RES; else echo "settings-suite FAIL" >> $RES; fi

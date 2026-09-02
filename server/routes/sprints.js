@@ -13,8 +13,9 @@ import { weekOf, isFrozen, weekLabel } from '../sprintweek.js'
 // PERMISSION. Owner is a row in sprint_owners and nothing else — the platform
 // Admin flag is deliberately not inherited, so an admin who is not an owner
 // works under the same freeze as everybody else. Owner is required for
-// exactly three things: closing a sprint, editing after the freeze, and
-// promoting from the backlog. Everything else is open to any signed-in user.
+// exactly five things: closing a sprint, editing after the freeze, promoting
+// from the backlog, moving a day somebody already promised, and putting a
+// dropped task back. Everything else is open to any signed-in user.
 const router = Router()
 router.use(authRequired)
 
@@ -47,6 +48,8 @@ const cleanTitle = (v) => String(v ?? '').trim().slice(0, MAX_TITLE)
 // A deadline is a Tashkent day. "next tuesday-ish" was being stored and then
 // rendered on the card as "t tuesday-ish", because the card shows a slice.
 const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z'))
+// The day a week ends on — the deadline every new task starts with.
+const weekEnd = (sprint) => String(sprint?.freeze_at || '').slice(0, 10)
 
 // ---- the three enforcements -------------------------------------------------
 // Server side, every one of them: a client can be old, wrong or bypassed, and
@@ -86,6 +89,20 @@ const blockerProblem = (body) =>
     ? null
     : 'Blocked needs a reason — pick one of the six'
 
+// The week a task actually belongs to. The freeze was being checked against
+// the CURRENT sprint for every write, whoever the task belonged to — so while
+// this week was open, every finished week was open with it: a task from a
+// closed sprint could be un-ticked, re-dated or deleted by anybody. A task
+// answers to its own week.
+async function sprintOfTask(taskId) {
+  return get(`
+    SELECT s.* FROM sprint_task_sprints ts
+    JOIN sprints s ON s.id = ts.sprint_id
+    WHERE ts.task_id = ?
+    ORDER BY s.start_at DESC LIMIT 1
+  `, taskId)
+}
+
 // 3. After the freeze the week is history for everybody but an owner.
 async function frozenProblem(sprint, userId) {
   if (!isFrozen(sprint)) return null
@@ -95,17 +112,32 @@ async function frozenProblem(sprint, userId) {
     : 'This sprint froze at noon on Saturday — an owner can still change it'
 }
 
+// Every change worth arguing about later, written down: a deadline moved, a
+// result un-ticked, a task dropped. The sprint board had no paper trail at
+// all, so none of it could be read back at the Saturday meeting.
+async function logSprint(user, task, sprintId, kind, oldV, newV, note = '') {
+  await run(`
+    INSERT INTO sprint_activity (task_id, task_title, sprint_id, user_id, user_name, kind, old_value, new_value, note, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, task.id, task.title || '', sprintId ?? null, user.id, user.name || '', kind,
+  oldV == null ? null : String(oldV), newV == null ? null : String(newV), note, now())
+}
+
 // ---- reading the week --------------------------------------------------------
 // One round trip builds the whole screen: four queries, assembled here, so
 // opening the board is one request and not one per task.
 async function readSprint(sprint, userId) {
-  const rows = await all(`
+  const everything = await all(`
     SELECT t.*, ts.outcome
     FROM sprint_task_sprints ts
     JOIN sprint_tasks t ON t.id = ts.task_id
     WHERE ts.sprint_id = ?
     ORDER BY t.created_at, t.id
   `, sprint.id)
+  // Dropped work leaves the columns and stays on the week. The board is for
+  // what is being done; the record is for what was promised.
+  const rows = everything.filter((r) => !r.dropped_at)
+  const dropped = everything.filter((r) => r.dropped_at)
   const ids = rows.map((r) => r.id)
   const inList = ids.length ? `(${ids.map(() => '?').join(',')})` : '(NULL)'
 
@@ -176,6 +208,10 @@ async function readSprint(sprint, userId) {
     frozen: isFrozen(sprint),
     owner: await isOwner(userId),
     tasks,
+    dropped: dropped.map((r) => ({
+      id: r.id, title: r.title, status: r.status, deadline: r.deadline,
+      dropped_at: r.dropped_at, dropped_by: r.dropped_by, dropped_reason: r.dropped_reason,
+    })),
     people: strip,
     blockerReasons: BLOCKER_REASONS,
   }
@@ -195,7 +231,12 @@ router.get('/history', wrap(async (req, res) => {
            (SELECT COUNT(*) FROM sprint_task_sprints ts WHERE ts.sprint_id = s.id) AS tasks,
            (SELECT COUNT(*) FROM sprint_task_sprints ts
               JOIN sprint_tasks t ON t.id = ts.task_id
-             WHERE ts.sprint_id = s.id AND t.status = 'done') AS done
+             WHERE ts.sprint_id = s.id AND t.status = 'done' AND t.dropped_at IS NULL) AS done,
+           -- Counted, not hidden: a week that promised twelve and dropped two
+           -- reads as twelve promised and two dropped, for ever.
+           (SELECT COUNT(*) FROM sprint_task_sprints ts
+              JOIN sprint_tasks t ON t.id = ts.task_id
+             WHERE ts.sprint_id = s.id AND t.dropped_at IS NOT NULL) AS dropped
     FROM sprints s ORDER BY s.start_at DESC
   `)
   const now = Date.now()
@@ -273,14 +314,20 @@ router.post('/tasks', wrap(async (req, res) => {
 const FIELDS = ['title', 'description', 'is_growth', 'deadline']
 
 router.patch('/tasks/:id', wrap(async (req, res) => {
-  const sprint = await currentSprint()
-  const stop = await frozenProblem(sprint, req.user.id)
-  if (stop) return res.status(423).json({ error: stop })
   const task = await get('SELECT * FROM sprint_tasks WHERE id = ?', req.params.id)
   if (!task) return res.status(404).json({ error: 'No such task' })
+  // The task's own week decides whether it is still open, not whichever week
+  // happens to be current.
+  const sprint = (await sprintOfTask(task.id)) || (await currentSprint())
+  const stop = await frozenProblem(sprint, req.user.id)
+  if (stop) return res.status(423).json({ error: stop })
+  const owner = await isOwner(req.user.id)
+  if (task.dropped_at && !owner)
+    return res.status(423).json({ error: 'This task was dropped from the week — an owner can put it back' })
 
   const body = req.body || {}
   const set = {}
+  const logs = []
   if (body.title !== undefined) {
     const title = cleanTitle(body.title)
     if (!title) return res.status(400).json({ error: 'A task needs a title' })
@@ -292,7 +339,27 @@ router.patch('/tasks/:id', wrap(async (req, res) => {
     if (body.deadline && !isDay(String(body.deadline))) {
       return res.status(400).json({ error: 'A deadline is a date — YYYY-MM-DD' })
     }
-    set.deadline = body.deadline || null
+    const next = body.deadline || null
+    // A day that somebody CHOSE is a promise, and a promise the person who
+    // made it can quietly move is not one — the same rule the content side has
+    // had since round 67. Setting a first real day stays open to everybody, so
+    // work can still be scheduled; clearing one counts as moving it.
+    //
+    // The week's own end does not count as chosen. Every task is born with the
+    // freeze day on it, so treating that as a promise would mean nobody but an
+    // owner could ever put a day on a task at all — and the board has always
+    // read it the same way: a card only shows a deadline when it differs from
+    // the week end.
+    const promised = !!task.deadline && task.deadline !== weekEnd(sprint)
+    const moving = promised && String(next ?? '') !== String(task.deadline)
+    if (moving && !owner) {
+      return res.status(403).json({
+        error: 'That day is already promised — ask a sprint owner to move it, and say what happened.',
+        ask_to_move: { field: 'deadline', from: task.deadline, to: next },
+      })
+    }
+    if (moving) logs.push(['deadline', task.deadline, next])
+    set.deadline = next
   }
 
   // The status moves, and the two that cost something ask for it first.
@@ -327,6 +394,7 @@ router.patch('/tasks/:id', wrap(async (req, res) => {
     if (next !== 'done' && task.status === 'done') {
       set.result_type = null; set.result_link = ''; set.result_text = ''; set.result_attachment_id = null
     }
+    if (next !== task.status) logs.push(['status', task.status, next])
     set.status = next
   }
 
@@ -336,6 +404,7 @@ router.patch('/tasks/:id', wrap(async (req, res) => {
     await run(`UPDATE sprint_tasks SET ${[...keys, 'updated_at'].map((k) => `${k}=?`).join(', ')} WHERE id = ?`,
       ...[...keys, 'updated_at'].map((k) => set[k]), task.id)
   }
+  for (const [kind, oldV, newV] of logs) await logSprint(req.user, task, sprint.id, kind, oldV, newV)
 
   // Assignees arrive as the whole list, which is what a multi-picker knows.
   if (Array.isArray(body.assignees)) {
@@ -351,14 +420,56 @@ router.patch('/tasks/:id', wrap(async (req, res) => {
   res.json(await readSprint(sprint, req.user.id))
 }))
 
+// DROPPED, not deleted.
+//
+// This used to remove the row outright — and /history counts tasks live off
+// sprint_task_sprints, so a closed week went from twelve tasks to eleven the
+// moment somebody tidied one away, with nothing to say it had happened. A
+// week's record that changes after the week is over is not a record.
+//
+// So the task leaves the BOARD and stays in the COUNT: off the columns, out of
+// everybody's way, still on its week, with who dropped it and when written
+// down. An owner can put it back.
 router.delete('/tasks/:id', wrap(async (req, res) => {
-  const sprint = await currentSprint()
+  const task = await get('SELECT * FROM sprint_tasks WHERE id = ?', req.params.id)
+  if (!task) return res.status(404).json({ error: 'No such task' })
+  const sprint = (await sprintOfTask(task.id)) || (await currentSprint())
   const stop = await frozenProblem(sprint, req.user.id)
   if (stop) return res.status(423).json({ error: stop })
-  const task = await get('SELECT id FROM sprint_tasks WHERE id = ?', req.params.id)
+  if (task.dropped_at) return res.status(409).json({ error: 'That task is already dropped' })
+
+  const reason = String(req.body?.reason ?? '').trim().slice(0, 600)
+  await run('UPDATE sprint_tasks SET dropped_at = ?, dropped_by = ?, dropped_reason = ?, updated_at = ? WHERE id = ?',
+    now(), req.user.id, reason, now(), task.id)
+  await logSprint(req.user, task, sprint.id, 'dropped', task.status, null, reason)
+  res.json(await readSprint(await currentSprint(), req.user.id))
+}))
+
+// Putting one back. An owner's call, because dropping is the team's and
+// undoing somebody else's tidy-up is not.
+router.post('/tasks/:id/restore', wrap(async (req, res) => {
+  const task = await get('SELECT * FROM sprint_tasks WHERE id = ?', req.params.id)
   if (!task) return res.status(404).json({ error: 'No such task' })
-  await batch([...sprintTaskChildDeletes(task.id), ['DELETE FROM sprint_tasks WHERE id = ?', task.id]])
-  res.json(await readSprint(sprint, req.user.id))
+  if (!(await isOwner(req.user.id)))
+    return res.status(403).json({ error: 'Only a sprint owner can put a dropped task back' })
+  if (!task.dropped_at) return res.status(409).json({ error: 'That task is not dropped' })
+  await run("UPDATE sprint_tasks SET dropped_at = NULL, dropped_by = NULL, dropped_reason = '', updated_at = ? WHERE id = ?",
+    now(), task.id)
+  const sprint = (await sprintOfTask(task.id)) || (await currentSprint())
+  await logSprint(req.user, task, sprint.id, 'restored', null, task.status)
+  res.json(await readSprint(await currentSprint(), req.user.id))
+}))
+
+// What was changed after the fact on this week, newest first — the thing to
+// read out on Saturday when a number does not look like it did.
+router.get('/activity', wrap(async (req, res) => {
+  const sprint = req.query.sprint ? await get('SELECT * FROM sprints WHERE id = ?', req.query.sprint) : await currentSprint()
+  if (!sprint) return res.json([])
+  res.json(await all(`
+    SELECT id, task_id, task_title, user_id, user_name, kind, old_value, new_value, note, created_at
+    FROM sprint_activity WHERE sprint_id = ?
+    ORDER BY created_at DESC, id DESC LIMIT 200
+  `, sprint.id))
 }))
 
 // ---- the backlog -------------------------------------------------------------
@@ -396,7 +507,7 @@ router.post('/backlog', wrap(async (req, res) => {
   res.status(201).json(await readBacklog(req.user.id))
 }))
 
-// Promotion is one of the three owner-only actions. It gives the idea a week
+// Promotion is one of the five owner-only actions. It gives the idea a week
 // and a status; the owner sets the assignee and the checklist in the modal
 // that opens straight afterwards.
 router.post('/backlog/:id/promote', wrap(async (req, res) => {
@@ -445,7 +556,8 @@ router.get('/tasks/:id/checklist', wrap(async (req, res) => {
 }))
 
 router.post('/tasks/:id/checklist', wrap(async (req, res) => {
-  const sprint = await currentSprint()
+  // The task's own week, not whichever is current — see sprintOfTask.
+  const sprint = (await sprintOfTask(req.params.id)) || (await currentSprint())
   const stop = await frozenProblem(sprint, req.user.id)
   if (stop) return res.status(423).json({ error: stop })
   // Without this, POST to /tasks/999999/checklist returned 201 and left a row
@@ -465,11 +577,12 @@ router.post('/tasks/:id/checklist', wrap(async (req, res) => {
 }))
 
 router.patch('/checklist/:itemId', wrap(async (req, res) => {
-  const sprint = await currentSprint()
-  const stop = await frozenProblem(sprint, req.user.id)
-  if (stop) return res.status(423).json({ error: stop })
   const item = await get('SELECT * FROM sprint_checklist_items WHERE id = ?', req.params.itemId)
   if (!item) return res.status(404).json({ error: 'No such item' })
+  // The item knows which week it belongs to; that is the week that decides.
+  const sprint = (await get('SELECT * FROM sprints WHERE id = ?', item.sprint_id)) || (await currentSprint())
+  const stop = await frozenProblem(sprint, req.user.id)
+  if (stop) return res.status(423).json({ error: stop })
   const set = {}
   if (req.body?.text !== undefined) {
     const text = String(req.body.text).trim()
@@ -491,7 +604,7 @@ router.patch('/checklist/:itemId', wrap(async (req, res) => {
 
 // Reorder arrives as the whole list of ids, in the order they now sit.
 router.put('/tasks/:id/checklist/order', wrap(async (req, res) => {
-  const sprint = await currentSprint()
+  const sprint = (await sprintOfTask(req.params.id)) || (await currentSprint())
   const stop = await frozenProblem(sprint, req.user.id)
   if (stop) return res.status(423).json({ error: stop })
   const ids = (req.body?.ids || []).map(Number).filter(Boolean)
@@ -507,7 +620,9 @@ router.put('/tasks/:id/checklist/order', wrap(async (req, res) => {
 }))
 
 router.delete('/checklist/:itemId', wrap(async (req, res) => {
-  const sprint = await currentSprint()
+  const item = await get('SELECT * FROM sprint_checklist_items WHERE id = ?', req.params.itemId)
+  if (!item) return res.json({ ok: true })
+  const sprint = (await get('SELECT * FROM sprints WHERE id = ?', item.sprint_id)) || (await currentSprint())
   const stop = await frozenProblem(sprint, req.user.id)
   if (stop) return res.status(423).json({ error: stop })
   await run('DELETE FROM sprint_checklist_items WHERE id = ?', req.params.itemId)
@@ -521,7 +636,8 @@ router.delete('/checklist/:itemId', wrap(async (req, res) => {
 // the file somebody chose, not about the arithmetic.
 const MAX_FILE = 5 * 1024 * 1024
 router.post('/tasks/:id/files', wrap(async (req, res) => {
-  const sprint = await currentSprint()
+  // The task's own week, not whichever is current — see sprintOfTask.
+  const sprint = (await sprintOfTask(req.params.id)) || (await currentSprint())
   const stop = await frozenProblem(sprint, req.user.id)
   if (stop) return res.status(423).json({ error: stop })
   const task = await get('SELECT id FROM sprint_tasks WHERE id = ?', req.params.id)
@@ -556,11 +672,11 @@ router.get('/files/:fileId', wrap(async (req, res) => {
 }))
 
 router.delete('/files/:fileId', wrap(async (req, res) => {
-  const sprint = await currentSprint()
-  const stop = await frozenProblem(sprint, req.user.id)
-  if (stop) return res.status(423).json({ error: stop })
   const f = await get('SELECT * FROM sprint_attachments WHERE id = ?', req.params.fileId)
   if (!f) return res.status(404).json({ error: 'No such file' })
+  const sprint = (await sprintOfTask(f.task_id)) || (await currentSprint())
+  const stop = await frozenProblem(sprint, req.user.id)
+  if (stop) return res.status(423).json({ error: stop })
   // A file that a task points at as its result cannot quietly vanish from
   // under it — that would leave a task marked done with nothing behind it.
   const usedBy = await get('SELECT id FROM sprint_tasks WHERE result_attachment_id = ?', f.id)

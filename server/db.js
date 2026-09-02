@@ -914,9 +914,36 @@ export async function initSchema() {
       blocker_reason       TEXT    NOT NULL DEFAULT '',
       blocker_note         TEXT    NOT NULL DEFAULT '',
       carried_count        INTEGER NOT NULL DEFAULT 0,
+      -- Dropped, not deleted. A week's record that changes after the week is
+      -- over is not a record: deleting a task used to take it out of
+      -- sprint_task_sprints, and /history counts that table live, so a closed
+      -- week quietly went from twelve tasks to eleven. A dropped task leaves
+      -- the board and stays in the count.
+      dropped_at           TEXT,
+      dropped_by           INTEGER,
+      dropped_reason       TEXT    NOT NULL DEFAULT '',
       created_by           INTEGER,
       created_at           TEXT    NOT NULL,
       updated_at           TEXT    NOT NULL
+    );
+
+    -- What was changed after the fact, and by whom. The content side has had
+    -- this since round 36; the sprint board had nothing at all, so a moved
+    -- deadline or an un-ticked result left no trace to read back on Saturday.
+    -- Titles are written down at the moment of the change so the line still
+    -- reads like a sentence if the task is later dropped.
+    CREATE TABLE IF NOT EXISTS sprint_activity (
+      id          ${ID},
+      task_id     INTEGER NOT NULL,
+      task_title  TEXT    NOT NULL DEFAULT '',
+      sprint_id   INTEGER,
+      user_id     INTEGER,
+      user_name   TEXT    NOT NULL DEFAULT '',
+      kind        TEXT    NOT NULL,           -- deadline|status|dropped|restored
+      old_value   TEXT,
+      new_value   TEXT,
+      note        TEXT    NOT NULL DEFAULT '',
+      created_at  TEXT    NOT NULL
     );
 
     -- Assignees are read from the platform users table and stored by id.
@@ -1267,6 +1294,9 @@ export async function initSchema() {
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS per_1k_views REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS views_target REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS views_bonus REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_at TEXT')
+    await exec('ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_by INTEGER')
+    await exec("ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_reason TEXT NOT NULL DEFAULT ''")
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_channels TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script_key TEXT')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
@@ -1405,6 +1435,9 @@ async function migrate() {
     if (!(await hasColumn('pay_rules', 'per_1k_views'))) await exec('ALTER TABLE pay_rules ADD COLUMN per_1k_views REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'views_target'))) await exec('ALTER TABLE pay_rules ADD COLUMN views_target REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'views_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN views_bonus REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('sprint_tasks', 'dropped_at'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_at TEXT')
+    if (!(await hasColumn('sprint_tasks', 'dropped_by'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_by INTEGER')
+    if (!(await hasColumn('sprint_tasks', 'dropped_reason'))) await exec("ALTER TABLE sprint_tasks ADD COLUMN dropped_reason TEXT NOT NULL DEFAULT ''")
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')

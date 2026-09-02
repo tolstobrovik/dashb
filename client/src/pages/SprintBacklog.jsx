@@ -124,7 +124,7 @@ export default function SprintBacklog() {
           while the owner is still thinking about the idea. */}
       {open && (
         <TaskModal
-          task={open} people={people} locked={false}
+          task={open} people={people} locked={false} owner={!!data.owner}
           onClose={() => { setOpen(null); load() }}
           onSaved={() => load()}
         />

@@ -161,7 +161,7 @@ ok('…and ownership is still the one row that was inserted by hand', owners.row
 // against the numbers the code uses.
 const { SPRINT_GUIDE } = await import(ROOT + '/client/src/lib/sprintGuide.js')
 const langs = Object.keys(SPRINT_GUIDE)
-ok('the guide exists in all three languages', langs.length === 3 && langs.every((l) => SPRINT_GUIDE[l].length === 12),
+ok('the guide exists in all three languages', langs.length === 3 && langs.every((l) => SPRINT_GUIDE[l].length === 14),
   JSON.stringify(langs.map((l) => `${l}:${SPRINT_GUIDE[l].length}`)))
 const flat = (l) => SPRINT_GUIDE[l].flatMap((x) => [x.h, ...(x.p || []), ...(x.list || []), ...(x.after || [])])
 const dashed = langs.filter((l) => flat(l).some((line) => /[\u2013\u2014]/.test(line) || /\s-\s/.test(line)))

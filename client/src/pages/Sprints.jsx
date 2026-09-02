@@ -3,12 +3,13 @@ import { NavLink } from 'react-router-dom'
 import {
   Timer, Plus, X, Check, Trash2, GripVertical, Link2, FileUp, AlignLeft,
   LayoutGrid, Rows3, Lock, Circle, ArrowUpDown, Lightbulb, HelpCircle,
-  ChevronLeft, ChevronRight, History,
+  ChevronLeft, ChevronRight, History, Undo2, ScrollText, CalendarClock,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
 import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
+import Fold from '../components/Fold.jsx'
 import { tr as tx, useT } from '../lib/i18n.jsx'
 import { SPRINT_GUIDE } from '../lib/sprintGuide.js'
 
@@ -127,9 +128,14 @@ export default function Sprints() {
 
   // Every write hands back the whole board, so this is the only place state
   // is replaced and there is never a half-updated screen.
+  const [writes, setWrites] = useState(0)
   const push = useCallback(async (p) => {
-    try { setData(await p); return true } catch (e) { toast(e.message, 'err'); return false }
+    try { setData(await p); setWrites((n) => n + 1); return true }
+    catch (e) { toast(e.message, 'err'); return false }
   }, [])
+  // Anything that hands back a whole board counts as a write, wherever it came
+  // from — the task sheet and the two question sheets all go through here.
+  const took = useCallback((d) => { setData(d); setWrites((n) => n + 1) }, [])
 
   const sprint = data?.sprint
   const left = useCountdown(sprint?.freeze_at || new Date().toISOString())
@@ -242,18 +248,22 @@ export default function Sprints() {
         ? <Board data={data} locked={locked || !liveWeek} byId={byId} onMove={move} onOpen={setOpen} onAdd={push} />
         : <ListView data={data} byId={byId} onOpen={setOpen} sprint={sprint} />}
 
+      <Dropped rows={data.dropped} owner={data.owner} byId={byId} onRestored={took} />
+      <Changes sprintId={sprint.id} stamp={writes} />
+
       {open && (
         <TaskModal
           task={data.tasks.find((t) => t.id === open.id) || open}
-          people={people} locked={locked} onMove={liveWeek ? moveFromWindow : null}
-          sprintId={liveWeek ? null : sprint.id}
-          onClose={() => setOpen(null)} onSaved={setData}
+          people={people} locked={locked} owner={data.owner}
+          onMove={liveWeek ? moveFromWindow : null}
+          sprint={sprint} sprintId={liveWeek ? null : sprint.id}
+          onClose={() => setOpen(null)} onSaved={took}
         />
       )}
       {asking && (
         <AskModal
           task={asking.task} to={asking.to} reasons={data.blockerReasons}
-          onClose={() => setAsking(null)} onSaved={(d) => { setData(d); setAsking(null) }}
+          onClose={() => setAsking(null)} onSaved={(d) => { took(d); setAsking(null) }}
         />
       )}
     </>
@@ -281,6 +291,111 @@ function PersonStrip({ people }) {
         </div>
       ))}
     </div>
+  )
+}
+
+// ---- what was dropped --------------------------------------------------------
+// A task nobody is going to do still happened: it was promised on Monday and
+// abandoned by Thursday, and that is exactly the thing the Saturday meeting
+// is for. Deleting it took the question away with it, so now it leaves the
+// columns and lands here, with who dropped it and why. Folded like everything
+// else, and absent altogether on a week where nothing was dropped.
+function Dropped({ rows, owner, byId, onRestored }) {
+  const [busy, setBusy] = useState(0)
+  if (!rows?.length) return null
+
+  const restore = async (t) => {
+    setBusy(t.id)
+    try { onRestored(await api.post(`/sprints/tasks/${t.id}/restore`)) }
+    catch (e) { toast(e.message, 'err') } finally { setBusy(0) }
+  }
+
+  return (
+    <Fold id="sprint_dropped" title={tx('Dropped this week')} icon={<X size={15} />} count={rows.length}>
+      <div className="card table-wrap">
+        <table className="tbl sp-dropped-tbl">
+          <thead>
+            <tr>
+              <th>{tx('Task')}</th>
+              <th>{tx('Who dropped it')}</th>
+              <th>{tx('Why')}</th>
+              {owner && <th />}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((t) => (
+              <tr key={t.id}>
+                <td><b className="sp-dropped-title">{t.title}</b></td>
+                <td>{byId[t.dropped_by]?.name || <span className="stat-sub">—</span>}</td>
+                <td>{t.dropped_reason || <span className="stat-sub">{tx('No reason given')}</span>}</td>
+                {owner && (
+                  <td className="right">
+                    <button className="btn btn-sm" disabled={busy === t.id} onClick={() => restore(t)}>
+                      <Undo2 size={13} /> {tx('Put it back')}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!owner && (
+        <div className="stat-sub sp-dropped-note">
+          {tx('Only a sprint owner can put a dropped task back.')}
+        </div>
+      )}
+    </Fold>
+  )
+}
+
+// ---- what changed ------------------------------------------------------------
+// The board shows where things stand. This shows what MOVED to get them
+// there — a deadline pushed, a result un-ticked, a task dropped — newest
+// first, with the name of whoever did it. Read out on Saturday when a number
+// does not look like it did on Monday.
+const CHANGE_WORDS = {
+  deadline: 'moved the deadline',
+  status: 'moved it',
+  dropped: 'dropped it',
+  restored: 'put it back',
+}
+function Changes({ sprintId, stamp }) {
+  const [rows, setRows] = useState(null)
+  // `stamp` moves on every write the page makes, so dropping a task from the
+  // card puts the drop in the log underneath it straight away. Without it the
+  // log was whatever it had been when the page opened — a record that does not
+  // include what you just did is a record nobody will trust twice.
+  useEffect(() => {
+    let live = true
+    api.get(`/sprints/activity?sprint=${sprintId}`)
+      .then((r) => { if (live) setRows(Array.isArray(r) ? r : []) })
+      .catch(() => { if (live) setRows([]) })
+    return () => { live = false }
+  }, [sprintId, stamp])
+  if (!rows?.length) return null
+
+  return (
+    <Fold id="sprint_changes" title={tx('What changed')} icon={<ScrollText size={15} />} count={rows.length}>
+      <div className="card card-pad sp-log">
+        {rows.map((r) => (
+          <div className="sp-log-row" key={r.id}>
+            <span className="sp-log-when stat-sub">{String(r.created_at).slice(5, 16).replace('T', ' ')}</span>
+            <span className="sp-log-what">
+              <b>{r.user_name || tx('Someone who left')}</b>
+              {' '}{tx(CHANGE_WORDS[r.kind] || r.kind)}{' '}
+              <i>{r.task_title}</i>
+              {(r.old_value || r.new_value) && (
+                <span className="stat-sub">
+                  {' · '}{r.old_value || '—'} → {r.new_value || '—'}
+                </span>
+              )}
+              {r.note && <span className="sp-log-note">“{r.note}”</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Fold>
   )
 }
 
@@ -576,7 +691,7 @@ function AskModal({ task, to, reasons, onClose, onSaved }) {
 
 // ---- the task ----------------------------------------------------------------
 // One screen, no tabs. Everything except the title is optional.
-export function TaskModal({ task, people, locked, onClose, onSaved, onMove, sprintId = null }) {
+export function TaskModal({ task, people, locked, owner = false, onClose, onSaved, onMove, sprint = null, sprintId = null }) {
   const [form, setForm] = useState({
     title: task.title, description: task.description,
     is_growth: task.is_growth, deadline: task.deadline || '',
@@ -587,7 +702,17 @@ export function TaskModal({ task, people, locked, onClose, onSaved, onMove, spri
   const [files, setFiles] = useState([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [dropping, setDropping] = useState(false)
   const dragRef = useRef(null)
+
+  // A day somebody CHOSE is a promise, and it takes an owner to move it. The
+  // day every task is born with — the end of the week — is not a promise
+  // anybody made, so putting a first real date on a task stays open to
+  // everybody. The server enforces exactly this; the disabled field is the
+  // courtesy that stops somebody typing a date they cannot save.
+  const weekEnd = (sprint?.freeze_at || '').slice(0, 10)
+  const promised = !!task.deadline && task.deadline !== weekEnd
+  const dayLocked = locked || (promised && !owner)
 
   // Naming the week matters when the week is not this one: a task opened from
   // a sprint three weeks ago has to show the items committed for THAT week.
@@ -604,10 +729,11 @@ export function TaskModal({ task, people, locked, onClose, onSaved, onMove, spri
       onClose()
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
-  const remove = async () => {
-    if (!confirm(tx('Delete this task?'))) return
-    try { onSaved(await api.del(`/sprints/tasks/${task.id}`)); onClose() }
-    catch (e) { setErr(e.message) }
+  // Dropping, not deleting. The week keeps its promise count either way — see
+  // the server — so the only thing worth asking for here is why.
+  const drop = async (reason) => {
+    try { onSaved(await api.del(`/sprints/tasks/${task.id}`, { reason })); setDropping(false); onClose() }
+    catch (e) { setDropping(false); setErr(e.message) }
   }
   const addItem = async (e) => {
     e.preventDefault()
@@ -648,8 +774,13 @@ export function TaskModal({ task, people, locked, onClose, onSaved, onMove, spri
   }))
 
   return (
+    <>
     <Modal title={tx('Task')} onClose={onClose} wide footer={<>
-      {!locked && <button className="btn" onClick={remove}><Trash2 size={14} /> {tx('Delete')}</button>}
+      {!locked && (
+        <button className="btn" onClick={() => setDropping(true)}>
+          <Trash2 size={14} /> {tx('Drop it')}
+        </button>
+      )}
       <span className="foot-gap" />
       <button className="btn" onClick={onClose}>{tx('Cancel')}</button>
       <button className="btn btn-primary" disabled={busy || locked} onClick={save}>{tx('Save')}</button>
@@ -698,10 +829,16 @@ export function TaskModal({ task, people, locked, onClose, onSaved, onMove, spri
         </label>
         <span className="sp-deadline-field">
           <label>{tx('Deadline')}</label>
-          <input className="input" type="date" value={form.deadline} disabled={locked}
+          <input className="input" type="date" value={form.deadline} disabled={dayLocked}
             onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
         </span>
       </div>
+      {dayLocked && !locked && (
+        <div className="sp-day-locked stat-sub">
+          <CalendarClock size={13} />
+          {tx('That day is already promised — ask a sprint owner to move it, and say what happened.')}
+        </div>
+      )}
 
       <div className="field">
         <label>{tx('Description')}</label>
@@ -746,6 +883,41 @@ export function TaskModal({ task, people, locked, onClose, onSaved, onMove, spri
         {files.map((f) => <div key={f.id} className="stat-sub">{f.name} · {(f.size / 1024).toFixed(0)} KB</div>)}
         {!locked && <input type="file" onChange={(e) => upload(e.target.files?.[0])} />}
       </div>
+    </Modal>
+
+    {/* A sheet over a sheet, the same way the handover gate opens over a task
+        on the content side — a sibling, not a child, so the question is not
+        laid out inside the form it is asking about. */}
+    {dropping && <DropModal task={task} onClose={() => setDropping(false)} onDrop={drop} />}
+    </>
+  )
+}
+
+// Dropping a task asks one question, and the answer is what the week is read
+// back from. It is not required — somebody halfway out of the door should not
+// be stopped by a form — but it is asked, because "why did twelve become ten"
+// has no other answer once the week is over.
+function DropModal({ task, onClose, onDrop }) {
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <Modal title={tx('Drop this task?')} onClose={onClose} footer={<>
+      <button className="btn" onClick={onClose}>{tx('Keep it')}</button>
+      <button className="btn btn-danger" disabled={busy}
+        onClick={() => { setBusy(true); onDrop(reason.trim()) }}>
+        <Trash2 size={14} /> {tx('Drop it')}
+      </button>
+    </>}>
+      <p className="stat-sub">
+        {tx('It leaves the board and stays on the week, so the count of what was promised does not change. An owner can put it back.')}
+      </p>
+      <div className="field">
+        <label>{tx('What happened?')} <span className="stat-sub">{tx('optional')}</span></label>
+        <textarea className="input sp-drop-why" rows={3} value={reason} autoFocus
+          placeholder={tx('Priority changed, the client cancelled, we are doing it next week…')}
+          onChange={(e) => setReason(e.target.value)} />
+      </div>
+      <div className="stat-sub"><b>{task.title}</b></div>
     </Modal>
   )
 }

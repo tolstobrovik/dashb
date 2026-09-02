@@ -3791,6 +3791,29 @@ button.blame-person:hover { background: var(--surface-2); }
 .sp-past { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
 .sp-weeks { max-width: 300px; font-size: 12.5px; }
 
+/* ---------- round 85: what was dropped, and what moved ---------- */
+/* Both blocks sit under the board and fold away, so a week where nothing was
+   dropped and nothing was argued about looks exactly as it always did. */
+.sp-dropped-tbl .sp-dropped-title { color: var(--muted); text-decoration: line-through; }
+.sp-dropped-tbl td { vertical-align: top; }
+.sp-dropped-note { margin: 8px 2px 0; }
+.sp-log { display: flex; flex-direction: column; gap: 9px; }
+.sp-log-row { display: flex; gap: 10px; align-items: baseline; font-size: 13px; line-height: 1.5; }
+.sp-log-when { flex: none; font-variant-numeric: tabular-nums; font-size: 12px; }
+.sp-log-what { min-width: 0; }
+.sp-log-what i { color: var(--ink-2); font-style: normal; font-weight: 600; }
+.sp-log-note { display: block; color: var(--muted); font-size: 12.5px; }
+/* The reason a date cannot be typed, said where the date is — a disabled box
+   with no explanation reads as a bug in the page. */
+.sp-day-locked {
+  display: flex; align-items: center; gap: 6px; line-height: 1.45;
+  margin-top: -4px; color: var(--warning);
+}
+.sp-day-locked svg { flex: none; }
+@media (max-width: 640px) {
+  .sp-log-row { flex-direction: column; gap: 2px; }
+}
+
 /* Last word on touch sizes, so a rule written earlier in the file cannot win
    the tie simply by being defined further down. */
 @media (hover: none) {
