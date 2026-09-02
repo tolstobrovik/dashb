@@ -922,6 +922,11 @@ export async function initSchema() {
       dropped_at           TEXT,
       dropped_by           INTEGER,
       dropped_reason       TEXT    NOT NULL DEFAULT '',
+      -- WHICH week dropped it. A task can run for three weeks before somebody
+      -- gives up on it, and without this the drop was a fact about the task
+      -- rather than about a week: all three read "1 dropped", including the
+      -- two that carried it and worked on it.
+      dropped_sprint_id    INTEGER,
       created_by           INTEGER,
       created_at           TEXT    NOT NULL,
       updated_at           TEXT    NOT NULL
@@ -1297,6 +1302,7 @@ export async function initSchema() {
     await exec('ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_at TEXT')
     await exec('ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_by INTEGER')
     await exec("ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_reason TEXT NOT NULL DEFAULT ''")
+    await exec('ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_sprint_id INTEGER')
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_channels TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script_key TEXT')
     await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
@@ -1438,6 +1444,7 @@ async function migrate() {
     if (!(await hasColumn('sprint_tasks', 'dropped_at'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_at TEXT')
     if (!(await hasColumn('sprint_tasks', 'dropped_by'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_by INTEGER')
     if (!(await hasColumn('sprint_tasks', 'dropped_reason'))) await exec("ALTER TABLE sprint_tasks ADD COLUMN dropped_reason TEXT NOT NULL DEFAULT ''")
+    if (!(await hasColumn('sprint_tasks', 'dropped_sprint_id'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_sprint_id INTEGER')
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
@@ -1645,14 +1652,10 @@ export const TASK_CHILD_TABLES = [
 export const taskChildDeletes = (id) =>
   TASK_CHILD_TABLES.map((t) => [`DELETE FROM ${t} WHERE content_id = ?`, id])
 
-// Deleting a sprint task takes its week rows, its weekly checklists, its
-// assignees and its files with it. Sprint tasks are NOT content tasks and
-// share none of their children — this is a separate list on purpose.
-export const SPRINT_TASK_CHILD_TABLES = [
-  'sprint_task_sprints', 'sprint_task_assignees', 'sprint_checklist_items', 'sprint_attachments',
-]
-export const sprintTaskChildDeletes = (id) =>
-  SPRINT_TASK_CHILD_TABLES.map((t) => [`DELETE FROM ${t} WHERE task_id = ?`, id])
+// Sprint tasks are never deleted — round 85 made dropping the only way off a
+// board, because a week whose numbers change after the week is over is not a
+// record. The cascade that used to take a sprint task's week rows, checklists,
+// assignees and files with it went with the delete that called it.
 
 // The sprint board needs a week to stand on, and one only: the week we are
 // in. No users, no owners, no sample tasks — sprint_owners ships empty on

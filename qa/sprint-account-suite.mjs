@@ -181,6 +181,39 @@ ok('another week’s log is another week’s',
 // A first day set by a member is not a move and must not clutter the record.
 ok('setting a first day is not logged as a move',
   log.filter((e) => e.kind === 'deadline').length === 1, String(log.filter((e) => e.kind === 'deadline').length))
+// The log is for what was UNDONE. A card walking To Do → In Progress → Done is
+// the week working, and thirty lines of it would bury the two that matter.
+const walked = await mk('spa: walks the board', M)
+await req(`/sprints/tasks/${walked.id}`, 'PATCH', { status: 'in_progress' }, M)
+await req(`/sprints/tasks/${walked.id}`, 'PATCH', {
+  status: 'done', result_type: 'link', result_link: 'https://example.com/it',
+}, M)
+ok('ordinary progress is not written down',
+  (await req('/sprints/activity')).data.filter((e) => e.task_id === walked.id).length === 0)
+await req(`/sprints/tasks/${walked.id}`, 'PATCH', { status: 'in_progress' }, M)
+const undone = (await req('/sprints/activity')).data.filter((e) => e.task_id === walked.id)
+ok('…but pulling one back out of Done is', undone.length === 1 && undone[0].kind === 'status',
+  JSON.stringify(undone.map((e) => e.kind)))
+ok('…and says which way it went', undone[0].old_value === 'done' && undone[0].new_value === 'in_progress',
+  `${undone[0]?.old_value} -> ${undone[0]?.new_value}`)
+
+// A task can run for weeks before somebody gives up on it, and the weeks that
+// carried it did not drop it. (Carrying is not wired up yet; the second week
+// row is written here the way a carry would leave it.)
+const carried = await mk('spa: carried then dropped', M)
+await db.execute({ sql: 'INSERT INTO sprint_task_sprints (task_id, sprint_id, outcome) VALUES (?, ?, NULL)',
+  args: [carried.id, old] })
+await req(`/sprints/tasks/${carried.id}`, 'DELETE', { reason: 'we gave up in the end' }, O)
+const thisWeek = (await req('/sprints/current')).data
+const thatWeek = (await req(`/sprints/${old}`)).data
+ok('the week that dropped it lists it as dropped', thisWeek.dropped.some((x) => x.id === carried.id))
+ok('…and takes it off its own board', !thisWeek.tasks.some((x) => x.id === carried.id))
+ok('the week that carried it keeps it on the board', thatWeek.tasks.some((x) => x.id === carried.id))
+ok('…and is not made to say it dropped it', !thatWeek.dropped.some((x) => x.id === carried.id))
+const hist = (await req('/sprints/history')).data
+ok('the count follows the same rule — this week owns the drop, the week that carried it does not',
+  hist.find((w) => w.id === s0.id).dropped === 1 && hist.find((w) => w.id === old).dropped === 0,
+  JSON.stringify(hist.map((w) => `${w.code}:${w.dropped}`)))
 
 // ---- 5) on the screen --------------------------------------------------------
 // A context per person: signing in twice in one context lands on a page that
@@ -231,8 +264,13 @@ ok('a promised day cannot be typed over', await mp.locator('.sp-deadline-field i
 ok('…and the page says why, rather than looking broken', (await mp.locator('.sp-day-locked').count()) === 1)
 
 const op = await open('spo')
-ok('an owner is offered the button', (await op.locator('.sp-dropped-tbl button', { hasText: 'Put it back' }).count()) === 1)
-await op.locator('.sp-dropped-tbl button', { hasText: 'Put it back' }).click(); await op.waitForTimeout(1600)
+// Two things were dropped this week, so the button is picked by ITS OWN row
+// rather than by the only one on the page.
+const droppedRow = op.locator('.sp-dropped-tbl tbody tr:has(b:text-is("spa: on screen"))')
+ok('an owner is offered the button', (await droppedRow.locator('button', { hasText: 'Put it back' }).count()) === 1)
+ok('…on every dropped row, not just one', (await op.locator('.sp-dropped-tbl tbody tr button').count()) === 2,
+  String(await op.locator('.sp-dropped-tbl tbody tr button').count()))
+await droppedRow.locator('button', { hasText: 'Put it back' }).click(); await op.waitForTimeout(1600)
 ok('…and one press puts it back', (await op.locator('.sp-card', { hasText: 'spa: on screen' }).count()) === 1)
 ok('…and the restore is in the log', /put it back/.test(await op.locator('.sp-log').innerText()))
 await op.locator('.sp-card', { hasText: 'spa: a day' }).click(); await op.waitForTimeout(700)

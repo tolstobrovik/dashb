@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, batch, sprintTaskChildDeletes, ensureCurrentSprint } from '../db.js'
+import { all, get, run, batch, ensureCurrentSprint } from '../db.js'
 import { authRequired, wrap } from '../auth.js'
 import { weekOf, isFrozen, weekLabel } from '../sprintweek.js'
 
@@ -136,8 +136,16 @@ async function readSprint(sprint, userId) {
   `, sprint.id)
   // Dropped work leaves the columns and stays on the week. The board is for
   // what is being done; the record is for what was promised.
-  const rows = everything.filter((r) => !r.dropped_at)
-  const dropped = everything.filter((r) => r.dropped_at)
+  //
+  // Dropped ON THIS WEEK, though. A task can run for three weeks before
+  // somebody gives up on it, and the two weeks that carried it did not drop
+  // it: they promised it and worked on it, and their boards should still read
+  // that way. (A row with no week on its drop predates the column and is
+  // treated as dropped everywhere — never the other way round, so a dropped
+  // task cannot reappear in a column.)
+  const droppedHere = (r) => !!r.dropped_at && (r.dropped_sprint_id == null || r.dropped_sprint_id === sprint.id)
+  const rows = everything.filter((r) => !droppedHere(r))
+  const dropped = everything.filter(droppedHere)
   const ids = rows.map((r) => r.id)
   const inList = ids.length ? `(${ids.map(() => '?').join(',')})` : '(NULL)'
 
@@ -211,6 +219,7 @@ async function readSprint(sprint, userId) {
     dropped: dropped.map((r) => ({
       id: r.id, title: r.title, status: r.status, deadline: r.deadline,
       dropped_at: r.dropped_at, dropped_by: r.dropped_by, dropped_reason: r.dropped_reason,
+      dropped_sprint_id: r.dropped_sprint_id,
     })),
     people: strip,
     blockerReasons: BLOCKER_REASONS,
@@ -231,12 +240,16 @@ router.get('/history', wrap(async (req, res) => {
            (SELECT COUNT(*) FROM sprint_task_sprints ts WHERE ts.sprint_id = s.id) AS tasks,
            (SELECT COUNT(*) FROM sprint_task_sprints ts
               JOIN sprint_tasks t ON t.id = ts.task_id
-             WHERE ts.sprint_id = s.id AND t.status = 'done' AND t.dropped_at IS NULL) AS done,
+             WHERE ts.sprint_id = s.id AND t.status = 'done'
+               AND NOT (t.dropped_at IS NOT NULL
+                        AND (t.dropped_sprint_id IS NULL OR t.dropped_sprint_id = s.id))) AS done,
            -- Counted, not hidden: a week that promised twelve and dropped two
-           -- reads as twelve promised and two dropped, for ever.
+           -- reads as twelve promised and two dropped, for ever. Against the
+           -- week that DROPPED it, not against every week that carried it.
            (SELECT COUNT(*) FROM sprint_task_sprints ts
               JOIN sprint_tasks t ON t.id = ts.task_id
-             WHERE ts.sprint_id = s.id AND t.dropped_at IS NOT NULL) AS dropped
+             WHERE ts.sprint_id = s.id AND t.dropped_at IS NOT NULL
+               AND (t.dropped_sprint_id IS NULL OR t.dropped_sprint_id = s.id)) AS dropped
     FROM sprints s ORDER BY s.start_at DESC
   `)
   const now = Date.now()
@@ -394,7 +407,12 @@ router.patch('/tasks/:id', wrap(async (req, res) => {
     if (next !== 'done' && task.status === 'done') {
       set.result_type = null; set.result_link = ''; set.result_text = ''; set.result_attachment_id = null
     }
-    if (next !== task.status) logs.push(['status', task.status, next])
+    // Only the move that UNDOES something. A card going To Do → In Progress →
+    // Done is the week working, and writing all of it down would bury the two
+    // lines that matter under thirty that do not. A task coming back OUT of
+    // Done is a result un-ticked, which is the thing somebody may want to ask
+    // about on Saturday.
+    if (task.status === 'done' && next !== 'done') logs.push(['status', task.status, next])
     set.status = next
   }
 
@@ -439,8 +457,10 @@ router.delete('/tasks/:id', wrap(async (req, res) => {
   if (task.dropped_at) return res.status(409).json({ error: 'That task is already dropped' })
 
   const reason = String(req.body?.reason ?? '').trim().slice(0, 600)
-  await run('UPDATE sprint_tasks SET dropped_at = ?, dropped_by = ?, dropped_reason = ?, updated_at = ? WHERE id = ?',
-    now(), req.user.id, reason, now(), task.id)
+  await run(`UPDATE sprint_tasks
+                SET dropped_at = ?, dropped_by = ?, dropped_reason = ?, dropped_sprint_id = ?, updated_at = ?
+              WHERE id = ?`,
+  now(), req.user.id, reason, sprint.id, now(), task.id)
   await logSprint(req.user, task, sprint.id, 'dropped', task.status, null, reason)
   // The task's OWN week comes back, not whichever is current — an owner
   // tidying a closed sprint was being handed this week's board in reply, so
@@ -458,8 +478,9 @@ router.post('/tasks/:id/restore', wrap(async (req, res) => {
   if (!(await isOwner(req.user.id)))
     return res.status(403).json({ error: 'Only a sprint owner can put a dropped task back' })
   if (!task.dropped_at) return res.status(409).json({ error: 'That task is not dropped' })
-  await run("UPDATE sprint_tasks SET dropped_at = NULL, dropped_by = NULL, dropped_reason = '', updated_at = ? WHERE id = ?",
-    now(), task.id)
+  await run(`UPDATE sprint_tasks
+                SET dropped_at = NULL, dropped_by = NULL, dropped_reason = '', dropped_sprint_id = NULL, updated_at = ?
+              WHERE id = ?`, now(), task.id)
   const sprint = (await sprintOfTask(task.id)) || (await currentSprint())
   await logSprint(req.user, task, sprint.id, 'restored', null, task.status)
   res.json(await readSprint(sprint, req.user.id))
