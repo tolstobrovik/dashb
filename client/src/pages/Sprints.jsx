@@ -710,8 +710,13 @@ export function TaskModal({ task, people, locked, owner = false, onClose, onSave
   // anybody made, so putting a first real date on a task stays open to
   // everybody. The server enforces exactly this; the disabled field is the
   // courtesy that stops somebody typing a date they cannot save.
+  //
+  // Without a week to compare against — the backlog opens this sheet before a
+  // task has one — nothing is treated as promised. The server is the rule
+  // either way, and of the two ways to be wrong here, a box that refuses with
+  // a sentence is far better than a box that is silently dead.
   const weekEnd = (sprint?.freeze_at || '').slice(0, 10)
-  const promised = !!task.deadline && task.deadline !== weekEnd
+  const promised = !!weekEnd && !!task.deadline && task.deadline !== weekEnd
   const dayLocked = locked || (promised && !owner)
 
   // Naming the week matters when the week is not this one: a task opened from

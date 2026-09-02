@@ -146,6 +146,15 @@ ok('a dropped task cannot be edited by a member',
 
 const bad = await req(`/sprints/tasks/${t2.id}/restore`, 'POST', {}, M)
 ok('a member cannot put it back', bad.status === 403, `${bad.status} ${bad.data.error || ''}`)
+// Every write here answers with the week it wrote TO. An owner tidying a
+// closed sprint was handed this week's board in reply, so the screen jumped
+// forward while the header still said the week they were reading.
+const oldDropped = await req(`/sprints/tasks/${past.id}`, 'DELETE', { reason: 'after the fact' }, O)
+ok('dropping on a past week answers with THAT week', oldDropped.data.sprint?.id === old,
+  `${oldDropped.data.sprint?.id} vs ${old}`)
+const oldBack = await req(`/sprints/tasks/${past.id}/restore`, 'POST', {}, O)
+ok('…and so does putting it back', oldBack.data.sprint?.id === old,
+  `${oldBack.data.sprint?.id} vs ${old}`)
 ok('an owner can', (await req(`/sprints/tasks/${t2.id}/restore`, 'POST', {}, O)).status === 200)
 const back = (await req('/sprints/current')).data
 ok('…and it is back on the board', back.tasks.some((t) => t.id === t2.id))

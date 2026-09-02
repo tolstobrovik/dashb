@@ -442,7 +442,12 @@ router.delete('/tasks/:id', wrap(async (req, res) => {
   await run('UPDATE sprint_tasks SET dropped_at = ?, dropped_by = ?, dropped_reason = ?, updated_at = ? WHERE id = ?',
     now(), req.user.id, reason, now(), task.id)
   await logSprint(req.user, task, sprint.id, 'dropped', task.status, null, reason)
-  res.json(await readSprint(await currentSprint(), req.user.id))
+  // The task's OWN week comes back, not whichever is current — an owner
+  // tidying a closed sprint was being handed this week's board in reply, so
+  // the screen silently jumped forward while the header still said the week
+  // they were reading. Every other write on this router answers with the week
+  // it wrote to; these two now do the same.
+  res.json(await readSprint(sprint, req.user.id))
 }))
 
 // Putting one back. An owner's call, because dropping is the team's and
@@ -457,7 +462,7 @@ router.post('/tasks/:id/restore', wrap(async (req, res) => {
     now(), task.id)
   const sprint = (await sprintOfTask(task.id)) || (await currentSprint())
   await logSprint(req.user, task, sprint.id, 'restored', null, task.status)
-  res.json(await readSprint(await currentSprint(), req.user.id))
+  res.json(await readSprint(sprint, req.user.id))
 }))
 
 // What was changed after the fact on this week, newest first — the thing to
