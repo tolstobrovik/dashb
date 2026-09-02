@@ -37,7 +37,9 @@ const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => 
 ok('Copy link writes the task URL', clip.includes(`/brief?task=${src.id}`))
 
 // ---- 2) Duplicate from the modal ----
-await p.locator('.modal .btn-ghost', { hasText: 'Duplicate' }).click(); await p.waitForTimeout(900)
+// On a desk the tool is an icon named by its tooltip, so it is picked by the
+// name it carries for a screen reader rather than by printed text.
+await p.locator('.modal .btn-ghost[aria-label="Duplicate"]').click(); await p.waitForTimeout(900)
 // Round 78 renamed what a duplicate is called. "(copy)" was one name however
 // many copies you made, so a second press produced a second row with the same
 // title as the first; it is "Duplicate 1", "Duplicate 2" now, numbered by the

@@ -354,9 +354,13 @@ function Dropped({ rows, owner, byId, onRestored }) {
 // there — a deadline pushed, a result un-ticked, a task dropped — newest
 // first, with the name of whoever did it. Read out on Saturday when a number
 // does not look like it did on Monday.
+// Only the status move that undoes something is ever written down, so this
+// says what that move actually is rather than the vague "moved it" it said
+// while every move was being recorded.
 const CHANGE_WORDS = {
   deadline: 'moved the deadline',
-  status: 'moved it',
+  status: 'took it back out of Done',
+  title: 'renamed it',
   dropped: 'dropped it',
   restored: 'put it back',
 }
@@ -913,6 +917,7 @@ function DropModal({ task, onClose, onDrop }) {
         <Trash2 size={14} /> {tx('Drop it')}
       </button>
     </>}>
+      <div className="sp-drop-what"><b>{task.title}</b></div>
       <p className="stat-sub">
         {tx('It leaves the board and stays on the week, so the count of what was promised does not change. An owner can put it back.')}
       </p>
@@ -922,7 +927,6 @@ function DropModal({ task, onClose, onDrop }) {
           placeholder={tx('Priority changed, the client cancelled, we are doing it next week…')}
           onChange={(e) => setReason(e.target.value)} />
       </div>
-      <div className="stat-sub"><b>{task.title}</b></div>
     </Modal>
   )
 }

@@ -344,6 +344,11 @@ router.patch('/tasks/:id', wrap(async (req, res) => {
   if (body.title !== undefined) {
     const title = cleanTitle(body.title)
     if (!title) return res.status(400).json({ error: 'A task needs a title' })
+    // Renaming is the other quiet way to change what a week promised: "Ship
+    // the campaign" becomes "Draft an idea" and the record reads as though
+    // that is what was ever asked for. Anybody may still do it — this is a
+    // board, not a contract — but it is written down.
+    if (title !== task.title) logs.push(['title', task.title, title])
     set.title = title
   }
   if (body.description !== undefined) set.description = String(body.description)

@@ -1364,9 +1364,12 @@ const PHRASES = {
     "What happened?": "Что случилось?",
     "Priority changed, the client cancelled, we are doing it next week…": "Поменялся приоритет, клиент отменил, перенесли на следующую неделю…",
     "moved the deadline": "перенёс срок",
-    "moved it": "перенёс её",
+    "took it back out of Done": "вернул её из «Готово»",
+    "renamed it": "переименовал её",
     "dropped it": "снял её",
     "put it back": "вернул её",
+    "Raise a hand": "Поднять руку",
+    "Back to the full task": "Вернуться к полной задаче",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -2198,9 +2201,12 @@ const PHRASES = {
     "What happened?": "Nima boʻldi?",
     "Priority changed, the client cancelled, we are doing it next week…": "Ustuvorlik oʻzgardi, mijoz bekor qildi, keyingi haftaga qoldirdik…",
     "moved the deadline": "muddatni koʻchirdi",
-    "moved it": "uni koʻchirdi",
+    "took it back out of Done": "uni «Tayyor» dan qaytardi",
+    "renamed it": "uning nomini oʻzgartirdi",
     "dropped it": "uni olib tashladi",
     "put it back": "uni qaytardi",
+    "Raise a hand": "Qoʻl koʻtarish",
+    "Back to the full task": "Toʻliq vazifaga qaytish",
   },
 }
 

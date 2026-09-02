@@ -1093,9 +1093,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           onClick={() => phone && setTools(false)}>
         {!creating && canEdit && <button className="btn btn-danger" onClick={del}><Trash2 size={15} />{' '}{tx("Delete")}</button>}
         {!creating && canEdit && !crewViewer && (
-          <button className="btn btn-ghost" onClick={duplicate} disabled={busy}
-            data-tip={tx("A fresh copy: brief, crew and platforms kept — dates and stage cleared")}>
-            <CopyPlus size={15} /> {t('task.duplicate')}
+          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')} onClick={duplicate} disabled={busy}
+            data-tip={tx("A fresh copy: brief, crew and platforms kept — dates and stage cleared")}
+            aria-label={t('task.duplicate')}>
+            <CopyPlus size={15} />{phone ? <> {t('task.duplicate')}</> : null}
           </button>
         )}
         {!creating && (
@@ -1113,7 +1114,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         {!creating && ['admin', 'member'].includes(user.role) && crewHats.length > 0 && (
           asCrew ? (
             <button className="btn btn-ghost" onClick={() => setAsCrew(null)}>
-              <Eye size={15} /> Back to the full task
+              <Eye size={15} /> {tx('Back to the full task')}
             </button>
           ) : (
             <span className="crew-peek">
@@ -1129,9 +1130,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           )
         )}
         {canRaise && !raising && openFlags.length === 0 && (
-          <button className="btn btn-ghost" onClick={() => setRaising({ kind: 'at_risk', reason: '' })}
-            data-tip={tx("Say early that this is in trouble")}>
-            <Hand size={15} /> Raise a hand
+          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')}
+            onClick={() => setRaising({ kind: 'at_risk', reason: '' })}
+            data-tip={tx("Say early that this is in trouble")} aria-label={tx('Raise a hand')}>
+            <Hand size={15} />{phone ? <> {tx('Raise a hand')}</> : null}
           </button>
         )}
         </div>

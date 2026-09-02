@@ -176,8 +176,16 @@ ok('the log names the task, so a deleted row still reads',
 ok('newest first', Date.parse(log[0].created_at) >= Date.parse(log[log.length - 1].created_at))
 ok('a member may read it — this is for the Saturday meeting, not for owners',
   (await req('/sprints/activity', 'GET', null, M)).status === 200)
-ok('another week’s log is another week’s',
-  (await req(`/sprints/activity?sprint=${old}`)).data.length !== log.length)
+// Scoped by content, not by count: two weeks can happen to hold the same
+// number of lines, and a check that only compares lengths passes on that.
+const otherLog = (await req(`/sprints/activity?sprint=${old}`)).data
+ok('another week’s log holds that week’s changes and not this one’s',
+  otherLog.some((e) => e.task_id === past.id) && !otherLog.some((e) => e.task_id === t2.id),
+  JSON.stringify(otherLog.map((e) => `${e.task_id}:${e.kind}`)))
+// Renaming is the other quiet way to change what a week promised.
+ok('a rename is written down too',
+  otherLog.some((e) => e.kind === 'title' && e.new_value === 'spa: owner fixed it'),
+  JSON.stringify(otherLog.filter((e) => e.kind === 'title').map((e) => `${e.old_value} -> ${e.new_value}`)))
 // A first day set by a member is not a move and must not clutter the record.
 ok('setting a first day is not logged as a move',
   log.filter((e) => e.kind === 'deadline').length === 1, String(log.filter((e) => e.kind === 'deadline').length))

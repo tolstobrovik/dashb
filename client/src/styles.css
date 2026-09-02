@@ -709,7 +709,12 @@ table.tbl tr:hover td { background: var(--surface-2); }
    fixed. */
 .modal-foot .btn-ghost, .modal-foot .btn-danger,
 .modal-foot .crew-peek .select { padding: 7px 11px; font-size: 13px; }
-.modal-foot .crew-peek .select { max-width: 170px; }
+/* 170px was a select sized to whatever the longest crew name happened to be,
+   and it is the one item in this row whose width nobody controls. With every
+   tool showing at once — a task that has crew on it and a day still ahead —
+   the row ran past 760px and the footer wrapped to two lines, taking 41px off
+   the form. The full options are still readable in the open list. */
+.modal-foot .crew-peek .select { max-width: 110px; }
 
 /* ---------- on a phone a window stops pretending to be a window ----------
    It comes up off the bottom edge as a sheet: full width, title pinned at the
@@ -3797,6 +3802,7 @@ button.blame-person:hover { background: var(--surface-2); }
 .sp-dropped-tbl .sp-dropped-title { color: var(--muted); text-decoration: line-through; }
 .sp-dropped-tbl td { vertical-align: top; }
 .sp-dropped-note { margin: 8px 2px 0; }
+.sp-drop-what { font-size: 14.5px; line-height: 1.4; }
 .sp-log { display: flex; flex-direction: column; gap: 9px; }
 .sp-log-row { display: flex; gap: 10px; align-items: baseline; font-size: 13px; line-height: 1.5; }
 .sp-log-when { flex: none; font-variant-numeric: tabular-nums; font-size: 12px; }
