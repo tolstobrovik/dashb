@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, publicUser, tashkentDay, dayISO } from '../db.js'
+import { all, get, run, publicUser, tashkentDay, dayISO, getSkipTiers, tierFor, getMakerGrades, gradeFor } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 import { resolveGates, phasesOf, phasePassed } from '../deadlines.js'
 
@@ -351,6 +351,131 @@ router.get('/', wrap(async (req, res) => {
 //
 // A piece counts in the window by the day it went out, which is the day its
 // views started being earned.
+// Closing a month: everything that went out in it is marked paid, once, with
+// who said so. Paying happens outside this system — this records that it was
+// done, the same way the sprint board records who dropped a task rather than
+// pretending the system did it.
+router.post('/work/paid', adminOnly, wrap(async (req, res) => {
+  const month = String(req.body?.month ?? '').trim()
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'A month is YYYY-MM' })
+  const stamp = new Date().toISOString()
+  const rows = await all('SELECT id, done_at, paid_month FROM content WHERE done_at IS NOT NULL')
+  const due = rows.filter((r) => !r.paid_month && tashkentDay(r.done_at).slice(0, 7) === month)
+  for (const r of due) {
+    await run('UPDATE content SET paid_month = ?, paid_at = ?, paid_by = ? WHERE id = ?', month, stamp, req.user.id, r.id)
+  }
+  res.json({ month, marked: due.length })
+}))
+
+// Re-opening one, for the month somebody closed by mistake. Only what THAT
+// month stamped comes back — a piece paid in an earlier month is left alone.
+router.post('/work/unpaid', adminOnly, wrap(async (req, res) => {
+  const month = String(req.body?.month ?? '').trim()
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'A month is YYYY-MM' })
+  const rows = await all('SELECT id FROM content WHERE paid_month = ?', month)
+  for (const r of rows) await run('UPDATE content SET paid_month = NULL, paid_at = NULL, paid_by = NULL WHERE id = ?', r.id)
+  res.json({ month, reopened: rows.length })
+}))
+
+// ---- what each person actually made this month -----------------------------
+// The delivery report says whether work was on time. It never said WHAT
+// anybody made — and for an operator or an editor, that is the whole question:
+// how many did I film, how many did I cut, and how many did I do both ends of.
+// Both ends matters on its own: a piece somebody shot AND edited is one piece
+// of work, not two half ones, and counting it in both columns and nowhere else
+// hides the people carrying whole pieces alone.
+//
+// And under the counts, the register the numbers came from — one row per
+// piece, numbered, with where it went live and whether it has been paid — so
+// anybody can check the total rather than take it.
+router.get('/work', wrap(async (req, res) => {
+  const { from, to } = statsRange(req.query)
+  const channel = req.query.channel && req.query.channel !== 'all' ? String(req.query.channel) : null
+
+  const statuses = await all('SELECT * FROM statuses')
+  const dead = new Set(statuses.filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
+  const users = (await all('SELECT * FROM users')).map(publicUser)
+  const nameOf = (id) => users.find((u) => u.id === id)?.name || null
+  const tiers = await getSkipTiers()
+  const grades = await getMakerGrades()
+
+  const rows = (await all(`
+    SELECT id, title, channels, type, status_id, assignee_id, assignees, done_at, release_date,
+           operator_id, editor_id, designer_id, face_id, views, skip_rate, post_link, paid_month
+    FROM content
+  `)).map((r) => ({ ...r, channels: parseList(r.channels) }))
+
+  // A piece counts in the window by the day it went out — the day the work
+  // was finished, not the day it was planned.
+  const made = rows.filter((r) => {
+    if (dead.has(r.status_id)) return false
+    if (channel && !r.channels.includes(channel)) return false
+    if (!r.done_at) return false
+    const day = tashkentDay(r.done_at)
+    return day >= from && day <= to
+  })
+
+  const zero = () => ({ filmed: 0, edited: 0, both: 0, faced: 0, made_for: 0, views: 0, tier_pay: 0 })
+  const people = {}
+  const seat = (id) => (people[id] ||= zero())
+
+  for (const r of made) {
+    const shot = r.operator_id
+    const cut = r.editor_id
+    const tier = tierFor(tiers, r.skip_rate)
+    // Both ends counted ONCE, as one piece carried alone — not as a film and
+    // an edit that happen to share a name.
+    if (shot && cut && shot === cut) seat(shot).both += 1
+    else {
+      if (shot) seat(shot).filmed += 1
+      if (cut) seat(cut).edited += 1
+    }
+    if (shot && tier) seat(shot).tier_pay += tier.per_film
+    if (cut && tier) seat(cut).tier_pay += tier.per_edit
+    if (r.face_id) seat(r.face_id).faced += 1
+    for (const id of (() => { try { const a = JSON.parse(r.assignees || '[]'); return a.length ? a : (r.assignee_id ? [r.assignee_id] : []) } catch { return r.assignee_id ? [r.assignee_id] : [] } })()) {
+      const p = seat(id)
+      p.made_for += 1
+      if (r.views != null) p.views += Number(r.views) || 0
+    }
+  }
+
+  res.json({
+    from,
+    to,
+    tiers,
+    people: Object.entries(people).map(([id, p]) => ({
+      user_id: Number(id),
+      name: nameOf(Number(id)) || 'Someone who left',
+      ...p,
+      // Which rung of the ladder their delivered count puts them on.
+      ...gradeFor(grades, p.made_for || (p.filmed + p.edited + p.both)),
+    })).sort((a, b) => (b.filmed + b.edited + b.both) - (a.filmed + a.edited + a.both)),
+    // The register the counts came from, numbered, newest last so the numbers
+    // read the way a spreadsheet reads.
+    sheet: made
+      .sort((a, b) => String(a.done_at).localeCompare(String(b.done_at)))
+      .map((r, i) => ({
+        n: i + 1,
+        id: r.id,
+        title: r.title,
+        type: r.type,
+        channels: r.channels,
+        day: tashkentDay(r.done_at),
+        filmed_by: nameOf(r.operator_id),
+        edited_by: nameOf(r.editor_id),
+        face: nameOf(r.face_id),
+        post_link: r.post_link || '',
+        views: r.views == null ? null : Number(r.views),
+        skip_rate: r.skip_rate == null ? null : Number(r.skip_rate),
+        tier: tierFor(tiers, r.skip_rate)?.name || null,
+        // Paid is a fact somebody recorded, not a guess from the calendar.
+        paid: !!r.paid_month,
+        paid_month: r.paid_month || null,
+      })),
+  })
+}))
+
 router.get('/views', wrap(async (req, res) => {
   const { from, to } = statsRange(req.query)
   const channel = req.query.channel && req.query.channel !== 'all' ? String(req.query.channel) : null

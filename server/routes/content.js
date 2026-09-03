@@ -231,6 +231,7 @@ const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, ass
   shot_at, edited_at, edit_due_revised, review_due_revised,
   miss_blame, miss_blame_note, miss_blame_by,
   views, views_at, views_by,
+  face_id, skip_rate, skip_rate_at,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, post_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
   shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note,
@@ -1102,7 +1103,16 @@ const DUP_SKIP = new Set([
   'status_id',
   // and what came out of it
   'ready_link', 'ready_file', 'shot_link', 'shot_file', 'design_link', 'design_file', 'post_link',
+  'paid_month', 'paid_at', 'paid_by',
+  // …and how THAT week performed. A duplicate has not been watched by anybody
+  // yet; carrying the original's numbers across would put one piece's views
+  // and skip rate — and so one piece's pay — on two.
+  'views', 'views_at', 'views_by', 'skip_rate', 'skip_rate_at',
+  'miss_blame', 'miss_blame_note', 'miss_blame_by',
 ])
+// face_id is NOT in that list on purpose: whose face carries a recurring piece
+// is part of its brief, like the crew and the platforms, and round 78 settled
+// that a duplicate keeps the brief.
 
 router.post('/:id/duplicate', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
@@ -1830,6 +1840,41 @@ router.patch('/:id', wrap(async (req, res) => {
       patch.views = n
       patch.views_at = new Date().toISOString()
       patch.views_by = req.user.id
+    }
+  }
+
+  // How much of it people skipped, from the same place and the same hands as
+  // the view count. Empty means nobody has measured it — which is NOT the same
+  // as nought, and the pay tiers depend on being able to tell them apart.
+  if (body.skip_rate !== undefined) {
+    const madeIt = [row.assignee_id, ...assigneesOf(row)].filter(Boolean).includes(req.user.id)
+    if (!adminHere(req.user, row) && !madeIt)
+      return res.status(403).json({ error: 'Only an admin on this channel, or somebody the piece is for, records its skip rate' })
+    if (body.skip_rate === null || body.skip_rate === '') {
+      patch.skip_rate = null
+      patch.skip_rate_at = null
+    } else {
+      const n = Number(body.skip_rate)
+      if (!Number.isFinite(n) || n < 0 || n > 100)
+        return res.status(400).json({ error: 'A skip rate is a percentage between 0 and 100, or empty for “nobody has measured it”' })
+      patch.skip_rate = n
+      patch.skip_rate_at = new Date().toISOString()
+    }
+  }
+
+  // Whose face carries the piece. Part of the brief — it is decided when the
+  // piece is planned, not when it is delivered — so it is set by whoever may
+  // edit the task, and it is checked against a real person the same way the
+  // crew seats are.
+  if (body.face_id !== undefined) {
+    if (!can(req.user, 'manage_content'))
+      return res.status(403).json({ error: 'You can’t set who is in this' })
+    if (body.face_id === null || body.face_id === '') patch.face_id = null
+    else {
+      const id = Number(body.face_id)
+      if (!Number.isFinite(id) || !(await userExists(id)))
+        return res.status(400).json({ error: 'That person is no longer on the team — refresh the page and pick again' })
+      patch.face_id = id
     }
   }
 

@@ -624,6 +624,23 @@ export async function initSchema() {
       -- where to go and look at it, which is also why no report could ever
       -- list what a person had made.
       post_link      TEXT,
+      -- WHO IS IN IT. Not who filmed it or cut it — whose face carries the
+      -- piece. On a target video that is the whole product, and it is a
+      -- different person from the crew often enough that borrowing one of
+      -- their fields would have lied about both.
+      face_id        INTEGER,
+      -- How much of it people sat through, as a percentage that was SKIPPED.
+      -- Typed in beside the view count, from the same place, by the same
+      -- people. Lower is better, and the pay tiers read it.
+      skip_rate      REAL,
+      skip_rate_at   TEXT,
+      -- The month this piece was PAID in, stamped when an admin closes a
+      -- month. "Paid" is a fact somebody recorded, not something worked out
+      -- from the calendar — a month that has not been closed is not paid, and
+      -- the register says so rather than guessing.
+      paid_month     TEXT,
+      paid_at        TEXT,
+      paid_by        INTEGER,
       reference_text TEXT,   -- style / mood / length / format notes for the crew
       reference_links TEXT   NOT NULL DEFAULT '[]', -- example URLs (reference videos/posts)
       format         TEXT,   -- the shape of the piece: talking head, split screen…
@@ -1348,6 +1365,12 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shot_link TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_link TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS post_link TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS face_id INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS skip_rate REAL')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS skip_rate_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS paid_month TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS paid_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS paid_by INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS reference_text TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS reference_links TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS format TEXT')
@@ -1530,6 +1553,12 @@ async function migrate() {
     if (!(await hasColumn('sprint_tasks', 'dropped_reason'))) await exec("ALTER TABLE sprint_tasks ADD COLUMN dropped_reason TEXT NOT NULL DEFAULT ''")
     if (!(await hasColumn('sprint_tasks', 'dropped_sprint_id'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_sprint_id INTEGER')
     if (!(await hasColumn('content', 'post_link'))) await exec('ALTER TABLE content ADD COLUMN post_link TEXT')
+    if (!(await hasColumn('content', 'face_id'))) await exec('ALTER TABLE content ADD COLUMN face_id INTEGER')
+    if (!(await hasColumn('content', 'skip_rate'))) await exec('ALTER TABLE content ADD COLUMN skip_rate REAL')
+    if (!(await hasColumn('content', 'skip_rate_at'))) await exec('ALTER TABLE content ADD COLUMN skip_rate_at TEXT')
+    if (!(await hasColumn('content', 'paid_month'))) await exec('ALTER TABLE content ADD COLUMN paid_month TEXT')
+    if (!(await hasColumn('content', 'paid_at'))) await exec('ALTER TABLE content ADD COLUMN paid_at TEXT')
+    if (!(await hasColumn('content', 'paid_by'))) await exec('ALTER TABLE content ADD COLUMN paid_by INTEGER')
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
@@ -1691,6 +1720,68 @@ export async function getPageRules() {
   const out = { ...DEFAULT_PAGES }
   for (const k of PAGE_KEYS) if (typeof stored[k] === 'boolean') out[k] = stored[k]
   return out
+}
+
+// ---- what a reel earns, by how much of it people watched ------------------
+// A tier is a band of SKIP RATE and what a piece in that band pays the person
+// who filmed it and the person who cut it. Lower skip is better, so A is the
+// tightest band and the bands are read in order.
+//
+// It lives in meta beside the other board-wide rules rather than in a table:
+// it is one short list an admin edits as a whole, and every read wants all of
+// it. Empty means nobody is paid by tier — which is what everyone was before
+// this existed, so no board changed when it appeared.
+export const DEFAULT_SKIP_TIERS = []
+export async function getSkipTiers() {
+  let stored = []
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'skip_tiers'"))?.value || '[]')
+    if (!Array.isArray(stored)) stored = []
+  } catch { stored = [] }
+  return stored
+    .map((t) => ({
+      name: String(t?.name ?? '').trim().slice(0, 12),
+      min: Number(t?.min) || 0,
+      max: Number(t?.max) || 0,
+      per_film: Number(t?.per_film) || 0,
+      per_edit: Number(t?.per_edit) || 0,
+    }))
+    .filter((t) => t.name && t.max >= t.min)
+    .slice(0, 12)
+}
+// Which tier a piece falls in. A piece nobody has measured falls in NO tier —
+// it is not "the worst one", it is not counted, the same way an uncounted view
+// adds nothing rather than adding zero.
+export function tierFor(tiers, skip) {
+  if (skip === null || skip === undefined || Number.isNaN(Number(skip))) return null
+  const v = Number(skip)
+  return tiers.find((t) => v >= t.min && v <= t.max) || null
+}
+
+// ---- how many pieces earns which grade ------------------------------------
+// "A+ is twenty-four reels a month, A is twenty." The admin sets the ladder;
+// everybody sees which rung they are on and what the next one costs. Same
+// shape and same reasoning as the tiers above.
+export async function getMakerGrades() {
+  let stored = []
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'maker_grades'"))?.value || '[]')
+    if (!Array.isArray(stored)) stored = []
+  } catch { stored = [] }
+  return stored
+    .map((g) => ({ name: String(g?.name ?? '').trim().slice(0, 12), pieces: Math.max(0, Math.round(Number(g?.pieces) || 0)) }))
+    .filter((g) => g.name && g.pieces > 0)
+    .sort((a, b) => b.pieces - a.pieces)
+    .slice(0, 12)
+}
+// The rung somebody is standing on, and the one above it. Nothing delivered is
+// not a grade — it is the bottom of the ladder, and saying "F" at somebody who
+// has just joined is not what this is for.
+export function gradeFor(grades, count) {
+  const n = Number(count) || 0
+  const at = grades.find((g) => n >= g.pieces) || null
+  const next = [...grades].reverse().find((g) => g.pieces > n) || null
+  return { grade: at?.name || null, at: at?.pieces ?? null, next: next?.name || null, next_at: next?.pieces ?? null, count: n }
 }
 
 export async function getTaskFields() {

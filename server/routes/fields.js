@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { run, getTaskFields, DEFAULT_TASK_FIELDS, TASK_FIELD_KEYS, CONTENT_TYPES, getCrewNeeds, CREW_NEED_KEYS, getPageRules, PAGE_KEYS } from '../db.js'
+import { run, getTaskFields, DEFAULT_TASK_FIELDS, TASK_FIELD_KEYS, CONTENT_TYPES, getCrewNeeds, CREW_NEED_KEYS, getPageRules, PAGE_KEYS, getSkipTiers, getMakerGrades } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 
 // How this board is set up, in one place: which briefing fields the task form
@@ -15,7 +15,17 @@ router.use(authRequired)
 router.get('/', wrap(async (req, res) => {
   // The brief fields plus the crew rules ride together — one fetch tells the
   // client both what a task asks for and who it is expected to carry.
-  res.json({ ...(await getTaskFields()), crew: await getCrewNeeds(), pages: await getPageRules() })
+  res.json({
+    ...(await getTaskFields()),
+    crew: await getCrewNeeds(),
+    pages: await getPageRules(),
+    // What a reel earns by how much of it was watched, and how many pieces
+    // earns which grade. Everybody reads these: a person is shown their own
+    // grade and what their pieces earned, so hiding the ladder from the people
+    // climbing it would be the wrong way round.
+    skip_tiers: await getSkipTiers(),
+    maker_grades: await getMakerGrades(),
+  })
 }))
 
 router.post('/', adminOnly, wrap(async (req, res) => {
@@ -51,6 +61,33 @@ router.post('/', adminOnly, wrap(async (req, res) => {
     await run("INSERT INTO meta (key, value) VALUES ('crew_needs', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       JSON.stringify(crew))
   }
+  // The skip-rate pay tiers, as a whole list — an admin edits the ladder, not
+  // one rung of it, so the list arrives complete or not at all. Sending an
+  // empty array is a real choice: it means nobody is paid by tier.
+  if (Array.isArray(body.skip_tiers)) {
+    const tiers = body.skip_tiers
+      .map((t) => ({
+        name: String(t?.name ?? '').trim().slice(0, 12),
+        min: Math.max(0, Math.min(100, Number(t?.min) || 0)),
+        max: Math.max(0, Math.min(100, Number(t?.max) || 0)),
+        per_film: Math.max(0, Number(t?.per_film) || 0),
+        per_edit: Math.max(0, Number(t?.per_edit) || 0),
+      }))
+      .filter((t) => t.name && t.max >= t.min)
+      .slice(0, 12)
+    await run("INSERT INTO meta (key, value) VALUES ('skip_tiers', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      JSON.stringify(tiers))
+  }
+  // How many pieces earns which grade, same shape and same reasoning.
+  if (Array.isArray(body.maker_grades)) {
+    const grades = body.maker_grades
+      .map((g) => ({ name: String(g?.name ?? '').trim().slice(0, 12), pieces: Math.max(0, Math.round(Number(g?.pieces) || 0)) }))
+      .filter((g) => g.name && g.pieces > 0)
+      .slice(0, 12)
+    await run("INSERT INTO meta (key, value) VALUES ('maker_grades', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      JSON.stringify(grades))
+  }
+
   // Which pages the team has. Only sent keys change, so a client that knows
   // about fewer pages than the server does cannot switch off the rest.
   if (body.pages && typeof body.pages === 'object') {
