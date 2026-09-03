@@ -25,6 +25,33 @@ ok('multi-role account stores both capabilities', Array.isArray(cru.crew_roles) 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") + button, .pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -38,10 +65,10 @@ await page.goto(BASE + '/dept/instagram_main')
 await page.waitForSelector('.tcard', { timeout: 12000 })
 await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-const opSel = page.locator('.modal .crew-field select').first()
-const edSel = page.locator('.modal .crew-field select').nth(1)
-const opOptions = await opSel.locator('option').allTextContents()
-const edOptions = await edSel.locator('option').allTextContents()
+const opSel = page.locator('.modal .crew-field .pp-field').first()
+const edSel = page.locator('.modal .crew-field .pp-field').nth(1)
+const opOptions = await ppNames(opSel)
+const edOptions = await ppNames(edSel)
 ok('an operator-role holder is offered as operator', opOptions.some((o) => o.includes('Rustam Multihat')))
 ok('…and, holding the editor role too, as editor of the same video', edOptions.some((o) => o.includes('Rustam Multihat')))
 await opSel.selectOption(String(cru.id))
@@ -70,8 +97,8 @@ for (let i = 0; i < 2; i++) {
 }
 await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-const rankedOps = await page.locator('.modal .crew-field select').first().locator('option').allTextContents()
-ok('most-picked person now leads the operator list', rankedOps[1].includes('Rustam Multihat'), rankedOps.slice(0, 3).join(' | '))
+const rankedOps = await ppNames(page.locator('.modal .crew-field .pp-field').first())
+ok('most-picked person now leads the operator list', rankedOps[0].includes('Rustam Multihat'), rankedOps.slice(0, 3).join(' | '))
 await page.keyboard.press('Escape')
 await page.waitForTimeout(300)
 

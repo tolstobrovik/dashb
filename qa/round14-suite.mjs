@@ -57,6 +57,33 @@ ok('non-admin cannot multi-assign others', (await req('/content', 'POST', { titl
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
+
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -103,15 +130,14 @@ ok('a video offers the Operator and Editor hats', labels.length === 2
   && /Operator/.test(labels[0]) && /Editor/.test(labels[1]), labels.join(' | '))
 // Round 27: specialists lead their optgroup; everyone else is offered below
 // for one-time duty — so the check is on who LEADS, not who appears.
-const edSpecial = await page.locator('.modal .crew-field select').nth(1).locator('optgroup[label="Editors"] option').allTextContents()
+const edSpecial = await ppNames(page.locator('.modal .crew-field .pp-field').nth(1), 'Editors')
 ok('the editor specialists lead their list', edSpecial.some((o) => o.includes('Malika')) && !edSpecial.some((o) => o.includes('Otkir')))
 ok('both deadline rows present', /Edit ready/.test(await page.locator('.modal .dates-block').textContent())
   && /Design ready/.test(await page.locator('.modal .dates-block').textContent()))
 
-const addSel = page.locator('.modal .assignee-add')
-await addSel.selectOption({ label: 'Mirabbos Tashkentov' })
-await page.waitForTimeout(200)
-await addSel.selectOption({ label: 'Jasmina Karimova' })
+const addSel = page.locator('.modal .assignee-add .pp-field')
+await ppPick(addSel, 'Mirabbos Tashkentov')
+await ppPick(addSel, 'Jasmina Karimova')
 await page.waitForTimeout(200)
 ok('two assignee chips picked', (await page.locator('.modal .assignee-chip').count()) === 2,
   String(await page.locator('.modal .assignee-chip').count()))

@@ -73,7 +73,19 @@ const hats = await page.locator('.modal .crew-label').allTextContents()
 ok('a post carries the two hats with a stage', hats.length === 2, hats.join(' / '))
 ok('the designer hat is not offered', !hats.some((h) => /designer/i.test(h)), hats.join(' / '))
 ok('marked optional', (await page.locator('.modal').textContent()).includes('optional'))
-await page.locator('.modal .crew-field select').nth(1).selectOption({ label: 'Polish Operator' })
+// The crew seats are a searchable picker now, not a <select> — a select's
+// type-ahead jumps to the first matching name instead of narrowing the list,
+// which is the thing that was wrong with it. Driven the way a person drives
+// it: open the second seat, type part of the name, press the row.
+await page.locator('.modal .crew-field .pp-field').nth(1).click()
+await page.waitForSelector('.pp-pop .pp-search .input', { timeout: 8000 })
+await page.fill('.pp-pop .pp-search .input', 'Polish Oper')
+await page.waitForTimeout(250)
+const narrowed = await page.locator('.pp-pop .pp-row').allTextContents()
+ok('typing a name narrows the list rather than jumping to it',
+  narrowed.length > 0 && narrowed.every((n) => /Polish Oper/i.test(n)), narrowed.join(' / '))
+await page.locator('.pp-pop .pp-row', { hasText: 'Polish Operator' }).first().click()
+await page.waitForTimeout(300)
 await page.getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 ok('crew persisted from the modal', (await req(`/content/${post.id}`)).data.editor_id === polop.id)

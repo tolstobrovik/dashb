@@ -52,6 +52,33 @@ ok('the designer marks their post designed → Ready (crew tick)', p3done.status
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") + button, .pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -76,9 +103,9 @@ ok('…and neither of them is the Designer', !crewLabels.some((l) => /Designer/i
 ok('the ready deadline is still labeled for design', /Design ready/.test(await page.locator('.modal .dates-block').textContent()))
 // Round 27: specialists lead their own group; everyone else may still take
 // a one-time duty from the group below.
-const opSel = page.locator('.modal .crew-field select').first()
-const opSpecial = await opSel.locator('optgroup[label="Operators"] option').allTextContents()
-const opAnyone = await opSel.locator('optgroup[label*="Everyone"] option').allTextContents()
+const opSel = page.locator('.modal .crew-field .pp-field').first()
+const opSpecial = await ppNames(opSel, 'Operators')
+const opAnyone = await ppNames(opSel, 'Everyone else — one-time duty')
 // Who LEADS, not who appears — and the pool is scoped to the channel now
 // (round 70), so which specialists a given board offers depends on who is
 // assigned to it. What is invariant, and what this is about, is the parting:

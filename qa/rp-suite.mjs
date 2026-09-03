@@ -36,6 +36,33 @@ ok('channel total equals the sum over people (one truth)', personSum === rep.byC
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") + button, .pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 await page.goto(BASE + '/login')
 await page.fill('input[type="text"]', 'admin')
@@ -81,7 +108,7 @@ ok('crew selects visible for video type', await page.locator('.modal .crew-field
 await page.locator('.modal .tchip', { hasText: 'Post' }).click()
 ok('a post carries the same two hats', await page.locator('.modal .crew-field').count() === 2)
 await page.locator('.modal .tchip', { hasText: 'Video' }).click()
-await page.locator('.modal .crew-field select').nth(1).selectOption({ label: 'Eldor Cutter' })
+await ppPick(page.locator('.modal .crew-field .pp-field').nth(1), 'Eldor Cutter')
 await page.getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 const final = (await req(`/content/${vid.data.id}`)).data
