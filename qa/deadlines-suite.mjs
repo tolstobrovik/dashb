@@ -71,8 +71,18 @@ const newTask = async (over = {}) => {
   ok('  a shooter alone is not the whole booking — the brief is asked for too',
     r.status === 400, `${r.status} ${r.data.error || ''}`)
 
+  // A reference link used to be enough on its own. It is not any more: a crew
+  // can be booked for a day, and turning up to a link to somebody else's video
+  // is a day spent working out what to film. The script is asked for too.
   r = await req(`/content/${t.id}`, 'PATCH', {
     status_id: S['To shoot'], operator_id: shooter, reference_links: ['https://example.com/reference'],
+  }, shooterT)
+  ok('  …and so is the script — a booked day needs something to film',
+    r.status === 400 && /script/i.test(r.data.error || ''), `${r.status} ${r.data.error || ''}`)
+
+  r = await req(`/content/${t.id}`, 'PATCH', {
+    status_id: S['To shoot'], operator_id: shooter, reference_links: ['https://example.com/reference'],
+    script: 'Open on the main gate, walk through the courtyard, two students say why they chose it, close on the library.',
   }, shooterT)
   ok('→ To shoot passes once the shoot is properly booked', r.status === 200, `${r.status} ${r.data.error || ''}`)
   ok('  and the card really moved', r.data.status_id === S['To shoot'], String(r.data.status_id))

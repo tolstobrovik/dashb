@@ -51,7 +51,9 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   title: 'Own ' + Math.random().toString(36).slice(2, 7),
   channels: ['instagram_main'], type: 'reel', status_id: S['Idea'],
   recording_date: day(2), edit_ready_date: day(4), release_date: day(6),
-  reference_links: ['https://example.com/reference'], ...over,
+  reference_links: ['https://example.com/reference'],
+  script: 'Open on the main gate, walk through the courtyard, two students say why they chose it, close on the library.',
+  ...over,
 })).data
 
 // ---- review can be shared ----------------------------------------------
@@ -156,7 +158,7 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
     operator_id: shooter, editor_id: editor, reviewer_ids: [rev1],
     shot_link: 'https://drive.google.com/raw-p', ready_link: 'https://drive.google.com/cut-p',
   })
-  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Published'] })
+  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Published'], post_link: 'https://instagram.com/p/ownership' })
   const { data: out } = await req(`/content/${t.id}`)
   ok('publishing stamps it finished', !!out.done_at, String(out.done_at))
 
