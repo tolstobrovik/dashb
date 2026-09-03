@@ -15,9 +15,18 @@ export const BLANK_FILTER = { person: '', type: '', stage: '' }
 // Everyone a task can belong to — the people picked as assignees plus the
 // three crew seats. Filtering by "Anvar" should find the shoots he films and
 // the cuts he edits, not only the tasks he was formally handed.
+// Who a task was HANDED to. The API sends `assignees` — an array — and keeps
+// `assignee_id` as a mirror of the first entry for old clients. Reading the
+// mirror finds one person out of two; reading `assignee_ids`, which the API
+// has never sent, finds nobody at all. Both mistakes were live in four
+// different places, and each looked like "the board does not show my task".
+export const assigneesOf = (t) => (
+  Array.isArray(t?.assignees) && t.assignees.length ? t.assignees.map(Number)
+    : t?.assignee_id ? [Number(t.assignee_id)] : []
+)
+
 export const peopleOf = (t) => {
-  const ids = Array.isArray(t.assignee_ids) ? [...t.assignee_ids] : []
-  if (t.assignee_id) ids.push(t.assignee_id)
+  const ids = assigneesOf(t)
   for (const f of ['operator_id', 'editor_id', 'designer_id']) if (t[f]) ids.push(t[f])
   return [...new Set(ids)]
 }

@@ -10,6 +10,7 @@ import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
+import { assigneesOf } from '../components/ContentFilters.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
 import { rewardIfFinished } from '../lib/reward.js'
 import { tr as tx } from '../lib/i18n.jsx'
@@ -83,7 +84,7 @@ function workloadOf(u, content, today) {
     .sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999'))
   const overdue = content.filter((t) =>
     !t.done_at && t.release_date && t.release_date < today &&
-    (t.assignee_id === u.id || t.operator_id === u.id || t.editor_id === u.id))
+    (assigneesOf(t).includes(u.id) || t.operator_id === u.id || t.editor_id === u.id))
   const pct = capacity > 0 ? booked / capacity : 0
   const level = pct >= 0.8 || edits.length >= 6 ? 'hot' : pct <= 0.3 && edits.length <= 2 ? 'free' : 'ok'
   return { days, booked, capacity, pct, clashes, edits, overdue, level }

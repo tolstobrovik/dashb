@@ -385,7 +385,9 @@ function TaskRow({ item, ctx }) {
   const { statusesById, usersById, byKey, toggle, setOpenItem, togglePin, removeTask, openMenu } = ctx
   const isDone = !!item.done_at
   const status = statusesById[item.status_id]
-  const who = usersById[item.assignee_id]
+  // Everyone it was handed to, not whoever happened to be first in the list.
+  const held = (item.assignees?.length ? item.assignees : item.assignee_id ? [item.assignee_id] : [])
+  const who = usersById[held[0]]
   return (
     <div className={'todo-row' + (item.pinned && !isDone ? ' pinned' : '')}
       onContextMenu={(e) => openMenu(e, [
@@ -412,7 +414,13 @@ function TaskRow({ item, ctx }) {
               <Send size={10} /> {dateLabel(item.release_date)}
             </span>
           )}
-          {who && <span className="chip chip-muted">{who.name.split(' ')[0]}</span>}
+          {/* One name and how many more, the way the board's cards do it — a
+              task handed to two people used to name only the first. */}
+          {who && (
+            <span className="chip chip-muted">
+              {who.name.split(' ')[0]}{held.length > 1 ? ` +${held.length - 1}` : ''}
+            </span>
+          )}
         </span>
       </button>
       <span className="todo-actions">

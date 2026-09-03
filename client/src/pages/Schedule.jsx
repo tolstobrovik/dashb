@@ -10,7 +10,7 @@ import { can, todayISO, dateLabel, typeInfo, isDeletedLabel } from '../lib/const
 import ContentModal from '../components/ContentModal.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
-import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
+import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn, assigneesOf } from '../components/ContentFilters.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
 
 // How many overdue chips the strip shows before it stops being a strip.
@@ -243,7 +243,7 @@ export default function Schedule({ mode }) {
       teamById[t.operator_id]?.name || '',
       teamById[t.editor_id]?.name || '',
       teamById[t.designer_id]?.name || '',
-      (t.assignee_ids || []).map((id) => teamById[id]?.name || `#${id}`).join(' / '),
+      assigneesOf(t).map((id) => teamById[id]?.name || `#${id}`).join(' / '),
     ])), 'text/csv;charset=utf-8')
     toast(`${exportRows.length} ${exportRows.length === 1 ? 'row' : 'rows'} saved as a spreadsheet`)
   }

@@ -5,6 +5,7 @@ import {
   ClipboardList, FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye, MoreHorizontal,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
+import PersonPicker from './PersonPicker.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
 import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHref } from '../lib/text.js'
 import { useT, tr as tx, locale } from '../lib/i18n.jsx'
@@ -207,6 +208,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       } catch { return item?.reviewer_id ? [item.reviewer_id] : [] }
     })(),
     ready_link: item?.ready_link || '',
+    post_link: item?.post_link || '',
     shot_link: item?.shot_link || '',
     design_link: item?.design_link || '',
     // What the person typed into the "which file?" box. Kept apart from the
@@ -596,6 +598,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // number, and so may an admin — the maker is the one who opens the app and
   // reads the count off it.
   const isOut = !!item?.done_at || (!!finalStatusObj && item?.status_id === finalStatusObj.id)
+  // Asked for from Ready onwards, so the link is already there when somebody
+  // goes to move the card to the last stage rather than being a wall they
+  // meet with nothing to paste.
+  const nearlyOut = isOut || atReady
   const madeIt = !!item && [item.assignee_id, ...(item.assignees || [])].filter(Boolean).includes(user.id)
   const canCount = !!item && (user.role === 'admin' || madeIt)
   const showViews = !!item && (isOut || item.views !== null && item.views !== undefined)
@@ -1657,6 +1663,29 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      {/* Where it actually went live. Asked for once the piece is near the
+          end, and always shown once there is one — this is the address every
+          report downstream is built on, and the board used to record that
+          something was published without recording WHERE. */}
+      {!creating && (form.post_link || nearlyOut) && (
+        <div className="cm-row">
+          <span className="cm-key">{tx('Published at')}</span>
+          <label className="ready-link-field dlv-post" data-field="post_link">
+            <span className="crew-label dlv-head">
+              <Send size={13} />
+              <b>{tx('The published post')}</b>
+              <span className="stat-sub">{tx('needed before it can move to the last stage')}</span>
+            </span>
+            <input className={'input' + (badField === 'post_link' ? ' field-bad' : '')}
+              value={form.post_link} disabled={!canEdit} placeholder="https://…"
+              onChange={(e) => setForm({ ...form, post_link: e.target.value })} />
+            {form.post_link && (
+              <a className="btn btn-sm" href={form.post_link} target="_blank" rel="noreferrer">{tx('Open it')}</a>
+            )}
+          </label>
+        </div>
+      )}
+
       </div>
 
       <div className={secCls('setup')} data-sec="setup">
@@ -1792,21 +1821,22 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 </span>
               )
             })}
-            <select
-              className="select assignee-add"
-              value=""
-              data-tip={tx("Add another person to this task")}
-              onChange={(e) => {
-                const id = Number(e.target.value)
+            <PersonPicker
+              className="assignee-add"
+              value={null}
+              clearable={false}
+              placeholder={tx('Add person…')}
+              tip={tx("Add another person to this task")}
+              groups={[{
+                label: '',
+                people: [...team].filter((u) => !form.assignee_ids.includes(u.id))
+                  .sort((a, b) => (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name))
+                  .map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar, hint: u.role === 'admin' ? tx('admin') : '' })),
+              }]}
+              onPick={(id) => {
                 if (id && !form.assignee_ids.includes(id)) setForm({ ...form, assignee_ids: [...form.assignee_ids, id] })
               }}
-            >
-              <option value="">+ Add person…</option>
-              {[...team].filter((u) => !form.assignee_ids.includes(u.id))
-                .sort((a, b) => (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name)).map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}{u.role === 'admin' ? ' (admin)' : ''}</option>
-                ))}
-            </select>
+            />
           </div>
         </div>
       )}
@@ -1876,25 +1906,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                     ? <span className="crew-req">{tx("required")}</span>
                     : <span className="crew-opt">{tx("optional")}</span>}
                 </span>
-                <select className="select" disabled={detailsLocked} value={form[f.key] ?? ''}
-                  data-tip={mustHave ? `${f.label} — this stage can’t go on without one` : f.tip}
-                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value === '' ? null : Number(e.target.value) })}>
-                  <option value="">{mustHave ? `— pick the ${f.label.toLowerCase()} —` : '— nobody —'}</option>
-                  {specialists.length > 0 && (
-                    <optgroup label={`${f.label}s`}>
-                      {specialists.map((u) => (
-                        <option key={u.id} value={u.id} disabled={isFull(u)}>{nameOf(u)}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {everyoneElse.length > 0 && (
-                    <optgroup label="Everyone else — one-time duty">
-                      {everyoneElse.map((u) => (
-                        <option key={u.id} value={u.id} disabled={isFull(u)}>{nameOf(u)}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
+                <PersonPicker
+                  disabled={detailsLocked}
+                  value={form[f.key] ?? null}
+                  placeholder={mustHave ? `— pick the ${f.label.toLowerCase()} —` : tx('— nobody —')}
+                  tip={mustHave ? `${f.label} — this stage can’t go on without one` : f.tip}
+                  groups={[
+                    { label: `${f.label}s`, people: specialists.map((u) => ({ id: u.id, name: nameOf(u), color: u.color, avatar: u.avatar, disabled: isFull(u) })) },
+                    { label: tx('Everyone else — one-time duty'), people: everyoneElse.map((u) => ({ id: u.id, name: nameOf(u), color: u.color, avatar: u.avatar, disabled: isFull(u) })) },
+                  ].filter((g) => g.people.length > 0)}
+                  onPick={(id) => setForm({ ...form, [f.key]: id })}
+                />
               </label>
             )
           })}

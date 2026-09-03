@@ -232,7 +232,7 @@ const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, ass
   miss_blame, miss_blame_note, miss_blame_by,
   views, views_at, views_by,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
-  shot_link, design_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
+  shot_link, design_link, post_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
   shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note,
   edit_ack, edit_ack_at, edit_ack_by, edit_ack_note,
   checklist, todo_sort, pinned, ${withThumbs ? 'photo_thumb,' : ''}
@@ -255,7 +255,7 @@ const logEvent = (user, id, title, kind) =>
 // Paragraph-sized fields land as a quiet "updated the …" — no quoting essays.
 const QUIET_FIELDS = ['description', 'script', 'tz', 'reference_text', 'reference_links', 'photo', 'checklist']
 const PLAIN_FIELDS = ['title', 'type', 'recording_date', 'recording_time', 'recording_end', 'edit_ready_date',
-  'design_ready_date', 'release_date', 'release_time', 'format', 'rubrika', 'ready_link', 'shot_link', 'design_link',
+  'design_ready_date', 'release_date', 'release_time', 'format', 'rubrika', 'ready_link', 'shot_link', 'design_link', 'post_link',
   // A re-promised deadline is the most disputable thing on the task: it is
   // always somebody moving their own goalposts after a late handover, so it
   // goes in the log by name.
@@ -264,7 +264,7 @@ const PLAIN_FIELDS = ['title', 'type', 'recording_date', 'recording_time', 'reco
 // Everything a stage move can rewrite — the snapshot restores exactly these.
 const UNDO_FIELDS = ['status_id', 'done_at', 'ready_at', 'shot_at', 'edited_at',
   'edit_due_revised', 'review_due_revised', 'operator_id', 'editor_id', 'reviewer_id',
-  'reviewers', 'shot_link', 'ready_link']
+  'reviewers', 'shot_link', 'ready_link', 'post_link']
 // How long a move stays regrettable.
 const UNDO_SECONDS = 10
 
@@ -1094,7 +1094,7 @@ const DUP_SKIP = new Set([
   // where that week got to
   'status_id',
   // and what came out of it
-  'ready_link', 'ready_file', 'shot_link', 'shot_file', 'design_link', 'design_file',
+  'ready_link', 'ready_file', 'shot_link', 'shot_file', 'design_link', 'design_file', 'post_link',
 ])
 
 router.post('/:id/duplicate', wrap(async (req, res) => {
@@ -1870,6 +1870,18 @@ router.patch('/:id', wrap(async (req, res) => {
     patch[field] = built.value
   }
 
+  // Where the piece went live. Not a crew delivery — nobody holds a "posted"
+  // hat — so it belongs to whoever may edit the task or publish on it, which
+  // is the same set of people who can make the move it gates.
+  if (body.post_link !== undefined) {
+    if (!can(req.user, 'manage_content') && !can(req.user, 'review_publish'))
+      return res.status(403).json({ error: 'You can’t set the published link on this task' })
+    const posted = String(body.post_link ?? '').trim().slice(0, 500)
+    if (posted && !hasLink(posted))
+      return res.status(400).json({ error: 'That is not a link — it has to start with http:// or https://' })
+    patch.post_link = posted || null
+  }
+
   // The Reference block (style / mood / format text and example URLs) — part
   // of the brief, so editing it needs manage_content. Crew see it, never set it.
   if (body.reference_text !== undefined) {
@@ -2385,6 +2397,31 @@ router.patch('/:id', wrap(async (req, res) => {
       // …and the admin walks through both walls. They are the person who
       // put the walls there, and they are usually the one catching the board
       // up on work that already happened.
+      // ---- the published link ----------------------------------------------
+      // A WALL, and one the admin does not walk through either.
+      //
+      // Every other rule on this board is about a promise somebody is making,
+      // and round 80 stopped asking the admin to fill those in. This one is
+      // not a promise: it is the address of a thing that already exists. A
+      // piece cannot reach Published without having been published, so there
+      // is always a link to paste, and thirty seconds of pasting it is what
+      // makes every report downstream possible — where the work went, how many
+      // views it got, what a person actually made this month. A board that
+      // records "published" and not "published WHERE" cannot answer any of it,
+      // and the admin is usually the one doing the publishing.
+      if (at(patch.status_id) >= 0 && resolved.finalId != null && patch.status_id === resolved.finalId) {
+        const posted = String(val('post_link') || '').trim()
+        if (!posted) {
+          return res.status(400).json({
+            error: 'Paste the link to the published post before moving it here',
+            needs: 'post_link',
+          })
+        }
+        if (!hasLink(posted)) {
+          return res.status(400).json({ error: 'That is not a link — it has to start with http:// or https://', needs: 'post_link' })
+        }
+      }
+
       const filmedNow = !free && (await getCrewNeeds()).operator.includes(val('type') ?? row.type)
       const g = resolved.gates.shoot
       if (filmedNow && g && at(patch.status_id) === g.index) {

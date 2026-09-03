@@ -619,6 +619,11 @@ export async function initSchema() {
       ready_link     TEXT,   -- the editor's finished cut (the "Edit ready" link)
       shot_link      TEXT,   -- operator's raw footage link (Google Drive)
       design_link    TEXT,   -- designer's finished artwork link
+      -- Where the finished piece actually went live. Nothing recorded this:
+      -- the board knew a task had reached Published and not one thing about
+      -- where to go and look at it, which is also why no report could ever
+      -- list what a person had made.
+      post_link      TEXT,
       reference_text TEXT,   -- style / mood / length / format notes for the crew
       reference_links TEXT   NOT NULL DEFAULT '[]', -- example URLs (reference videos/posts)
       format         TEXT,   -- the shape of the piece: talking head, split screen…
@@ -1342,6 +1347,7 @@ export async function initSchema() {
     await exec("ALTER TABLE programs ADD COLUMN IF NOT EXISTS branches TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shot_link TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_link TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS post_link TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS reference_text TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS reference_links TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS format TEXT')
@@ -1523,6 +1529,7 @@ async function migrate() {
     if (!(await hasColumn('sprint_tasks', 'dropped_by'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_by INTEGER')
     if (!(await hasColumn('sprint_tasks', 'dropped_reason'))) await exec("ALTER TABLE sprint_tasks ADD COLUMN dropped_reason TEXT NOT NULL DEFAULT ''")
     if (!(await hasColumn('sprint_tasks', 'dropped_sprint_id'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_sprint_id INTEGER')
+    if (!(await hasColumn('content', 'post_link'))) await exec('ALTER TABLE content ADD COLUMN post_link TEXT')
     if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
     if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
     if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')

@@ -1417,6 +1417,17 @@ const PHRASES = {
     "Story clip missing": "Нет клипа в сторис",
     "Mention was in the caption only, not spoken": "Упоминание только в подписи, не вслух",
     "Logo missing in the video": "В видео нет логотипа",
+    // ---- picking people, and where a piece went live ----
+    "Published at": "Опубликовано по ссылке",
+    "The published post": "Ссылка на опубликованный пост",
+    "needed before it can move to the last stage": "нужна, чтобы перевести на последний этап",
+    "Open it": "Открыть",
+    "Add person…": "Добавить человека…",
+    "admin": "админ",
+    "— nobody —": "— никого —",
+    "Everyone else — one-time duty": "Все остальные — разовое поручение",
+    "Type a name": "Начните вводить имя",
+    "Nobody by that name": "Никого с таким именем",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -2301,6 +2312,17 @@ const PHRASES = {
     "Story clip missing": "Storisdagi klip yoʻq",
     "Mention was in the caption only, not spoken": "Eslatma faqat izohda, ovoz chiqarib aytilmagan",
     "Logo missing in the video": "Videoda logotip yoʻq",
+    // ---- picking people, and where a piece went live ----
+    "Published at": "Quyidagi manzilda joylangan",
+    "The published post": "Joylangan postga havola",
+    "needed before it can move to the last stage": "oxirgi bosqichga oʻtkazish uchun kerak",
+    "Open it": "Ochish",
+    "Add person…": "Odam qoʻshish…",
+    "admin": "admin",
+    "— nobody —": "— hech kim —",
+    "Everyone else — one-time duty": "Qolganlar — bir martalik topshiriq",
+    "Type a name": "Ismni yozing",
+    "Nobody by that name": "Bunday ismli hech kim yoʻq",
   },
 }
 
