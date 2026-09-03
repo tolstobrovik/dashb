@@ -98,7 +98,9 @@ for (let i = 0; i < 2; i++) {
 await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const rankedOps = await ppNames(page.locator('.modal .crew-field .pp-field').first())
-ok('most-picked person now leads the operator list', rankedOps[0].includes('Rustam Multihat'), rankedOps.slice(0, 3).join(' | '))
+// [1], not [0]: the list opens with the "— nobody —" row, exactly as the old
+// <select> opened with its empty option.
+ok('most-picked person now leads the operator list', rankedOps[1].includes('Rustam Multihat'), rankedOps.slice(0, 3).join(' | '))
 await page.keyboard.press('Escape')
 await page.waitForTimeout(300)
 
