@@ -117,6 +117,10 @@ export default function Layout() {
   // A member with a single channel doesn't need a sidebar at all —
   // everything fits in the top bar.
   const solo = user.role !== 'admin' && visible.length <= 1
+  // An ambassador has one page and is not staff. No sidebar, no tab bar, no
+  // quick find, no bell, no Give a task — none of it would answer them
+  // anyway, and a door that opens onto a refusal is worse than no door.
+  const ambassador = user.role === 'ambassador'
   const soloChannel = solo ? visible[0] : null
   const { shows } = usePages()
   const SoloIcon = soloChannel ? iconFor(soloChannel.icon) : null
@@ -150,6 +154,26 @@ export default function Layout() {
     ...CANDIDATES.filter((c) => c.key !== soloFirst?.key && c.key !== soloSecond?.key),
     { key: 'profile', to: '/profile', label: t('nav.myprofilepage'), icon: User },
   ]
+
+  if (ambassador) {
+    return (
+      <div className="main solo amb-shell">
+        <header className="topbar solo-bar">
+          <span className="logo-link"><Logo size={30} tone="var(--brand-500)" /></span>
+          <h1>{tx('Ambassadors')}</h1>
+          <div className="topbar-spacer" />
+          <ThemeToggle className="icon-btn solo-theme" />
+          <LangToggle />
+          <button className="icon-btn" onClick={logout} aria-label={tx('Sign out')}><LogOut size={17} /></button>
+        </header>
+        <main className="content">
+          <UpdateReady on={update.ready} take={update.take} />
+          <WeakPasswordBanner user={user} />
+          <Outlet />
+        </main>
+      </div>
+    )
+  }
 
   if (solo) {
     return (

@@ -995,6 +995,77 @@ export async function initSchema() {
       created_at  TEXT    NOT NULL
     );
 
+    -- ---- the ambassador programme -------------------------------------------
+    -- Students who post about SATashkent on their own accounts. This feature
+    -- owns exactly these three tables and reads nothing else but the users
+    -- table. Ambassador cards are NOT content tasks, never reach a channel board, are
+    -- not counted in any company total, and their payouts are not Finance.
+    -- Delete these three tables and the rest of the dashboard is unchanged.
+    CREATE TABLE IF NOT EXISTS ambassadors (
+      id                   ${ID},
+      user_id              INTEGER NOT NULL,   -- the only key out of this feature
+      university           TEXT    NOT NULL DEFAULT '',
+      telegram             TEXT    NOT NULL DEFAULT '',
+      -- The contract, as the admin uploaded it. Stored beside the row the way
+      -- person_docs does: a data URL, its name and its type.
+      contract_name        TEXT    NOT NULL DEFAULT '',
+      contract_mime        TEXT    NOT NULL DEFAULT '',
+      contract_data        TEXT,
+      contract_size        INTEGER NOT NULL DEFAULT 0,
+      contract_at          TEXT,
+      -- What their terms USUALLY are. These pre-tick the boxes at approval and
+      -- have no other power: once a card is approved it carries its own copy,
+      -- and changing these can never reach back into it.
+      default_we_edit      INTEGER NOT NULL DEFAULT 0,
+      default_posts_own    INTEGER NOT NULL DEFAULT 1,
+      default_collaborator INTEGER NOT NULL DEFAULT 0,
+      status               TEXT    NOT NULL DEFAULT 'active',  -- active|paused|ended
+      created_at           TEXT    NOT NULL,
+      updated_at           TEXT    NOT NULL
+    );
+
+    -- One idea, from the moment it is sent to the moment it is paid.
+    --
+    -- A rejected card is not a new row: version goes up and the state returns
+    -- to waiting, so the whole argument stays on one card. The four terms are
+    -- COPIED here at approval and are read only afterwards — that is the
+    -- promise the ambassador was given, and nothing later may edit it.
+    CREATE TABLE IF NOT EXISTS ambassador_cards (
+      id             ${ID},
+      ambassador_id  INTEGER NOT NULL,
+      format         TEXT    NOT NULL DEFAULT '',
+      script         TEXT    NOT NULL DEFAULT '',
+      reference_url  TEXT    NOT NULL DEFAULT '',
+      planned_date   TEXT,
+      state          TEXT    NOT NULL DEFAULT 'waiting',  -- waiting|can_film|needs_changes|posted|done|paid
+      version        INTEGER NOT NULL DEFAULT 1,
+      we_edit        INTEGER NOT NULL DEFAULT 0,
+      posts_own      INTEGER NOT NULL DEFAULT 0,
+      collaborator   INTEGER NOT NULL DEFAULT 0,
+      amount         INTEGER,                             -- typed by a human, every time
+      approved_by    INTEGER,
+      approved_at    TEXT,
+      feedback       TEXT    NOT NULL DEFAULT '',
+      main_video_url TEXT    NOT NULL DEFAULT '',
+      story_clip_url TEXT    NOT NULL DEFAULT '',
+      checked_by     INTEGER,
+      checked_at     TEXT,
+      paid_month     TEXT,                                -- the month it reached done
+      created_at     TEXT    NOT NULL,
+      updated_at     TEXT    NOT NULL
+    );
+
+    -- A month, closed. Paying happens outside this system; this records that
+    -- somebody said it had been done, and who.
+    CREATE TABLE IF NOT EXISTS ambassador_payouts (
+      id            ${ID},
+      month         TEXT    NOT NULL,
+      ambassador_id INTEGER NOT NULL,
+      total         INTEGER NOT NULL DEFAULT 0,
+      marked_by     INTEGER,
+      marked_at     TEXT    NOT NULL
+    );
+
     -- Translations and plain-language versions, kept.
     --
     -- The same brief is opened by the shooter, the editor and whoever is
@@ -1354,6 +1425,13 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_sprint_week_tasks       ON sprint_task_sprints(sprint_id);
     CREATE INDEX IF NOT EXISTS idx_sprint_check_slice      ON sprint_checklist_items(task_id, sprint_id, position);
     CREATE INDEX IF NOT EXISTS idx_sprint_att_task         ON sprint_attachments(task_id);
+    /* One ambassador record per account, enforced: two admins setting somebody
+       up at the same moment would otherwise make two, and the cards would
+       split between them. */
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ambassador_user   ON ambassadors(user_id);
+    CREATE INDEX IF NOT EXISTS idx_ambassador_cards_who     ON ambassador_cards(ambassador_id, state);
+    CREATE INDEX IF NOT EXISTS idx_ambassador_cards_month   ON ambassador_cards(paid_month);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ambassador_payout ON ambassador_payouts(month, ambassador_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_day    ON attendance(user_id, day);
     CREATE INDEX IF NOT EXISTS idx_attendance_when           ON attendance(day);
     CREATE INDEX IF NOT EXISTS idx_sprints_status          ON sprints(status, start_at);
@@ -2162,7 +2240,9 @@ export function publicUser(row) {
   // Member defaults are for members. Crew roles (editor/operator/designer or
   // any mix) carry no granular rights at all — their powers come from being
   // on a task's crew.
-  const crew = ['editor', 'operator', 'designer', 'crew'].includes(row.role)
+  // An ambassador is not staff. They are a student with a login to one page,
+  // and DEFAULT_PERMS would have handed them the rights of a member.
+  const crew = ['editor', 'operator', 'designer', 'crew', 'ambassador'].includes(row.role)
   return {
     id: row.id,
     name: row.name,

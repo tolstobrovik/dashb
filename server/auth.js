@@ -33,6 +33,21 @@ export function signToken(user, remember = true) {
 // this so a rejected promise lands in the error middleware, not nowhere.
 export const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
+// ---- the ambassador gate -----------------------------------------------------
+// An ambassador is a student with a login to exactly one page. Everything else
+// in this dashboard — the boards, the schedule, the money, other people's
+// names — is not theirs to see, and "the sidebar does not show it" is not a
+// rule, it is decoration. So the refusal lives HERE, at the one place every
+// authenticated request already passes through, rather than in each router
+// where a new endpoint could be written tomorrow and quietly forget it.
+//
+// Two prefixes are open to them: the session itself, and their own page.
+const AMBASSADOR_OPEN = ['/api/auth', '/api/ambassadors']
+const underPrefix = (url, base) => {
+  const path = String(url || '').split('?')[0]
+  return path === base || path.startsWith(base + '/')
+}
+
 // Verify the bearer token and attach the current user to the request.
 export async function authRequired(req, res, next) {
   const header = req.headers.authorization || ''
@@ -49,6 +64,10 @@ export async function authRequired(req, res, next) {
     }
     if (!row) return res.status(401).json({ error: 'User not found' })
     req.user = publicUser(row)
+    if (req.user.role === 'ambassador'
+        && !AMBASSADOR_OPEN.some((base) => underPrefix(req.originalUrl, base))) {
+      return res.status(403).json({ error: 'This is not part of your page' })
+    }
     next()
   } catch {
     return res.status(401).json({ error: 'Invalid or expired session' })

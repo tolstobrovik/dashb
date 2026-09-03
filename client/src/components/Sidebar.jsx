@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import {
   Shield, LogOut, Briefcase, LayoutDashboard, Sun, BarChart3, Clapperboard, UsersRound, ScrollText, Send, Palette,
-  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, Timer,
+  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, Timer, GraduationCap,
 } from 'lucide-react'
 import { LogoLockup } from './Logo.jsx'
 import Avatar from './Avatar.jsx'
@@ -83,6 +83,10 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
     channels: visible.map((c) => ({ key: `ch:${c.key}`, to: `/dept/${c.key}`, label: c.label, icon: iconFor(c.icon) })),
     manage: isAdmin ? [
       shows('crew') && { key: 'crew', to: '/crew', label: t('nav.crew'), icon: Clapperboard },
+      // The ambassador programme. Not switchable in Settings on purpose: this
+      // is the only page some accounts have, and switching it off would strand
+      // them on a board with nothing on it.
+      { key: 'ambassadors', to: '/ambassador', label: tx('Ambassadors'), icon: GraduationCap },
       shows('team') && { key: 'team', to: '/team', label: t('nav.team'), icon: UsersRound },
       ...(runsEverything ? [{ key: 'admin', to: '/admin', label: t('nav.admin'), icon: Shield }] : []),
     ].filter(Boolean) : [],

@@ -28,7 +28,9 @@ async function cleanDepartments(list) {
 // cross-department production people: they see and move only the tasks where
 // they hold a hat, no department powers at all. The legacy single-role values
 // stay valid; 'crew' means a combination (spelled out in crew_roles).
-const ROLES = ['admin', 'member', 'editor', 'operator', 'designer', 'crew']
+// 'ambassador' is a login to the ambassador page and nothing else — see the
+// gate in auth.js. Their university, contract and terms are not set here.
+const ROLES = ['admin', 'member', 'editor', 'operator', 'designer', 'crew', 'ambassador']
 const CREW_CAPS = ['editor', 'operator', 'designer']
 const isCrewRole = (r) => r === 'editor' || r === 'operator' || r === 'designer' || r === 'crew'
 
@@ -36,7 +38,9 @@ const isCrewRole = (r) => r === 'editor' || r === 'operator' || r === 'designer'
 // any capability list collapses to its single value as the role, or 'crew'
 // for a mix; admin/member always carry an empty capability list.
 function roleFields(role, crewRoles) {
-  if (role === 'admin' || role === 'member') return { role, crew_roles: '[]' }
+  // An ambassador holds no crew capability and never will — they are a student
+  // with a login to one page, not a production hat.
+  if (role === 'admin' || role === 'member' || role === 'ambassador') return { role, crew_roles: '[]' }
   // An OMITTED list falls back to what the role implies; an EXPLICITLY empty
   // one is a mistake — a crew account holds at least one capability.
   const caps = crewRoles === undefined

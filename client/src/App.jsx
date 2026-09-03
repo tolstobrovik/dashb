@@ -23,15 +23,26 @@ const Sprints = lazy(() => import('./pages/Sprints.jsx'))
 const SprintBacklog = lazy(() => import('./pages/SprintBacklog.jsx'))
 const Admin = lazy(() => import('./pages/Admin.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
+const Ambassadors = lazy(() => import('./pages/Ambassadors.jsx'))
 
 const Loading = () => <div className="app-loading"><span className="spinner" /></div>
 
-function Protected({ children, adminOnly = false, page = null }) {
+function Protected({ children, adminOnly = false, page = null, ambassador = false }) {
   const { user, loading } = useAuth()
   const { shows } = usePages()
   const location = useLocation()
   if (loading) return <Loading />
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />
+  // An ambassador has one address. The server refuses everything else outright
+  // — this only stops the browser drawing a page it is about to be refused the
+  // data for, and sends them back to the page that is theirs.
+  //
+  // The check has to let their OWN address through, because the shell they
+  // reach it in is wrapped in this same guard: bouncing every path to
+  // /ambassador bounced /ambassador too, and the page never drew at all.
+  if (user.role === 'ambassador' && !ambassador && location.pathname !== '/ambassador')
+    return <Navigate to="/ambassador" replace />
+  if (ambassador && user.role !== 'ambassador' && user.role !== 'admin') return <Navigate to="/" replace />
   if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />
   // A page the admin switched off has no address either. Its own door is gone
   // from the sidebar, so what this catches is a bookmark, a pasted link and a
@@ -45,6 +56,7 @@ function Protected({ children, adminOnly = false, page = null }) {
 // what to record and edit today comes before any metrics.
 function HomeRedirect() {
   const { user } = useAuth()
+  if (user?.role === 'ambassador') return <Navigate to="/ambassador" replace />
   if (user?.role === 'admin') return <Navigate to="/overview" replace />
   return <Navigate to="/brief" replace />
 }
@@ -102,6 +114,7 @@ export default function App() {
           <Route path="/sprints" element={<Protected page="sprints"><Sprints /></Protected>} />
           <Route path="/sprints/backlog" element={<Protected page="sprints"><SprintBacklog /></Protected>} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/ambassador" element={<Protected ambassador><Ambassadors /></Protected>} />
           <Route
             path="/admin"
             element={

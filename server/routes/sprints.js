@@ -300,7 +300,10 @@ router.put('/owners/:userId', wrap(async (req, res) => {
 // The assignee picker, straight off the platform users table. Read only, and
 // the only place this module looks outside itself.
 router.get('/people', wrap(async (_req, res) => {
-  res.json(await all('SELECT id, name, avatar, color FROM users ORDER BY name'))
+  // Everyone on the team. An ambassador is not on the team — they are a
+  // student with a login to one page — and offering one as somebody to hand a
+  // sprint task to is how a role leaks out of the feature that created it.
+  res.json(await all("SELECT id, name, avatar, color FROM users WHERE role <> 'ambassador' ORDER BY name"))
 }))
 
 // ---- writing -----------------------------------------------------------------

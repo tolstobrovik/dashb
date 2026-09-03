@@ -742,7 +742,7 @@ router.post('/:id/comments', wrap(async (req, res) => {
   // Naming somebody reaches them even when the task is none of their business
   // — which is exactly when you name somebody. "@Дилноза, можешь снять?" was
   // reaching nobody, because she was not on the task yet.
-  const named = mentionedIds(text, await all('SELECT id, name FROM users'))
+  const named = mentionedIds(text, await all("SELECT id, name FROM users WHERE role <> 'ambassador'"))
     .filter((id) => id !== req.user.id)
   const people = [...new Set([...assignees, row.assignee_id, row.operator_id, row.editor_id, row.designer_id, ...spoke, ...named]
     .filter((id) => id && id !== req.user.id))]
