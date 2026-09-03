@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  ClipboardList, FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye, MoreHorizontal,
+  ClipboardList, FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye, MoreHorizontal, SkipForward, Sparkles,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import PersonPicker from './PersonPicker.jsx'
@@ -209,6 +209,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     })(),
     ready_link: item?.ready_link || '',
     post_link: item?.post_link || '',
+    face_id: item?.face_id ?? null,
+    skip_rate: item?.skip_rate === null || item?.skip_rate === undefined ? '' : String(item.skip_rate),
     shot_link: item?.shot_link || '',
     design_link: item?.design_link || '',
     // What the person typed into the "which file?" box. Kept apart from the
@@ -616,6 +618,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // goes to move the card to the last stage rather than being a wall they
   // meet with nothing to paste.
   const nearlyOut = isOut || atReady
+  // Which pay tier this piece's skip rate puts it in, said where the number is
+  // typed. A rate nobody can act on is a number nobody bothers to enter.
+  const tiers = fieldRules?.skip_tiers || []
+  const tierHere = form.skip_rate === '' ? null
+    : tiers.find((t) => Number(form.skip_rate) >= t.min && Number(form.skip_rate) <= t.max) || null
+  const tierNote = tiers.length === 0
+    ? tx('Counts towards the maker’s month.')
+    : tierHere
+      ? tx('Tier {name} — {film} for filming, {edit} for the edit.', {
+        name: tierHere.name,
+        film: Math.round(tierHere.per_film).toLocaleString('en-US').replace(/,/g, ' '),
+        edit: Math.round(tierHere.per_edit).toLocaleString('en-US').replace(/,/g, ' '),
+      })
+      : tx('Outside every tier the admin has set.')
   const madeIt = !!item && [item.assignee_id, ...(item.assignees || [])].filter(Boolean).includes(user.id)
   const canCount = !!item && (user.role === 'admin' || madeIt)
   const showViews = !!item && (isOut || item.views !== null && item.views !== undefined)
@@ -965,6 +981,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         // Empty means "nobody has counted yet"; the server keeps null and 0
         // apart on purpose, so the box does too.
         ...(showViews && canCount ? { views: form.views.trim() === '' ? null : Number(form.views) } : {}),
+        ...(showViews && canCount ? { skip_rate: form.skip_rate.trim() === '' ? null : Number(form.skip_rate) } : {}),
         recording_date: form.recording_date || null,
         recording_time: form.recording_time || null,
         recording_end: form.recording_end || null,
@@ -1274,6 +1291,35 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               {form.views === ''
                 ? tx('Leave it empty until somebody has actually looked — an empty box is not zero views.')
                 : tx('Counts towards the maker’s month.')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* How much of it people skipped. Read off the same screen as the view
+          count, so it is asked for in the same place — and left empty until
+          somebody has actually looked, for the same reason. */}
+      {showViews && (
+        <div className="cm-row cm-views">
+          <span className="cm-key"><SkipForward size={13} style={{ verticalAlign: -2 }} /> {tx('Skip rate')}</span>
+          <div className="views-box">
+            {canCount ? (
+              <span className="skip-input">
+                <input className="input views-input" type="number" min="0" max="100" step="0.1" inputMode="decimal"
+                  placeholder={tx('Not measured yet')}
+                  value={form.skip_rate}
+                  onChange={(e) => setForm({ ...form, skip_rate: e.target.value.replace(/[^0-9.]/g, '') })} />
+                <b>%</b>
+              </span>
+            ) : (
+              <b className="views-read">
+                {form.skip_rate === '' ? tx('Not measured yet') : `${form.skip_rate}%`}
+              </b>
+            )}
+            <span className="stat-sub">
+              {form.skip_rate === ''
+                ? tx('Empty until somebody has looked — an empty box is not a nought per cent skip.')
+                : tierNote}
             </span>
           </div>
         </div>
@@ -1945,6 +1991,24 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               </label>
             )
           })}
+          {/* Whose face carries it. Not a crew hat — a hat is work done ON the
+              piece, and this is the piece. Offered for anything filmed, and
+              always shown once somebody has been named. */}
+          {(form.face_id || (fieldRules?.crew?.operator || []).includes(form.type)) && (
+            <label className="crew-field">
+              <span className="crew-label">
+                {tx('Who is in it')}{' '}<span className="crew-opt">{tx('optional')}</span>
+              </span>
+              <PersonPicker
+                disabled={detailsLocked}
+                value={form.face_id ?? null}
+                placeholder={tx('— nobody —')}
+                tip={tx('Whose face carries this piece')}
+                groups={[{ label: '', people: team.map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })) }]}
+                onPick={(id) => setForm({ ...form, face_id: id })}
+              />
+            </label>
+          )}
         </div>
       </div>
 

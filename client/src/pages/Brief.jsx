@@ -13,6 +13,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import { rewardIfFinished } from '../lib/reward.js'
 import MyLate from '../components/MyLate.jsx'
 import MyPay from '../components/MyPay.jsx'
+import MyGrade from '../components/MyGrade.jsx'
 import Streak from '../components/Streak.jsx'
 import { deliveryHref, splitDelivery } from '../lib/text.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
@@ -975,6 +976,8 @@ export default function Brief() {
             rates — a card reading "0" says something about the person that
             it does not mean. */}
         <MyPay />
+      <MyGrade />
+        <MyGrade />
 
         {arranging && (
           <div className="card card-pad br-arrange">
@@ -1072,6 +1075,7 @@ export default function Brief() {
 
       <Streak />
       <MyPay />
+      <MyGrade />
 
       <div className="miss-filters">
         <div className="pill-group">

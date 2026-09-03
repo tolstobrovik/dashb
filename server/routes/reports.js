@@ -351,6 +351,37 @@ router.get('/', wrap(async (req, res) => {
 //
 // A piece counts in the window by the day it went out, which is the day its
 // views started being earned.
+// One person's own month: what they made, and which rung of the ladder it puts
+// them on. Separate from the pay card because the ladder is not pay — a board
+// that has set no rates still has a ladder, and somebody should be able to see
+// where they are on it.
+router.get('/work/mine', wrap(async (req, res) => {
+  const { from, to } = statsRange(req.query)
+  const statuses = await all('SELECT * FROM statuses')
+  const dead = new Set(statuses.filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
+  const grades = await getMakerGrades()
+  const rows = await all(`
+    SELECT id, status_id, assignee_id, assignees, done_at, operator_id, editor_id, face_id
+    FROM content WHERE done_at IS NOT NULL`)
+  const me = req.user.id
+  let filmed = 0, edited = 0, both = 0, faced = 0, forMe = 0
+  for (const r of rows) {
+    if (dead.has(r.status_id)) continue
+    const day = tashkentDay(r.done_at)
+    if (day < from || day > to) continue
+    if (r.operator_id === me && r.editor_id === me) both += 1
+    else {
+      if (r.operator_id === me) filmed += 1
+      if (r.editor_id === me) edited += 1
+    }
+    if (r.face_id === me) faced += 1
+    let list = []
+    try { list = JSON.parse(r.assignees || '[]') } catch { list = [] }
+    if ((list.length ? list : (r.assignee_id ? [r.assignee_id] : [])).includes(me)) forMe += 1
+  }
+  res.json({ from, to, filmed, edited, both, faced, made_for: forMe, ...gradeFor(grades, forMe || (filmed + edited + both)), ladder: grades })
+}))
+
 // Closing a month: everything that went out in it is marked paid, once, with
 // who said so. Paying happens outside this system — this records that it was
 // done, the same way the sprint board records who dropped a task rather than

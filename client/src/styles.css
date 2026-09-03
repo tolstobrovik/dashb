@@ -3806,6 +3806,27 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 .cm-idea-note .stat-sub { flex: 1 1 220px; line-height: 1.45; }
 
+/* Where this month puts you on the ladder the admin set. */
+.my-grade { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.my-grade-now { display: flex; flex-direction: column; gap: 1px; }
+.my-grade-now b { font-size: 18px; line-height: 1.1; }
+.my-grade-bar { flex: 1 1 120px; height: 7px; background: var(--track); border-radius: 99px; overflow: hidden; }
+.my-grade-fill { display: block; height: 100%; background: var(--brand-500); border-radius: 99px; }
+.my-grade-next { flex: none; }
+
+.work-sheet td { vertical-align: top; }
+.paid-yes { color: var(--good-ink); }
+
+/* A short ladder an admin edits as a whole: the pay tiers and the grades. */
+.ladder-tbl .pc-mini { max-width: 110px; }
+.ladder-cell { display: inline-flex; align-items: center; gap: 5px; }
+.ladder-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--hairline); }
+
+/* The skip rate sits beside the view count and reads as a percentage. */
+.skip-input { display: inline-flex; align-items: center; gap: 6px; }
+.skip-input .views-input { max-width: 110px; }
+.skip-input b { color: var(--muted); font-weight: 600; }
+
 /* ---------- picking a person by typing their name ---------- */
 .pp { position: relative; }
 .pp-field {

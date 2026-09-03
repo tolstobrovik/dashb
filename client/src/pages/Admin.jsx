@@ -8,6 +8,7 @@ import {
 import { api } from '../lib/api.js'
 import { rewardIfFinished } from '../lib/reward.js'
 import { toast, loadFailed } from '../lib/toast.js'
+import Fold from '../components/Fold.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
 import { CHANNEL_ICONS, iconFor, PERMISSIONS, CONTENT_TYPES, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor, tashkentDay } from '../lib/constants.js'
@@ -1775,8 +1776,129 @@ function SettingsTab() {
               </div>
             </>
           )}
+
+          <LadderEditor
+            title={tx('What a piece pays, by how much of it was watched')}
+            note={tx('A band of skip rate, and what a piece in it pays. Lower skip is better. A piece nobody has measured is in no band and adds nothing — it is not the worst one.')}
+            rows={fields.skip_tiers || []}
+            cols={[
+              { key: 'name', label: tx('Tier'), kind: 'text', hint: 'A' },
+              { key: 'min', label: tx('Skip from'), kind: 'num', suffix: '%' },
+              { key: 'max', label: tx('to'), kind: 'num', suffix: '%' },
+              { key: 'per_film', label: tx('For filming'), kind: 'num' },
+              { key: 'per_edit', label: tx('For the edit'), kind: 'num' },
+            ]}
+            blank={{ name: '', min: 0, max: 100, per_film: 0, per_edit: 0 }}
+            onSave={(rows) => {
+              const next = { ...fields, skip_tiers: rows }
+              setFields(next)
+              api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Saved — synced')) })
+                .catch((e) => { alert(e.message); load() })
+            }}
+          />
+
+          <LadderEditor
+            title={tx('How many pieces earns which grade')}
+            note={tx('Everybody sees which rung they are on and what the next one costs. Nothing delivered is not a grade.')}
+            rows={fields.maker_grades || []}
+            cols={[
+              { key: 'name', label: tx('Grade'), kind: 'text', hint: 'A+' },
+              { key: 'pieces', label: tx('Pieces a month'), kind: 'num' },
+            ]}
+            blank={{ name: '', pieces: 0 }}
+            onSave={(rows) => {
+              const next = { ...fields, maker_grades: rows }
+              setFields(next)
+              api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Saved — synced')) })
+                .catch((e) => { alert(e.message); load() })
+            }}
+          />
         </>
       )}
+    </>
+  )
+}
+
+// A short list of rungs an admin edits as a whole — the pay tiers and the
+// grade ladder are the same shape, so they are the same editor. Rows are
+// added and removed here and saved together: a ladder with a rung missing
+// while somebody types the next one is not a state worth storing.
+// Paying happens outside this system. This records that somebody said it was
+// done, and who — the same shape as the sprint board recording who dropped a
+// task rather than pretending the system did it.
+function MonthPaid({ month, sheet, onDone }) {
+  const [busy, setBusy] = useState(false)
+  if (!month) return null
+  const unpaid = sheet.filter((r) => !r.paid).length
+  const go = async (path) => {
+    setBusy(true)
+    try { const r = await api.post(`/reports/work/${path}`, { month }); toast(tx('Saved — synced')); onDone(r) }
+    catch (e) { alert(e.message) } finally { setBusy(false) }
+  }
+  return unpaid > 0 ? (
+    <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => go('paid')}>
+      {tx('Mark {month} paid', { month })}
+    </button>
+  ) : (
+    <button className="btn btn-sm" disabled={busy} onClick={() => go('unpaid')}>
+      {tx('Re-open {month}', { month })}
+    </button>
+  )
+}
+
+function LadderEditor({ title, note, rows, cols, blank, onSave }) {
+  const [draft, setDraft] = useState(rows)
+  useEffect(() => { setDraft(rows) }, [rows])
+  const dirty = JSON.stringify(draft) !== JSON.stringify(rows)
+  const set = (i, k, v) => setDraft(draft.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
+  return (
+    <>
+      <div className="section-head" style={{ marginTop: 18 }}>
+        <h2>{title}</h2>
+      </div>
+      <div className="card table-wrap">
+        <table className="tbl ladder-tbl">
+          <thead>
+            <tr>{cols.map((c) => <th key={c.key}>{c.label}</th>)}<th /></tr>
+          </thead>
+          <tbody>
+            {draft.map((r, i) => (
+              <tr key={i}>
+                {cols.map((c) => (
+                  <td key={c.key}>
+                    <span className="ladder-cell">
+                      <input className="input pc-mini"
+                        type={c.kind === 'num' ? 'number' : 'text'}
+                        min={c.kind === 'num' ? 0 : undefined}
+                        placeholder={c.hint || ''}
+                        value={r[c.key] ?? ''}
+                        onChange={(e) => set(i, c.key, c.kind === 'num' ? Number(e.target.value) : e.target.value)} />
+                      {c.suffix && <b className="stat-sub">{c.suffix}</b>}
+                    </span>
+                  </td>
+                ))}
+                <td className="right">
+                  <button className="btn btn-sm btn-danger" onClick={() => setDraft(draft.filter((_, j) => j !== i))}>
+                    <X size={13} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {draft.length === 0 && (
+              <tr><td colSpan={cols.length + 1} className="empty">{tx('Nothing set — nobody is measured against this.')}</td></tr>
+            )}
+          </tbody>
+        </table>
+        <div className="ladder-foot">
+          <button className="btn btn-sm" onClick={() => setDraft([...draft, { ...blank }])}>
+            <Plus size={13} /> {tx('Add a row')}
+          </button>
+          <span className="spacer" />
+          {dirty && <button className="btn btn-sm" onClick={() => setDraft(rows)}>{tx('Cancel')}</button>}
+          <button className="btn btn-sm btn-primary" disabled={!dirty} onClick={() => onSave(draft)}>{tx('Save')}</button>
+        </div>
+        <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>{note}</div>
+      </div>
     </>
   )
 }
@@ -1980,6 +2102,15 @@ function ReportsTab({ channel, setChannel }) {
       .then(setViews).catch(() => setViews(null))
   }, [range.from, range.to, channel])
 
+  // What each person actually MADE — filmed, edited, and both — and the
+  // register those counts came from. Same window, same channel lens.
+  const [work, setWork] = useState(null)
+  const loadWork = useCallback(() => {
+    api.get(`/reports/work?from=${range.from}&to=${range.to}&channel=${channel}`)
+      .then(setWork).catch(() => setWork(null))
+  }, [range.from, range.to, channel])
+  useEffect(() => { setWork(null); loadWork() }, [loadWork])
+
   const colorOf = useMemo(() => Object.fromEntries(channels.map((c, i) => [c.key, deptColor(i)])), [channels])
   const chStats = channel !== 'all' ? data?.byChannel?.[channel] : null
   const shownTotal = channel === 'all' ? data?.totalDone : (chStats?.total || 0)
@@ -2024,6 +2155,103 @@ function ReportsTab({ channel, setChannel }) {
           </button>
         ))}
       </div>
+
+      {/* ---- what each person actually made ---- */}
+      {/* The delivery report answers "was it on time". This answers "what did
+          you make" — which for an operator or an editor is the whole question,
+          and the board had no way to say it. */}
+      {work && (
+        <>
+          <div className="section-head" style={{ marginTop: 4 }}>
+            <h2>{tx('What everyone made')}</h2>
+            <span className="count">· {tx('filmed, edited, and both')}</span>
+          </div>
+          <div className="card table-wrap">
+            <table className="tbl work-tbl">
+              <thead>
+                <tr>
+                  <th>{tx('Name')}</th>
+                  <th data-tip={tx('Pieces they filmed and somebody else cut')}>{tx('Filmed')}</th>
+                  <th data-tip={tx('Pieces they cut and somebody else filmed')}>{tx('Edited')}</th>
+                  <th data-tip={tx('Pieces they both filmed and cut — one whole piece carried alone')}>{tx('Both')}</th>
+                  <th data-tip={tx('Pieces their face carries')}>{tx('In front')}</th>
+                  <th data-tip={tx('Where their delivered count puts them on the ladder')}>{tx('Grade')}</th>
+                  <th data-tip={tx('What the tiers pay for what they filmed and cut')}>{tx('Tier pay')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {work.people.map((p) => (
+                  <tr key={p.user_id}>
+                    <td><b>{p.name}</b></td>
+                    <td>{p.filmed || <span className="stat-sub">—</span>}</td>
+                    <td>{p.edited || <span className="stat-sub">—</span>}</td>
+                    <td>{p.both || <span className="stat-sub">—</span>}</td>
+                    <td>{p.faced || <span className="stat-sub">—</span>}</td>
+                    <td>
+                      {p.grade
+                        ? <b>{p.grade}</b>
+                        : <span className="stat-sub">—</span>}
+                      {p.next && (
+                        <span className="stat-sub"> · {tx('{name} at {n}', { name: p.next, n: p.next_at })}</span>
+                      )}
+                    </td>
+                    <td>{p.tier_pay ? money(p.tier_pay, '') : <span className="stat-sub">—</span>}</td>
+                  </tr>
+                ))}
+                {work.people.length === 0 && (
+                  <tr><td colSpan={7} className="empty">{tx('Nothing went out in this window.')}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* The register the counts came from. Anybody can check the total
+              rather than take it. */}
+          <Fold id="admin_work_sheet" title={tx('Every piece, one by one')} count={work.sheet.length}>
+            <div className="card table-wrap">
+              <table className="tbl work-sheet">
+                <thead>
+                  <tr>
+                    <th>#</th><th>{tx('Title')}</th><th>{tx('Filmed')}</th><th>{tx('Edited')}</th>
+                    <th>{tx('In front')}</th><th>{tx('Views')}</th><th>{tx('Skip')}</th>
+                    <th>{tx('Where it went')}</th><th>{tx('Paid')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {work.sheet.map((r) => (
+                    <tr key={r.id}>
+                      <td className="stat-sub">{r.n}</td>
+                      <td><b>{r.title}</b><div className="stat-sub">{r.day}</div></td>
+                      <td>{r.filmed_by || <span className="stat-sub">—</span>}</td>
+                      <td>{r.edited_by || <span className="stat-sub">—</span>}</td>
+                      <td>{r.face || <span className="stat-sub">—</span>}</td>
+                      <td>{r.views == null ? <span className="stat-sub">{tx('not counted')}</span> : r.views.toLocaleString()}</td>
+                      <td>
+                        {r.skip_rate == null
+                          ? <span className="stat-sub">{tx('not measured')}</span>
+                          : <>{r.skip_rate}%{r.tier && <b className="chip chip-muted"> {r.tier}</b>}</>}
+                      </td>
+                      <td>
+                        {r.post_link
+                          ? <a href={r.post_link} target="_blank" rel="noreferrer">{tx('Open it')}</a>
+                          : <span className="stat-sub">—</span>}
+                      </td>
+                      <td>{r.paid ? <b className="paid-yes">{tx('Paid')}</b> : <span className="stat-sub">{tx('Not yet')}</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="ladder-foot">
+                <span className="stat-sub">
+                  {tx('{n} of {m} paid', { n: work.sheet.filter((r) => r.paid).length, m: work.sheet.length })}
+                </span>
+                <span className="spacer" />
+                <MonthPaid month={work.sheet[0]?.day?.slice(0, 7) || ''} sheet={work.sheet} onDone={loadWork} />
+              </div>
+            </div>
+          </Fold>
+        </>
+      )}
 
       {/* ---- what it all got watched ---- */}
       {/* The delivery report says how much went out. It said nothing at all
