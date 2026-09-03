@@ -1428,6 +1428,8 @@ const PHRASES = {
     "Everyone else — one-time duty": "Все остальные — разовое поручение",
     "Type a name": "Начните вводить имя",
     "Nobody by that name": "Никого с таким именем",
+    "An idea needs a name and a couple of sentences. Everything else is asked for when it is actually going to be made.": "Идее нужны название и пара предложений. Всё остальное спросят, когда её действительно будут делать.",
+    "I already know the rest": "Я уже знаю остальное",
   },
   uz: {
     "Counted from": "Nimadan hisoblanadi",
@@ -2323,6 +2325,8 @@ const PHRASES = {
     "Everyone else — one-time duty": "Qolganlar — bir martalik topshiriq",
     "Type a name": "Ismni yozing",
     "Nobody by that name": "Bunday ismli hech kim yoʻq",
+    "An idea needs a name and a couple of sentences. Everything else is asked for when it is actually going to be made.": "Gʻoyaga nom va bir necha jumla kerak. Qolgani u haqiqatan qilinadigan boʻlganda soʻraladi.",
+    "I already know the rest": "Qolganini bilaman",
   },
 }
 

@@ -3796,6 +3796,16 @@ button.blame-person:hover { background: var(--surface-2); }
 .sp-past { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
 .sp-weeks { max-width: 300px; font-size: 12.5px; }
 
+/* A new task is an idea: a name and a couple of sentences. The rest of the
+   form is still there, one press away, for whoever already knows it. */
+.cm-sec-later { display: none !important; }
+.cm-idea-note {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 13px; margin: 2px 0 4px;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.cm-idea-note .stat-sub { flex: 1 1 220px; line-height: 1.45; }
+
 /* ---------- picking a person by typing their name ---------- */
 .pp { position: relative; }
 .pp-field {

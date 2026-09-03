@@ -794,12 +794,18 @@ const linkComplaint = (v, what) => {
 // ready for them to work from. Earlier than that (the Idea stage, the
 // quick-add box) a filmed piece is still just a title, and stays cheap to
 // jot down; the demand lands the moment somebody actually books the shoot.
-const bookingProblem = ({ operatorId, recording, editReady, release, refReady }) => {
+const bookingProblem = ({ operatorId, recording, editReady, release, refReady, script }) => {
   if (!operatorId) return 'Pick who is filming this — a shoot nobody is holding is nobody’s job'
   const missingDate = [
     [recording, 'the shoot day'], [editReady, 'the day the cut is due'], [release, 'the release day'],
   ].find(([v]) => !v)
   if (missingDate) return `Filmed work is booked with all three dates — ${missingDate[1]} is missing`
+  // The script, written down before anybody is asked to turn up. An idea owes
+  // nobody one; a booked shoot does. This is the difference between a crew
+  // arriving to make something and a crew arriving to work out what to make,
+  // and it is the one thing on this board that cannot be fixed afterwards —
+  // the day happens either way.
+  if (!isSentence(script)) return 'Write the script before booking the shoot — a crew turning up without one is a day spent working out what to film'
   if (!refReady) return 'Booking the shoot needs a brief ready — paste a reference link or TZ, or attach the photo it refers to'
   return null
 }
@@ -1031,7 +1037,8 @@ router.post('/', wrap(async (req, res) => {
   if (isFilmed && isBooking(status, await all('SELECT id, label, sort, is_final FROM statuses'))) {
     const booking = bookingProblem({
       operatorId: crew.operator_id, recording: recording_date, editReady: edit_ready_date,
-      release: release_date, refReady: refCarried || hasLink(reference_text) || isSentence(briefText.script),
+      release: release_date, script: briefText.script,
+      refReady: refCarried || hasLink(reference_text) || isSentence(briefText.script),
     })
     if (booking && !free) return res.status(400).json({ error: booking })
   }
@@ -2431,6 +2438,7 @@ router.patch('/:id', wrap(async (req, res) => {
         const problem = bookingProblem({
           operatorId: val('operator_id'),
           recording: val('recording_date'), editReady: val('edit_ready_date'), release: val('release_date'),
+          script: val('script'),
           refReady: links.length > 0 || !!val('photo') || !!doc || !!val('shot_link')
             || hasLink(val('reference_text')) || isSentence(val('script')),
         })

@@ -168,7 +168,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   useEffect(() => {
     if (pages.length && !pages.some((x) => x.key === sec)) setSec(pages[0].key)
   }, [pages, sec])
-  const secCls = (k) => 'cm-sec' + (sec === k ? ' on' : '')
+  const secCls = (k) => 'cm-sec' + (sec === k ? ' on' : '') + (ideaOnly && k !== 'brief' ? ' cm-sec-later' : '')
   const [tools, setTools] = useState(false)
   // What the booking cards read. The FORM holds what is being typed; a
   // booking is about what is actually saved, and answering one sends back the
@@ -369,6 +369,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // behind a row of buttons at the very bottom. Chrome that is only useful
   // once there is something in it (checklist, documents, the other people's
   // delivery links) still waits to be asked for.
+  // A NEW task is an idea: a name and a couple of sentences about it. That is
+  // all anybody has when they think of something, and asking for a shoot day,
+  // three crew seats and a script at that moment is how a board stops being
+  // written in. Everything else waits until the task is actually going to be
+  // made — the shooting gate asks for it then, when the answers exist.
+  //
+  // The rest is one press away for anybody who already knows it. Nothing is
+  // removed; it is only not demanded on the way in.
+  const [fillNow, setFillNow] = useState(false)
+  // Which stage counts as "still only an idea" — the admin's stage list, read
+  // the way every other stage rule reads it, not a constant.
+  const ideaStage = statuses.find((st) => /^idea$|^ideas$|g'oya|идея/i.test(String(st.label || '')))
+  const ideaOnly = creating && !fillNow && (!!ideaStage && form.status_id === ideaStage.id)
+
   const [show, setShow] = useState(() => ({
     description: true,
     photo: !!item?.photo || !!item?.has_photo,
@@ -1311,7 +1325,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* Reference — the brief the crew reads before working: style/mood/format
           notes, example links, and a reference photo. All optional; none of it
           blocks moving a task forward. Crew see it; only editors set it. */}
-      {(hasRef || (canEdit && show.reference)) && (
+      {!ideaOnly && (hasRef || (canEdit && show.reference)) && (
         <div className={'cm-row cm-ref' + (badField === 'reference' ? ' field-bad' : '')} data-field="reference">
           <span className="cm-key"><BookOpen size={13} style={{ verticalAlign: -2 }} /> {t('task.reference')}</span>
           <div className="ref-block">
@@ -1396,7 +1410,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* The script — the words and shots the crew films by. Editors write it;
           the crew read it. Folds behind the extras row unless demanded. */}
-      {fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
+      {!ideaOnly && fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
         <div className={'cm-row' + (badField === 'script' ? ' field-bad' : '')} data-field="script">
           <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}{fReq('script') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
           <div>
@@ -1411,7 +1425,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           script is what the operator films, the ТЗ is what the editor is told
           to make of it. A shoot can be scripted with no ТЗ written yet, and
           an edit cannot start without one. */}
-      {fOn('tz') && !crewViewer && canEdit && (form.tz || fReq('tz') || show.tz) && (
+      {!ideaOnly && fOn('tz') && !crewViewer && canEdit && (form.tz || fReq('tz') || show.tz) && (
         <div className={'cm-row' + (badField === 'tz' ? ' field-bad' : '')} data-field="tz">
           <span className="cm-key"><ClipboardList size={13} style={{ verticalAlign: -2 }} /> {tx('ТЗ')}{fReq('tz') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
           <div>
@@ -1445,6 +1459,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* The description sits with the rest of the brief rather than at the
           foot of the form — it is read at the same moment as the reference. */}
+      {ideaOnly && (
+        <div className="cm-idea-note">
+          <span className="stat-sub">
+            {tx('An idea needs a name and a couple of sentences. Everything else is asked for when it is actually going to be made.')}
+          </span>
+          <button type="button" className="btn btn-sm" onClick={() => setFillNow(true)}>
+            {tx('I already know the rest')}
+          </button>
+        </div>
+      )}
+
       {show.description && !crewViewer && (
         <div className={'cm-row' + (badField === 'description' ? ' field-bad' : '')} data-field="description">
           <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> {t('task.description')}{fReq('description') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
