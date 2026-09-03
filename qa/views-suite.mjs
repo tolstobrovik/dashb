@@ -63,7 +63,9 @@ const finalId = (await req('/statuses')).data.find((s) => s.is_final).id
 const make = async (title, type) => (await req('/content', 'POST', {
   title, channels: [ch], type, assignee_ids: [maker.id], release_date: day(-1),
 })).data
-const publish = (id) => req(`/content/${id}`, 'PATCH', { status_id: finalId })
+// Publishing records where it went — a piece cannot reach the last stage
+// without the link to it.
+const publish = (id) => req(`/content/${id}`, 'PATCH', { status_id: finalId, post_link: `https://instagram.com/p/v${id}` })
 
 const vid = await make('v84: the reel', 'reel')
 const vid2 = await make('v84: the video', 'video')

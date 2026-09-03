@@ -38,7 +38,7 @@ ok('bogus designer rejected', (await req(`/content/${p2.data.id}`, 'PATCH', { de
 const tokD = await login('r11dez', 'd1234')
 const dezSees = (await req('/content', 'GET', null, tokD)).data
 ok('designer sees their post without holding the channel', dezSees.some((c) => c.id === p2.data.id))
-const doneOn = await req(`/content/${p1.data.id}`, 'PATCH', { done: true }, tokD)
+const doneOn = await req(`/content/${p1.data.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, tokD)
 ok('…but not posts they are not the designer of', doneOn.status === 403)
 const p3 = await req('/content', 'POST', { title: 'r11: crew right probe', channels: ['instagram_main'], type: 'post', designer_id: dez.id })
 const readySt11 = (await req('/statuses')).data.find((s) => /^ready$/i.test(s.label))

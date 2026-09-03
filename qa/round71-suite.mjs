@@ -141,7 +141,7 @@ ok('clearing the hand does not invite another', cron.data.flagged === 0, JSON.st
 
 // ===================== finished work is not late =====================
 const done = (await mk({ title: 'r71 already out', recording_date: day(-9), edit_ready_date: day(-8), release_date: day(-7) })).data
-await req(`/content/${done.id}`, 'PATCH', { done: true })
+await req(`/content/${done.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 mine = await req('/content/late/mine', 'GET', null, opT)
 ok('work that is finished is nobody’s late work', !mine.data.some((x) => x.content_id === done.id),
   JSON.stringify(mine.data.map((x) => x.title)))

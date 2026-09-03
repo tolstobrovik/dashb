@@ -38,7 +38,7 @@ const r1 = await req(`/content/${shootToday.id}`, 'PATCH', { milestone: 'shot' }
 ok('operator tick "shot" lands on the Shot stage', r1.status === 200 && r1.data.status_id === shotSt.id)
 ok('operator cannot set a raw stage', (await req(`/content/${shootToday.id}`, 'PATCH', { status_id: readySt.id }, tOp)).status === 403)
 ok('operator cannot mark a cut edited', (await req(`/content/${cutToday.id}`, 'PATCH', { milestone: 'edited' }, tOp)).status === 403)
-ok('operator cannot blanket-complete', (await req(`/content/${shootToday.id}`, 'PATCH', { done: true }, tOp)).status === 403)
+ok('operator cannot blanket-complete', (await req(`/content/${shootToday.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, tOp)).status === 403)
 // reset shootToday back so the UI still shows it in today
 await req(`/content/${shootToday.id}`, 'PATCH', { status_id: statuses[0].id })
 const tEd = await login('r16ed', 'e1234')

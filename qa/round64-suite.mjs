@@ -105,7 +105,9 @@ await mk({ title: 'x64 cut due yesterday', editor_id: behind.id, edit_ready_date
 // this marks it done the way a person does, rather than posting the column.
 const finalId = (await req('/statuses')).data.find((s) => s.is_final)?.id
 const doneOne = await mk({ title: 'x64 done but overdue', assignee_ids: [behind.id], release_date: day(-4) })
-await req(`/content/${doneOne.id}`, 'PATCH', { status_id: finalId })
+// Reaching the final stage now records WHERE it went — publishing without
+// saying where is refused, so the fixture publishes the way a person does.
+await req(`/content/${doneOne.id}`, 'PATCH', { status_id: finalId, post_link: 'https://instagram.com/p/x64done' })
 ok('the fixture really is finished', !!(await req(`/content/${doneOne.id}`)).data.done_at,
   String((await req(`/content/${doneOne.id}`)).data.done_at))
 const deadStatus = (await req('/statuses')).data.find((s) => /^deleted$/i.test(s.label))

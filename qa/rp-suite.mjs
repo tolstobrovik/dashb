@@ -19,7 +19,7 @@ const mk = async (title, ch, type, extra = {}) => (await req('/content', 'POST',
 const d1 = await mk('IG done 1', 'instagram_main', 'post', { assignee_id: jas.id })
 const d2 = await mk('IG done 2', 'instagram_main', 'reel', { assignee_id: jas.id })
 const d3 = await mk('YT done', 'youtube', 'video', { assignee_id: mir.id })
-for (const t of [d1, d2, d3]) await req(`/content/${t.id}`, 'PATCH', { done: true })
+for (const t of [d1, d2, d3]) await req(`/content/${t.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 await mk('IG open', 'instagram_main', 'post', { release_date: today })
 await mk('IG overdue', 'instagram_main', 'post', { release_date: '2026-07-10' })
 

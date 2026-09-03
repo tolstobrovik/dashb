@@ -21,7 +21,7 @@ await cleanup()
 const statuses = (await req('/statuses')).data
 const finalId = statuses.find((s) => s.is_final).id
 const pubT = (await req('/content', 'POST', { title: 'x23: went live', channels: ['instagram_main'], type: 'reel' })).data
-await req(`/content/${pubT.id}`, 'PATCH', { status_id: finalId })
+await req(`/content/${pubT.id}`, 'PATCH', { status_id: finalId, post_link: 'https://instagram.com/p/r23' })
 await req('/content', 'POST', { title: 'x23: bare task', channels: ['instagram_main'], type: 'reel' })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

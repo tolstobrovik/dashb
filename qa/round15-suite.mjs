@@ -39,13 +39,13 @@ await req('/content', 'POST', { title: 'r15: release only', channels: ['youtube'
 ok('crew fixtures in place', !!shoot.id && !!cut.id)
 
 const doneT = (await req('/content', 'POST', { title: 'r15: shipped today', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id] })).data
-await req(`/content/${doneT.id}`, 'PATCH', { done: true })
+await req(`/content/${doneT.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 await req('/content', 'POST', { title: 'r15: upcoming post', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id], release_date: add(2) })
 await req('/content', 'POST', { title: 'r15: missed release', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id], release_date: yesterday })
 const proj = (await req('/projects', 'POST', { name: 'r15: Open Day' })).data
 const camp = (await req('/campaigns', 'POST', { name: 'r15: Open Day teasers', project_id: proj.id })).data
 const projTask = (await req('/content', 'POST', { title: 'r15: teaser video', channels: ['instagram_main'], type: 'post', campaign_id: camp.id, assignee_ids: [mir.id] })).data
-await req(`/content/${projTask.id}`, 'PATCH', { done: true })
+await req(`/content/${projTask.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 ok('statistics fixtures in place', !!proj.id && !!camp.id && !!projTask.id)
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

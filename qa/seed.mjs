@@ -28,7 +28,7 @@ const vid = await mk({ title: 'Alumni interview: from Tashkent to MIT', channels
 await mk({ title: 'Telegram digest — weekly college prep tips', channels: ['telegram_uzb'], type: 'post', assignee_id: azi.id, release_date: add(1) })
 const doneA = await mk({ title: 'IELTS webinar recap post', channels: ['instagram_main'], type: 'post', assignee_id: jas.id, release_date: add(-1) })
 const doneB = await mk({ title: 'Campus vlog #12', channels: ['youtube'], type: 'video', assignee_id: mir.id, operator_id: mir.id, editor_id: jas.id, release_date: add(-2) })
-for (const d of [doneA, doneB]) await req(`/content/${d.id}`, 'PATCH', { done: true })
+for (const d of [doneA, doneB]) await req(`/content/${d.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 await req(`/content/${c1.id}`, 'PATCH', { pinned: true })
 
 // --- projects & campaigns (3 projects exist from migration) ---

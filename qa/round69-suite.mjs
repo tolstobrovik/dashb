@@ -117,7 +117,7 @@ ok('…and the refusal quotes what is outstanding', /captions/.test(r.data.error
 ok('…even for an admin, because the piece is the piece',
   (await req(`/content/${t.id}`)).data.status_id !== sid(/published/i))
 // The done tick is the same act by another name.
-r = await req(`/content/${t.id}`, 'PATCH', { done: true })
+r = await req(`/content/${t.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 ok('…and ticking it complete is the same act, so it is stopped too', r.status === 409, String(r.status))
 
 const last = (await req(`/content/${t.id}`)).data.revisions.find((v) => !v.resolved_at)

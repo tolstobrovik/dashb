@@ -51,7 +51,7 @@ const duo = await req('/content', 'POST', { title: 'r14: two-person task', chann
 ok('a task stores several assignees', duo.status === 201 && (duo.data.assignees || []).length === 2, JSON.stringify(duo.data.assignees))
 ok('the legacy assignee mirrors the first', duo.data.assignee_id === mir.id)
 const tokJas = await login('jas', 'j1234')
-ok('the second assignee sees and works the task too', (await req(`/content/${duo.data.id}`, 'PATCH', { done: true }, tokJas)).status === 200)
+ok('the second assignee sees and works the task too', (await req(`/content/${duo.data.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, tokJas)).status === 200)
 await req(`/content/${duo.data.id}`, 'PATCH', { done: false })
 ok('non-admin cannot multi-assign others', (await req('/content', 'POST', { title: 'r14: sneak', channels: ['instagram_main'], assignee_ids: [mir.id, jas.id] }, tokJas)).status === 403)
 

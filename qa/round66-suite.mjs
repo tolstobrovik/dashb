@@ -213,7 +213,7 @@ ok('…and moves through the stages with nobody named', r.status === 200, `${r.s
 // that has been and gone — publishing has its own guard and never was this
 // rule's business.
 const ticked = await mk({ title: 'r66 filmed before the board existed', type: 'video', status_id: ideaId })
-r = await req(`/content/${ticked.data.id}`, 'PATCH', { done: true })
+r = await req(`/content/${ticked.data.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 ok('ticking a bare video complete is not asked for a booking', r.status === 200,
   `${r.status} ${r.data.error || ''}`)
 

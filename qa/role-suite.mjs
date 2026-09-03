@@ -50,7 +50,7 @@ await req(`/content/${mp.id}`, 'DELETE')
 ok('editor cannot touch a foreign task', (await req(`/content/${foreign.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)
 ok('editor cannot rewrite details', (await req(`/content/${vid.id}`, 'PATCH', { title: 'renamed' }, ET)).status === 403)
 ok('editor cannot create team tasks', (await req('/content', 'POST', { title: 'sneak', channels: ['youtube'], type: 'post' }, ET)).status === 403)
-ok('editor cannot complete — that is not their reach', (await req(`/content/${vid.id}`, 'PATCH', { done: true }, ET)).status === 403)
+ok('editor cannot complete — that is not their reach', (await req(`/content/${vid.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, ET)).status === 403)
 ok('editor drops a Google-Drive ready link', (await req(`/content/${vid.id}`, 'PATCH', { ready_link: 'https://drive.google.com/x' }, ET)).status === 200)
 
 // a department member sees crew users for the chips
