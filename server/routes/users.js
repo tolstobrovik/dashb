@@ -266,6 +266,14 @@ router.delete('/:id', adminOnly, wrap(async (req, res) => {
     // resolves, and a document blob is one of the heaviest rows here.
     ['DELETE FROM person_docs WHERE user_id = ?', req.params.id],
     ['DELETE FROM person_kpis WHERE user_id = ?', req.params.id],
+    // Their place in the ambassador programme, the cards they sent and what
+    // they were paid for them. The admin's queue draws a row per ambassador
+    // and falls back to "Someone who left" when the account behind one is
+    // gone — which is a sensible answer to a race, and a terrible one to a
+    // permanent state: the queue filled up with people who are not there.
+    ['DELETE FROM ambassador_cards WHERE ambassador_id IN (SELECT id FROM ambassadors WHERE user_id = ?)', req.params.id],
+    ['DELETE FROM ambassador_payouts WHERE ambassador_id IN (SELECT id FROM ambassadors WHERE user_id = ?)', req.params.id],
+    ['DELETE FROM ambassadors WHERE user_id = ?', req.params.id],
     // How much time they spent on the board, and what they pressed, is about
     // a person — so it leaves with the person. The Usage panel rolls its
     // totals across every row it finds, and rows belonging to nobody would go

@@ -102,6 +102,18 @@ for (const [field, value] of [['reference_text', 'a different mood'], ['script',
   ok(`changing ${field} is still his to be refused`, r.status === 403, `${r.status} ${r.data.error || ''}`)
 }
 
+// ===================== a maker reads their own numbers =====================
+// `/reports/work/mine` sat BELOW the router's admin gate, so the one endpoint
+// whose whole purpose is "a person reads their OWN" answered "Admins only" to
+// every person — silently, because the card that asks for it treats a failure
+// as nothing to show. `/pay/mine` has always been declared above the gate for
+// exactly this reason.
+const own = await req('/reports/work/mine', 'GET', null, HT)
+ok('a member reads their own month and their rung on the ladder',
+  own.status === 200 && 'filmed' in own.data && 'ladder' in own.data,
+  `${own.status} ${JSON.stringify(own.data).slice(0, 90)}`)
+ok('…and still cannot read everybody else’s', (await req('/reports/work', 'GET', null, HT)).status === 403)
+
 // ===================== 3) the published-link wall =====================
 ok('publishing with no link is refused, and says which box',
   (await req(`/content/${piece.id}`, 'PATCH', { status_id: fin.id }, HT)).data.needs === 'post_link')
@@ -225,6 +237,25 @@ ok('she is not offered a shelf with nothing on it',
 await ctx2.close()
 
 await browser.close()
+
+// ===================== an account that goes, goes =====================
+// The admin's ambassador queue draws a row per ambassador and falls back to
+// "Someone who left" when the account behind one is gone — a sensible answer
+// to a race and a terrible one to a permanent state. Round 81 swept this class
+// for attendance, the bell, documents and sprint seats; the ambassador tables
+// were built after it.
+const student = (await req('/users', 'POST', {
+  name: 'Leaving Student', username: 'r86amb', password: 'a1234', role: 'ambassador',
+})).data
+await req(`/ambassadors/person/${student.id}`, 'PUT', { amount: 200000, active: true })
+ok('a student set up is in the admin queue',
+  ((await req('/ambassadors')).data.people || []).some((p) => p.user_id === student.id))
+await req(`/users/${student.id}`, 'DELETE')
+const queue = (await req('/ambassadors')).data.people || []
+ok('…and leaves it when the account goes', !queue.some((p) => p.user_id === student.id))
+ok('…leaving nobody behind under a name that no longer resolves',
+  !queue.some((p) => /Someone who left/.test(p.name || '')), JSON.stringify(queue.map((p) => p.name)))
+
 // ---- cleanup ---------------------------------------------------------------
 await req(`/content/${piece.id}`, 'DELETE')
 await req(`/users/${hand.id}`, 'DELETE')

@@ -1312,13 +1312,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* How much of it people skipped. Read off the same screen as the view
           count, so it is asked for in the same place — and left empty until
           somebody has actually looked, for the same reason. */}
+      {/* Its own class, not the view count's: the two rows are read together
+          and styled alike, and anything that COUNTS the views box must not
+          find two of them. */}
       {showViews && (
-        <div className="cm-row cm-views">
+        <div className="cm-row cm-skip">
           <span className="cm-key"><SkipForward size={13} style={{ verticalAlign: -2 }} /> {tx('Skip rate')}</span>
           <div className="views-box">
             {canCount ? (
               <span className="skip-input">
-                <input className="input views-input" type="number" min="0" max="100" step="0.1" inputMode="decimal"
+                <input className="input skip-input-box" type="number" min="0" max="100" step="0.1" inputMode="decimal"
                   placeholder={tx('Not measured yet')}
                   value={form.skip_rate}
                   onChange={(e) => setForm({ ...form, skip_rate: e.target.value.replace(/[^0-9.]/g, '') })} />

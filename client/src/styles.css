@@ -3835,7 +3835,7 @@ button.blame-person:hover { background: var(--surface-2); }
 
 /* The skip rate sits beside the view count and reads as a percentage. */
 .skip-input { display: inline-flex; align-items: center; gap: 6px; }
-.skip-input .views-input { max-width: 110px; }
+.skip-input .skip-input-box { width: 110px; }
 .skip-input b { color: var(--muted); font-weight: 600; }
 
 /* ---------- picking a person by typing their name ---------- */

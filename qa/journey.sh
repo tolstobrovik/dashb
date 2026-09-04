@@ -37,6 +37,10 @@ ok('a bare reel cannot be booked onto To shoot', bare.status === 400, `${bare.st
 await req(`/content/${task.id}`, { method: 'PATCH', token: MT, body: {
   operator_id: jas.id, recording_date: '2026-07-14', edit_ready_date: '2026-07-17',
   reference_links: ['https://example.com/reference'],
+  // …and the words they film from, which is part of what makes the promise
+  // complete: a crew turning up without a script is a day spent working out
+  // what to shoot.
+  script: 'Open on the main gate, then three students saying why they chose us.',
 } })
 const moved = await req(`/content/${task.id}`, { method: 'PATCH', token: MT, body: { status_id: toShoot.id } })
 ok('member books the shoot and moves it to To shoot', moved.status === 200 && moved.data.status_id === toShoot.id,

@@ -298,6 +298,43 @@ router.get('/pay/mine', wrap(async (req, res) => {
   res.json(runOut.people[0] || null)
 }))
 
+// A person's own numbers, and where this month puts them on the ladder.
+// Declared BEFORE the admin gate for the same reason `/pay/mine` is: it
+// exists so somebody can read their OWN, and below the gate it answered
+// "Admins only" to every one of them — silently, because the card that
+// asks for it treats a failure as "nothing to show".
+// One person's own month: what they made, and which rung of the ladder it puts
+// them on. Separate from the pay card because the ladder is not pay — a board
+// that has set no rates still has a ladder, and somebody should be able to see
+// where they are on it.
+router.get('/work/mine', wrap(async (req, res) => {
+  const { from, to } = statsRange(req.query)
+  const statuses = await all('SELECT * FROM statuses')
+  const dead = new Set(statuses.filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
+  const grades = await getMakerGrades()
+  const rows = await all(`
+    SELECT id, status_id, assignee_id, assignees, done_at, operator_id, editor_id, face_id
+    FROM content WHERE done_at IS NOT NULL`)
+  const me = req.user.id
+  let filmed = 0, edited = 0, both = 0, faced = 0, forMe = 0
+  for (const r of rows) {
+    if (dead.has(r.status_id)) continue
+    const day = tashkentDay(r.done_at)
+    if (day < from || day > to) continue
+    if (r.operator_id === me && r.editor_id === me) both += 1
+    else {
+      if (r.operator_id === me) filmed += 1
+      if (r.editor_id === me) edited += 1
+    }
+    if (r.face_id === me) faced += 1
+    let list = []
+    try { list = JSON.parse(r.assignees || '[]') } catch { list = [] }
+    if ((list.length ? list : (r.assignee_id ? [r.assignee_id] : [])).includes(me)) forMe += 1
+  }
+  res.json({ from, to, filmed, edited, both, faced, made_for: forMe, ...gradeFor(grades, forMe || (filmed + edited + both)), ladder: grades })
+}))
+
+
 router.use(adminOnly)
 
 router.get('/', wrap(async (req, res) => {
@@ -335,51 +372,6 @@ router.get('/', wrap(async (req, res) => {
     }))
     .sort((a, b) => b.total - a.total)
   res.json({ hat, report, totalDone: list.length, byChannel })
-}))
-
-// ---- what it all got watched -----------------------------------------------
-// The board knew what went out and when, and nothing about whether anybody
-// watched it. A month of twenty pieces and a month of three are the same month
-// to a delivery report, which is a strange thing for a marketing board to
-// believe.
-//
-// The numbers are typed in by hand on the task (nobody is plugged into
-// Instagram's API here), so this only adds them up — by type, by channel, by
-// the person the piece was for — and says plainly how much of the month has
-// actually been counted, because a total drawn from a third of the pieces is
-// a number that will be read as if it were all of them.
-//
-// A piece counts in the window by the day it went out, which is the day its
-// views started being earned.
-// One person's own month: what they made, and which rung of the ladder it puts
-// them on. Separate from the pay card because the ladder is not pay — a board
-// that has set no rates still has a ladder, and somebody should be able to see
-// where they are on it.
-router.get('/work/mine', wrap(async (req, res) => {
-  const { from, to } = statsRange(req.query)
-  const statuses = await all('SELECT * FROM statuses')
-  const dead = new Set(statuses.filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
-  const grades = await getMakerGrades()
-  const rows = await all(`
-    SELECT id, status_id, assignee_id, assignees, done_at, operator_id, editor_id, face_id
-    FROM content WHERE done_at IS NOT NULL`)
-  const me = req.user.id
-  let filmed = 0, edited = 0, both = 0, faced = 0, forMe = 0
-  for (const r of rows) {
-    if (dead.has(r.status_id)) continue
-    const day = tashkentDay(r.done_at)
-    if (day < from || day > to) continue
-    if (r.operator_id === me && r.editor_id === me) both += 1
-    else {
-      if (r.operator_id === me) filmed += 1
-      if (r.editor_id === me) edited += 1
-    }
-    if (r.face_id === me) faced += 1
-    let list = []
-    try { list = JSON.parse(r.assignees || '[]') } catch { list = [] }
-    if ((list.length ? list : (r.assignee_id ? [r.assignee_id] : [])).includes(me)) forMe += 1
-  }
-  res.json({ from, to, filmed, edited, both, faced, made_for: forMe, ...gradeFor(grades, forMe || (filmed + edited + both)), ladder: grades })
 }))
 
 // Closing a month: everything that went out in it is marked paid, once, with
@@ -507,6 +499,20 @@ router.get('/work', wrap(async (req, res) => {
   })
 }))
 
+// ---- what it all got watched -----------------------------------------------
+// The board knew what went out and when, and nothing about whether anybody
+// watched it. A month of twenty pieces and a month of three are the same month
+// to a delivery report, which is a strange thing for a marketing board to
+// believe.
+//
+// The numbers are typed in by hand on the task (nobody is plugged into
+// Instagram's API here), so this only adds them up — by type, by channel, by
+// the person the piece was for — and says plainly how much of the month has
+// actually been counted, because a total drawn from a third of the pieces is
+// a number that will be read as if it were all of them.
+//
+// A piece counts in the window by the day it went out, which is the day its
+// views started being earned.
 router.get('/views', wrap(async (req, res) => {
   const { from, to } = statsRange(req.query)
   const channel = req.query.channel && req.query.channel !== 'all' ? String(req.query.channel) : null
