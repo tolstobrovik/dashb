@@ -1640,6 +1640,8 @@ table.tbl tr:hover td { background: var(--surface-2); }
 /* Video crew fields in the task editor */
 .crew-row { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; }
 .crew-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 160px; }
+/* Whose face carries the piece. Shaped like a crew seat, counted as none. */
+.face-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 160px; }
 .crew-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
 
 /* ---- Customizable channel dashboards ---- */

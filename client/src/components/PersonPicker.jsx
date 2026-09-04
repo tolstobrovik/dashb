@@ -51,7 +51,16 @@ export default function PersonPicker({
   }, [groups, q])
   const first = shown.flatMap((g) => g.people).find((p) => !p.disabled)
 
-  const take = (p) => { if (p?.disabled) return; onPick(p ? p.id : null); setOpen(false) }
+  // A click inside a <label> is forwarded by the browser to that label's
+  // control — here, the picker's own button — which re-opens the list the
+  // moment somebody picks from it. Nothing in this popup has a default action
+  // worth keeping, so none of them keep one.
+  const take = (e, p) => {
+    e?.preventDefault()
+    if (p?.disabled) return
+    onPick(p ? p.id : null)
+    setOpen(false)
+  }
 
   return (
     <div className={'pp' + (className ? ' ' + className : '')} ref={box}>
@@ -69,12 +78,12 @@ export default function PersonPicker({
             <Search size={14} />
             <input ref={field} className="input" value={q} placeholder={tx('Type a name')}
               onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); take(first) } }} />
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); take(e, first) } }} />
             {q && <button type="button" className="icon-btn" onClick={() => setQ('')}><X size={13} /></button>}
           </div>
           <div className="pp-list">
             {clearable && !q && (
-              <button type="button" className="pp-row pp-none" onClick={() => take(null)}>
+              <button type="button" className="pp-row pp-none" onClick={(e) => take(e, null)}>
                 {placeholder || tx('— nobody —')}
               </button>
             )}
@@ -84,7 +93,7 @@ export default function PersonPicker({
                 {g.people.map((p) => (
                   <button type="button" key={p.id}
                     className={'pp-row' + (p.id === value ? ' on' : '') + (p.disabled ? ' off' : '')}
-                    disabled={p.disabled} onClick={() => take(p)}>
+                    disabled={p.disabled} onClick={(e) => take(e, p)}>
                     <Avatar name={p.name} color={p.color} src={p.avatar} size="xs" />
                     <span className="pp-name">{p.name}</span>
                     {p.hint && <span className="pp-hint">{p.hint}</span>}

@@ -18,6 +18,7 @@ import Streak from '../components/Streak.jsx'
 import { deliveryHref, splitDelivery } from '../lib/text.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone, moveTo } from '../lib/finish.js'
 import { playDone } from '../lib/sound.js'
 import { tr as tx, locale } from '../lib/i18n.jsx'
 
@@ -698,7 +699,7 @@ export default function Brief() {
   const { openMenu } = useContextMenu()
   const rowMenu = (e, item) => openMenu(e, [
     { label: 'Open', icon: PenLine, onClick: () => setOpenItem(item) },
-    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast(tx('Saved — synced'))).catch((err) => alert(err.message)) },
+    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => markDone(item, updateContent, setOpenItem) },
     { sep: true },
     { label: 'Delete', icon: Trash2, danger: true, onClick: () => { if (confirm(`Delete “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) } },
   ])
@@ -727,14 +728,11 @@ export default function Brief() {
     </>
   )
 
-  const publishNow = async (t) => {
+  const publishNow = (t) => {
     const fin = statuses.find((s) => s.is_final)
     if (!fin) return
-    try {
-      playDone()
-      await updateContent(t, { status_id: fin.id })
-      toast(tx('Published — synced'))
-    } catch (e) { alert(e.message) }
+    playDone()
+    return moveTo(t, updateContent, fin.id, setOpenItem, tx('Published — synced'))
   }
 
   const reviewBlock = reviewQueue.length > 0 && (

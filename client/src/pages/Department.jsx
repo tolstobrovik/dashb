@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone, askForTheLink } from '../lib/finish.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
@@ -306,8 +307,7 @@ export default function Department() {
     { label: tx('Open'), icon: PenLine, onClick: () => setOpenItem(item) },
     manageContent && {
       label: item.done_at ? tx('Mark as not done') : tx('Mark as done'), icon: Check,
-      onClick: () => updateContent(item, { done: !item.done_at })
-        .then(() => toast(tx('Saved — synced'))).catch((err) => alert(err.message)),
+      onClick: () => markDone(item, updateContent, setOpenItem),
     },
     manageContent && !item.done_at && {
       label: item.pinned ? tx('Unpin') : tx('Pin to the top'), icon: Pin,
@@ -355,7 +355,7 @@ export default function Department() {
       movedToast(item, statusId)
     } catch (e) {
       if (e.data?.gate && e.data?.missing) setGate({ item, statusId })
-      else alert(e.message)
+      else askForTheLink(e, item, setOpenItem)
     }
   }
   // The task modal changes stages too — its chips at the top of the panel —

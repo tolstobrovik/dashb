@@ -1812,6 +1812,16 @@ router.patch('/:id', wrap(async (req, res) => {
     }
   }
 
+  // A form sends every box it holds, whether or not the hand on it moved. A
+  // value identical to the stored one is not a change, so it neither asks the
+  // permission the change would ask for nor restamps who counted it. Anything
+  // that is genuinely different still goes past the full gate below.
+  const unchangedNumber = (sent, held) => {
+    const a = sent === null || sent === '' ? null : Number(sent)
+    const b = held === null || held === undefined ? null : Number(held)
+    return a === b
+  }
+
   // ---- what it actually got ------------------------------------------------
   // The number is entered by hand because the board is not plugged into
   // Instagram, YouTube and Telegram — and pretending otherwise would put a
@@ -1822,7 +1832,7 @@ router.patch('/:id', wrap(async (req, res) => {
   // NULL is not zero. Clearing the box means "nobody has written it down",
   // which is what an unmeasured piece honestly is; 0 means it was measured and
   // got none. The sums and the KPI depend on being able to tell them apart.
-  if (body.views !== undefined) {
+  if (body.views !== undefined && !unchangedNumber(body.views, row.views)) {
     const madeIt = [row.assignee_id, ...assigneesOf(row)].filter(Boolean).includes(req.user.id)
     if (!adminHere(req.user, row) && !madeIt)
       return res.status(403).json({ error: 'Only an admin on this channel, or somebody the piece is for, records its views' })
@@ -1846,7 +1856,7 @@ router.patch('/:id', wrap(async (req, res) => {
   // How much of it people skipped, from the same place and the same hands as
   // the view count. Empty means nobody has measured it — which is NOT the same
   // as nought, and the pay tiers depend on being able to tell them apart.
-  if (body.skip_rate !== undefined) {
+  if (body.skip_rate !== undefined && !unchangedNumber(body.skip_rate, row.skip_rate)) {
     const madeIt = [row.assignee_id, ...assigneesOf(row)].filter(Boolean).includes(req.user.id)
     if (!adminHere(req.user, row) && !madeIt)
       return res.status(403).json({ error: 'Only an admin on this channel, or somebody the piece is for, records its skip rate' })

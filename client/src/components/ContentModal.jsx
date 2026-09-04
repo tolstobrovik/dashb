@@ -138,7 +138,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // tells you something is wrong; it does not tell you where, and the answer
   // is usually three screens down. Naming the field lets the form ring it and
   // scroll to it, so "«Script» needs a real answer" lands next to the script.
-  const [badField, setBadField] = useState('')
+  // A one-tap "done" that was refused for the missing published link opens the
+  // task on that box, ringed — the refusal and the answer in the same place.
+  const [badField, setBadField] = useState(item?.needs_post_link ? 'post_link' : '')
   const refuse = (field, message) => { setBadField(field); setErr(message) }
   // ---- one form on a desk, five pages on a phone ----
   // This sheet holds fourteen fields and, on a 390px screen, 2,600 pixels of
@@ -617,7 +619,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Asked for from Ready onwards, so the link is already there when somebody
   // goes to move the card to the last stage rather than being a wall they
   // meet with nothing to paste.
-  const nearlyOut = isOut || atReady
+  // …and a refused one-tap finish opens it wherever the piece stands, since
+  // that is exactly the moment somebody was told to paste one.
+  const nearlyOut = isOut || atReady || !!item?.needs_post_link
   // Which pay tier this piece's skip rate puts it in, said where the number is
   // typed. A rate nobody can act on is a number nobody bothers to enter.
   const tiers = fieldRules?.skip_tiers || []
@@ -991,6 +995,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         release_time: form.release_time || null,
         ...(force ? { force: true } : {}),
       }
+      // The spread above carries EVERY box the sheet holds, including the ones
+      // this account may not write — and a save that mentions a field you may
+      // not set is refused whole, even when the value is exactly what is
+      // already stored. That refusal landed on the reviewer pasting a
+      // published link: they were told they may not record views they never
+      // typed. What this account cannot write, it does not send.
+      if (!(showViews && canCount)) { delete payload.views; delete payload.skip_rate }
+      if (!canEdit) delete payload.face_id
+      if (!canEdit && !can(user, 'review_publish')) delete payload.post_link
       // Don't re-upload an unchanged photo — it can be hundreds of KB.
       if (!creating && form.photo === initialPhoto) {
         delete payload.photo
@@ -1073,7 +1086,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     if (busy || !finalStatusObj) return
     setBusy(true); setErr('')
     try { await onUpdate(item, { status_id: finalStatusObj.id }); rewardFinish(); toast(tx('Published — synced')); onClose() }
-    catch (e) { setErr(e.message) } finally { setBusy(false) }
+    catch (e) { if (e?.data?.needs) refuse(e.data.needs, e.message); else setErr(e.message) } finally { setBusy(false) }
   }
   // Request changes (Pravki): one note, sent back to the chosen crew stage.
   const submitPravki = async () => {
@@ -1970,7 +1983,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             // neither — the hats say "optional" until the work reaches them.
             const mustHave = (f.key === 'operator_id' && needsOperator) || (f.key === 'editor_id' && needsEditor)
             return (
-              <label key={f.key} className={'crew-field' + (mustHave && !form[f.key] ? ' crew-missing' : '') + (badField === f.key ? ' field-bad' : '')}>
+              <div key={f.key} className={'crew-field' + (mustHave && !form[f.key] ? ' crew-missing' : '') + (badField === f.key ? ' field-bad' : '')}>
                 <span className="crew-label">
                   {f.label}{' '}
                   {mustHave
@@ -1988,14 +2001,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   ].filter((g) => g.people.length > 0)}
                   onPick={(id) => setForm({ ...form, [f.key]: id })}
                 />
-              </label>
+              </div>
             )
           })}
           {/* Whose face carries it. Not a crew hat — a hat is work done ON the
               piece, and this is the piece. Offered for anything filmed, and
-              always shown once somebody has been named. */}
+              always shown once somebody has been named. Its own class on
+              purpose: nothing that counts crew-fields may count it. */}
           {(form.face_id || (fieldRules?.crew?.operator || []).includes(form.type)) && (
-            <label className="crew-field">
+            <div className="face-field">
               <span className="crew-label">
                 {tx('Who is in it')}{' '}<span className="crew-opt">{tx('optional')}</span>
               </span>
@@ -2007,7 +2021,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 groups={[{ label: '', people: team.map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })) }]}
                 onPick={(id) => setForm({ ...form, face_id: id })}
               />
-            </label>
+            </div>
           )}
         </div>
       </div>

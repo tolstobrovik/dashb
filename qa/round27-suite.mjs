@@ -72,6 +72,25 @@ ok('a reel is not gated — the rule is scoped to videos',
 // ---- 2) the modal: brief fields, the required star, the client gate ----
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1500, height: 950 } })).newPage()
+
+// The crew seats are searchable pickers now, not <select> elements. Read a
+// group the way the screen shows it: open the picker, collect the rows that
+// follow the group's label.
+// A new task is born as an idea — a name and a couple of sentences — with the
+// rest of the form behind one button. A suite filling the whole thing in is a
+// person who already knows the rest, so it presses what they would press.
+const fullForm = async () => {
+  const note = p.locator('.cm-idea-note button')
+  if (await note.count()) { await note.click(); await p.waitForTimeout(250) }
+}
+const ppNames = async (root, group) => {
+  await root.click()
+  await p.waitForSelector('.pp-pop', { timeout: 8000 })
+  const names = await p.locator(`.pp-pop .pp-group:text-is("${group}") ~ .pp-row`).allTextContents()
+  await p.keyboard.press('Escape')
+  await p.waitForTimeout(150)
+  return names
+}
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
 // Signed in as the member, not the admin: the client gate below is the same
 // rule the server keeps, and since round 80 neither applies to an admin.
@@ -82,6 +101,7 @@ await p.waitForFunction(() => !location.pathname.startsWith('/login'), null, { t
 await p.goto(BASE + '/dept/youtube'); await p.waitForTimeout(1400)
 await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
+await fullForm()
 await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(400)
 ok('the Brief row rides the video type', (await p.locator('.modal .cm-key', { hasText: 'Brief' }).count()) === 1)
 ok('Rubrika became a dropdown once options exist',
@@ -106,10 +126,12 @@ ok('…and the script reached the record', !!made && made.script === 'Opening sh
 // ---- 3) the crew picker offers everyone ----
 await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
+await fullForm()
 await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(600)
-const opSel = p.locator('.modal .crew-field', { hasText: 'Operator' }).locator('select')
+const opSel = p.locator('.modal .crew-field', { hasText: 'Operator' }).locator('.pp-field')
+const opAnyone = await ppNames(opSel, 'Everyone else — one-time duty')
 ok('the operator list carries the one-time group',
-  (await opSel.locator('optgroup[label*="Everyone"] option', { hasText: 'Plain X27' }).count()) === 1)
+  opAnyone.filter((n) => n.includes('Plain X27')).length === 1, opAnyone.join(' | '))
 await p.keyboard.press('Escape')
 
 // ---- 4) the admin card edits the form live ----

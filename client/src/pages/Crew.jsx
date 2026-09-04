@@ -12,6 +12,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { assigneesOf } from '../components/ContentFilters.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone } from '../lib/finish.js'
 import { rewardIfFinished } from '../lib/reward.js'
 import { tr as tx } from '../lib/i18n.jsx'
 
@@ -278,7 +279,7 @@ export default function Crew() {
   const { openMenu } = useContextMenu()
   const blockMenu = (e, t) => openMenu(e, [
     { label: 'Open', icon: Pencil, onClick: () => setOpenItem(t) },
-    { label: t.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => updateContent(t, { done: !t.done_at }).catch((err) => alert(err.message)) },
+    { label: t.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => markDone(t, updateContent, setOpenItem) },
   ])
   const deleteContent = async (item) => {
     await api.del(`/content/${item.id}`)

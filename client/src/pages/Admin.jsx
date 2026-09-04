@@ -8,6 +8,7 @@ import {
 import { api } from '../lib/api.js'
 import { rewardIfFinished } from '../lib/reward.js'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone } from '../lib/finish.js'
 import Fold from '../components/Fold.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
@@ -473,12 +474,7 @@ function TasksTab() {
   const open = filtered.filter((i) => !i.done_at).sort((a, b) => (b.pinned || 0) - (a.pinned || 0))
   const done = filtered.filter((i) => i.done_at)
 
-  const toggle = async (item) => {
-    try {
-      const u = await api.patch(`/content/${item.id}`, { done: !item.done_at })
-      setItems((prev) => prev.map((x) => (x.id === item.id ? u : x)))
-    } catch (e) { alert(e.message) }
-  }
+  const toggle = (item) => markDone(item, updateContent, setOpenItem)
   const updateContent = async (item, payload) => {
     const c = await api.patch(`/content/${item.id}`, payload)
     rewardIfFinished(item, c)

@@ -85,6 +85,18 @@ ok('deleted', (await req('/hiring')).data.every((n) => n.id !== need.id))
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// The crew seats are searchable pickers now, not <select> elements: typing in
+// a select jumps to the first match instead of narrowing, which is what was
+// wrong with it. Drive it the way a person does — open, type, press the row.
+const ppPick = async (root, name) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -207,7 +219,7 @@ await page.waitForTimeout(500)
 await page.locator('.tcard', { hasText: 'Conflict UI probe' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
 ok('shoot row has from–to time inputs', (await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').count()) === 2)
-await page.locator('.modal .crew-row select').first().selectOption(String(rav.id))
+await ppPick(page.locator('.modal .crew-row .pp-field').first(), 'Ravshan Umarov')
 await page.locator('.modal .dates-block input[type="date"]').first().fill(today)
 await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').first().fill('10:30')
 await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').last().fill('11:15')

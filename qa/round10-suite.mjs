@@ -71,13 +71,14 @@ const opOptions = await ppNames(opSel)
 const edOptions = await ppNames(edSel)
 ok('an operator-role holder is offered as operator', opOptions.some((o) => o.includes('Rustam Multihat')))
 ok('…and, holding the editor role too, as editor of the same video', edOptions.some((o) => o.includes('Rustam Multihat')))
-await opSel.selectOption(String(cru.id))
-await edSel.selectOption(String(cru.id))
+await ppPick(opSel, 'Rustam Multihat')
+await ppPick(edSel, 'Rustam Multihat')
 await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 await page.waitForTimeout(400)
 const saved = (await req('/content')).data.find((c) => c.id === t1.id)
-ok('one person holds both hats after save', saved.operator_id === cru.id && saved.editor_id === cru.id)
+ok('one person holds both hats after save', saved.operator_id === cru.id && saved.editor_id === cru.id,
+  `want=${cru.id} op=${saved.operator_id} ed=${saved.editor_id}`)
 
 // ---- 3. the toast confirms only after the server did ----
 ok('a synced toast appeared for the save', (await page.locator('.toast').count()) >= 1

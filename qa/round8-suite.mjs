@@ -55,6 +55,22 @@ ok('Esc closes the menu', (await page.locator('.ctx-menu').count()) === 0)
 await row1.click({ button: 'right' })
 await page.waitForSelector('.ctx-menu', { timeout: 5000 })
 await page.locator('.ctx-item', { hasText: 'Mark as done' }).click()
+await page.waitForTimeout(700)
+// Finishing a piece means it is published, and since round 86 the board will
+// not take that word without the link. A card has nowhere to paste one, so the
+// refusal opens the task on the box it is asking for rather than dead-ending
+// in an alert.
+ok('done without the link is refused, and the task opens on it',
+  !(await req('/content')).data.find((c) => c.id === t1.id).done_at
+  && (await page.locator('.modal').count()) === 1
+  && (await page.locator('.modal [data-field="post_link"] input').count()) === 1)
+await page.fill('.modal [data-field="post_link"] input', 'https://instagram.com/p/r8menu')
+await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
+await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
+await page.waitForTimeout(400)
+await row1.click({ button: 'right' })
+await page.waitForSelector('.ctx-menu', { timeout: 5000 })
+await page.locator('.ctx-item', { hasText: 'Mark as done' }).click()
 await page.waitForTimeout(600)
 ok('menu → Mark as done really lands', !!(await req('/content')).data.find((c) => c.id === t1.id).done_at)
 // delete through the menu (confirm auto-accepted)

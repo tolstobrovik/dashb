@@ -27,7 +27,10 @@ const logout = async () => {
 await login('admin', 'admin123')
 await p.locator('.side-edit-btn', { hasText: 'Personalize' }).click()
 ok('main pages become editable rows', (await p.locator('.side-edit-row.grp-main').count()) >= 5)
-ok('the Manage group is editable too', (await p.locator('.side-edit-row.grp-manage').count()) === 3)
+// Post Production, Ambassadors, Team, Admin — the ambassador programme joined
+// the group in round 86.
+ok('the Manage group is editable too', (await p.locator('.side-edit-row.grp-manage').count()) === 4,
+  (await p.locator('.side-edit-row.grp-manage').allTextContents()).join(' | '))
 ok('My Day is the locked anchor — no hide toggle',
   (await p.locator('.side-edit-row.grp-main', { hasText: 'My Day' }).locator('.side-eye.locked').count()) === 1)
 

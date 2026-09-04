@@ -10,6 +10,7 @@ import StatsMonth from '../components/StatsMonth.jsx'
 import Fold from '../components/Fold.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone } from '../lib/finish.js'
 import { rewardIfFinished } from '../lib/reward.js'
 import { tr as tx } from '../lib/i18n.jsx'
 
@@ -374,7 +375,7 @@ export default function Missed() {
   const { openMenu } = useContextMenu()
   const rowMenu = (e, item) => openMenu(e, [
     { label: 'Open', icon: PenLine, onClick: () => setOpenItem(item) },
-    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: CheckCircle2, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast(tx('Saved — synced'))).catch((err) => alert(err.message)) },
+    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: CheckCircle2, onClick: () => markDone(item, updateContent, setOpenItem) },
     { sep: true },
     { label: 'Delete', icon: Trash2, danger: true, onClick: () => { if (confirm(`Delete “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) } },
   ])
