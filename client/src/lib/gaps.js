@@ -27,7 +27,12 @@ export const stageRankOf = (statuses) => {
   const idx = new Map(live.map((s, i) => [s.id, i]))
   return (statusId) => {
     const at = idx.has(statusId) ? idx.get(statusId) : -1
-    if (shootAt < 0 || at < 0) return 'booked'    // no shooting stage: everything is booked
+    if (at < 0) return 'booked'
+    // A board with no shooting stage has no line between thinking and making,
+    // so only its first column counts as a thought. Nagging the first column
+    // of every such board for an owner and a release day is how a board
+    // teaches people to stop writing thoughts down.
+    if (shootAt < 0) return at === 0 ? 'idea' : 'booked'
     if (at < shootAt) return 'idea'
     if (at === shootAt) return 'booked'
     return 'shot'

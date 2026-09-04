@@ -852,13 +852,23 @@ async function duplicateScript(script, excludeId) {
 // being written down at all. The demand does not vanish — it lands on the
 // first move OUT of here (see the forward-move gate below).
 //
-// The first live stage is the idea stage whatever it has been renamed to, and
-// the words are matched as well for boards that reordered their columns.
+// Anything BEFORE the shooting gate is still a thought: nothing has been
+// committed to, nobody is holding a camera, and the columns a board puts in
+// front of that gate (Backlog, Ideas, Parked) are all the same kind of place.
+// This is the rule the cards already use for what they say is missing —
+// `stageRankOf` in client/src/lib/gaps.js — and it is worth having ONE answer
+// to "is this still an idea", not three that disagree at the edges.
+//
+// A board with no shooting stage at all has no such line, so only its first
+// column counts, and a stage nobody recognises is treated as a thought.
 const IDEA_LABEL = /^idea$|^ideas$|g'oya|идея/i
-const isIdeaStage = (statusId, ordered) => {
+const isIdeaStage = (statusId, resolved) => {
   if (statusId === null || statusId === undefined) return true
+  const ordered = resolved?.ordered || []
   const i = ordered.findIndex((s) => s.id === statusId)
   if (i < 0) return true
+  const shootAt = resolved?.gates?.shoot?.index
+  if (Number.isInteger(shootAt) && shootAt >= 0) return i < shootAt
   return i === 0 || IDEA_LABEL.test(String(ordered[i].label || ''))
 }
 // What an idea is still held to: the description, if the admin asked for one.
@@ -924,7 +934,7 @@ router.post('/', wrap(async (req, res) => {
   const refCarried = referenceLinks.length > 0 || !!photo
   // An idea owes its name and, if the admin asks, its description. Everything
   // else the admin demands is asked when the piece leaves the idea stage.
-  const bornAnIdea = isIdeaStage(status_id, resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')).ordered)
+  const bornAnIdea = isIdeaStage(status_id, resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')))
   const askedNow = bornAnIdea ? ideaRules(fieldRules) : fieldRules
   const problem = requiredProblem(askedNow, safeType, {
     format: { present: !!format, thin: !hasSubstance(format), raw: format },
@@ -1805,7 +1815,7 @@ router.patch('/:id', wrap(async (req, res) => {
   // every rule below gives the same answer.
   const stillAnIdea = isIdeaStage(
     req.body?.status_id !== undefined ? req.body.status_id : row.status_id,
-    resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')).ordered)
+    resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')))
   const isAssignee = assigneesOf(row).includes(req.user.id)
   // The task's crew move it through the pipeline themselves — filming,
   // editing and designing ARE stage changes — even with no granular rights.
@@ -2499,7 +2509,7 @@ router.patch('/:id', wrap(async (req, res) => {
         const one = patch.assignee_id !== undefined ? patch.assignee_id : row.assignee_id
         return list.filter(Boolean).length > 0 || !!one
       })()
-      const leavingIdea = isIdeaStage(row.status_id, resolved.ordered)
+      const leavingIdea = isIdeaStage(row.status_id, resolved)
       if (!ownedBy && !leavingIdea) shortfalls.push({ gate: 'own', missing: 'assignee_id' })
 
       // ---- the brief the admin demanded ------------------------------------

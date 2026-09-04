@@ -387,15 +387,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const liveStages = useMemo(() => statuses.filter((st) => !/^deleted$/i.test(String(st.label || '').trim())), [statuses])
   const ideaStage = statuses.find((st) => /^idea$|^ideas$|g'oya|идея/i.test(String(st.label || ''))) || liveStages[0]
   // Where the task actually IS — a thought jotted down, or work being made.
-  // The server reads it the same way (`isIdeaStage` in routes/content.js), and
-  // the two have to agree: a form that refuses what the server would accept is
-  // a wall nobody can see the other side of.
-  const atIdea = (() => {
-    if (form.status_id === null || form.status_id === undefined) return true
-    const i = liveStages.findIndex((st) => st.id === form.status_id)
-    if (i < 0) return true
-    return i === 0 || /^idea$|^ideas$|g'oya|идея/i.test(String(liveStages[i].label || ''))
-  })()
+  // The same reading the cards use for what they say is missing, and the same
+  // one the server applies (`isIdeaStage` in routes/content.js): a form that
+  // refuses what the server would accept is a wall with nothing behind it.
+  const stageRank = useMemo(() => stageRankOf(statuses), [statuses])
+  const atIdea = form.status_id === null || form.status_id === undefined
+    || stageRank(form.status_id) === 'idea'
   const ideaOnly = creating && !fillNow && atIdea
 
   const [show, setShow] = useState(() => ({
@@ -467,7 +464,6 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // What this piece still owes at the stage it is on — the same reading the
   // server's walls use to refuse a move, shown BEFORE the move is attempted so
   // nobody drags a card into a wall to find out what it wanted.
-  const stageRank = useMemo(() => stageRankOf(statuses), [statuses])
   const gaps = useMemo(() => {
     const probe = {
       ...form,
