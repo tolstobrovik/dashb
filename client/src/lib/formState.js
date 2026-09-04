@@ -37,8 +37,15 @@ export function useDirtyState(form, ready = true) {
 
 // Photographs and file blobs are hundreds of kilobytes and never change under
 // somebody's fingers; comparing them on every keystroke is the one way a
-// dirty-check can itself make a form feel slow.
-const HEAVY = new Set(['photo', 'photo_thumb', 'checklist'])
+// dirty-check can itself make a form feel slow. They are compared as
+// present-or-absent instead.
+//
+// A checklist does NOT belong here. It looked like a list and got swept in
+// with the blobs, and the result was a sheet you could tick four things on
+// and close without being asked — the ticks gone, silently, which is the one
+// failure this hook exists to prevent. It is a handful of short strings; it
+// is compared like everything else.
+const HEAVY = new Set(['photo', 'photo_thumb'])
 const snapshot = (form) => {
   try {
     return JSON.stringify(form, (k, v) => (HEAVY.has(k) ? (v ? 'set' : null) : v))

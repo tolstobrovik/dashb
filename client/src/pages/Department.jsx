@@ -634,9 +634,9 @@ export default function Department() {
             onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }}>
             {tx('no owner — assign one')}
           </button>
-        ) : (
-          <span className="no-owner-badge">{tx("no owner yet")}</span>
-        )}
+        ) : null /* An alarm about something you cannot fix is noise. Whoever
+           can assign a head sees the badge, and it is the button that does it;
+           everybody else sees a channel, which is what they came for. */}
         <span className="spacer" />
         {hasLens && (
           <div className="pill-group" style={{ marginRight: 4 }}>

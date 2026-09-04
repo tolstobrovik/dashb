@@ -33,6 +33,13 @@ router.post('/', adminOnly, wrap(async (req, res) => {
   if (!label || !String(label).trim()) return res.status(400).json({ error: 'Name is required' })
   let head
   try { head = await cleanHead(head_id) } catch (e) { return res.status(400).json({ error: e.message }) }
+  // A channel made without a head is not an ownerless channel — it is one
+  // whose owner has not been typed in yet. It used to be born wearing a red
+  // NO OWNER badge, which then sat on the board until somebody noticed it,
+  // and everybody who could not fix it got to look at the alarm meanwhile.
+  // Whoever made it owns it until they say otherwise; that is true, it is one
+  // less form to fill in, and the badge means something when it does appear.
+  if (head == null) head = req.user.id
   let key = slugify(label)
   let n = 1
   while (await get('SELECT 1 AS x FROM channels WHERE key = ?', key)) key = `${slugify(label)}_${++n}`
