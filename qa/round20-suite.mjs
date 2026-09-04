@@ -26,26 +26,31 @@ const logout = async () => {
 
 await login('admin', 'admin123')
 await p.locator('.side-edit-btn', { hasText: 'Personalize' }).click()
-ok('main pages become editable rows', (await p.locator('.side-edit-row.grp-main').count()) >= 5)
+// Round 88 sorted the sidebar's one column into four hubs, so the groups an
+// edit row belongs to are named for them: Work (what you are doing),
+// Channels, Numbers (what happened), People (who does it). The rows, the
+// eye, the arrows and the locked anchor are the same machinery.
+ok('the work pages become editable rows', (await p.locator('.side-edit-row.grp-work').count()) >= 5,
+  (await p.locator('.side-edit-row.grp-work').allTextContents()).join(' | '))
 // Post Production, Ambassadors, Team, Admin — the ambassador programme joined
 // the group in round 86.
-ok('the Manage group is editable too', (await p.locator('.side-edit-row.grp-manage').count()) === 4,
-  (await p.locator('.side-edit-row.grp-manage').allTextContents()).join(' | '))
+ok('the People hub is editable too', (await p.locator('.side-edit-row.grp-people').count()) === 4,
+  (await p.locator('.side-edit-row.grp-people').allTextContents()).join(' | '))
 ok('My Day is the locked anchor — no hide toggle',
-  (await p.locator('.side-edit-row.grp-main', { hasText: 'My Day' }).locator('.side-eye.locked').count()) === 1)
+  (await p.locator('.side-edit-row.grp-work', { hasText: 'My Day' }).locator('.side-eye.locked').count()) === 1)
 
-// hide Sprints (main) and Post Production (manage)
-await p.locator('.side-edit-row.grp-main', { hasText: 'Sprints' }).locator('button.side-eye').last().click()
-await p.locator('.side-edit-row.grp-manage', { hasText: 'Post Production' }).locator('button.side-eye').last().click()
-// Move Statistics up one slot with the arrow. Measured as its PLACE in the
+// hide Sprints (Work) and Post Production (People)
+await p.locator('.side-edit-row.grp-work', { hasText: 'Sprints' }).locator('button.side-eye').last().click()
+await p.locator('.side-edit-row.grp-people', { hasText: 'Post Production' }).locator('button.side-eye').last().click()
+// Move Design up one slot with the arrow. Measured as its PLACE in the
 // list, not its y: the sidebar's list scrolls once it is long enough, and a
 // pixel that moved because the list scrolled says nothing about the arrow.
-const placeOf = async (label) => (await p.locator('.side-edit-row.grp-main').allTextContents())
+const placeOf = async (label) => (await p.locator('.side-edit-row.grp-work').allTextContents())
   .findIndex((t) => t.includes(label))
-const iBefore = await placeOf('Statistics')
-await p.locator('.side-edit-row.grp-main', { hasText: 'Statistics' }).locator('button.side-eye').first().click()
+const iBefore = await placeOf('Design')
+await p.locator('.side-edit-row.grp-work', { hasText: 'Design' }).locator('button.side-eye').first().click()
 await p.waitForTimeout(200)
-const iAfter = await placeOf('Statistics')
+const iAfter = await placeOf('Design')
 ok('the arrow moves a page up the list', iAfter >= 0 && iAfter < iBefore, `${iBefore}→${iAfter}`)
 await p.locator('.side-edit-btn', { hasText: 'Done' }).click()
 

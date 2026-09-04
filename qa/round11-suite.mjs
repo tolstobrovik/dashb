@@ -131,9 +131,16 @@ const opAnyone = await ppNames(opSel, 'Everyone else — one-time duty')
 ok('the operator list keeps its specialists apart from one-time duty',
   !opSpecial.some((o) => o.includes('Dana Designer')) && opAnyone.some((o) => o.includes('Dana Designer')),
   `specialists=[${opSpecial.join(', ')}] anyone=[${opAnyone.join(', ')}]`)
+// What KIND of piece it is belongs to the brief, and the crew belongs to
+// Execution — so changing the type and then counting hats is two views, the
+// way a person would do it.
+await cmTab(page, 'Brief')
 await page.locator('.modal .tchip', { hasText: 'Video' }).click()
+await cmTab(page, 'Execution')
 ok('a video carries the same two hats', (await page.locator('.modal .crew-field').count()) === 2)
+await cmTab(page, 'Brief')
 await page.locator('.modal .tchip', { hasText: 'Post' }).click()
+await cmTab(page, 'Execution')
 ok('…and so does a post — the hats no longer depend on the type', (await page.locator('.modal .crew-field').count()) === 2)
 
 await page.screenshot({ path: 'r11-modal.png' })

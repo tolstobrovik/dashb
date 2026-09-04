@@ -82,12 +82,26 @@ await page.keyboard.press('Escape')
 // the path that survived.
 await page.goto(BASE + '/dept/instagram_main')
 await page.waitForSelector('.board-col', { timeout: 10000 })
+// The task sheet is views now — Brief, Execution, Logistics, Talk — so a
+// field is reached the way a person reaches it: open the view holding it
+// first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 await page.locator('.board-col').first().locator('.board-quick-btn').click()
 await page.locator('.board-quick-input').fill('Cross-post announcement')
 await page.keyboard.press('Enter')
 await page.waitForTimeout(900)
 await page.locator('.tcard', { hasText: 'Cross-post announcement' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
+// Which platforms a piece goes out on is set up beside who is on it and when
+// it is due, so it lives in the Execution view. Reach it the way a person
+// does. (The view is "Your part" to whoever does the work on the piece.)
+await cmTab(page, 'Execution')
 await page.locator('.modal .checkbox-chip', { hasText: 'YouTube' }).first().click()
 await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })

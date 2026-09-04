@@ -97,6 +97,17 @@ await page.screenshot({ path: 'reports-new.png' })
 // inner .todo-main to click; a board card is the target itself.
 await page.goto(BASE + '/dept/youtube')
 await page.waitForSelector('.tcard', { timeout: 12000 })
+// The task sheet is views now. The type chips are in the Brief, which is
+// where a sheet opens, so changing the type needs nothing — but the crew is
+// in Execution, and PICKING somebody there means going to that view first.
+// (Counting them does not: a hidden element still answers count().)
+const cmTab = async (pg, name) => {
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 const vidRow = page.locator('.tcard', { hasText: 'Крю видео' }).first()
 ok('crew chips on the board card', (await vidRow.textContent()).includes('Jasmina'))
 await vidRow.click()
@@ -108,6 +119,7 @@ ok('crew selects visible for video type', await page.locator('.modal .crew-field
 await page.locator('.modal .tchip', { hasText: 'Post' }).click()
 ok('a post carries the same two hats', await page.locator('.modal .crew-field').count() === 2)
 await page.locator('.modal .tchip', { hasText: 'Video' }).click()
+await cmTab(page, 'Execution')
 await ppPick(page.locator('.modal .crew-field .pp-field').nth(1), 'Eldor Cutter')
 await page.getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
