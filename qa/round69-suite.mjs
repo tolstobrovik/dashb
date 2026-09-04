@@ -122,7 +122,9 @@ ok('…and ticking it complete is the same act, so it is stopped too', r.status 
 
 const last = (await req(`/content/${t.id}`)).data.revisions.find((v) => !v.resolved_at)
 await req(`/content/revisions/${last.id}/resolve`, 'POST', { link: 'https://drive.google.com/cut-3' }, edT)
-r = await req(`/content/${t.id}`, 'PATCH', { status_id: sid(/published/i) })
+// The last stage also wants the address it went to — the tick two checks up
+// already carries one, and moving the stage by hand is the same claim.
+r = await req(`/content/${t.id}`, 'PATCH', { post_link: 'https://instagram.com/p/r69', status_id: sid(/published/i) })
 ok('with the round closed, it goes out', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
 // ===================== a hand can go up early =====================

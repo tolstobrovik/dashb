@@ -74,6 +74,10 @@ const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.lab
 const booked = {
   recording_date: day(1), edit_ready_date: day(3), release_date: day(5),
   status_id: shootId, reference_links: ['https://example.com/reference'],
+  // A booking also carries the words the crew film from: a shoot with no
+  // script is a day spent working out what to shoot. This object is what a
+  // COMPLETE booking looks like, so it carries one.
+  script: 'Open on the main gate, then three students saying why they chose us.',
 }
 const mk = (over) => req('/content', 'POST', { channels: [ch], ...over }, smmT)
 
@@ -96,7 +100,12 @@ const post = r.data
 ok('…which is what keeps the Idea stage and quick-add working', !!post.id)
 
 // The EDITOR is deliberately not demanded — named later, often after filming.
-r = await mk({ title: 'r65 no editor is fine', type: 'video', operator_id: shooter.id, ...booked })
+// Its own words: two tasks carrying the same script is what the duplicate
+// guard is for, and a fixture should not be the thing that trips it.
+r = await mk({
+  title: 'r65 no editor is fine', type: 'video', operator_id: shooter.id, ...booked,
+  script: 'Follow one first-year through a day, from the gate to the last lecture.',
+})
 ok('an editor is NOT demanded — that hat is filled later', r.status === 201, `${r.status} ${r.data.error || ''}`)
 
 // ===================== the three days =====================

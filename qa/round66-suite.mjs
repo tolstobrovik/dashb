@@ -84,6 +84,11 @@ const booking = {
   operator_id: shooter.id,
   recording_date: day(1), edit_ready_date: day(3), release_date: day(5),
   reference_links: ['https://example.com/reference'],
+  // Since the shoot also demands the words to film from, a COMPLETE booking
+  // carries a script. `noBrief` below takes both away, because a script is a
+  // brief in its own right and leaving one in would answer the question the
+  // brief check is asking.
+  script: 'Open on the main gate, then three students saying why they chose us.',
 }
 
 // ===================== an idea owes nothing =====================
@@ -140,9 +145,10 @@ for (const [drop, label] of [['recording_date', 'the shoot day'], ['edit_ready_d
 // standing in a room deciding what to film.
 const noBrief = { ...booking }
 delete noBrief.reference_links
+delete noBrief.script
 r = await mk({ title: 'r66 booked with no brief', type: 'video', status_id: shootId, ...noBrief })
 ok('a shoot booked with no reference and no TZ is refused', r.status === 400, `${r.status} ${r.data.error || ''}`)
-ok('…and it names what would fix it', /reference|TZ|brief/i.test(r.data.error || ''), r.data.error)
+ok('…and it names what would fix it', /reference|TZ|brief|script/i.test(r.data.error || ''), r.data.error)
 
 r = await mk({ title: 'r66 booked properly', type: 'video', status_id: shootId, ...booking })
 ok('a shoot with a shooter, three days and a reference goes through', r.status === 201,
@@ -187,6 +193,13 @@ r = await req(`/content/${idea.id}`, 'PATCH', { status_id: shootId })
 ok('…and the crew still has nothing to film from', r.status === 400, `${r.status} ${r.data.error || ''}`)
 
 await req(`/content/${idea.id}`, 'PATCH', { reference_links: ['https://example.com/the-reference'] })
+r = await req(`/content/${idea.id}`, 'PATCH', { status_id: shootId })
+ok('…and the words they film from are asked for as well', r.status === 400 && /script/i.test(r.data.error || ''),
+  `${r.status} ${r.data.error || ''}`)
+
+await req(`/content/${idea.id}`, 'PATCH', {
+  script: 'Open in the courtyard, then the dean on the third floor, two questions.',
+})
 r = await req(`/content/${idea.id}`, 'PATCH', { status_id: shootId })
 ok('…with all of it in hand, the move lands', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
@@ -270,7 +283,12 @@ ok('a task keeping its OWN script is never called a duplicate', r.status === 200
 // A note about a frame travels with the frame.
 const PX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 const readyId = sid(/^ready$/i)
-const shot = await mk({ title: 'r66 needs a fix', type: 'video', status_id: shootId, ...booking, editor_id: cutter.id })
+// Its own words, for the same reason the section below tests: the same script
+// on two tasks is a duplicate, and a fixture should not be one.
+const shot = await mk({
+  title: 'r66 needs a fix', type: 'video', status_id: shootId, ...booking, editor_id: cutter.id,
+  script: 'Three shots of the library at dusk, then the librarian on what students ask for.',
+})
 await req(`/content/${shot.data.id}`, 'PATCH', { status_id: readyId })
 r = await req(`/content/${shot.data.id}/revisions`, 'POST', { note: 'The third shot is out of focus', target: 'editor', photo: PX, photo_thumb: PX })
 ok('a Pravki note takes the screenshot that shows what is wrong', r.status === 201 || r.status === 200,

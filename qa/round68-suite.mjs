@@ -158,6 +158,8 @@ const filmed = (await mk({
   title: 'r68 the filmed piece', type: 'video', status_id: shootId, operator_id: shooter.id,
   recording_date: day(1), edit_ready_date: day(3), release_date: day(5),
   reference_links: ['https://example.com/reference'],
+  // A booked shoot carries the words the crew film from.
+  script: 'Open on the main gate, then three students saying why they chose us.',
 })).data
 r = await req(`/content/${filmed.id}/date-requests`, 'POST',
   { field: 'release_date', to_date: day(9), reason: 'https://t.me/c/123/456' }, smmT)
