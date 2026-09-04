@@ -4225,6 +4225,14 @@ button.blame-person:hover { background: var(--surface-2); }
   -webkit-tap-highlight-color: transparent;
 }
 .cm-page-tab.on { background: var(--brand-50); color: var(--brand-600); }
+/* The strip is sized for a thumb: 38px of tab inside 16px of padding is 54px
+   of the window spent on four short words. A mouse does not need the margin,
+   and those pixels are the form's — the strip exists to give you MORE of the
+   thing you came for, not to take a chunk of it back. Touch keeps its size. */
+@media (hover: hover) {
+  .cm-pages { padding: 4px 10px; }
+  .cm-page-tab { min-height: 30px; padding: 5px 13px; }
+}
 .modal-body.cm-paged > .cm-sec { display: none; }
 .modal-body.cm-paged > .cm-sec.on { display: contents; }
 /* A sheet that resizes itself every time you change page is a sheet that
