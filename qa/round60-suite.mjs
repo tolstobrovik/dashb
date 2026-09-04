@@ -140,7 +140,9 @@ ok('…and it survives a reload, being in the address', (await (async () => {
 })()))
 await page.locator('.section-head .cf-sel').first().selectOption('')
 await page.waitForTimeout(500)
-await page.locator('.cf-bar .cf-sel').nth(1).selectOption('video') // a post is never a shoot, so Recordings offers no 'post'
+// The person filter became a picker in round 86, so type is the first select
+// left in the row. A post is never a shoot, so Recordings offers no 'post'.
+await page.locator('.cf-bar .cf-sel').nth(0).selectOption('video')
 await page.waitForTimeout(500)
 ok('the person / type / stage row narrows it too', (await page.locator('.cf-count').count()) === 1)
 await page.locator('.cf-clear').click()
