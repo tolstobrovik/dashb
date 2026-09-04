@@ -112,6 +112,8 @@ ok('a task lands on several departments at once', multi && multi.channels.length
 // 5. Quick department create from the task modal, icon guessed
 await page.locator('.tcard', { hasText: 'Cross-post announcement' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
+// The "add a channel" chip sits with the platforms, so it is in Execution too.
+await cmTab(page, 'Execution')
 await page.locator('.modal .chip-add').click()
 await page.locator('.modal .chip-add-form input').fill('TikTok Ads')
 await page.locator('.modal .chip-add-form button').click()
