@@ -72,6 +72,10 @@ ok('a hand goes up on a piece that is running late', raised.status === 201, `${r
 ok('…and the planners see it in their queue',
   ((await req('/content/flags/open')).data || []).some((f) => f.content_id === one.id))
 
+// Since round 86 the last stage will not take a piece without the address it
+// went to, so a fixture about to be published says where it went — as a real
+// one does.
+await req(`/content/${one.id}`, 'PATCH', { post_link: 'https://instagram.com/p/r81a' })
 const pub = await req(`/content/${one.id}`, 'PATCH', { status_id: finalSt.id })
 ok('the piece is published', pub.status === 200 && !!pub.data.done_at, `${pub.status} done_at=${pub.data?.done_at}`)
 const after = (await req(`/content/${one.id}`)).data
@@ -92,6 +96,7 @@ const swept = await fetch(`${BASE}/api/cron/daily`)
 ok('the nightly sweep runs', swept.ok)
 const boardHand = ((await req(`/content/${quiet.id}`)).data.flags || []).find((f) => !f.raised_by)
 ok('…and the board raises its own hand on silently late work', !!boardHand, boardHand?.reason)
+await req(`/content/${quiet.id}`, 'PATCH', { post_link: 'https://instagram.com/p/r81b' })
 await req(`/content/${quiet.id}`, 'PATCH', { status_id: finalSt.id })
 const quietAfter = (await req(`/content/${quiet.id}`)).data
 ok('publishing puts the board’s hand down too',
@@ -181,6 +186,7 @@ const ranAnyway = (await req('/content', 'POST', {
   title: 'r81: asked then published', channels: [chan], type: 'video', release_date: iso(5),
 })).data
 await req(`/content/${ranAnyway.id}/date-requests`, 'POST', { field: 'release_date', to_date: iso(9), reason: why }, TP)
+await req(`/content/${ranAnyway.id}`, 'PATCH', { post_link: 'https://instagram.com/p/r81c' })
 await req(`/content/${ranAnyway.id}`, 'PATCH', { status_id: finalSt.id })
 ok('a piece that went out stops asking an admin to move its day',
   !((await req('/content/date-requests/open')).data || []).some((d) => d.content_id === ranAnyway.id))

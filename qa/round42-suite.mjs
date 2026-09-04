@@ -111,6 +111,10 @@ sent = await sentList()
 m = sent.find((s) => String(s.chat_id) === '121' && /🔔/.test(s.text || ''))
 ok('a working-stage move says who moved it', !!m && /by Admin/.test(m.text) && /moved to <b>Editing<\/b>/.test(m.text))
 await reset()
+// The last stage will not take a piece without the address it went to, so the
+// fixture says where it went — as a real one does before anybody publishes it.
+await req(`/content/${task.id}`, 'PATCH', { post_link: 'https://instagram.com/p/x42' })
+await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: statuses.find((s) => s.is_final).id })
 ok('publishing celebrates', (await sentList()).some((s) => String(s.chat_id) === '121' && /🚀/.test(s.text || '') && /It's out!/.test(s.text)))
 
