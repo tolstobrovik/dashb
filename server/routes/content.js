@@ -1725,6 +1725,52 @@ router.patch('/:id', wrap(async (req, res) => {
   if (!canTouch(req.user, row)) return res.status(403).json({ error: 'Not your channel' })
 
   const body = req.body || {}
+
+  // ---- a box nobody touched is not an edit ---------------------------------
+  // A form sends every box it holds, whether or not the hand on it moved. Each
+  // gated field below asks its own permission — and a field you may not write
+  // used to refuse the WHOLE save even when the value you sent was the one
+  // already stored. That is a wall in front of the wrong person: a crew member
+  // opening a task, writing one line, and being told they may not set who is
+  // in it, a reference they never saw, or a link that is exactly what it was.
+  //
+  // So before any of it is read, the values that did not change are dropped.
+  // `status_id` has always worked this way (see below); this is the same rule
+  // applied to every field that has a gate, once and in one place. Anything
+  // genuinely different still goes past its full check.
+  const asText = (v) => (v === null || v === undefined ? '' : String(v).trim())
+  const asNum = (v) => (v === null || v === undefined || v === '' ? null : Number(v))
+  const untouched = {
+    // …unless the same save moves what the text LEANS ON. A bare sentence is
+    // allowed to stand beside a photo or a link; take those away in the same
+    // breath and the sentence has to answer for itself again.
+    reference_text: () => asText(body.reference_text) === asText(row.reference_text)
+      && body.photo === undefined && body.reference_links === undefined,
+    reference_links: () => JSON.stringify(cleanLinks(body.reference_links)) === (row.reference_links || '[]'),
+    format: () => asText(body.format) === asText(row.format),
+    rubrika: () => asText(body.rubrika) === asText(row.rubrika),
+    script: () => asText(body.script) === asText(row.script),
+    tz: () => asText(body.tz) === asText(row.tz),
+    title: () => asText(body.title) === asText(row.title),
+    description: () => asText(body.description) === asText(row.description),
+    post_link: () => asText(body.post_link) === asText(row.post_link),
+    face_id: () => asNum(body.face_id) === asNum(row.face_id),
+    views: () => asNum(body.views) === asNum(row.views),
+    skip_rate: () => asNum(body.skip_rate) === asNum(row.skip_rate),
+    // A delivery link and the NAME of the file it stands for are written
+    // together, so an unchanged link only counts as untouched when no new
+    // name came with it.
+    ready_link: () => body.ready_file === undefined && asText(body.ready_link) === asText(row.ready_link),
+    shot_link: () => body.shot_file === undefined && asText(body.shot_link) === asText(row.shot_link),
+    design_link: () => body.design_file === undefined && asText(body.design_link) === asText(row.design_link),
+  }
+  for (const [field, same] of Object.entries(untouched)) {
+    if (body[field] === undefined) continue
+    let quiet = false
+    try { quiet = same() } catch { quiet = false }
+    if (quiet) delete body[field]
+  }
+
   const isAssignee = assigneesOf(row).includes(req.user.id)
   // The task's crew move it through the pipeline themselves — filming,
   // editing and designing ARE stage changes — even with no granular rights.
@@ -1812,16 +1858,6 @@ router.patch('/:id', wrap(async (req, res) => {
     }
   }
 
-  // A form sends every box it holds, whether or not the hand on it moved. A
-  // value identical to the stored one is not a change, so it neither asks the
-  // permission the change would ask for nor restamps who counted it. Anything
-  // that is genuinely different still goes past the full gate below.
-  const unchangedNumber = (sent, held) => {
-    const a = sent === null || sent === '' ? null : Number(sent)
-    const b = held === null || held === undefined ? null : Number(held)
-    return a === b
-  }
-
   // ---- what it actually got ------------------------------------------------
   // The number is entered by hand because the board is not plugged into
   // Instagram, YouTube and Telegram — and pretending otherwise would put a
@@ -1832,7 +1868,7 @@ router.patch('/:id', wrap(async (req, res) => {
   // NULL is not zero. Clearing the box means "nobody has written it down",
   // which is what an unmeasured piece honestly is; 0 means it was measured and
   // got none. The sums and the KPI depend on being able to tell them apart.
-  if (body.views !== undefined && !unchangedNumber(body.views, row.views)) {
+  if (body.views !== undefined) {
     const madeIt = [row.assignee_id, ...assigneesOf(row)].filter(Boolean).includes(req.user.id)
     if (!adminHere(req.user, row) && !madeIt)
       return res.status(403).json({ error: 'Only an admin on this channel, or somebody the piece is for, records its views' })
@@ -1856,7 +1892,7 @@ router.patch('/:id', wrap(async (req, res) => {
   // How much of it people skipped, from the same place and the same hands as
   // the view count. Empty means nobody has measured it — which is NOT the same
   // as nought, and the pay tiers depend on being able to tell them apart.
-  if (body.skip_rate !== undefined && !unchangedNumber(body.skip_rate, row.skip_rate)) {
+  if (body.skip_rate !== undefined) {
     const madeIt = [row.assignee_id, ...assigneesOf(row)].filter(Boolean).includes(req.user.id)
     if (!adminHere(req.user, row) && !madeIt)
       return res.status(403).json({ error: 'Only an admin on this channel, or somebody the piece is for, records its skip rate' })

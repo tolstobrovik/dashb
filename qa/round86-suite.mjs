@@ -80,6 +80,27 @@ ok('…nor an untouched skip rate',
 // somebody else's business.
 ok('actually writing a number she may not is still refused',
   (await req(`/content/${piece.id}`, 'PATCH', { views: 1234 }, HT)).status === 403)
+// The rule is general, not a patch on two boxes: every gated field takes it.
+// Olim films this piece and holds no other rights — sending back the boxes
+// exactly as they are must not stand between him and his own delivery link.
+const OT = await login('r86op', 'r1234')
+const asStored = (row) => ({
+  reference_text: row.reference_text || '', script: row.script || '', tz: row.tz || '',
+  post_link: row.post_link || '', face_id: row.face_id ?? null,
+  ready_link: row.ready_link || '', design_link: row.design_link || '',
+  views: row.views ?? null, skip_rate: row.skip_rate ?? null,
+})
+const held = (await req('/content')).data.find((c) => c.id === piece.id)
+const echo = await req(`/content/${piece.id}`, 'PATCH',
+  { ...asStored(held), shot_link: 'https://drive.google.com/file/d/r86raw/view' }, OT)
+ok('the boxes he never touched do not block his own delivery link',
+  echo.status === 200, `${echo.status} ${echo.data.error || ''}`)
+ok('…and the link landed', /r86raw/.test((await req('/content')).data.find((c) => c.id === piece.id).shot_link || ''))
+// Each of them, one at a time, still refuses a real change.
+for (const [field, value] of [['reference_text', 'a different mood'], ['script', 'different words'], ['post_link', 'https://example.com/other']]) {
+  const r = await req(`/content/${piece.id}`, 'PATCH', { [field]: value }, OT)
+  ok(`changing ${field} is still his to be refused`, r.status === 403, `${r.status} ${r.data.error || ''}`)
+}
 
 // ===================== 3) the published-link wall =====================
 ok('publishing with no link is refused, and says which box',
