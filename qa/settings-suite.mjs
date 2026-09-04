@@ -56,6 +56,12 @@ await req('/users', 'POST', {
   departments: [ch], permissions: { manage_content: true },
 })
 const MT = await login('setm', 'pass1234')
+// A video that has left the brainstorm owes an operator as well as a ТЗ —
+// a different wall, and not this suite's subject, so it is answered up front
+// and the ТЗ rule is asked on its own.
+const setCam = (await req('/users', 'POST', {
+  name: 'Set Camera', username: 'setcam', password: 'pass1234', role: 'operator',
+})).data
 
 // ---- 1) the config the whole board reads ---------------------------------
 const cfg = (await req('/fields')).data
@@ -74,12 +80,26 @@ ok('required sticks', (await req('/fields')).data.tz.state === 'required')
 // description — that was round 86's point. A required field is about work in
 // production, so it is asked of a piece that has left the brainstorm.
 const wallStage = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
-const noTz = await req('/content', 'POST', { title: 'set: no tz', channels: [ch], type: 'video', status_id: wallStage }, MT)
+// Booking a shoot is a whole wall, and none of it is this suite's subject:
+// see bookingProblem in server/routes/content.js — a shooter, all three
+// dates, a script, and a brief ready to work from. All of it is answered up
+// front so the ТЗ rule is the ONE thing these three POSTs differ on. The
+// reference link matters especially: a TZ also satisfies "a brief ready", so
+// without it the two refused cases would trip that wall instead of this one,
+// and the suite would pass while proving nothing.
+const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+const filmed = {
+  channels: [ch], type: 'video', status_id: wallStage, operator_id: setCam.id,
+  recording_date: day(1), edit_ready_date: day(3), release_date: day(5),
+  script: 'Открывающий кадр во дворе, затем интервью с деканом у входа.',
+  reference_links: ['https://example.com/reference'],
+}
+const noTz = await req('/content', 'POST', { title: 'set: no tz', ...filmed }, MT)
 ok('a video with no ТЗ is refused', noTz.status === 400 && /ТЗ/.test(noTz.data.error || ''), `${noTz.status} ${noTz.data.error || ''}`)
-const thin = await req('/content', 'POST', { title: 'set: thin tz', channels: [ch], type: 'video', status_id: wallStage, tz: 'ok' }, MT)
+const thin = await req('/content', 'POST', { title: 'set: thin tz', ...filmed, tz: 'ok' }, MT)
 ok('…and a placeholder is not an answer', thin.status === 400, `${thin.status} ${thin.data.error || ''}`)
 const good = await req('/content', 'POST', {
-  title: 'set: with tz', channels: [ch], type: 'video', status_id: wallStage,
+  title: 'set: with tz', ...filmed,
   tz: 'Cut to ninety seconds, captions burned in, no music under the interview.',
 }, MT)
 ok('…while a real one goes through', good.status === 201, `${good.status} ${good.data.error || ''}`)

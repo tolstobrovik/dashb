@@ -154,7 +154,10 @@ for (const junk of ['.', '...', 'N/A', '-', 'нет', 'тз']) {
   const rr = await mk({ title: `r65 junk ${junk}`, type: 'post', description: junk, reference_text: 'https://ok.example.com/x' })
   ok(`a description of “${junk}” is refused`, rr.status === 400, `${rr.status} ${rr.data.error || ''}`)
 }
-r = await mk({ title: 'r65 real brief', type: 'post', description: 'Снять интервью с деканом', reference_text: 'https://example.com/ref' })
+// Past the brainstorm, because the edit rules below are about work in
+// production — an idea owes nothing but a description, at creation and on
+// edit alike.
+r = await mk({ title: 'r65 real brief', type: 'post', status_id: shootId, description: 'Снять интервью с деканом', reference_text: 'https://example.com/ref' })
 ok('a real description is accepted', r.status === 201, `${r.status} ${r.data.error || ''}`)
 const written = r.data
 
