@@ -33,6 +33,7 @@ import telegramRoutes from './routes/telegram.js'
 import { docsRouter } from './routes/docs.js'
 import warningRoutes from './routes/warnings.js'
 import ambassadorRoutes from './routes/ambassadors.js'
+import usageRoutes from './routes/usage.js'
 import { tgDailyReminders, tgRunSchedules } from './telegram.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -111,6 +112,7 @@ app.use('/api/telegram', telegramRoutes)
 app.use('/api/docs', docsRouter)
 app.use('/api/warnings', warningRoutes)
 app.use('/api/ambassadors', ambassadorRoutes)
+app.use('/api/usage', usageRoutes)
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }))
 

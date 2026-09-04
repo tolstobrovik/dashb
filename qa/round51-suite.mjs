@@ -100,7 +100,10 @@ const countText = () => page.locator('.cf-count').textContent().catch(() => '')
 const titles = async () => (await page.locator('.tcard-title').allTextContents()).filter((t) => t.startsWith('f51'))
 
 ok('the filter row sits above the workspace', await page.locator('.cf-bar').count() === 1)
-ok('it offers person, type and stage', await page.locator('.cf-sel').count() === 3)
+// The person filter became a searchable picker in round 86 — a select's
+// type-ahead jumps, and this one narrows. Type and stage stay selects.
+ok('it offers person, type and stage',
+  (await page.locator('.cf-bar .cf-person .pp-field').count()) === 1 && (await page.locator('.cf-sel').count()) === 2)
 ok('nothing is hidden until something is chosen', await page.locator('.cf-count').count() === 0)
 const all = await cards()
 ok('the board starts with everything', all >= 5, `${all} cards`)

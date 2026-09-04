@@ -82,6 +82,18 @@ ok('fixtures exist', [late, soon, quoted, orphan, onYt, undated].every((t) => t?
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true })
 const page = await ctx.newPage()
+
+// The person filter is a searchable picker rather than a <select>: a select's
+// type-ahead jumps to the first match and forgets the letter, and this one
+// narrows the list instead. Driven the way a person drives it.
+const ppPick = async (root, name) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 const errs = []
 page.on('pageerror', (e) => errs.push(e.message))
 const signIn = async (pg, u, pw) => {
@@ -203,7 +215,7 @@ await crewCtx.close()
 
 // ===================== the same view, as a spreadsheet =====================
 await openPage(page, '/releases')
-await page.locator('.cf-bar .cf-sel').first().selectOption(String(anvar.id))
+await ppPick(page.locator('.cf-bar .cf-person .pp-field'), anvar.name)
 await page.waitForTimeout(900)
 
 // What the page should be exporting: this person's work inside the drawn

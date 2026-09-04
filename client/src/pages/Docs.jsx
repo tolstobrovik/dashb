@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
+import { offerFilter } from '../lib/clutter.js'
 import { dateLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
@@ -248,13 +249,15 @@ export default function Docs() {
             <button className={'pill' + (kindFilter === 'all' ? ' active' : '')} onClick={() => setKindFilter('all')}>
               {tx('All')} · {(docs || []).length}
             </button>
-            {KINDS.map((k) => {
-              const n = (docs || []).filter((d) => d.kind === k.key).length
-              return (
+            {/* A shelf nobody has put anything on is not offered to the person
+                whose shelf it is; an admin keeps the empty one, because an
+                empty shelf is a fact about the team's paperwork. */}
+            {KINDS.map((k) => ({ k, n: (docs || []).filter((d) => d.kind === k.key).length }))
+              .filter(({ k, n }) => offerFilter(user, n, kindFilter === k.key))
+              .map(({ k, n }) => (
                 <button key={k.key} className={'pill' + (kindFilter === k.key ? ' active' : '')}
                   onClick={() => setKindFilter(kindFilter === k.key ? 'all' : k.key)}>{k.label} · {n}</button>
-              )
-            })}
+              ))}
           </div>
           <span className="spacer" />
           <label className="docs-search">

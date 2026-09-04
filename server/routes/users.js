@@ -266,6 +266,12 @@ router.delete('/:id', adminOnly, wrap(async (req, res) => {
     // resolves, and a document blob is one of the heaviest rows here.
     ['DELETE FROM person_docs WHERE user_id = ?', req.params.id],
     ['DELETE FROM person_kpis WHERE user_id = ?', req.params.id],
+    // How much time they spent on the board, and what they pressed, is about
+    // a person — so it leaves with the person. The Usage panel rolls its
+    // totals across every row it finds, and rows belonging to nobody would go
+    // on being counted under a name that no longer resolves.
+    ['DELETE FROM usage_day WHERE user_id = ?', req.params.id],
+    ['DELETE FROM usage_tap WHERE user_id = ?', req.params.id],
     // And the sprint board stops holding a seat for somebody who has gone.
     ['DELETE FROM sprint_task_assignees WHERE user_id = ?', req.params.id],
     ['DELETE FROM sprint_owners WHERE user_id = ?', req.params.id],

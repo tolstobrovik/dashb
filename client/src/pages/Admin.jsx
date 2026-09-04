@@ -3,7 +3,7 @@ import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
   X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Palette, UserCheck, RotateCcw, Languages, Loader2,
-  SlidersHorizontal,
+  SlidersHorizontal, Activity,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { rewardIfFinished } from '../lib/reward.js'
@@ -41,6 +41,7 @@ const TABS = [
   { key: 'reports', label: 'Reports', icon: FileBarChart },
   { key: 'pay', label: 'Payroll', icon: Wallet },
   { key: 'ai', label: 'Language help', icon: Languages },
+  { key: 'usage', label: 'Usage', icon: Activity },
   { key: 'history', label: 'History', icon: History },
   { key: 'telegram', label: 'Telegram', icon: Send },
 ]
@@ -71,6 +72,7 @@ export default function Admin() {
       {tab === 'reports' && <ReportsTab channel={reportChannel} setChannel={setReportChannel} />}
       {tab === 'pay' && <PayTab />}
       {tab === 'ai' && <AiTab />}
+      {tab === 'usage' && <UsageTab />}
       {tab === 'history' && <HistoryTab />}
       {tab === 'telegram' && <TelegramTab />}
     </>
@@ -375,6 +377,134 @@ function HistoryTab() {
           </div>
         ))}
         {shown.length === 0 && <div className="empty">Nothing yet — changes will be written down here.</div>}
+      </div>
+    </>
+  )
+}
+
+/* ==================== USAGE (is it being used, and for what) ============= */
+/* Two questions with no answer before this: is this person on the platform at
+   all, and which parts of it does anybody touch. Both are counted per person
+   per DAY — minutes with the board in front of them, and presses of buttons
+   the app itself names. There is deliberately no moment-by-moment log: see
+   server/routes/usage.js. */
+function UsageTab() {
+  const [span, setSpan] = useState('7')
+  const [data, setData] = useState(null)
+  const [who, setWho] = useState(0)
+  const to = todayISO()
+  const from = span === 'today' ? to : addDaysISO(to, -(Number(span) - 1))
+  useEffect(() => {
+    let on = true
+    setData(null)
+    api.get(`/usage?from=${from}&to=${to}`).then((r) => { if (on) setData(r) }).catch(() => { if (on) setData({ rows: [], buttons: [], pages: [], per_person: {} }) })
+    return () => { on = false }
+  }, [from, to])
+
+  // "3h 20m" reads; 12000 does not.
+  const spell = (secs) => {
+    const m = Math.round((Number(secs) || 0) / 60)
+    if (m < 1) return '—'
+    const h = Math.floor(m / 60)
+    return h ? `${h}h ${m % 60}m` : `${m}m`
+  }
+  const seen = (iso) => (iso
+    ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+    : tx('never'))
+
+  if (!data) return <div className="card"><span className="spinner" /></div>
+  const rows = data.rows || []
+  const busiest = Math.max(1, ...rows.map((r) => r.seconds || 0))
+  const mine = who ? (data.per_person?.[who] || []) : (data.buttons || [])
+  const topN = Math.max(1, ...mine.map((b) => b.n))
+  const quiet = rows.filter((r) => !r.seconds).length
+
+  return (
+    <>
+      <div className="section-head">
+        <h2>{tx('Usage')}</h2>
+        <span className="count">· {tx('{n} on the board', { n: rows.length - quiet })}</span>
+        <span style={{ flex: 1 }} />
+        <div className="pill-group usage-span">
+          {[['today', tx('Today')], ['7', tx('7 days')], ['30', tx('30 days')]].map(([k, label]) => (
+            <button key={k} className={'pill' + (span === k ? ' active' : '')} onClick={() => setSpan(k)}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <p className="stat-sub" style={{ margin: '0 0 10px' }}>
+        {tx('Minutes with the board open in front of somebody, and the buttons they pressed — counted per day, never per moment. Nothing here records what anybody read or wrote.')}
+      </p>
+
+      <div className="usage-grid">
+        <div className="card usage-people">
+          <table className="tbl usage-tbl">
+            <thead>
+              <tr>
+                <th>{tx('Person')}</th>
+                <th>{tx('Time on the platform')}</th>
+                <th>{tx('Days')}</th>
+                <th>{tx('Presses')}</th>
+                <th>{tx('Last seen')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className={(who === r.id ? 'on ' : '') + (r.seconds ? '' : 'usage-quiet')}
+                  onClick={() => setWho(who === r.id ? 0 : r.id)}>
+                  <td>
+                    <span className="usage-who">
+                      <Avatar name={r.name} color={r.color} src={r.avatar} size="sm" />
+                      <span>{r.name}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <span className="usage-bar" aria-hidden="true">
+                      <i style={{ width: `${Math.round((r.seconds / busiest) * 100)}%` }} />
+                    </span>
+                    <b className="usage-num">{spell(r.seconds)}</b>
+                  </td>
+                  <td>{r.days || '—'}</td>
+                  <td>{r.taps || '—'}</td>
+                  <td className="stat-sub">{seen(r.last_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {quiet > 0 && (
+            <div className="stat-sub" style={{ padding: '8px 4px 2px' }}>
+              {tx('{n} people did not open the board in this window.', { n: quiet })}
+            </div>
+          )}
+        </div>
+
+        <div className="card usage-buttons">
+          <div className="section-head" style={{ marginTop: 0 }}>
+            <h3>{who ? tx('What they press') : tx('What people press')}</h3>
+            {who > 0 && (
+              <button className="btn btn-sm" onClick={() => setWho(0)}>{tx('Everyone')}</button>
+            )}
+          </div>
+          {mine.length === 0 && <div className="empty">{tx('Nothing pressed in this window.')}</div>}
+          {mine.map((b) => (
+            <div key={b.action} className="usage-act">
+              <span className="usage-act-name">{b.action}</span>
+              <span className="usage-bar"><i style={{ width: `${Math.round((b.n / topN) * 100)}%` }} /></span>
+              <b className="usage-num">{b.n}</b>
+            </div>
+          ))}
+          {!who && (data.pages || []).length > 0 && (
+            <>
+              <div className="section-head"><h3>{tx('Where they go')}</h3></div>
+              {data.pages.map((b) => (
+                <div key={b.action} className="usage-act">
+                  <span className="usage-act-name">{b.action}</span>
+                  <span className="usage-bar"><i style={{ width: `${Math.round((b.n / Math.max(1, data.pages[0].n)) * 100)}%` }} /></span>
+                  <b className="usage-num">{b.n}</b>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
       </div>
     </>
   )

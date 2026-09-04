@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, CalendarRange, ChevronDown, Scissors, Send, PenLine, Trash2, Palette, BarChart3 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
+import { offerFilter } from '../lib/clutter.js'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, tashkentDay, isDeletedLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
@@ -512,7 +513,10 @@ export default function Missed() {
             <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')}>
               All <b className="pill-n">{inRange.filter((e) => !person || e.who.includes(person)).length}</b>
             </button>
-            {allChans.map((c) => (
+            {/* A channel that missed nothing is good news, not a filter. The
+                admin still sees the zero — it is their board — but nobody
+                else is offered a button that empties the page. */}
+            {allChans.filter((c) => offerFilter(user, chanCounts[c], chan === c)).map((c) => (
               <button key={c} className={'pill' + (chan === c ? ' active' : '') + (chanCounts[c] ? '' : ' pill-zero')}
                 onClick={() => setChan(chan === c ? 'all' : c)}>
                 {byKey[c]?.label || c} <b className="pill-n">{chanCounts[c] || 0}</b>

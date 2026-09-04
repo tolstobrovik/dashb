@@ -1289,6 +1289,34 @@ export async function initSchema() {
       created_at TEXT    NOT NULL
     );
 
+    -- What the board is actually used for. Two questions an admin kept asking
+    -- and had no way to answer: is this person on the platform at all, and
+    -- which parts of it does anybody touch? Both are counted per DAY and per
+    -- person, never per event — there is no log of who opened what at 14:32,
+    -- because a board that keeps one is a board people stop being honest on.
+    --
+    -- Time is measured as seconds with the tab OPEN AND VISIBLE, sent up in
+    -- heartbeats. A tab left open behind a laptop lid stops counting.
+    CREATE TABLE IF NOT EXISTS usage_day (
+      user_id  INTEGER NOT NULL,
+      day      TEXT    NOT NULL,          -- Tashkent day, YYYY-MM-DD
+      seconds  INTEGER NOT NULL DEFAULT 0,
+      first_at TEXT,
+      last_at  TEXT,
+      PRIMARY KEY (user_id, day)
+    );
+
+    -- One row per person per day per thing-pressed. kind 'tap' is a button,
+    -- kind 'page' is a screen that was opened.
+    CREATE TABLE IF NOT EXISTS usage_tap (
+      user_id INTEGER NOT NULL,
+      day     TEXT    NOT NULL,
+      kind    TEXT    NOT NULL DEFAULT 'tap',
+      action  TEXT    NOT NULL,
+      n       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day, kind, action)
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id           ${ID},
       content_id   INTEGER NOT NULL,

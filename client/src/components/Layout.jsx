@@ -19,6 +19,7 @@ import { useAutoUpdate, BUILD } from '../lib/useAutoUpdate.js'
 import { useIsPhone } from '../lib/usePhone.js'
 import { watchTables } from '../lib/stackTables.js'
 import { can, iconFor } from '../lib/constants.js'
+import { trackUsage, trackPage } from '../lib/usage.js'
 
 // Signed in with a password that is printed in this repository. The source is
 // readable and the dashboard sits on a public URL, so this is the shortest way
@@ -81,6 +82,11 @@ export default function Layout() {
   // so they are told and handed the button.
   const update = useAutoUpdate()
 
+  // What the board is used for: minutes in front of it, and which buttons get
+  // pressed. Counted per person per DAY and never per moment — the admin's
+  // Usage tab reads it back. Starts once, with the account.
+  useEffect(() => trackUsage(user), [user?.id])
+  useEffect(() => trackPage(location.pathname), [location.pathname])
   useEffect(() => setOpen(false), [location.pathname])
 
   // ---- the phone shell ----
