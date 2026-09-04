@@ -72,7 +72,10 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
     localStorage.removeItem('satashkent_side_hidden')
   }
   const hidden = useMemo(() => new Set(prefs.hidden), [prefs])
-  const customized = prefs.hidden.length > 0 || Object.values(prefs.order).some((l) => l.length > 0)
+  // Folding a hub is a customization too, so somebody who has only folded
+  // things still gets the way back to the default sidebar.
+  const customized = prefs.hidden.length > 0 || (prefs.closed || []).length > 0
+    || Object.values(prefs.order).some((l) => l.length > 0)
 
   const { shows } = usePages()
   const isAdmin = user.role === 'admin'
@@ -178,7 +181,10 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
     keys.splice(b, 0, keys.splice(a, 1)[0])
     saveOrder(g, keys)
   }
-  const resetPrefs = () => save({ order: { main: [], channels: [], manage: [] }, hidden: [], closed: [] })
+  // Everything, including the hubs' own names — a reset that left an order
+  // saved under a group name this sidebar no longer draws would look like it
+  // had not worked.
+  const resetPrefs = () => save({ order: {}, hidden: [], closed: [] })
 
   const Group = ({ g }) => {
     const items = orderedOf(g)

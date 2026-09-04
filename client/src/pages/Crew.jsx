@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Clapperboard, Scissors, AlertTriangle, Clock, Pencil, Check, LayoutGrid, CalendarDays, Rows3, Palette, CheckCircle2, RotateCcw,
+  UserRound,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
+import { getPicks, byPicks, bumpPick } from '../lib/picks.js'
+import { useTaskSync } from '../lib/useTaskSync.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, scheduleLabel, WORK_DAYS, isDeletedLabel, tashkentDay } from '../lib/constants.js'
@@ -270,16 +273,39 @@ export default function Crew() {
 
   const week = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysISO(today, i)), [today])
 
-  const updateContent = async (item, payload) => {
-    const u = await api.patch(`/content/${item.id}`, payload)
-    rewardIfFinished(item, u)
-    setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
-  }
+  // Same bargain as the board: a hat is not something the server argues with,
+  // so the name moves the moment you press it. See lib/useTaskSync.js.
+  const { update: updateContent } = useTaskSync(setContent, { after: rewardIfFinished })
   // Right-click a shoot or edit block: the quick verbs.
   const { openMenu } = useContextMenu()
-  const blockMenu = (e, t) => openMenu(e, [
+  // This page is where you find out somebody is carrying too much — three
+  // overdue, a full week, a queue eight deep. The answer to that is always to
+  // move a piece to somebody else, and until now the answer lived on another
+  // page: open the sheet, find the crew view, pick a name, save. It is here,
+  // beside the number that prompted it, on the hat the block is about — the
+  // shoot moves its operator, the cut its editor, the artwork its designer.
+  const CAP_OF = { operator_id: 'operator', editor_id: 'editor', designer_id: 'designer' }
+  const handTo = (hat) => {
+    const cap = CAP_OF[hat]
+    if (!cap) return []
+    return users.filter((u) => (u.crew_roles || []).includes(cap))
+      .sort(byPicks(getPicks(), (a, b) => a.name.localeCompare(b.name)))
+      .slice(0, 5)
+  }
+  const blockMenu = (e, t, hat = null) => openMenu(e, [
     { label: 'Open', icon: Pencil, onClick: () => setOpenItem(t) },
     { label: t.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => markDone(t, updateContent, setOpenItem) },
+    ...(handTo(hat).length ? [{ sep: true }, ...handTo(hat).map((u) => ({
+      label: `${tx('Give to')} ${u.name}`, icon: UserRound,
+      hint: t[hat] === u.id ? tx('already theirs') : undefined,
+      disabled: t[hat] === u.id,
+      onClick: () => {
+        bumpPick(u.id)
+        updateContent(t, { [hat]: u.id })
+          .then(() => toast(`${tx('Given to')} ${u.name.split(' ')[0]}`))
+          .catch((err) => toast(err.message, 'err'))
+      },
+    }))] : []),
   ])
   const deleteContent = async (item) => {
     await api.del(`/content/${item.id}`)
@@ -449,7 +475,7 @@ export default function Crew() {
                 {w.open.slice(0, 8).map((t) => {
                   const late = t.design_ready_date && t.design_ready_date < today && !t.ready_at
                   return (
-                    <button key={t.id} className="ov-row" onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)}>
+                    <button key={t.id} className="ov-row" onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t, 'designer_id')}>
                       <span className={'crew-list-time crew-list-edit' + (late ? ' late-txt' : '')}>
                         <Palette size={13} /> {t.design_ready_date ? `Due ${dateLabel(t.design_ready_date)}` : 'No design date'}
                       </span>
@@ -524,7 +550,7 @@ export default function Crew() {
                               {dues.map((t) => (
                                 <button key={`d${t.id}`} className="tt-shoot tt-design" draggable
                                   onDragStart={(e) => startDrag(e, t, 'design')} onDragEnd={endDrag}
-                                  onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)} title={t.title}>
+                                  onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t, 'designer_id')} title={t.title}>
                                   <b><Palette size={11} />{' '}{tx("Design due")}</b>
                                   <span>{t.title}</span>
                                   <i className="tt-ch">{t.channels.map((c) => byKey[c]?.label || c).join(' · ')}</i>
@@ -647,7 +673,7 @@ export default function Crew() {
                           {d.shoots.map((s) => (
                             <button key={`s${s.id}`} className="tt-shoot" draggable
                               onDragStart={(e) => startDrag(e, s, 'shoot')} onDragEnd={endDrag}
-                              onClick={() => setOpenItem(s)} onContextMenu={(e) => blockMenu(e, s)} title={s.title}>
+                              onClick={() => setOpenItem(s)} onContextMenu={(e) => blockMenu(e, s, 'operator_id')} title={s.title}>
                               <b><Clapperboard size={11} /> Shoot{s.recording_time ? ` · ${s.recording_time}${s.recording_end ? `–${s.recording_end}` : ''}` : ''}</b>
                               <span>{s.title}</span>
                               <i className="tt-ch">{s.channels.map((c) => byKey[c]?.label || c).join(' · ')}</i>
@@ -656,7 +682,7 @@ export default function Crew() {
                           {cuts.map((t) => (
                             <button key={`e${t.id}`} className="tt-shoot tt-edit" draggable
                               onDragStart={(e) => startDrag(e, t, 'edit')} onDragEnd={endDrag}
-                              onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)} title={t.title}>
+                              onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t, 'editor_id')} title={t.title}>
                               <b><Scissors size={11} />{' '}{tx("Edit due")}</b>
                               <span>{t.title}</span>
                               <i className="tt-ch">{t.channels.map((c) => byKey[c]?.label || c).join(' · ')}</i>
@@ -697,7 +723,7 @@ export default function Crew() {
                 {shoots.map(({ s, u }) => (
                   <button key={`s${s.id}`} className="ov-row" draggable
                     onDragStart={(e) => startDrag(e, s, 'shoot')} onDragEnd={endDrag}
-                    onClick={() => setOpenItem(s)} onContextMenu={(e) => blockMenu(e, s)}>
+                    onClick={() => setOpenItem(s)} onContextMenu={(e) => blockMenu(e, s, 'operator_id')}>
                     <span className="crew-list-time"><Clapperboard size={13} /> Shoot{s.recording_time ? ` · ${s.recording_time}${s.recording_end ? `–${s.recording_end}` : ''}` : ''}</span>
                     <span className="ov-title">{s.title}</span>
                     <span className="ov-chips">
@@ -709,7 +735,7 @@ export default function Crew() {
                 {cuts.map(({ t, u }) => (
                   <button key={`c${t.id}`} className="ov-row" draggable
                     onDragStart={(e) => startDrag(e, t, 'edit')} onDragEnd={endDrag}
-                    onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t)}>
+                    onClick={() => setOpenItem(t)} onContextMenu={(e) => blockMenu(e, t, 'editor_id')}>
                     <span className="crew-list-time crew-list-edit"><Scissors size={13} />{' '}{tx("Edit due")}</span>
                     <span className="ov-title">{t.title}</span>
                     <span className="ov-chips">

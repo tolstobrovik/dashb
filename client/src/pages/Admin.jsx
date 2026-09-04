@@ -771,7 +771,7 @@ function TeamTab() {
                   <th style={{ textAlign: 'right' }} /></tr></thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id}>
+              <tr key={u.id} className="u-row">
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
@@ -823,7 +823,11 @@ function TeamTab() {
                 <td>
                   <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                     <button className="btn btn-ghost btn-sm btn-icon" onClick={() => openEdit(u)} data-tip="Edit member, channels & rights" aria-label="Edit"><Pencil size={15} /></button>
-                    <button className="btn btn-danger btn-sm btn-icon" onClick={() => del(u)} data-tip="Remove this member" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
+                    {/* Deleting somebody's account had exactly the weight of
+                        editing it: two buttons side by side, one of them red,
+                        on every row of a long table. It is still one press
+                        away — on the row you are actually pointing at. */}
+                    <button className="btn btn-danger btn-sm btn-icon u-onhover" onClick={() => del(u)} data-tip="Remove this member" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
                   </div>
                 </td>
               </tr>
@@ -1562,7 +1566,7 @@ function ChannelsTab({ onOpenReport }) {
         {channels.map((c, i) => {
           const Icon = iconFor(c.icon)
           return (
-            <div key={c.id} className="chan-row">
+            <div key={c.id} className="chan-row u-row">
               <span className="chan-icon"><Icon size={17} /></span>
               <span style={{ fontWeight: 600 }}>{c.label}</span>
               <span className="stat-sub" style={{ fontFamily: 'ui-monospace, monospace' }}>{c.key}</span>
@@ -1591,7 +1595,7 @@ function ChannelsTab({ onOpenReport }) {
               <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} data-tip="Move up in the sidebar" aria-label="Up"><ArrowUp size={15} /></button>
               <button className="icon-btn" disabled={i === channels.length - 1} onClick={() => move(i, 1)} data-tip="Move down in the sidebar" aria-label="Down"><ArrowDown size={15} /></button>
               <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null, drive_url: c.drive_url || '', daily_ad_cap: c.daily_ad_cap || 0 }); setErr('') }} data-tip="Edit name, head & icon" aria-label="Edit"><Pencil size={15} /></button>
-              <button className="btn btn-danger btn-sm btn-icon" onClick={() => del(c)} data-tip="Delete channel & its data" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
+              <button className="btn btn-danger btn-sm btn-icon u-onhover" onClick={() => del(c)} data-tip="Delete channel & its data" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
             </div>
           )
         })}
@@ -2083,7 +2087,7 @@ function PipelineTab() {
       </div>
       <div className="card" style={{ padding: '6px 14px' }}>
         {statuses.map((s, i) => (
-          <div key={s.id} className="chan-row">
+          <div key={s.id} className="chan-row u-row">
             <span className="status-dot" style={{ background: s.color, width: 12, height: 12 }} />
             <span style={{ fontWeight: 600 }}>{s.label}</span>
             {s.is_final
@@ -2093,7 +2097,7 @@ function PipelineTab() {
             <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} data-tip="Move stage earlier" aria-label="Up"><ArrowUp size={15} /></button>
             <button className="icon-btn" disabled={i === statuses.length - 1} onClick={() => move(i, 1)} data-tip="Move stage later" aria-label="Down"><ArrowDown size={15} /></button>
             <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: s.id, label: s.label, color: s.color }); setErr('') }} data-tip="Rename or recolor" aria-label="Edit"><Pencil size={15} /></button>
-            <button className="btn btn-danger btn-sm btn-icon" onClick={() => del(s)} data-tip="Delete this stage" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
+            <button className="btn btn-danger btn-sm btn-icon u-onhover" onClick={() => del(s)} data-tip="Delete this stage" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
           </div>
         ))}
       </div>
