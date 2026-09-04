@@ -535,6 +535,10 @@ export const DICTS = { en: EN, ru: RU, uz: UZ }
 
 const PHRASES = {
   ru: {
+    // The person picker: who signs a piece off, and a name it still remembers.
+    "Who signs this off": "Кто это принимает",
+    "No longer here": "Уже не в команде",
+    "{n} more — keep typing": "ещё {n} — продолжайте вводить",
     // Admin → Usage: is the board being used, and for what.
     "never": "ни разу",
     "Usage": "Использование",
@@ -1497,6 +1501,10 @@ const PHRASES = {
     "{n} of {m} paid": "Оплачено {n} из {m}",
   },
   uz: {
+    // The person picker: who signs a piece off, and a name it still remembers.
+    "Who signs this off": "Buni kim qabul qiladi",
+    "No longer here": "Endi jamoada emas",
+    "{n} more — keep typing": "yana {n} — yozishda davom eting",
     // Admin → Usage: is the board being used, and for what.
     "never": "hech qachon",
     "Usage": "Foydalanish",

@@ -26,6 +26,21 @@ ok('crew clears with null', (await req(`/content/${post.id}`, 'PATCH', { operato
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await browser.newPage({ viewport: { width: 1440, height: 950 } })
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 await page.goto(BASE + '/login')
 await page.fill('input[name="username"]', 'admin')
@@ -68,6 +83,8 @@ ok('Medium resets to normal', (await page.evaluate(() => document.documentElemen
 await page.goto(BASE + '/dept/instagram_main')
 await page.waitForSelector('.tcard', { timeout: 12000 })
 await page.locator('.tcard', { hasText: 'Crew on a post' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const hats = await page.locator('.modal .crew-label').allTextContents()
 ok('a post carries the two hats with a stage', hats.length === 2, hats.join(' / '))
@@ -88,7 +105,9 @@ await page.locator('.pp-pop .pp-row', { hasText: 'Polish Operator' }).first().cl
 await page.waitForTimeout(300)
 await page.getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
-ok('crew persisted from the modal', (await req(`/content/${post.id}`)).data.editor_id === polop.id)
+const savedPost = (await req(`/content/${post.id}`)).data
+ok('crew persisted from the modal', savedPost.editor_id === polop.id,
+  `wanted ${polop.id}, got editor=${savedPost.editor_id} operator=${savedPost.operator_id}`)
 
 await browser.close()
 await req(`/content/${post.id}`, 'DELETE')

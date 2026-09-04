@@ -26,6 +26,21 @@ await req('/content', 'POST', { title: 'x23: bare task', channels: ['instagram_m
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
 await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
@@ -62,7 +77,11 @@ ok('no empty Drive inputs on open', (await p.locator('.modal .ready-link-field')
 ok('the Reference block is open and waiting, not hidden at the foot of the form',
   (await p.locator('.modal .cm-key', { hasText: 'Reference' }).count()) === 1)
 await p.screenshot({ path: 'r23-modal.png' })
+// The strip that offers the rows nobody asked for yet sits with the thread,
+// at the foot of the sheet. Pressing one takes you to where the row appeared.
+await cmTab(p, 'Talk')
 await p.locator('.modal .extra-btn', { hasText: 'Delivery links' }).click()
+await cmTab(p, 'Execution')
 ok('“Delivery links” reveals all three fields', (await p.locator('.modal .ready-link-field').count()) === 3)
 // There is no "Reference" button left to press — the block is simply there.
 ok('…so no button is offered to reveal what is already on screen',

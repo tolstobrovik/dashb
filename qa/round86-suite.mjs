@@ -159,6 +159,21 @@ ok('publishing with no link is refused, and says which box',
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -177,6 +192,8 @@ await page.goto(BASE + '/dept/instagram_main')
 await page.waitForSelector('.tcard', { timeout: 12000 })
 await page.waitForTimeout(600)
 await page.locator('.tcard', { hasText: 'r86: waiting at ready' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const seat = (i) => page.locator('.modal .crew-field .pp-field').nth(i)
 await seat(0).click()

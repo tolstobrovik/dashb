@@ -9,13 +9,43 @@ router.use(authRequired)
 // Admins see everyone; members see themselves, admins, teammates who share a
 // channel, and the video crew (editors/operators work across every channel).
 // Crew see the whole team — their tasks can come from anywhere.
+//
+// And whoever is ON a piece you can see. A member could open a task, read that
+// somebody is editing it, and get a chip with an ellipsis in it: the task
+// names the id, the directory would not resolve it, and the seat rendered as
+// though nobody held it. That is not privacy — the piece already told you
+// there is a person there — it is the board lying about its own contents. The
+// only thing the old rule protected was a name you were already being shown a
+// gap where.
 router.get('/', wrap(async (req, res) => {
   const users = (await all('SELECT * FROM users ORDER BY role DESC, name')).map(publicUser)
   if (req.user.role === 'admin' || isCrewRole(req.user.role)) return res.json(users)
   const mine = new Set(req.user.departments)
+  const seated = await seatedOnMyChannels(mine)
   res.json(users.filter((u) =>
-    u.id === req.user.id || u.role === 'admin' || isCrewRole(u.role) || u.departments.some((d) => mine.has(d))))
+    u.id === req.user.id || u.role === 'admin' || isCrewRole(u.role) || seated.has(u.id)
+    || u.departments.some((d) => mine.has(d))))
 }))
+
+// Everybody holding a seat on a piece that runs on one of these channels.
+// Seven small columns, no bodies and no blobs, and only for the members who
+// are scoped at all — an admin and the crew already have the whole list.
+async function seatedOnMyChannels(mine) {
+  const seated = new Set()
+  if (!mine.size) return seated
+  const rows = await all(
+    'SELECT channels, assignee_id, assignees, operator_id, editor_id, designer_id, face_id FROM content')
+  for (const r of rows) {
+    let chans = []
+    try { chans = JSON.parse(r.channels || '[]') } catch { chans = [] }
+    if (!chans.some((c) => mine.has(c))) continue
+    for (const k of ['assignee_id', 'operator_id', 'editor_id', 'designer_id', 'face_id']) {
+      if (r[k]) seated.add(Number(r[k]))
+    }
+    try { for (const id of JSON.parse(r.assignees || '[]')) if (id) seated.add(Number(id)) } catch { /* not a list */ }
+  }
+  return seated
+}
 
 async function cleanDepartments(list) {
   if (!Array.isArray(list)) return null

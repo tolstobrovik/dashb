@@ -26,6 +26,21 @@ const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromi
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
 
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
+
 // ---- driving the person pickers ------------------------------------------
 // The crew seats and the assignee box are searchable pickers now rather than
 // <select> elements: a select's type-ahead jumps to the first matching name
@@ -64,6 +79,8 @@ await page.waitForURL(/overview/, { timeout: 15000 })
 await page.goto(BASE + '/dept/instagram_main')
 await page.waitForSelector('.tcard', { timeout: 12000 })
 await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const opSel = page.locator('.modal .crew-field .pp-field').first()
 const edSel = page.locator('.modal .crew-field .pp-field').nth(1)
@@ -91,12 +108,16 @@ const picksCookie = (await ctx.cookies(BASE)).find((c) => c.name === 'satashkent
 ok('picks cookie written after the confirmed save', !!picksCookie && decodeURIComponent(picksCookie.value).includes(`"${cru.id}"`))
 for (let i = 0; i < 2; i++) {
   await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
+  await page.waitForSelector('.modal', { timeout: 8000 })
+  await cmTab(page, 'Execution')
   await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
   await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
   await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
   await page.waitForTimeout(300)
 }
 await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const rankedOps = await ppNames(page.locator('.modal .crew-field .pp-field').first())
 // [1], not [0]: the list opens with the "— nobody —" row, exactly as the old

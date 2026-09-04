@@ -86,6 +86,21 @@ const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromi
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
 
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
+
 // The crew seats are searchable pickers now, not <select> elements: typing in
 // a select jumps to the first match instead of narrowing, which is what was
 // wrong with it. Drive it the way a person does — open, type, press the row.
@@ -218,8 +233,12 @@ await page.waitForSelector('.tcard', { timeout: 12000 })
 await page.waitForTimeout(500)
 await page.locator('.tcard', { hasText: 'Conflict UI probe' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
-ok('shoot row has from–to time inputs', (await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').count()) === 2)
+// Who films it lives on Execution, when it happens on Logistics — one click
+// apart, the way the sheet is laid out now.
+await cmTab(page, 'Execution')
 await ppPick(page.locator('.modal .crew-row .pp-field').first(), 'Ravshan Umarov')
+await cmTab(page, 'Logistics')
+ok('shoot row has from–to time inputs', (await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').count()) === 2)
 await page.locator('.modal .dates-block input[type="date"]').first().fill(today)
 await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').first().fill('10:30')
 await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').last().fill('11:15')

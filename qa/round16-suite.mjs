@@ -49,6 +49,21 @@ ok('a non-URL link is refused', (await req(`/content/${cutToday.id}`, 'PATCH', {
 // ============ UI: the operator's modal + board ============
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -74,6 +89,7 @@ const enabledStage = await stageChips.evaluateAll((els) => els.filter((e) => !e.
 ok('the stage is read-only (only the current chip is live)', enabledStage <= 1, `enabled=${enabledStage}`)
 // the operator gets a Shot tick, and the ready-link field
 ok('the operator sees a "Mark as shot" tick', (await page.locator('.modal .do-tick', { hasText: 'Mark as shot' }).count()) === 1)
+await cmTab(page, 'Execution')
 ok('the operator does NOT get an edit tick', (await page.locator('.modal .do-tick', { hasText: 'edited' }).count()) === 0)
 ok('the ready-file link field is offered', (await page.locator('.modal .ready-link-field').count()) === 1)
 
@@ -103,6 +119,8 @@ ok('with nothing overdue the section is the calm all-clear', (await editLane.loc
   && /all clear/i.test(await editLane.locator('.cb-clear').textContent()))
 // the editor can open the ready link they saved
 await editLane.locator('.cb-row', { hasText: 'r16: cut today' }).click()
+await page2.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page2, 'Execution')
 await page2.waitForSelector('.modal .ready-link-field', { timeout: 8000 })
 ok('the saved ready link is shown with an Open button', (await page2.locator('.modal .ready-link-input a', { hasText: 'Open' }).count()) === 1)
 await page2.screenshot({ path: 'r16-modal.png' })

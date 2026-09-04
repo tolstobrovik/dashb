@@ -56,6 +56,31 @@
   --tint-neutral:  #f0eeef;
   --tint-warn:     #fff3dd;
 
+  /* ---- the constraint layer ------------------------------------------
+     Ruthless minimalism as rules a stylesheet can enforce, rather than a
+     note somebody has to remember in review. Four of them:
+
+       one accent   the brand crimson is the ONLY accent, and it belongs to
+                    the single primary action on a screen. Red belongs to
+                    failure and lateness; nothing else may borrow it.
+       flat status  a badge SAYS something, a button DOES something. They
+                    must not look alike, so a badge has no border, no hover
+                    and no pointer.
+       air          distinct logical groups are separated by --gap-group,
+                    one and a half times what they used to be, so the data
+                    has room to read as groups rather than as a wall.
+       no lines     containers are told apart by a shift in background, not
+                    by borders and drop shadows.
+  */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --gap-field:   12px;  /* rows inside one group */
+  --gap-group:   36px;  /* between distinct logical groups — 1.5× the old 24 */
+  --gap-section: 54px;  /* between the major regions of a page */
+
   --sidebar-w: 256px;
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   /* The display face: the wordmark and the page headings.
@@ -422,6 +447,10 @@ button { font-family: inherit; }
 .select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b8388' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 34px; }
 
 /* badges & pills */
+/* Demoted on purpose. A status word — "Reel", "Editing" — wearing the brand
+   accent competes with the one action on the screen that should be wearing
+   it, and reads as something you can press. It says what this is; it does
+   nothing. Flat and muted, with no hover and no pointer. */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -430,8 +459,9 @@ button { font-family: inherit; }
   font-weight: 600;
   padding: 3px 9px;
   border-radius: 999px;
-  background: var(--brand-50);
-  color: var(--brand-600);
+  background: var(--tint-neutral);
+  color: var(--ink-2);
+  cursor: default;
   white-space: nowrap;
 }
 .badge-muted { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--hairline); }
@@ -2185,7 +2215,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .assignee-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--hairline); color: var(--ink); font-weight: 700; }
 .chip-x { border: none; background: transparent; cursor: pointer; font-size: 14px; line-height: 1; color: var(--muted); padding: 0 2px; }
 .chip-x:hover { color: var(--critical); }
-.assignee-add { max-width: 170px; font-size: 13px; }
+.assignee-add, .reviewer-add { max-width: 170px; font-size: 13px; }
 
 /* Statistics — the numbers card */
 .stats-card .miss-stats { margin-top: 12px; }
@@ -4945,3 +4975,67 @@ button.blame-person:hover { background: var(--surface-2); }
 .usage-act { display: flex; align-items: center; gap: 8px; padding: 5px 2px; }
 .usage-act-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .usage-grid { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* ============================================================
+   THE CONSTRAINT LAYER — utilities the rules above are made of.
+   Kept small on purpose: a utility set that can express anything
+   enforces nothing.
+   ============================================================ */
+
+/* Air. `u-group` is the one that matters — it is what "let the data breathe"
+   means in practice, and it is 1.5× the spacing the pages used before. */
+.u-stack  { display: flex; flex-direction: column; gap: var(--gap-field); }
+.u-group  { display: flex; flex-direction: column; gap: var(--gap-group); }
+.u-region { display: flex; flex-direction: column; gap: var(--gap-section); }
+
+/* A container is a shift in background, not a box drawn around one. */
+.u-quiet {
+  background: var(--surface-2);
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--radius);
+  padding: var(--space-5);
+}
+.u-plain { background: none; border: 0; box-shadow: none; padding: 0; }
+
+/* A status word SAYS something. It is not a button and must not read as one:
+   no border, no hover, no pointer, no shadow — flat and muted. `.badge` above
+   is the app's own, older class; this is the utility the new rules are made
+   of, under the same `u-` prefix as the rest of them. */
+.u-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--tint-neutral); color: var(--ink-2);
+  border: 0; box-shadow: none; cursor: default;
+  font-size: 11.5px; font-weight: 600; line-height: 1.7;
+  white-space: nowrap;
+}
+.u-badge:hover { background: var(--tint-neutral); color: var(--ink-2); }
+/* The one place red is allowed outside a system failure: work that is late. */
+.u-badge-late { background: var(--danger-bg); color: var(--critical); }
+.u-badge-quiet { background: none; color: var(--muted); padding-left: 0; }
+
+/* The single primary action on a screen. Anything else is secondary, and
+   secondary is quiet. */
+.u-primary { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+
+/* Actions that only appear when the row is under the pointer: a permanent
+   action must not sit permanently under a thumb in a list. */
+.u-onhover { opacity: 0; transition: opacity 120ms ease; }
+.u-row:hover .u-onhover,
+.u-row:focus-within .u-onhover { opacity: 1; }
+@media (hover: none) { .u-onhover { opacity: 1; } }
+
+/* A person who has left is still on the work they did: their name stays on the
+   record, greyed, and cannot be chosen again. */
+.pp-archived { color: var(--muted); filter: grayscale(1); }
+.pp-more { padding: 7px 10px; font-size: 11.5px; color: var(--muted); }
+
+/* Leaving a sheet that is holding unsaved words. Sits inside the sheet rather
+   than over the whole screen: the thing at risk is this form, not the app. */
+.cm-leave { position: absolute; inset: 0; display: grid; place-items: center; z-index: 5;
+  background: color-mix(in srgb, var(--surface) 72%, transparent); }
+.cm-leave-box { display: flex; flex-direction: column; gap: var(--space-3); max-width: 360px;
+  box-shadow: var(--shadow); background: var(--surface); }
+.cm-leave-acts { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }

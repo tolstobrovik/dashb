@@ -93,6 +93,21 @@ ok('a reel is not gated — the rule is scoped to videos',
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1500, height: 950 } })).newPage()
 
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
+
 // The crew seats are searchable pickers now, not <select> elements. Read a
 // group the way the screen shows it: open the picker, collect the rows that
 // follow the group's label.
@@ -159,6 +174,7 @@ await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
 await fullForm()
 await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(600)
+await cmTab(p, 'Execution')
 const opSel = p.locator('.modal .crew-field', { hasText: 'Operator' }).locator('.pp-field')
 const opAnyone = await ppNames(opSel, 'Everyone else — one-time duty')
 ok('the operator list carries the one-time group',

@@ -18,6 +18,7 @@ import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { gapsOf, stageRankOf } from '../lib/gaps.js'
 import { toast } from '../lib/toast.js'
+import { useDirtyState, cascadeDates, LABELS } from '../lib/formState.js'
 import { activityLine } from '../lib/activity.js'
 import { rewardFinish } from '../lib/reward.js'
 import TextHelp from './TextHelp.jsx'
@@ -70,7 +71,20 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
     // admin to undo. So the form says so once, plainly, before it happens
     // rather than after.
     if (v && !form[dateKey] && PROMISED[dateKey] && !confirmSet(dateKey, v)) return
-    setForm({ ...form, [dateKey]: v })
+    // The three dates are a chain: shoot, then cut, then out. Pushing the
+    // shoot past the cut leaves the cut due before the footage exists — a
+    // promise nobody can keep, made without anybody noticing. The days after
+    // it move with it, keeping the gaps the plan had, and the sheet says so.
+    // Pulling a day EARLIER moves nothing: dragging somebody's deadline
+    // towards them is not a correction.
+    const { form: next, moved } = cascadeDates(form, dateKey, v)
+    setForm(next)
+    if (moved.length) {
+      toast(tx('{what} moved with it — {days}', {
+        what: moved.map((m) => tx(LABELS[m.key])).join(tx(' and ')),
+        days: moved.map((m) => m.to).join(', '),
+      }))
+    }
   }
   return (
     <div className={'drow' + (promised ? ' drow-locked' : '') + (bad ? ' field-bad' : '')} data-field={dateKey}>
@@ -120,13 +134,31 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
 // The five pages the sheet becomes on a phone, in the order the form already
 // has them. Labels are English keys translated at render, so the strip follows
 // the language switch like everything else.
+// Three views and the thread. The old sheet was one column of fourteen rows
+// and 2,600 pixels of scrolling, which nobody reads: people scroll past the
+// field they needed and save without it. The rows are dealt into the three
+// questions somebody actually opens a task to answer —
+//
+//   Brief      what is this, and what does it say
+//   Execution  who is on it, and what have they handed over
+//   Logistics  when is it due, and where did it go
+//
+// — with the talk kept as its own place, because a conversation is not
+// logistics. Nothing is deleted and nothing is reordered; the rows move as
+// they are, so every rule, refusal and permission that stood over them still
+// does.
 const SECTIONS = [
   { key: 'brief', label: 'Brief' },
-  { key: 'review', label: 'Review' },
-  { key: 'setup', label: 'Setup' },
-  { key: 'when', label: 'Dates' },
+  { key: 'review', label: 'Execution' },
+  { key: 'setup', label: 'Execution', mergeInto: 'review' },
+  { key: 'when', label: 'Logistics' },
   { key: 'more', label: 'Talk' },
 ]
+// Two code sections wear one tab: the crew and the handovers are the same
+// question asked twice, and a person opening a task to see who is on it
+// should not have to guess which of two pages it is on.
+const TABS = SECTIONS.filter((x) => !x.mergeInto)
+const tabOf = (key) => SECTIONS.find((x) => x.key === key)?.mergeInto || key
 
 export default function ContentModal({ item, statuses, defaults = {}, onClose, onCreate, onUpdate, onDelete }) {
   const { user } = useAuth()
@@ -164,13 +196,18 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   useEffect(() => {
     const el = bodyRef.current
     if (!el) return
-    const live = SECTIONS.filter((x) => (el.querySelector(`[data-sec="${x.key}"]`)?.children.length || 0) > 0)
+    // Measured, not predicted, and measured per TAB: a tab is worth showing
+    // when any of the sections behind it actually put something in the DOM.
+    const filled = new Set(SECTIONS
+      .filter((x) => (el.querySelector(`[data-sec="${x.key}"]`)?.children.length || 0) > 0)
+      .map((x) => tabOf(x.key)))
+    const live = TABS.filter((x) => filled.has(x.key))
     setPages((prev) => (prev.map((x) => x.key).join() === live.map((x) => x.key).join() ? prev : live))
   })
   useEffect(() => {
     if (pages.length && !pages.some((x) => x.key === sec)) setSec(pages[0].key)
   }, [pages, sec])
-  const secCls = (k) => 'cm-sec' + (sec === k ? ' on' : '') + (ideaOnly && k !== 'brief' ? ' cm-sec-later' : '')
+  const secCls = (k) => 'cm-sec' + (tabOf(k) === sec ? ' on' : '') + (ideaOnly && k !== 'brief' ? ' cm-sec-later' : '')
   const [tools, setTools] = useState(false)
   // What the booking cards read. The FORM holds what is being typed; a
   // booking is about what is actually saved, and answering one sends back the
@@ -179,6 +216,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // The operator's week, folded away until asked for.
   const [slotsOpen, setSlotsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+
+
   const [subText, setSubText] = useState('')
   const [form, setForm] = useState(() => ({
     title: item?.title || '',
@@ -232,6 +271,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         : (defaults.assignee_id ? [defaults.assignee_id] : [user.id]),
     } : {}),
   }))
+
+  // Three views mean a view you have left is still holding what you wrote in
+  // it — which is the point, and also the way a sheet gets closed on top of
+  // unsaved words the person cannot see. So closing a dirty sheet asks first.
+  // Switching views never asks: they are one form.
+  const { dirty, settle } = useDirtyState(form, true)
+  const [leaving, setLeaving] = useState(false)
+  const tryClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
   // Team list: the admin's assignee picker + the video crew pickers.
   // (cached — every modal open reuses one fetch for a while)
   const [team, setTeam] = useState([])
@@ -707,7 +754,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     // On a phone the field may be on a page that is not showing. Turn to it
     // first, then scroll — an element inside `display: none` cannot be
     // scrolled to, and the refusal would have pointed at nothing.
-    const page = el.closest('.cm-sec')?.dataset.sec
+    const page = tabOf(el.closest('.cm-sec')?.dataset.sec)
     if (page) setSec(page)
     const go = () => {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1121,11 +1168,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     <Modal
       wide
       title={creating ? tx('New task') : tx('Task')}
-      onClose={onClose}
+      onClose={tryClose}
       bodyRef={bodyRef}
-      bodyClass={phone && pages.length > 1 ? 'cm-paged' : ''}
-      tall={phone && pages.length > 1}
-      subhead={phone && pages.length > 1 ? (
+      bodyClass={pages.length > 1 ? 'cm-paged' : ''}
+      tall={pages.length > 1}
+      subhead={pages.length > 1 ? (
         <div className="cm-pages" role="tablist">
           {pages.map((x) => (
             <button key={x.key} type="button" role="tab" aria-selected={sec === x.key}
@@ -1263,6 +1310,65 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       />
 
       <div className={secCls('brief')} data-sec="brief">
+      {!crewViewer && (<>
+      {/* What is it? The type binds the task to each platform's plan. */}
+      <div className="cm-row">
+        <span className="cm-key">{t('task.type')}</span>
+        <div className="stage-chips">
+          {CONTENT_TYPES.map((t) => {
+            const Icon = t.icon
+            return (
+              <button key={t.key} type="button" disabled={detailsLocked}
+                className={`tchip ct-${t.key}` + (form.type === t.key ? ' on' : '')}
+                onClick={() => setForm({ ...form, type: t.key })}>
+                <Icon size={13} /> {t.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      {(fOn('format') || fOn('rubrika')) && (
+        <div className="cm-row">
+          <span className="cm-key">{t('task.brief')}</span>
+          {/* Own classes on purpose: these are brief fields, not crew hats —
+              nothing that counts crew-fields may count these. */}
+          <div className="brief-fields">
+            {fOn('format') && (
+              <label className={'brief-field' + (badField === 'format' ? ' field-bad' : '')} data-field="format">
+                <span className="brief-label"><Layers size={12} /> Format {fReq('format')
+                  ? <b className="req-star" data-tip={tx("The admin made this required")}>*</b>
+                  : <span className="crew-opt">{tx("optional")}</span>}</span>
+                <select className="select" disabled={detailsLocked} value={form.format}
+                  onChange={(e) => setForm({ ...form, format: e.target.value })}>
+                  <option value="">— pick a format —</option>
+                  {[...new Set([...(fieldRules.format.options || []), ...(form.format ? [form.format] : [])])]
+                    .map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </label>
+            )}
+            {fOn('rubrika') && (
+              <label className={'brief-field' + (badField === 'rubrika' ? ' field-bad' : '')} data-field="rubrika">
+                <span className="brief-label"><Hash size={12} /> Rubrika {fReq('rubrika')
+                  ? <b className="req-star" data-tip={tx("The admin made this required")}>*</b>
+                  : <span className="crew-opt">{tx("optional")}</span>}</span>
+                {(fieldRules.rubrika.options || []).length > 0 ? (
+                  <select className="select" disabled={detailsLocked} value={form.rubrika}
+                    onChange={(e) => setForm({ ...form, rubrika: e.target.value })}>
+                    <option value="">— pick a rubrika —</option>
+                    {[...new Set([...(fieldRules.rubrika.options || []), ...(form.rubrika ? [form.rubrika] : [])])]
+                      .map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input className="input" disabled={detailsLocked} placeholder={tx("e.g. SU events")}
+                    value={form.rubrika} onChange={(e) => setForm({ ...form, rubrika: e.target.value })} />
+                )}
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+      </>)}
+
       {/* Stage — the pipeline, in its own colours */}
       <div className="cm-row">
         <span className="cm-key">{t('task.stage')}</span>
@@ -1812,22 +1918,6 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           </div>
         </div>
       ) : (<>
-      {/* What is it? The type binds the task to each platform's plan. */}
-      <div className="cm-row">
-        <span className="cm-key">{t('task.type')}</span>
-        <div className="stage-chips">
-          {CONTENT_TYPES.map((t) => {
-            const Icon = t.icon
-            return (
-              <button key={t.key} type="button" disabled={detailsLocked}
-                className={`tchip ct-${t.key}` + (form.type === t.key ? ' on' : '')}
-                onClick={() => setForm({ ...form, type: t.key })}>
-                <Icon size={13} /> {t.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
       {creating && plan && (
         <div className="cm-hint">Raises the {plan} plan by one — completing the task fills it.</div>
       )}
@@ -1835,46 +1925,6 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* The brief: Format (talking head, split screen…) and Rubrika (the
           recurring column). The admin decides which types carry them and
           whether they're demanded — Admin → Pipeline → The task form. */}
-      {(fOn('format') || fOn('rubrika')) && (
-        <div className="cm-row">
-          <span className="cm-key">{t('task.brief')}</span>
-          {/* Own classes on purpose: these are brief fields, not crew hats —
-              nothing that counts crew-fields may count these. */}
-          <div className="brief-fields">
-            {fOn('format') && (
-              <label className={'brief-field' + (badField === 'format' ? ' field-bad' : '')} data-field="format">
-                <span className="brief-label"><Layers size={12} /> Format {fReq('format')
-                  ? <b className="req-star" data-tip={tx("The admin made this required")}>*</b>
-                  : <span className="crew-opt">{tx("optional")}</span>}</span>
-                <select className="select" disabled={detailsLocked} value={form.format}
-                  onChange={(e) => setForm({ ...form, format: e.target.value })}>
-                  <option value="">— pick a format —</option>
-                  {[...new Set([...(fieldRules.format.options || []), ...(form.format ? [form.format] : [])])]
-                    .map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-              </label>
-            )}
-            {fOn('rubrika') && (
-              <label className={'brief-field' + (badField === 'rubrika' ? ' field-bad' : '')} data-field="rubrika">
-                <span className="brief-label"><Hash size={12} /> Rubrika {fReq('rubrika')
-                  ? <b className="req-star" data-tip={tx("The admin made this required")}>*</b>
-                  : <span className="crew-opt">{tx("optional")}</span>}</span>
-                {(fieldRules.rubrika.options || []).length > 0 ? (
-                  <select className="select" disabled={detailsLocked} value={form.rubrika}
-                    onChange={(e) => setForm({ ...form, rubrika: e.target.value })}>
-                    <option value="">— pick a rubrika —</option>
-                    {[...new Set([...(fieldRules.rubrika.options || []), ...(form.rubrika ? [form.rubrika] : [])])]
-                      .map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                ) : (
-                  <input className="input" disabled={detailsLocked} placeholder={tx("e.g. SU events")}
-                    value={form.rubrika} onChange={(e) => setForm({ ...form, rubrika: e.target.value })} />
-                )}
-              </label>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Platforms — a task can go out on several at once */}
       <div className="cm-row">
@@ -2046,21 +2096,42 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           same date. Kept apart from the single-hat crew pickers above. */}
       <div className="cm-row">
         <span className="cm-key">{t('task.reviewer')}</span>
+        {/* Who signs it off, as the people who ARE on it — not as the whole
+            team laid out in a grid for you to read your colleagues' names.
+            A thirty-person board drew thirty buttons here, twenty-nine of
+            which were the wrong answer. The picked faces show; the rest are
+            behind a search that narrows. */}
         <div className="rev-picker">
-          {team.map((u) => {
-            const on = form.reviewer_ids.includes(u.id)
+          {form.reviewer_ids.map((id) => {
+            const u = team.find((x) => x.id === id)
             return (
-              <button key={u.id} type="button" disabled={detailsLocked}
-                className={'rev-chip' + (on ? ' on' : '')}
-                onClick={() => setForm({
-                  ...form,
-                  reviewer_ids: on ? form.reviewer_ids.filter((id) => id !== u.id) : [...form.reviewer_ids, u.id],
-                })}>
-                {u.name}
-              </button>
+              <span key={id} className="chip assignee-chip">
+                <Avatar name={u?.name || '…'} color={u?.color} src={u?.avatar} size="xs" />
+                {u?.name || '…'}
+                {!detailsLocked && (
+                  <button type="button" className="chip-x" aria-label={tx('Remove')}
+                    onClick={() => setForm({ ...form, reviewer_ids: form.reviewer_ids.filter((x) => x !== id) })}>×</button>
+                )}
+              </span>
             )
           })}
-          {form.reviewer_ids.length === 0 && <span className="cm-hint">{tx("Nobody signs this off yet.")}</span>}
+          {!detailsLocked && (
+            <PersonPicker
+              className="reviewer-add"
+              value={null}
+              clearable={false}
+              placeholder={form.reviewer_ids.length ? tx('Add person…') : tx('Nobody signs this off yet.')}
+              tip={tx('Who signs this off')}
+              groups={[{
+                label: '',
+                people: team.filter((u) => !form.reviewer_ids.includes(u.id))
+                  .map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })),
+              }]}
+              onPick={(id) => {
+                if (id && !form.reviewer_ids.includes(id)) setForm({ ...form, reviewer_ids: [...form.reviewer_ids, id] })
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -2257,15 +2328,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* Reference and Description are open from the start now, so what is
           left here is the chrome that only earns its space once it holds
           something. */}
+      {/* Asking for a row is asking to fill it in, so the sheet takes you to
+          where it appeared. Before the views, "Delivery links" opened three
+          boxes somewhere below the fold; now it opens them and puts them in
+          front of you. */}
       {!detailsLocked && (!show.checklist || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !show.docs && docs.length === 0) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
         <div className="extra-btns">
           {!creating && !show.docs && docs.length === 0 && (
-            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, docs: true })}><Paperclip size={14} />{' '}{tx("Documents")}</button>
+            <button type="button" className="extra-btn" onClick={() => { setShow({ ...show, docs: true }); setSec(tabOf('more')) }}><Paperclip size={14} />{' '}{tx("Documents")}</button>
           )}
-          {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, script: true })}><FileText size={14} />{' '}{tx("Script")}</button>}
-          {!show.checklist && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, checklist: true })}><CheckSquare size={14} />{' '}{tx("Checklist")}</button>}
+          {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => { setShow({ ...show, script: true }); setSec(tabOf('brief')) }}><FileText size={14} />{' '}{tx("Script")}</button>}
+          {!show.checklist && <button type="button" className="extra-btn" onClick={() => { setShow({ ...show, checklist: true }); setSec(tabOf('more')) }}><CheckSquare size={14} />{' '}{tx("Checklist")}</button>}
           {!creating && !crewViewer && canEdit && !show.delivery && (
-            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, delivery: true })}><Link2 size={14} />{' '}{tx("Delivery links")}</button>
+            <button type="button" className="extra-btn" onClick={() => { setShow({ ...show, delivery: true }); setSec(tabOf('review')) }}><Link2 size={14} />{' '}{tx("Delivery links")}</button>
           )}
         </div>
       )}
@@ -2348,6 +2423,26 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
       </div>
+
+      {/* Leaving with words nobody saved. Two ways out and no third: go back
+          to the form, or drop what was typed. No "save and close" — a save
+          that happens as a side effect of leaving is a save nobody read. */}
+      {leaving && (
+        <div className="cm-leave" role="alertdialog" aria-modal="true">
+          <div className="cm-leave-box u-quiet">
+            <b>{tx('You have changes nobody has saved.')}</b>
+            <span className="stat-sub">{tx('Close this and they are gone.')}</span>
+            <div className="cm-leave-acts">
+              <button type="button" className="btn" onClick={() => setLeaving(false)}>
+                {tx('Keep editing')}
+              </button>
+              <button type="button" className="btn btn-danger" onClick={() => { setLeaving(false); onClose() }}>
+                {tx('Discard them')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }

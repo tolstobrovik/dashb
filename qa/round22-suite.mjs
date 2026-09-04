@@ -32,6 +32,21 @@ const rq = (await req('/content', 'POST', {
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 // ---- 1) jas (SMM): review queue + one-tap publish ----
 const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
 await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'jas'); await p.fill('input[name="password"]', 'j1234')
