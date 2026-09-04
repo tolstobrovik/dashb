@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
-import { NavLink, Link } from 'react-router-dom'
+import { NavLink, Link, useLocation } from 'react-router-dom'
 import {
   Shield, LogOut, Briefcase, LayoutDashboard, Sun, BarChart3, Clapperboard, UsersRound, ScrollText, Send, Palette,
   SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, Timer, GraduationCap,
+  ChevronRight,
 } from 'lucide-react'
 import { LogoLockup } from './Logo.jsx'
 import Avatar from './Avatar.jsx'
@@ -32,12 +33,28 @@ function readPrefs(uid) {
       return {
         order: { main: [], channels: [], manage: [], ...(o.order || {}) },
         hidden: Array.isArray(o.hidden) ? o.hidden : [],
+        closed: Array.isArray(o.closed) ? o.closed : [],
       }
     }
   } catch { /* fall through */ }
   // First run: adopt the round-19 per-browser channel prefs, if any.
-  return { order: { main: [], channels: readLegacy('satashkent_side_order'), manage: [] }, hidden: readLegacy('satashkent_side_hidden') }
+  return {
+    order: { main: [], channels: readLegacy('satashkent_side_order'), manage: [] },
+    hidden: readLegacy('satashkent_side_hidden'),
+    closed: [],
+  }
 }
+
+// The four hubs, in the order a day runs through them: what you are doing,
+// where it goes, what happened, who does it. Channels sit second because they
+// ARE the work — everything else is a way of looking at them.
+const HUBS = [
+  { g: 'work', label: () => tx('Work') },
+  { g: 'channels', label: (t) => t('nav.channels') },
+  { g: 'numbers', label: () => tx('Numbers') },
+  { g: 'people', label: () => tx('People') },
+]
+const HUB_KEYS = HUBS.map((h) => h.g)
 
 export default function Sidebar({ user, onNavigate, onLogout }) {
   const { visible } = useChannels()
@@ -66,22 +83,41 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   const runsEverything = isAdmin && !(user.admin_channels || []).length
   // A page the admin switched off in Settings has no door here. Only the ones
   // that ARE switchable are asked; My Day and the channels are the work.
+  //
+  // Four hubs, not one wall of nine. The old sidebar listed every page an
+  // account could reach in a single column, so an admin met eleven doors at
+  // once and had to read all of them to find the one they wanted. The doors
+  // have not changed — the sorting has:
+  //
+  //   Work      what you are doing today
+  //   Channels  where it goes
+  //   Numbers   what happened
+  //   People    who does it
+  //
+  // A hub with nothing in it is not drawn at all — no heading, no empty
+  // chevron. An operator does not get a greyed-out People section telling
+  // them about a door they cannot open; they get a sidebar that looks like it
+  // was built for them.
   const groups = useMemo(() => ({
-    main: [
-      isAdmin && shows('overview') && { key: 'overview', to: '/overview', label: t('nav.overview'), icon: LayoutDashboard },
+    work: [
       { key: 'brief', to: '/brief', label: t('nav.brief'), icon: Sun, locked: true },
+      isAdmin && shows('overview') && { key: 'overview', to: '/overview', label: t('nav.overview'), icon: LayoutDashboard },
       // Every channel at once: what is going out, and what is being filmed.
       shows('releases') && { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
       shows('recordings') && { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
-      shows('missed') && { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
       // The designer's own board, beside the work rather than inside a channel.
       shows('design') && { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
-      shows('docs') && { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
       shows('sprints') && { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
-      isAdmin && shows('projects') && { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },
+      // A campaign lives inside a project, so /campaigns/7 lights Projects up
+      // rather than lighting nothing up.
+      isAdmin && shows('projects') && { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase, also: ['/campaigns'] },
     ].filter(Boolean),
     channels: visible.map((c) => ({ key: `ch:${c.key}`, to: `/dept/${c.key}`, label: c.label, icon: iconFor(c.icon) })),
-    manage: isAdmin ? [
+    numbers: [
+      shows('missed') && { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
+      shows('docs') && { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
+    ].filter(Boolean),
+    people: isAdmin ? [
       shows('crew') && { key: 'crew', to: '/crew', label: t('nav.crew'), icon: Clapperboard },
       // The ambassador programme. Not switchable in Settings on purpose: this
       // is the only page some accounts have, and switching it off would strand
@@ -92,13 +128,33 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
     ].filter(Boolean) : [],
   }), [isAdmin, runsEverything, visible, t, shows])
 
+  // Which hub holds the page you are on. A deep link drops you INSIDE one —
+  // /sprints/backlog, /projects/7, /dept/instagram_main — so the match is on
+  // the path's segments, not on string equality, and the hub holding the
+  // current page is open whatever your folding preferences say. You cannot
+  // fold away the thing you are looking at.
+  const loc = useLocation()
+  const onPath = (to) => loc.pathname === to || loc.pathname.startsWith(to + '/')
+  const isHere = (it) => onPath(it.to) || (it.also || []).some(onPath)
+  const hubHere = HUB_KEYS.find((g) => (groups[g] || []).some(isHere)) || null
+
   // Personal order first; unknown items (new channels) keep their place at
-  // the end, visible — nothing is ever born hidden.
+  // the end, visible — nothing is ever born hidden. The old sidebar's three
+  // groups were called main/channels/manage; the keys inside them did not
+  // change when the hubs did, so an order saved before this is still read and
+  // still honoured rather than being silently thrown away.
+  const LEGACY = { work: 'main', numbers: 'main', people: 'manage', channels: 'channels' }
   const orderedOf = (g) => {
-    const pos = new Map((prefs.order[g] || []).map((k, i) => [k, i]))
+    const saved = (prefs.order[g] || []).length ? prefs.order[g] : (prefs.order[LEGACY[g]] || [])
+    const pos = new Map(saved.map((k, i) => [k, i]))
     return [...groups[g]].sort((a, b) =>
       (pos.has(a.key) ? pos.get(a.key) : 1e9) - (pos.has(b.key) ? pos.get(b.key) : 1e9))
   }
+  const closed = useMemo(() => new Set(prefs.closed || []), [prefs])
+  const toggleFold = (g) => save({
+    ...prefs,
+    closed: closed.has(g) ? (prefs.closed || []).filter((k) => k !== g) : [...(prefs.closed || []), g],
+  })
   const toggleHide = (key) => {
     const next = hidden.has(key) ? prefs.hidden.filter((k) => k !== key) : [...prefs.hidden, key]
     save({ ...prefs, hidden: next })
@@ -122,7 +178,7 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
     keys.splice(b, 0, keys.splice(a, 1)[0])
     saveOrder(g, keys)
   }
-  const resetPrefs = () => save({ order: { main: [], channels: [], manage: [] }, hidden: [] })
+  const resetPrefs = () => save({ order: { main: [], channels: [], manage: [] }, hidden: [], closed: [] })
 
   const Group = ({ g }) => {
     const items = orderedOf(g)
@@ -187,13 +243,34 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
         <LogoLockup />
       </Link>
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
-        <Group g="main" />
-
-        {groups.channels.length > 0 && <div className="nav-label">{t('nav.channels')}</div>}
-        <Group g="channels" />
-
-        {groups.manage.length > 0 && <div className="nav-label">{t('nav.manage')}</div>}
-        <Group g="manage" />
+        {HUBS.map(({ g, label }) => {
+          // What is actually on screen for THIS person, after their own
+          // hiding. A hub everybody's role emptied, or that somebody hid the
+          // last item out of, is not drawn at all — a heading over nothing is
+          // furniture pretending to be a door. While personalizing, hidden
+          // items are still listed, or you could never get them back.
+          const items = orderedOf(g)
+          const showing = editing ? items : items.filter((it) => !hidden.has(it.key))
+          if (showing.length === 0) return null
+          const here = g === hubHere
+          const open = editing || here || !closed.has(g)
+          return (
+            <div key={g} className={'nav-hub' + (open ? ' open' : '')}>
+              <button
+                type="button"
+                className="nav-hub-head"
+                onClick={() => !here && toggleFold(g)}
+                aria-expanded={open}
+                data-tip={here ? tx('The page you are on lives in here') : undefined}
+              >
+                <ChevronRight size={12} className="nav-hub-chev" />
+                <span>{label(t)}</span>
+                {!open && <span className="nav-hub-n">{showing.length}</span>}
+              </button>
+              {open && <div className="nav-hub-body"><Group g={g} /></div>}
+            </div>
+          )
+        })}
 
         {/* One quiet switch governs the whole sidebar. */}
         <div className="side-edit-foot">

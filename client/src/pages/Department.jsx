@@ -4,7 +4,7 @@ import {
   Lock, Plus, Pencil, Trash2, Gauge, CalendarRange, AlertCircle, Pin, PinOff, GripVertical, Minus,
   KanbanSquare, Send, Clapperboard, LineChart, Maximize2, Minimize2,
   SlidersHorizontal, Settings, Megaphone, CalendarClock, CheckCircle2, ArrowUp, ArrowDown, Rocket,
-  PenLine, Check, CopyPlus,
+  PenLine, Check, CopyPlus, UserRound, UsersRound,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { toast, loadFailed } from '../lib/toast.js'
@@ -26,6 +26,8 @@ import { useContextMenu } from '../components/ContextMenu.jsx'
 import { CampaignRow } from '../components/ProjectBits.jsx'
 import ProgramsGantt, { PLATFORMS } from '../components/ProgramsGantt.jsx'
 import { rewardIfFinished } from '../lib/reward.js'
+import { useTaskSync } from '../lib/useTaskSync.js'
+import { getPicks, byPicks, bumpPick } from '../lib/picks.js'
 import { tr as tx } from '../lib/i18n.jsx'
 
 // The Target team's lens: what platform's work to look at. Tasks and
@@ -289,11 +291,14 @@ export default function Department() {
     const c = await api.post('/content', payload)
     setContent((prev) => [c, ...prev].filter((x) => x.channels.includes(key)))
   }
-  const updateContent = async (item, payload) => {
-    const c = await api.patch(`/content/${item.id}`, payload)
-    rewardIfFinished(item, c)
-    setContent((prev) => prev.map((x) => (x.id === item.id ? c : x)).filter((x) => x.channels.includes(key)))
-  }
+  // Picking somebody to shoot a video is not a question the server has an
+  // opinion about, so the name appears at once and the request follows. A
+  // stage or a tick can be refused — those still wait for the answer. See
+  // lib/useTaskSync.js for where that line is drawn.
+  const { update: updateContent, isBusy } = useTaskSync(setContent, {
+    belongs: (x) => x.channels.includes(key),
+    after: rewardIfFinished,
+  })
   const deleteContent = async (item) => {
     await api.del(`/content/${item.id}`)
     setContent((prev) => prev.filter((x) => x.id !== item.id))
@@ -302,6 +307,14 @@ export default function Department() {
   // before it was removed, on the board that replaced it. Everything here is
   // already permission-checked by the server; the menu only offers what this
   // account can actually do so nothing on it answers 403.
+  // The five people this account hands work to most often, learned from what
+  // they actually do (lib/picks.js). Five because a right-click menu is a
+  // shortcut, not a directory — everybody else is one press further on, in
+  // the sheet.
+  const giveTo = useMemo(() => {
+    const picks = getPicks()
+    return [...team].sort(byPicks(picks, (a, b) => a.name.localeCompare(b.name))).slice(0, 5)
+  }, [team])
   const { openMenu } = useContextMenu()
   const cardMenu = (e, item) => openMenu(e, [
     { label: tx('Open'), icon: PenLine, onClick: () => setOpenItem(item) },
@@ -313,6 +326,23 @@ export default function Department() {
       label: item.pinned ? tx('Unpin') : tx('Pin to the top'), icon: Pin,
       onClick: () => updateContent(item, { pinned: !item.pinned }).catch((err) => alert(err.message)),
     },
+    // Handing a piece to somebody was a four-step job: open the sheet, find
+    // the right view, pick a name, save. It is the single commonest thing
+    // done to a card, so it is one press here — and it lands instantly,
+    // because a seat is not something the server argues with.
+    ...(manageContent && giveTo.length ? [{ sep: true }, ...giveTo.map((u) => ({
+      label: `${tx('Give to')} ${u.name}`, icon: UserRound,
+      hint: item.assignee_id === u.id ? tx('already theirs') : undefined,
+      disabled: item.assignee_id === u.id,
+      onClick: () => {
+        bumpPick(u.id)
+        updateContent(item, { assignee_ids: [u.id] })
+          .then(() => toast(`${tx('Given to')} ${u.name.split(' ')[0]}`))
+          .catch((err) => toast(err.message, 'err'))
+      },
+    })), {
+      label: tx('Somebody else…'), icon: UsersRound, onClick: () => setOpenItem(item),
+    }] : []),
     manageContent && {
       label: tx('Duplicate'), icon: CopyPlus,
       onClick: () => api.post(`/content/${item.id}/duplicate`)
@@ -567,7 +597,7 @@ export default function Department() {
         />
       ) : view === 'board' ? (
         <ContentBoard items={wsContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} myStages={myStages}
-          onMenu={cardMenu}
+          onMenu={cardMenu} isBusy={isBusy}
           onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />
       ) : (
         <ContentCalendar

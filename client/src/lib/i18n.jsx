@@ -535,6 +535,28 @@ export const DICTS = { en: EN, ru: RU, uz: UZ }
 
 const PHRASES = {
   ru: {
+    // The sidebar's four hubs: what you are doing, where it goes, what
+    // happened, who does it.
+    "Work": "Работа",
+    "Numbers": "Цифры",
+    "People": "Люди",
+    "The page you are on lives in here": "Здесь находится открытая страница",
+    // The sheet: dates that move together, and words nobody saved yet.
+    "{what} moved with it — {days}": "{what} — сдвинуто: {days}",
+    " and ": " и ",
+    "the shoot": "съёмка",
+    "the cut": "монтаж",
+    "the artwork": "макет",
+    "the release": "публикация",
+    "You have changes nobody has saved.": "Есть несохранённые изменения.",
+    "Close this and they are gone.": "Закроете — они пропадут.",
+    "Keep editing": "Продолжить",
+    "Discard them": "Не сохранять",
+    // Right-click a card: hand it to somebody in one press.
+    "Give to": "Передать",
+    "Given to": "Передано",
+    "already theirs": "уже у них",
+    "Somebody else…": "Кто-то другой…",
     // The person picker: who signs a piece off, and a name it still remembers.
     "Who signs this off": "Кто это принимает",
     "No longer here": "Уже не в команде",
@@ -1501,6 +1523,28 @@ const PHRASES = {
     "{n} of {m} paid": "Оплачено {n} из {m}",
   },
   uz: {
+    // The sidebar's four hubs: what you are doing, where it goes, what
+    // happened, who does it.
+    "Work": "Ish",
+    "Numbers": "Raqamlar",
+    "People": "Odamlar",
+    "The page you are on lives in here": "Ochiq sahifa shu yerda",
+    // The sheet: dates that move together, and words nobody saved yet.
+    "{what} moved with it — {days}": "{what} — ko‘chirildi: {days}",
+    " and ": " va ",
+    "the shoot": "s‘yomka",
+    "the cut": "montaj",
+    "the artwork": "dizayn",
+    "the release": "e’lon",
+    "You have changes nobody has saved.": "Saqlanmagan o‘zgarishlar bor.",
+    "Close this and they are gone.": "Yopsangiz, ular yo‘qoladi.",
+    "Keep editing": "Davom etish",
+    "Discard them": "Saqlamaslik",
+    // Right-click a card: hand it to somebody in one press.
+    "Give to": "Berish",
+    "Given to": "Berildi",
+    "already theirs": "allaqachon ularda",
+    "Somebody else…": "Boshqa birov…",
     // The person picker: who signs a piece off, and a name it still remembers.
     "Who signs this off": "Buni kim qabul qiladi",
     "No longer here": "Endi jamoada emas",

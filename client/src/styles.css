@@ -5039,3 +5039,55 @@ button.blame-person:hover { background: var(--surface-2); }
 .cm-leave-box { display: flex; flex-direction: column; gap: var(--space-3); max-width: 360px;
   box-shadow: var(--shadow); background: var(--surface); }
 .cm-leave-acts { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
+
+/* ---- the sidebar's hubs (round 88) ---------------------------------------
+   The nav was one column of every door an account could open — eleven of them
+   for an admin, read top to bottom every time you wanted one. They are sorted
+   into four now, and a hub you never use folds away. The heading is the
+   control: no separate chevron to hunt for, the whole row is the hit area.
+   A hub holding the page you are on cannot be folded, so you can never lose
+   sight of where you are. */
+.nav-hub-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  color: rgba(236, 231, 225, 0.62);
+  padding: 14px 12px 6px;
+  text-align: left;
+  transition: color 0.12s ease;
+}
+.nav-hub-head:hover { color: rgba(236, 231, 225, 0.95); }
+.nav-hub-chev {
+  flex: none;
+  opacity: 0.65;
+  transform: rotate(0deg);
+  transition: transform 0.14s ease;
+}
+.nav-hub.open .nav-hub-chev { transform: rotate(90deg); }
+/* What is behind a folded hub, so folding one is not the same as forgetting
+   what is in it. */
+.nav-hub-n {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0;
+  font-weight: 600;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+.nav-hub-body { display: flex; flex-direction: column; gap: 2px; }
+
+/* A card whose change is still in the air. Only for the changes that can come
+   back refused — a stage, a tick. A seat is drawn the moment you pick it and
+   never wears this, because there is nothing to wait for. Deliberately faint:
+   this is a whisper that something is happening, not a spinner that takes the
+   page hostage. */
+.tcard-busy { opacity: 0.55; pointer-events: none; transition: opacity 0.12s ease; }

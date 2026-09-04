@@ -87,11 +87,24 @@ const header = await page.locator('header').textContent()
 ok('crew chrome: their own pages, nothing else',
   header.includes('My Day') && header.includes('Statistics') && !header.includes('Projects'), header.replace(/\s+/g, ' ').slice(0, 120))
 
+// The task sheet is views now — Brief, Execution, Logistics, Talk — so a
+// control is reached the way a person reaches it: open the view holding it
+// first. The same view is "Execution" to whoever runs the piece and "Your
+// part" to whoever does the work on it. Idempotent, and silent on a sheet
+// short enough to show whole.
+const cmTab = async (pg, name) => {
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 // move the stage through the modal
 await page.locator('.cb-row', { hasText: 'Edit: campus film' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
 const readyChip = page.locator('.modal .stage-chip', { hasText: 'Ready' })
 ok('the stage is read-only for the editor', !(await readyChip.isEnabled()))
+await cmTab(page, 'Execution')
 ok('the editor sees a "Mark as edited" tick', (await page.locator('.modal .do-tick', { hasText: 'edited' }).count()) === 1)
 await page.locator('.modal .do-tick', { hasText: 'edited' }).click()
 await page.getByRole('button', { name: 'Save changes' }).click()

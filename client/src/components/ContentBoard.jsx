@@ -14,7 +14,7 @@ import Zoom from './Zoom.jsx'
 // to before that page was removed: open it, tick it off, copy it, bin it.
 // With onQuickAdd, every working column grows a foot input: type a title,
 // Enter — the task lands in that stage without a modal round-trip.
-export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, onMenu, onQuickAdd, campaignsById = {}, teamById = {}, myStages = [] }) {
+export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, onMenu, onQuickAdd, campaignsById = {}, teamById = {}, myStages = [], isBusy }) {
   const { byKey } = useChannels()
   // Ref = source of truth for the drop (a fast drop must never read a stale
   // state value); state only drives the dimmed styling.
@@ -65,7 +65,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                 return (
                   <div
                     key={item.id}
-                    className={`tcard${dragId === item.id ? ' dim' : ''}`}
+                    className={`tcard${dragId === item.id ? ' dim' : ''}${isBusy?.(item.id) ? ' tcard-busy' : ''}`}
                     onContextMenu={onMenu ? (e) => onMenu(e, item) : undefined}
                     draggable={canMove}
                     onDragStart={(e) => {
