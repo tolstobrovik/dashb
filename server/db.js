@@ -507,6 +507,11 @@ export const DEFAULT_PERMS = {
   review_publish: true,   // move Ready → Published on a channel you're on (SMM)
   request_changes: true,  // send a task back to the crew for fixes (Pravki)
   deliver_work: true,     // deliver / re-deliver a stage's file link
+  // Runs the ambassador programme: reads the queue, answers cards, sets terms,
+  // and creates the student accounts. Off by default and deliberately narrow —
+  // it is a job on this board, not a way onto the rest of it. See
+  // server/routes/ambassadors.js and the carve-out in routes/users.js.
+  manage_ambassadors: false,
 }
 export const PERM_KEYS = Object.keys(DEFAULT_PERMS)
 

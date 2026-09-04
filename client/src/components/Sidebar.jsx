@@ -84,6 +84,9 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   // channels and would meet a refusal on every tab in there, so they are not
   // shown the door. Post Production and Team stay: both are about the work.
   const runsEverything = isAdmin && !(user.admin_channels || []).length
+  // The ambassador programme is a job somebody can hold without running the
+  // board — see server/routes/ambassadors.js.
+  const runsProgramme = !!(user.permissions && user.permissions.manage_ambassadors)
   // A page the admin switched off in Settings has no door here. Only the ones
   // that ARE switchable are asked; My Day and the channels are the work.
   //
@@ -120,16 +123,18 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       shows('missed') && { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
       shows('docs') && { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
     ].filter(Boolean),
-    people: isAdmin ? [
-      shows('crew') && { key: 'crew', to: '/crew', label: t('nav.crew'), icon: Clapperboard },
+    people: [
+      isAdmin && shows('crew') && { key: 'crew', to: '/crew', label: t('nav.crew'), icon: Clapperboard },
       // The ambassador programme. Not switchable in Settings on purpose: this
       // is the only page some accounts have, and switching it off would strand
-      // them on a board with nothing on it.
-      { key: 'ambassadors', to: '/ambassador', label: tx('Ambassadors'), icon: GraduationCap },
-      shows('team') && { key: 'team', to: '/team', label: t('nav.team'), icon: UsersRound },
+      // them on a board with nothing on it. And it is the one door here that
+      // is not an admin's: whoever RUNS the programme gets it, which is the
+      // point of the permission — the job without the rest of the board.
+      (isAdmin || runsProgramme) && { key: 'ambassadors', to: '/ambassador', label: tx('Ambassadors'), icon: GraduationCap },
+      isAdmin && shows('team') && { key: 'team', to: '/team', label: t('nav.team'), icon: UsersRound },
       ...(runsEverything ? [{ key: 'admin', to: '/admin', label: t('nav.admin'), icon: Shield }] : []),
-    ].filter(Boolean) : [],
-  }), [isAdmin, runsEverything, visible, t, shows])
+    ].filter(Boolean),
+  }), [isAdmin, runsEverything, runsProgramme, visible, t, shows])
 
   // Which hub holds the page you are on. A deep link drops you INSIDE one —
   // /sprints/backlog, /projects/7, /dept/instagram_main — so the match is on

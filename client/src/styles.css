@@ -5105,3 +5105,6 @@ button.blame-person:hover { background: var(--surface-2); }
    this is a whisper that something is happening, not a spinner that takes the
    page hostage. */
 .tcard-busy { opacity: 0.55; pointer-events: none; transition: opacity 0.12s ease; }
+
+/* Signing a student up sits at the head of the list it adds to. */
+.amb-add-row { display: flex; justify-content: flex-end; margin-bottom: var(--space-3, 12px); }

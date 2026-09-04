@@ -542,6 +542,15 @@ const PHRASES = {
     "People": "Люди",
     "The page you are on lives in here": "Здесь находится открытая страница",
     "{name} section": "Раздел {name}",
+    // The ambassador programme, run by whoever holds the job.
+    "Sign up an ambassador": "Добавить амбассадора",
+    "Make the account": "Создать аккаунт",
+    "Account made — now their terms": "Аккаунт создан — теперь условия",
+    "A name, a username and a password — all three": "Имя, логин и пароль — все три",
+    "As it should read on the board": "Как это будет видно на доске",
+    "What they type to sign in": "Что они вводят при входе",
+    "Give it to them yourself — they can change it later": "Передайте лично — потом смогут поменять",
+    "An ambassador reaches one page and nothing else on this board.": "Амбассадор видит только одну страницу и больше ничего.",
     // The sheet: dates that move together, and words nobody saved yet.
     "{what} moved with it — {days}": "{what} — сдвинуто: {days}",
     " and ": " и ",
@@ -1531,6 +1540,15 @@ const PHRASES = {
     "People": "Odamlar",
     "The page you are on lives in here": "Ochiq sahifa shu yerda",
     "{name} section": "{name} bo‘limi",
+    // The ambassador programme, run by whoever holds the job.
+    "Sign up an ambassador": "Ambassador qo‘shish",
+    "Make the account": "Akkaunt yaratish",
+    "Account made — now their terms": "Akkaunt yaratildi — endi shartlar",
+    "A name, a username and a password — all three": "Ism, login va parol — uchalasi ham",
+    "As it should read on the board": "Doskada qanday ko‘rinsa",
+    "What they type to sign in": "Kirishda nima yozadi",
+    "Give it to them yourself — they can change it later": "O‘zingiz bering — keyin o‘zgartira oladi",
+    "An ambassador reaches one page and nothing else on this board.": "Ambassador faqat bitta sahifani ko‘radi, boshqa hech narsani emas.",
     // The sheet: dates that move together, and words nobody saved yet.
     "{what} moved with it — {days}": "{what} — ko‘chirildi: {days}",
     " and ": " va ",

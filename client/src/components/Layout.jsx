@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import GetSetUp from './GetSetUp.jsx'
-import { Menu, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, Send, Palette, ShieldAlert, Timer, LayoutGrid, User, RefreshCw, Clapperboard, Briefcase } from 'lucide-react'
+import { Menu, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, Send, Palette, ShieldAlert, Timer, LayoutGrid, User, RefreshCw, Clapperboard, Briefcase, GraduationCap } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import MobileTabs, { MoreSheet } from './MobileTabs.jsx'
 import NewTask from './NewTask.jsx'
@@ -156,8 +156,14 @@ export default function Layout() {
     soloSecond,
     { key: 'more', onClick: () => setMore((v) => !v), on: more, label: tx('More'), icon: LayoutGrid },
   ].filter(Boolean)
+  // Whoever runs the ambassador programme reaches it from here too. A member
+  // with one channel gets this shell instead of a sidebar, so a door that only
+  // exists in the sidebar is a door they do not have — and the programme is
+  // their whole job, not an extra.
+  const runsProgramme = user.role === 'admin' || !!(user.permissions && user.permissions.manage_ambassadors)
   const soloMore = [
     ...CANDIDATES.filter((c) => c.key !== soloFirst?.key && c.key !== soloSecond?.key),
+    ...(runsProgramme ? [{ key: 'ambassadors', to: '/ambassador', label: tx('Ambassadors'), icon: GraduationCap }] : []),
     { key: 'profile', to: '/profile', label: t('nav.myprofilepage'), icon: User },
   ]
 
@@ -221,6 +227,16 @@ export default function Layout() {
           {shows('sprints') && (
             <NavLink to="/sprints" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
               <Timer size={16} /> {t('nav.sprints')}
+            </NavLink>
+          )}
+          {/* Same story as Sprints, for the same reason: somebody who runs the
+              ambassador programme and works on one channel gets this bar
+              instead of a sidebar, so a door that only exists in the sidebar
+              is a door they do not have — and the programme is their job, not
+              an extra. */}
+          {runsProgramme && (
+            <NavLink to="/ambassador" className={({ isActive }) => 'solo-link' + (isActive ? ' active' : '')}>
+              <GraduationCap size={16} /> {tx('Ambassadors')}
             </NavLink>
           )}
           <button className="icon-btn" onClick={() => setFinding(true)} data-tip={t('nav.find')} aria-label={t('nav.quickfind')}><Search size={17} /></button>

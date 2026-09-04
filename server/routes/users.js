@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import { all, get, run, batch, publicUser, crewRolesOf, getChannelKeys, PERM_KEYS } from '../db.js'
-import { authRequired, adminOnly, wrap } from '../auth.js'
+import { authRequired, adminOnly, wrap, isFullAdmin } from '../auth.js'
 
 const router = Router()
 router.use(authRequired)
@@ -22,8 +22,13 @@ router.get('/', wrap(async (req, res) => {
   if (req.user.role === 'admin' || isCrewRole(req.user.role)) return res.json(users)
   const mine = new Set(req.user.departments)
   const seated = await seatedOnMyChannels(mine)
+  // Whoever runs the ambassador programme sees the students, because signing
+  // them up and answering their work is the job. Only the students: it adds
+  // the one group they are responsible for, not the directory.
+  const programme = runsProgramme(req.user)
   res.json(users.filter((u) =>
     u.id === req.user.id || u.role === 'admin' || isCrewRole(u.role) || seated.has(u.id)
+    || (programme && u.role === 'ambassador')
     || u.departments.some((d) => mine.has(d))))
 }))
 
@@ -63,6 +68,46 @@ async function cleanDepartments(list) {
 const ROLES = ['admin', 'member', 'editor', 'operator', 'designer', 'crew', 'ambassador']
 const CREW_CAPS = ['editor', 'operator', 'designer']
 const isCrewRole = (r) => r === 'editor' || r === 'operator' || r === 'designer' || r === 'crew'
+
+// ---- the ambassador programme's own door -----------------------------------
+// Whoever runs the programme signs students up, which means creating accounts
+// — and creating accounts was an admin-of-the-whole-board power, so the job
+// could not be handed to the person actually doing it without handing them
+// the board as well.
+//
+// This is the narrowest carve-out that lets them do the job: they may make,
+// edit and remove accounts whose role is 'ambassador', and nothing else. Not
+// a member, not a crew hat, not another admin. They cannot grant a permission
+// (including their own), cannot name channels, and cannot turn an existing
+// colleague into an ambassador or an ambassador into a colleague — an account
+// that is somebody's staff login is not theirs to touch, in either direction.
+const runsProgramme = (u) => !!(u?.permissions && u.permissions.manage_ambassadors)
+
+// May this request act on users at all, and if so, how narrowly? Returns
+// null when allowed, or the refusal to send.
+function ambassadorScope(req, target) {
+  if (isFullAdmin(req.user)) return null            // an admin of the whole board
+  if (!runsProgramme(req.user))
+    return { status: 403, error: 'Admins only' }
+  // Making one: it has to BE an ambassador, plain, with nothing else on it.
+  if (!target) {
+    const b = req.body || {}
+    if (b.role !== 'ambassador')
+      return { status: 403, error: 'You can add ambassadors — a colleague’s account is an admin’s to make' }
+    if (Object.keys(b.permissions || {}).length || (b.admin_channels || []).length || (b.departments || []).length)
+      return { status: 403, error: 'An ambassador holds no rights and no channels' }
+    return null
+  }
+  // Touching one: it has to already be an ambassador, and stay one.
+  if (target.role !== 'ambassador')
+    return { status: 403, error: 'That account is not an ambassador' }
+  const b = req.body || {}
+  if (b.role !== undefined && b.role !== 'ambassador')
+    return { status: 403, error: 'Changing what somebody IS on this board is an admin’s call' }
+  if (b.permissions !== undefined || b.admin_channels !== undefined)
+    return { status: 403, error: 'An ambassador holds no rights and no channels' }
+  return null
+}
 
 // Normalize role + crew_roles into one consistent pair. Multi-select rules:
 // any capability list collapses to its single value as the role, or 'crew'
@@ -119,7 +164,11 @@ function scheduleFields(b, patch, { own = false } = {}) {
   return null
 }
 
-router.post('/', adminOnly, wrap(async (req, res) => {
+router.post('/', wrap(async (req, res) => {
+  {
+    const no = ambassadorScope(req, null)
+    if (no) return res.status(no.status).json({ error: no.error })
+  }
   const { name, username, email = null, password, role = 'member', crew_roles, departments = [], permissions = {}, color = '#a32234' } = req.body || {}
   // Which channels this admin runs. Empty means the whole board, which is
   // what an admin was before this existed.
@@ -207,9 +256,13 @@ router.patch('/me', wrap(async (req, res) => {
   res.json(publicUser(await get('SELECT * FROM users WHERE id = ?', row.id)))
 }))
 
-router.patch('/:id', adminOnly, wrap(async (req, res) => {
+router.patch('/:id', wrap(async (req, res) => {
   const row = await get('SELECT * FROM users WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'User not found' })
+  {
+    const no = ambassadorScope(req, row)
+    if (no) return res.status(no.status).json({ error: no.error })
+  }
   const { name, username, email, role, crew_roles, departments, permissions, color, password } = req.body || {}
   if (!ROLES.includes(role ?? row.role)) return res.status(400).json({ error: 'Unknown role' })
   // crew_roles alone may also change the role (multi-select chips).
@@ -269,8 +322,14 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
   res.json(publicUser(await get('SELECT * FROM users WHERE id = ?', row.id)))
 }))
 
-router.delete('/:id', adminOnly, wrap(async (req, res) => {
+router.delete('/:id', wrap(async (req, res) => {
   if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account' })
+  {
+    const gone = await get('SELECT id, role FROM users WHERE id = ?', req.params.id)
+    if (!gone) return res.status(404).json({ error: 'User not found' })
+    const no = ambassadorScope(req, gone)
+    if (no) return res.status(no.status).json({ error: no.error })
+  }
   // Un-assign their tasks explicitly — remote databases may not enforce the
   // schema's ON DELETE SET NULL, so don't rely on it.
   await batch([

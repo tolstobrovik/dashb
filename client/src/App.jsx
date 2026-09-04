@@ -42,7 +42,11 @@ function Protected({ children, adminOnly = false, page = null, ambassador = fals
   // /ambassador bounced /ambassador too, and the page never drew at all.
   if (user.role === 'ambassador' && !ambassador && location.pathname !== '/ambassador')
     return <Navigate to="/ambassador" replace />
-  if (ambassador && user.role !== 'ambassador' && user.role !== 'admin') return <Navigate to="/" replace />
+  // The programme's page is for the students AND for whoever runs it — which
+  // is a job, not a rank: an admin has it by being one, and a member has it
+  // when an admin gives it to them. Anybody else lands back on their own work.
+  const runsProgramme = user.role === 'admin' || !!(user.permissions && user.permissions.manage_ambassadors)
+  if (ambassador && user.role !== 'ambassador' && !runsProgramme) return <Navigate to="/" replace />
   if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />
   // A page the admin switched off has no address either. Its own door is gone
   // from the sidebar, so what this catches is a bookmark, a pasted link and a

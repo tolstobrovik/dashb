@@ -12,14 +12,23 @@ import { authRequired, wrap, isFullAdmin } from '../auth.js'
 // of the dashboard is unchanged.
 //
 // PERMISSION. Two audiences and no third. An ambassador sees their own cards
-// and nothing else; a full admin sees everyone. The refusal that keeps an
-// ambassador out of the rest of the dashboard is in auth.js, at the one place
-// every authenticated request passes through — not here, and not in a sidebar.
+// and nothing else; whoever RUNS THE PROGRAMME sees everyone.
+//
+// Running it used to mean being an admin of the whole board, which made the
+// job impossible to hand to the person actually doing it: checking students'
+// posts and signing new ones up does not need the power to delete a channel
+// or rewrite the pipeline. It is a permission now — `manage_ambassadors`,
+// off by default — so an admin can give exactly this job away and nothing
+// else with it. A full admin still has it by virtue of being one.
+//
+// The refusal that keeps an ambassador out of the rest of the dashboard is in
+// auth.js, at the one place every authenticated request passes through — not
+// here, and not in a sidebar.
 const router = Router()
 router.use(authRequired)
 
 const now = () => new Date().toISOString()
-const isAdmin = (user) => isFullAdmin(user)
+const isAdmin = (user) => isFullAdmin(user) || !!(user?.permissions && user.permissions.manage_ambassadors)
 
 // The five states, and the only moves between them. A card that is paid is
 // finished for ever: there is no way back and no route that offers one.
@@ -176,7 +185,7 @@ router.get('/:id(\\d+)/contract', wrap(async (req, res) => {
 // ---- the admin's render ------------------------------------------------------
 // Everything the admin page needs, in one request: the people, and the inbox.
 router.get('/', wrap(async (req, res) => {
-  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Admins only' })
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
   const people = await all('SELECT * FROM ambassadors ORDER BY id')
   const users = await all("SELECT id, name, role FROM users WHERE role = 'ambassador' ORDER BY name")
   const byId = Object.fromEntries(users.map((u) => [u.id, u]))
@@ -238,7 +247,7 @@ router.get('/', wrap(async (req, res) => {
 // contract and status live here rather than in the user form: the user form
 // makes an account, and an account is not a programme.
 router.put('/person/:userId(\\d+)', wrap(async (req, res) => {
-  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Admins only' })
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
   const userId = Number(req.params.userId)
   const u = await get('SELECT id, role FROM users WHERE id = ?', userId)
   if (!u) return res.status(404).json({ error: 'No such person' })
@@ -276,7 +285,7 @@ router.put('/person/:userId(\\d+)', wrap(async (req, res) => {
 // every time, because a number a machine worked out is a number nobody has
 // agreed to.
 router.post('/cards/:id(\\d+)/approve', wrap(async (req, res) => {
-  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Admins only' })
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
   const card = await get('SELECT * FROM ambassador_cards WHERE id = ?', req.params.id)
   if (!card) return res.status(404).json({ error: 'No such card' })
   if (card.state !== 'waiting') return res.status(409).json({ error: 'This card is not waiting for an answer' })
@@ -298,7 +307,7 @@ router.post('/cards/:id(\\d+)/approve', wrap(async (req, res) => {
 // behind it is a person left guessing — so the server asks for it too, and
 // not just the form.
 router.post('/cards/:id(\\d+)/changes', wrap(async (req, res) => {
-  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Admins only' })
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
   const card = await get('SELECT * FROM ambassador_cards WHERE id = ?', req.params.id)
   if (!card) return res.status(404).json({ error: 'No such card' })
   if (card.state !== 'waiting') return res.status(409).json({ error: 'This card is not waiting for an answer' })

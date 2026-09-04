@@ -32,6 +32,8 @@ export const PERMISSIONS = [
   { key: 'review_publish',  label: 'Review & publish',          desc: 'Move Ready tasks to Published, on your channels' },
   { key: 'request_changes', label: 'Request changes (Pravki)',  desc: 'Send a Ready task back to the crew with notes' },
   { key: 'deliver_work',    label: 'Deliver / re-deliver work', desc: 'Update a stage’s delivery link and mark fixes done' },
+  { key: 'manage_ambassadors', label: 'Run the ambassador programme',
+    desc: 'Check students’ posts, set their terms, and sign new ones up' },
 ]
 
 export const can = (user, perm) =>

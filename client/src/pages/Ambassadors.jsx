@@ -215,6 +215,7 @@ function AdminPage() {
   const [err, setErr] = useState('')
   const [openId, setOpenId] = useState(null)
   const [setup, setSetup] = useState(null)
+  const [adding, setAdding] = useState(null)
 
   const load = useCallback(() => api.get('/ambassadors')
     .then((d) => { setData(d); setErr('') })
@@ -250,6 +251,16 @@ function AdminPage() {
 
       <Fold id="amb_people" title={tx('Ambassadors')} icon={<GraduationCap size={15} />}
         count={data.people.length}>
+        {/* Signing a student up used to mean going to the Admin panel, making
+            an account there, and coming back here to set their terms — and the
+            Admin panel is not a door the person who runs this programme has.
+            The whole job is on this page now: make the login, and their terms
+            open straight after it. */}
+        <div className="amb-add-row">
+          <button className="btn btn-primary btn-sm" onClick={() => setAdding({ name: '', username: '', password: '' })}>
+            <Plus size={14} /> {tx('Sign up an ambassador')}
+          </button>
+        </div>
         {data.unset.length > 0 && (
           <div className="card card-pad amb-unset">
             <AlertCircle size={15} />
@@ -297,11 +308,74 @@ function AdminPage() {
         </div>
       </Fold>
 
+      {adding && (
+        <NewAmbassador draft={adding} onClose={() => setAdding(null)}
+          onMade={(u) => { setAdding(null); load(); setSetup({ user_id: u.id, name: u.name }) }} />
+      )}
       {setup && (
         <DetailsForm person={setup} onClose={() => setSetup(null)}
           onSaved={() => { setSetup(null); load() }} />
       )}
     </div>
+  )
+}
+
+// A student's login, made from the page that runs the programme.
+//
+// It is an account and nothing else: no channels, no rights, no crew hat. The
+// server enforces that as well (see the carve-out in routes/users.js) — this
+// form simply never offers any of it, because there is nothing here to decide.
+function NewAmbassador({ draft, onClose, onMade }) {
+  const [form, setForm] = useState(draft)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+
+  const save = async () => {
+    if (busy) return
+    if (!form.name.trim() || !form.username.trim() || !form.password.trim()) {
+      setErr(tx('A name, a username and a password — all three'))
+      return
+    }
+    setBusy(true); setErr('')
+    try {
+      const u = await api.post('/users', {
+        name: form.name.trim(), username: form.username.trim(),
+        password: form.password, role: 'ambassador',
+      })
+      toast(tx('Account made — now their terms'))
+      onMade(u)
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  return (
+    <Modal title={tx('Sign up an ambassador')} onClose={onClose} footer={<>
+      <span className="foot-gap" />
+      <button className="btn" onClick={onClose}>{tx('Cancel')}</button>
+      <button className="btn btn-primary" onClick={save} disabled={busy}>
+        {busy ? tx('Saving…') : tx('Make the account')}
+      </button>
+    </>}>
+      {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
+      <div className="cm-row">
+        <span className="cm-key">{tx('Name')}</span>
+        <input className="input" value={form.name} onChange={set('name')} autoFocus
+          placeholder={tx('As it should read on the board')} />
+      </div>
+      <div className="cm-row">
+        <span className="cm-key">{tx('Username')}</span>
+        <input className="input" value={form.username} onChange={set('username')}
+          autoCapitalize="off" autoCorrect="off" placeholder={tx('What they type to sign in')} />
+      </div>
+      <div className="cm-row">
+        <span className="cm-key">{tx('Password')}</span>
+        <input className="input" value={form.password} onChange={set('password')}
+          placeholder={tx('Give it to them yourself — they can change it later')} />
+      </div>
+      <div className="cm-hint">
+        {tx('An ambassador reaches one page and nothing else on this board.')}
+      </div>
+    </Modal>
   )
 }
 
