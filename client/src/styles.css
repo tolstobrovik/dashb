@@ -3616,6 +3616,11 @@ button.blame-person:hover { background: var(--surface-2); }
   .btn-sm { min-height: 40px; }
   .icon-btn { min-width: 40px; min-height: 40px; }
   .input, .select, textarea.input { min-height: 44px; }
+  /* A person picker stands where a <select> used to, and a thumb has to
+     hit it the same way. It carries a fixed height on the filter row to
+     line up with the two selects beside it on a desk; min-height clamps
+     that back up here. */
+  .pp-field { min-height: 44px; }
   select.select { padding-top: 10px; padding-bottom: 10px; }
   .pill, .tab, .seg-btn, .stage-chip, .checkbox-chip, .extra-btn,
   .qbtn, .rev-chip, .wd-chip, .sp-tab { min-height: 40px; }
