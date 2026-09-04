@@ -541,6 +541,7 @@ const PHRASES = {
     "Numbers": "Цифры",
     "People": "Люди",
     "The page you are on lives in here": "Здесь находится открытая страница",
+    "{name} section": "Раздел {name}",
     // The sheet: dates that move together, and words nobody saved yet.
     "{what} moved with it — {days}": "{what} — сдвинуто: {days}",
     " and ": " и ",
@@ -1529,6 +1530,7 @@ const PHRASES = {
     "Numbers": "Raqamlar",
     "People": "Odamlar",
     "The page you are on lives in here": "Ochiq sahifa shu yerda",
+    "{name} section": "{name} bo‘limi",
     // The sheet: dates that move together, and words nobody saved yet.
     "{what} moved with it — {days}": "{what} — ko‘chirildi: {days}",
     " and ": " va ",

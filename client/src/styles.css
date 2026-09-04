@@ -5084,6 +5084,12 @@ button.blame-person:hover { background: var(--surface-2); }
   font-variant-numeric: tabular-nums;
 }
 .nav-hub-body { display: flex; flex-direction: column; gap: 2px; }
+/* A hub heading is a control, so on a screen without a pointer it has to be
+   big enough to hit. 36px is a comfortable reading height and an
+   uncomfortable target. */
+@media (hover: none) {
+  .nav-hub-head { min-height: 44px; padding-top: 16px; padding-bottom: 10px; }
+}
 
 /* A card whose change is still in the air. Only for the changes that can come
    back refused — a stage, a tick. A seat is drawn the moment you pick it and

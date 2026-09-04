@@ -113,24 +113,29 @@ const writerT = await login('r68wr', 'probe123')
 const mk = (over) => req('/content', 'POST', { channels: [ch], ...over }, writerT)
 
 // A script is what the crew films FROM. A link is where they get the file.
-let r = await mk({ title: 'r68 a link as a script', type: 'post', script: 'https://drive.google.com/file/d/1a2b3c' })
+// A brand-new task with no stage is an IDEA, and an idea owes nothing but a
+// description — that was round 86's point, and asking a thought for a shot
+// list is what it removed. This rule is about work in production, so it is
+// asked of a piece that has left the brainstorm.
+const wallStage = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+let r = await mk({ title: 'r68 a link as a script', type: 'post', status_id: wallStage, script: 'https://drive.google.com/file/d/1a2b3c' })
 ok('a bare link is refused as a script', r.status === 400, `${r.status} ${r.data.error || ''}`)
 ok('…and the refusal says it wants the WORDS', /words/i.test(r.data.error || ''), r.data.error)
 
-r = await mk({ title: 'r68 a fragment as a script', type: 'post', script: 'халатно' })
+r = await mk({ title: 'r68 a fragment as a script', type: 'post', status_id: wallStage, script: 'халатно' })
 ok('a one-word shrug is refused as a script', r.status === 400, `${r.status} ${r.data.error || ''}`)
 ok('…and is told apart from a placeholder', /work from/i.test(r.data.error || ''), r.data.error)
 
-r = await mk({ title: 'r68 a real script', type: 'post', script: 'Открывающий кадр во дворе, затем интервью' })
+r = await mk({ title: 'r68 a real script', type: 'post', status_id: wallStage, script: 'Открывающий кадр во дворе, затем интервью' })
 ok('a sentence is accepted as a script', r.status === 201, `${r.status} ${r.data.error || ''}`)
 const post = r.data
 
 // A script that is a link PLUS the words is fine — that is the good answer.
-r = await mk({ title: 'r68 script with a link', type: 'post', script: 'Follow this shot list https://docs.google.com/document/d/9' })
+r = await mk({ title: 'r68 script with a link', type: 'post', status_id: wallStage, script: 'Follow this shot list https://docs.google.com/document/d/9' })
 ok('…and so is a sentence carrying a link', r.status === 201, `${r.status} ${r.data.error || ''}`)
 
 // A reference POINTS. Words alone do not, and are told so differently.
-r = await mk({ title: 'r68 wordy ref', type: 'post', script: 'A script that is a real one', reference_text: 'like the last one we shot' })
+r = await mk({ title: 'r68 wordy ref', type: 'post', status_id: wallStage, script: 'A script that is a real one', reference_text: 'like the last one we shot' })
 ok('a reference of words alone still has to point somewhere', r.status === 400, `${r.status} ${r.data.error || ''}`)
 ok('…and asks for a link, not for more words', /point somewhere/i.test(r.data.error || ''), r.data.error)
 

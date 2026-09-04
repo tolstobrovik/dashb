@@ -70,12 +70,16 @@ ok('…so nothing moved', (await req('/fields')).data.pages.docs === true)
 // ---- 2) ТЗ, made mandatory ------------------------------------------------
 await req('/fields', 'POST', { ...cfg, tz: { state: 'required', types: ['reel', 'video'] } })
 ok('required sticks', (await req('/fields')).data.tz.state === 'required')
-const noTz = await req('/content', 'POST', { title: 'set: no tz', channels: [ch], type: 'video' }, MT)
+// A brand-new task with no stage is an IDEA, and an idea owes nothing but a
+// description — that was round 86's point. A required field is about work in
+// production, so it is asked of a piece that has left the brainstorm.
+const wallStage = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+const noTz = await req('/content', 'POST', { title: 'set: no tz', channels: [ch], type: 'video', status_id: wallStage }, MT)
 ok('a video with no ТЗ is refused', noTz.status === 400 && /ТЗ/.test(noTz.data.error || ''), `${noTz.status} ${noTz.data.error || ''}`)
-const thin = await req('/content', 'POST', { title: 'set: thin tz', channels: [ch], type: 'video', tz: 'ok' }, MT)
+const thin = await req('/content', 'POST', { title: 'set: thin tz', channels: [ch], type: 'video', status_id: wallStage, tz: 'ok' }, MT)
 ok('…and a placeholder is not an answer', thin.status === 400, `${thin.status} ${thin.data.error || ''}`)
 const good = await req('/content', 'POST', {
-  title: 'set: with tz', channels: [ch], type: 'video',
+  title: 'set: with tz', channels: [ch], type: 'video', status_id: wallStage,
   tz: 'Cut to ninety seconds, captions burned in, no music under the interview.',
 }, MT)
 ok('…while a real one goes through', good.status === 201, `${good.status} ${good.data.error || ''}`)

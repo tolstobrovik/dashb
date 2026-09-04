@@ -267,6 +267,12 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
                 className="nav-hub-head"
                 onClick={() => !here && toggleFold(g)}
                 aria-expanded={open}
+                // "Channels" is also the name of a tab in the Admin panel, and
+                // a control whose whole accessible name is a word another
+                // control on the page also answers to is ambiguous to anybody
+                // arriving by screen reader or by voice. The visible word is
+                // still the word; the name says which of the two this is.
+                aria-label={tx('{name} section', { name: label(t) })}
                 data-tip={here ? tx('The page you are on lives in here') : undefined}
               >
                 <ChevronRight size={12} className="nav-hub-chev" />

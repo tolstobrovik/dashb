@@ -239,12 +239,16 @@ await req('/fields', 'POST', {
   format: { state: 'optional', types: ['post'] },
   rubrika: { state: 'optional', types: ['post'] },
 }, T) // writing the rules is the admin's job, whoever is being tested against them
+// A brand-new task with no stage is an IDEA, and an idea owes nothing but a
+// description — that was round 86's point, and asking a thought for a shot
+// list is what it removed. This rule is about work in production, so it is
+// asked of a piece that has left the brainstorm.
 for (const lazy of ['халатно', 'готово', 'norm']) {
-  const rr = await mk({ title: `r66 lazy ${lazy}`, type: 'post', script: lazy })
+  const rr = await mk({ title: `r66 lazy ${lazy}`, type: 'post', status_id: shootId, script: lazy })
   ok(`a “script” of “${lazy}” is refused — it has letters, not a shot list`, rr.status === 400,
     `${rr.status} ${rr.data.error || ''}`)
 }
-r = await mk({ title: 'r66 real script', type: 'post', script: 'Интервью с деканом, два вопроса, съёмка у входа' })
+r = await mk({ title: 'r66 real script', type: 'post', status_id: shootId, script: 'Интервью с деканом, два вопроса, съёмка у входа' })
 ok('a script the crew can film from is accepted', r.status === 201, `${r.status} ${r.data.error || ''}`)
 const scripted = r.data
 

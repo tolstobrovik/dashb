@@ -70,7 +70,11 @@ await page.fill('input[type="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 await page.goto(BASE + '/admin')
-await page.getByRole('button', { name: 'Channels' }).click()
+// Scoped to the page, not the whole document: round 88's sidebar has a
+// "Channels" hub whose heading is a button too, so a bare name matches two
+// controls. (The hub says which it is in its accessible name; this says
+// which one the suite means.)
+await page.getByRole('main').getByRole('button', { name: 'Channels' }).click()
 await page.waitForSelector('.chan-stats', { timeout: 10000 })
 
 const igRow = page.locator('.chan-row', { hasText: 'Instagram Main' })

@@ -159,12 +159,16 @@ ok('a real description is accepted', r.status === 201, `${r.status} ${r.data.err
 const written = r.data
 
 // A reference points somewhere.
-r = await mk({ title: 'r65 wordy ref', type: 'post', description: 'A proper brief here', reference_text: 'like the last one' })
+// A brand-new task with no stage is an IDEA, and an idea owes nothing but a
+// description — that was the point of round 86, and asking a thought for a
+// shot list is what it removed. These rules are about work in production, so
+// they are asked of a piece that has left the brainstorm.
+r = await mk({ title: 'r65 wordy ref', type: 'post', status_id: shootId, description: 'A proper brief here', reference_text: 'like the last one' })
 ok('a reference that is only words is refused — it points nowhere', r.status === 400, `${r.status} ${r.data.error || ''}`)
 ok('…and says what would fix it', /link|attach/i.test(r.data.error || ''), r.data.error)
-r = await mk({ title: 'r65 linked ref', type: 'post', description: 'A proper brief here', reference_text: 'like this one www.example.com/reel/7' })
+r = await mk({ title: 'r65 linked ref', type: 'post', status_id: shootId, description: 'A proper brief here', reference_text: 'like this one www.example.com/reel/7' })
 ok('…the same words WITH a link are fine', r.status === 201, `${r.status} ${r.data.error || ''}`)
-r = await mk({ title: 'r65 linked list ref', type: 'post', description: 'A proper brief here', reference_links: ['https://example.com/a'] })
+r = await mk({ title: 'r65 linked list ref', type: 'post', status_id: shootId, description: 'A proper brief here', reference_links: ['https://example.com/a'] })
 ok('…and a link on its own needs no prose', r.status === 201, `${r.status} ${r.data.error || ''}`)
 
 // The same standard on edit — otherwise the rule lasts until somebody reopens
