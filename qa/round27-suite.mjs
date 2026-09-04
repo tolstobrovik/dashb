@@ -50,8 +50,21 @@ await req('/fields', 'POST', {
   script: { state: 'required', types: ['video'] },
   rubrika: { state: 'optional', types: ['post', 'reel', 'story', 'video', 'other'], options: ['SU events', 'Book Hype'] },
 })
-const noScript = await req('/content', 'POST', { title: 'x27: scriptless video', channels: ['youtube'], type: 'video' }, TP)
-ok('a required Script blocks creating the video', noScript.status === 400 && /Script/.test(noScript.data.error))
+// A demanded field stands where the work is MADE, not over a thought: an idea
+// is a name and a couple of sentences, and being asked for a script to write
+// one down is how ideas stop being written down. The demand lands on the move
+// out of the idea stage instead — the rule is not weaker, it is in the right
+// place.
+const stages = (await req('/statuses')).data
+const ideaId = stages.find((s) => /idea/i.test(s.label)).id
+const shootId = stages.find((s) => /to shoot/i.test(s.label)).id
+const jotted = await req('/content', 'POST',
+  { title: 'x27: scriptless video', channels: ['youtube'], type: 'video', status_id: ideaId }, TP)
+ok('a scriptless video can still be jotted down as an idea', jotted.status === 201,
+  `${jotted.status} ${jotted.data.error || ''}`)
+const noScript = await req(`/content/${jotted.data.id}`, 'PATCH', { status_id: shootId }, TP)
+ok('a required Script blocks it leaving the idea stage', noScript.status === 400 && /Script/.test(noScript.data.error),
+  `${noScript.status} ${noScript.data.error || ''}`)
 const withAll = await req('/content', 'POST', {
   title: 'x27: proper video', channels: ['youtube'], type: 'video',
   script: 'INT. CAMPUS — DAY. The dean waves.', format: 'Talking head', rubrika: 'SU events',
@@ -60,7 +73,14 @@ const withAll = await req('/content', 'POST', {
 ok('with the script it lands, brief stored', withAll.status === 201
   && withAll.data.script?.includes('dean') && withAll.data.format === 'Talking head' && withAll.data.rubrika === 'SU events')
 ok('a member can hold the editor hat', withAll.data.editor_id === jas.id)
-ok('…and clearing the required script is refused',
+// Clearing is refused where there is work in flight to protect — so the piece
+// is put on the board first. An idea owes nothing, including a script it
+// happens to be carrying.
+ok('an idea may drop a script it was carrying',
+  (await req(`/content/${withAll.data.id}`, 'PATCH', { script: '' }, TP)).status === 200)
+await req(`/content/${withAll.data.id}`, 'PATCH', { script: 'INT. CAMPUS — DAY. The dean waves.' })
+await req(`/content/${withAll.data.id}`, 'PATCH', { status_id: shootId })
+ok('…and clearing the required script is refused once it is being made',
   (await req(`/content/${withAll.data.id}`, 'PATCH', { script: '' }, TP)).status === 400)
 // …and the admin who wrote the rule is not held to it.
 ok('…though the admin who set the rule is not held to it',
@@ -114,14 +134,25 @@ ok('the demanded Script is open with its star',
 await p.fill('.modal .cm-title', 'x27: ui video')
 await p.locator('.modal [data-field="rubrika"] select, .modal [data-field="rubrika"] input').first()
   .selectOption({ label: 'SU events' }).catch(() => {})
-await p.locator('.modal .btn-primary', { hasText: 'Create task' }).click(); await p.waitForTimeout(500)
-ok('the client refuses to save without the script',
-  (await p.locator('.modal').count()) === 1 && /Script/.test(await p.locator('.modal').textContent()))
+// The star says the admin demands it; the stage says when. Opening the whole
+// form does not turn a thought into work, so the idea is written down — and
+// the form and the server agree about that, which is the thing worth checking:
+// a form that refused here would be a wall with nothing behind it.
 await p.fill('.modal [data-field="script"] textarea', 'Opening shot: the gates.')
 await p.locator('.modal .btn-primary', { hasText: 'Create task' }).click(); await p.waitForTimeout(800)
-ok('with the script written it saves', (await p.locator('.modal').count()) === 0)
+ok('the form saves the idea', (await p.locator('.modal').count()) === 0)
 const made = (await req('/content')).data.find((c) => c.title === 'x27: ui video')
 ok('…and the script reached the record', !!made && made.script === 'Opening shot: the gates.')
+// …and one written WITHOUT the demanded script is let through too, by the form
+// and by the server alike.
+await p.locator('button', { hasText: 'New task' }).first().click()
+await p.waitForSelector('.modal', { timeout: 6000 })
+await fullForm()
+await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(400)
+await p.fill('.modal .cm-title', 'x27: bare idea')
+await p.locator('.modal .btn-primary', { hasText: 'Create task' }).click(); await p.waitForTimeout(800)
+ok('a bare idea is not stopped by the form', (await p.locator('.modal').count()) === 0)
+ok('…and it is on the board', !!(await req('/content')).data.find((c) => c.title === 'x27: bare idea'))
 
 // ---- 3) the crew picker offers everyone ----
 await p.locator('button', { hasText: 'New task' }).first().click()

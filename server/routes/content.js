@@ -845,6 +845,26 @@ async function duplicateScript(script, excludeId) {
     'SELECT id, title FROM content WHERE script_key = ? AND id <> ? LIMIT 1', key, excludeId ?? -1)) || null
 }
 
+// Where a thought is jotted. An idea is a name and a couple of sentences, and
+// that is the whole point of having the stage: the brief the admin demands is
+// asked at the stage where the work is actually going to be MADE, because
+// demanding a script, a format and a reference of a thought is how ideas stop
+// being written down at all. The demand does not vanish — it lands on the
+// first move OUT of here (see the forward-move gate below).
+//
+// The first live stage is the idea stage whatever it has been renamed to, and
+// the words are matched as well for boards that reordered their columns.
+const IDEA_LABEL = /^idea$|^ideas$|g'oya|идея/i
+const isIdeaStage = (statusId, ordered) => {
+  if (statusId === null || statusId === undefined) return true
+  const i = ordered.findIndex((s) => s.id === statusId)
+  if (i < 0) return true
+  return i === 0 || IDEA_LABEL.test(String(ordered[i].label || ''))
+}
+// What an idea is still held to: the description, if the admin asked for one.
+// A thought somebody cannot read back is not a thought that was written down.
+const ideaRules = (rules) => ({ description: rules.description })
+
 // The first unmet demand among the admin's required brief fields, as the
 // sentence to show. Presence, substance and (for a reference) direction are
 // three different failures and get three different sentences — "required"
@@ -902,7 +922,11 @@ router.post('/', wrap(async (req, res) => {
   // A reference can arrive as a link, a photo or an attached document; only
   // the text-only case has to prove that it points somewhere.
   const refCarried = referenceLinks.length > 0 || !!photo
-  const problem = requiredProblem(fieldRules, safeType, {
+  // An idea owes its name and, if the admin asks, its description. Everything
+  // else the admin demands is asked when the piece leaves the idea stage.
+  const bornAnIdea = isIdeaStage(status_id, resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')).ordered)
+  const askedNow = bornAnIdea ? ideaRules(fieldRules) : fieldRules
+  const problem = requiredProblem(askedNow, safeType, {
     format: { present: !!format, thin: !hasSubstance(format), raw: format },
     rubrika: { present: !!rubrika, thin: !hasSubstance(rubrika), raw: rubrika },
     script: { present: !!script, thin: !isSentence(script), raw: script },
@@ -924,7 +948,11 @@ router.post('/', wrap(async (req, res) => {
   // required: a reference that is only prose points nowhere, and a reference
   // of "." is not one. Text standing ALONE carries the rule — links, a photo
   // or an attached document already point somewhere.
-  if (reference_text && !refCarried && !free) {
+  // …and the same at the idea stage: a reference jotted as "like that clip
+  // Dilnoza sent" is a note to self, not a brief anybody is filming from. It
+  // has to point somewhere from the working stages on, where a crew actually
+  // reads it — the booking gate asks for a brief that is ready.
+  if (reference_text && !refCarried && !free && !bornAnIdea) {
     if (!hasSubstance(reference_text))
       return res.status(400).json({ error: `«Reference» needs a real answer — “${clip(reference_text)}” is a placeholder, not a reference` })
     if (!hasLink(reference_text))
@@ -1771,6 +1799,13 @@ router.patch('/:id', wrap(async (req, res) => {
     if (quiet) delete body[field]
   }
 
+  // Where this task stands after the save: a thought still being jotted, or
+  // work being made. Nothing in the brief is demanded of a thought — the
+  // demands land on the move that leaves the idea stage. Read once here so
+  // every rule below gives the same answer.
+  const stillAnIdea = isIdeaStage(
+    req.body?.status_id !== undefined ? req.body.status_id : row.status_id,
+    resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')).ordered)
   const isAssignee = assigneesOf(row).includes(req.user.id)
   // The task's crew move it through the pipeline themselves — filming,
   // editing and designing ARE stage changes — even with no granular rights.
@@ -1993,7 +2028,9 @@ router.patch('/:id', wrap(async (req, res) => {
       ? cleanLinks(body.reference_links)
       : (() => { try { return JSON.parse(row.reference_links || '[]') } catch { return [] } })()
     const carried = links.length > 0 || !!(body.photo !== undefined ? body.photo : row.photo)
-    if (next && !carried && !free) {
+    // …and, like the creation form, nothing is asked of a thought: a reference
+    // has to point somewhere from the working stages on, where a crew reads it.
+    if (next && !carried && !free && !stillAnIdea) {
       if (!hasSubstance(next))
         return res.status(400).json({ error: `«Reference» needs a real answer — “${clip(next)}” is a placeholder, not a reference` })
       if (!hasLink(next))
@@ -2017,7 +2054,9 @@ router.patch('/:id', wrap(async (req, res) => {
       if (body[f] === undefined) continue
       const v = f === 'script' ? cleanScript(body[f]) : cleanShort(body[f])
       const r = fieldRules[f]
-      const demanded = !free && r?.state === 'required' && r.types.includes(nextType)
+      // …and an idea is not held to it either, for the same reason it was not
+      // asked in the first place: there is no work in flight to protect.
+      const demanded = !free && !stillAnIdea && r?.state === 'required' && r.types.includes(nextType)
       if (!v && row[f] && demanded)
         return res.status(400).json({ error: `«${FIELD_LABELS[f]}» is required for this type of task — it can’t be cleared` })
       // Emptying a demanded field is refused above; filling it with a dot is
@@ -2460,8 +2499,35 @@ router.patch('/:id', wrap(async (req, res) => {
         const one = patch.assignee_id !== undefined ? patch.assignee_id : row.assignee_id
         return list.filter(Boolean).length > 0 || !!one
       })()
-      const leavingIdea = /^idea$|^ideas$|g'oya|идея/i.test(String(resolved.ordered[at(row.status_id)]?.label || ''))
+      const leavingIdea = isIdeaStage(row.status_id, resolved.ordered)
       if (!ownedBy && !leavingIdea) shortfalls.push({ gate: 'own', missing: 'assignee_id' })
+
+      // ---- the brief the admin demanded ------------------------------------
+      // Nothing is asked of an idea, so the admin's required fields are asked
+      // HERE, on the way out of it — otherwise switching a field to "required"
+      // would mean nothing at all for anything jotted down first, which is how
+      // most work starts. Asked once, on the move that leaves the idea behind.
+      if (leavingIdea && !free) {
+        const rules = await getTaskFields()
+        const links = (() => { try { return JSON.parse(val('reference_links') || '[]') } catch { return [] } })()
+        const carried = links.length > 0 || !!val('photo')
+        const briefGap = requiredProblem(rules, val('type'), {
+          format: { present: !!val('format'), thin: !hasSubstance(val('format')), raw: val('format') },
+          rubrika: { present: !!val('rubrika'), thin: !hasSubstance(val('rubrika')), raw: val('rubrika') },
+          script: { present: !!val('script'), thin: !isSentence(val('script')), raw: val('script') },
+          tz: { present: !!val('tz'), thin: !isSentence(val('tz')), raw: val('tz') },
+          description: {
+            present: !!(val('description') && String(val('description')).trim()),
+            thin: !hasSubstance(val('description')), raw: val('description'),
+          },
+          reference: {
+            present: !!(val('reference_text') || carried),
+            thin: !carried && !hasSubstance(val('reference_text')), raw: val('reference_text'),
+            linkless: !carried && hasSubstance(val('reference_text')) && !hasLink(val('reference_text')),
+          },
+        })
+        if (briefGap) return res.status(400).json({ error: briefGap })
+      }
 
       for (const gate of gatesUpTo(patch.status_id, resolved)) {
         // Only the gates this move actually CROSSES — a stage already behind

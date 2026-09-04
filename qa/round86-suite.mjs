@@ -61,6 +61,43 @@ ok('the row says how much, not what',
   mine && !('page' in mine) && !('title' in mine) && Object.keys(mine).sort().join(',')
     === 'avatar,color,days,id,last_at,name,role,seconds,taps', mine && Object.keys(mine).sort().join(','))
 
+// ===================== nothing is asked of a thought =====================
+// An idea is a name and a couple of sentences. Demanding a script, a format
+// and a reference to write one down is how ideas stop being written down, so
+// the admin's required brief fields are asked at the stage where the work is
+// actually going to be MADE — on the move OUT of the idea stage, not before.
+// The description is the exception: a thought nobody can read back is not one.
+const stageList = (await req('/statuses')).data
+const ideaId = stageList.find((s) => /idea/i.test(s.label)).id
+const shootId = stageList.find((s) => /to shoot/i.test(s.label)).id
+await req('/fields', 'POST', {
+  script: { state: 'required', types: ['video'] },
+  format: { state: 'required', types: ['video'] },
+  reference: { state: 'required', types: ['video'] },
+})
+const thought = await req('/content', 'POST',
+  { title: 'r86: what if we filmed the library at night', type: 'video', channels: ['instagram_main'], status_id: ideaId }, HT)
+ok('an idea is written down with nothing but a name', thought.status === 201,
+  `${thought.status} ${thought.data.error || ''}`)
+ok('…even with a reference jotted in words nobody can click',
+  (await req('/content', 'POST', {
+    title: 'r86: like that clip Dilnoza sent', type: 'video', channels: ['instagram_main'],
+    status_id: ideaId, reference_text: 'like that clip Dilnoza sent',
+  }, HT)).status === 201)
+ok('…and it may drop a script it happened to be carrying',
+  (await req(`/content/${thought.data.id}`, 'PATCH', { script: 'half a thought' }, HT)).status === 200
+  && (await req(`/content/${thought.data.id}`, 'PATCH', { script: '' }, HT)).status === 200)
+// The demand did not vanish — it stands where the work starts.
+const outOfIdea = await req(`/content/${thought.data.id}`, 'PATCH', { status_id: shootId }, HT)
+ok('the brief is asked on the way out of the idea stage',
+  outOfIdea.status === 400 && /Format|Script|Reference/i.test(outOfIdea.data.error || ''),
+  `${outOfIdea.status} ${outOfIdea.data.error || ''}`)
+await req('/fields', 'POST', {
+  script: { state: 'optional', types: ['reel', 'video'] },
+  format: { state: 'optional', types: ['reel', 'video'] },
+  reference: { state: 'optional', types: ['post', 'reel', 'story', 'video', 'target', 'other'] },
+})
+
 // ===================== 2) the form stops over-asking =====================
 // A piece at Ready that Rita may edit but was never handed. Saving it sends
 // every box the sheet holds — including `views`, which only an admin or the

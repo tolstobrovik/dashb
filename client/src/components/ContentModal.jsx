@@ -384,8 +384,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const [fillNow, setFillNow] = useState(false)
   // Which stage counts as "still only an idea" — the admin's stage list, read
   // the way every other stage rule reads it, not a constant.
-  const ideaStage = statuses.find((st) => /^idea$|^ideas$|g'oya|идея/i.test(String(st.label || '')))
-  const ideaOnly = creating && !fillNow && (!!ideaStage && form.status_id === ideaStage.id)
+  const liveStages = useMemo(() => statuses.filter((st) => !/^deleted$/i.test(String(st.label || '').trim())), [statuses])
+  const ideaStage = statuses.find((st) => /^idea$|^ideas$|g'oya|идея/i.test(String(st.label || ''))) || liveStages[0]
+  // Where the task actually IS — a thought jotted down, or work being made.
+  // The server reads it the same way (`isIdeaStage` in routes/content.js), and
+  // the two have to agree: a form that refuses what the server would accept is
+  // a wall nobody can see the other side of.
+  const atIdea = (() => {
+    if (form.status_id === null || form.status_id === undefined) return true
+    const i = liveStages.findIndex((st) => st.id === form.status_id)
+    if (i < 0) return true
+    return i === 0 || /^idea$|^ideas$|g'oya|идея/i.test(String(liveStages[i].label || ''))
+  })()
+  const ideaOnly = creating && !fillNow && atIdea
 
   const [show, setShow] = useState(() => ({
     description: true,
@@ -471,7 +482,6 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     return [...g.people, ...g.dates]
   }, [form, item, fieldRules, stageRank, creating, user.id])
 
-  const liveStages = useMemo(() => statuses.filter((s) => !/^deleted$/i.test(s.label)), [statuses])
   const shootAt = liveStages.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))
   const stageAt = liveStages.findIndex((s) => s.id === form.status_id)
   // Each demand stands at the stage it is about and lands on a save that puts
@@ -921,6 +931,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         refuse('editor_id', 'Name who cuts this — footage with no editor waiting is footage nobody is cutting')
         return
       }
+      // An idea owes its name and, if the admin asks for one, its description.
+      // The rest of the brief is asked when the piece leaves the idea stage —
+      // demanding a script of a thought is how ideas stop being written down.
+      const asked = atIdea ? ['description'] : ['format', 'rubrika', 'script', 'tz', 'description', 'reference']
       const missing = [
         ['format', 'Format', form.format],
         ['rubrika', 'Rubrika', form.rubrika],
@@ -928,7 +942,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         ['tz', 'ТЗ', form.tz.trim()],
         ['description', 'Description', form.description.trim()],
         ['reference', 'Reference', form.reference_text || form.reference_links.length > 0 || form.photo],
-      ].find(([k, , v]) => fReq(k) && !v)
+      ].find(([k, , v]) => asked.includes(k) && fReq(k) && !v)
       if (missing) {
         setShow((s) => ({ ...s, script: true, tz: true, reference: true, description: true }))
         refuse(missing[0], `«${missing[1]}» is required for this type of task`)
@@ -943,7 +957,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         ['script', 'Script', form.script.trim(), isSentence],
         ['tz', 'ТЗ', form.tz.trim(), isSentence],
         ['description', 'Description', form.description.trim(), hasSubstance],
-      ].find(([k, , v, real]) => fReq(k) && v && !real(v))
+      ].find(([k, , v, real]) => asked.includes(k) && fReq(k) && v && !real(v))
       if (thin) {
         setShow((s) => ({ ...s, script: true, description: true }))
         refuse(thin[0], `«${thin[1]}» needs a real answer — “${thin[2]}” is a placeholder, not a brief`)
@@ -951,8 +965,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       }
       // A reference points somewhere. Text on its own has to carry a link;
       // links, a photo or an attached document already do.
+      // A reference jotted as "like that clip Dilnoza sent" is a note to self,
+      // not a brief anybody films from. It has to point somewhere from the
+      // working stages on, where a crew actually reads it.
       const refCarried = form.reference_links.length > 0 || !!form.photo
-      if (form.reference_text && !refCarried) {
+      if (form.reference_text && !refCarried && !atIdea) {
         if (!hasSubstance(form.reference_text)) {
           setShow((s) => ({ ...s, reference: true }))
           refuse('reference', `«Reference» needs a real answer — “${form.reference_text.trim()}” is a placeholder, not a reference`)
