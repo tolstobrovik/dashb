@@ -72,7 +72,10 @@ await page.locator('.cm-page-tab', { hasText: 'Logistics' }).click(); await page
 const labels = (await page.locator('.modal .dates-block .drow-label').allTextContents()).map((s) => s.trim())
 const at = (re) => labels.findIndex((l) => re.test(l))
 const SHOOT = at(/shoot/i), CUT = at(/edit ready/i), ART = at(/design ready/i), OUT = at(/release/i)
-ok('the piece shows the dates it actually has', SHOOT >= 0 && CUT >= 0 && OUT >= 0, labels.join(' | '))
+// All four, because the fixture set all four. A row that quietly stopped
+// being drawn would otherwise skip its own check rather than fail it.
+ok('the piece shows the dates it actually has',
+  SHOOT >= 0 && CUT >= 0 && ART >= 0 && OUT >= 0, labels.join(' | '))
 
 const vals = async () => Promise.all((await page.locator('.modal .dates-block input[type="date"]').all()).map((i) => i.inputValue()))
 const setDate = async (i, v) => { await (await page.locator('.modal .dates-block input[type="date"]').all())[i].fill(v); await page.waitForTimeout(450) }

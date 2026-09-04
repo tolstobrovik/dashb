@@ -138,12 +138,13 @@ const mh = await hubs(p2)
 ok('a member gets no People hub at all', !mh.some((h) => /People/i.test(h)), mh.join(' | '))
 const side = (await p2.locator('nav').first().textContent()).replace(/\s+/g, ' ')
 ok('…not greyed out, not disabled — not there', !/\bTeam\b|Ambassadors|Admin panel/i.test(side), side.slice(0, 140))
+const hollow = []
 for (const h of await p2.locator('.nav-hub').all()) {
   const inside = await h.locator('.nav-item').count()
   const folded = (await h.locator('.nav-hub-n').count()) > 0
-  if (!folded && inside === 0) { fails++; console.log('✘ FAIL a heading over nothing:', (await h.textContent()).trim()) }
+  if (!folded && inside === 0) hollow.push((await h.textContent()).replace(/\s+/g, ' ').trim())
 }
-ok('…and no heading is drawn over an empty hub', true)
+ok('…and no heading is drawn over an empty hub', hollow.length === 0, hollow.join(' | '))
 await ctx2.close()
 
 await browser.close()
