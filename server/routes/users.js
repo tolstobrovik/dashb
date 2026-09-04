@@ -87,8 +87,13 @@ const runsProgramme = (u) => !!(u?.permissions && u.permissions.manage_ambassado
 // null when allowed, or the refusal to send.
 function ambassadorScope(req, target) {
   if (isFullAdmin(req.user)) return null            // an admin of the whole board
-  if (!runsProgramme(req.user))
-    return { status: 403, error: 'Admins only' }
+  if (!runsProgramme(req.user)) {
+    // Same refusals adminOnly gave, because they say different things and a
+    // channel admin being told "Admins only" when they ARE one is the sort of
+    // message that sends somebody to ask why their account is broken.
+    if (req.user?.role !== 'admin') return { status: 403, error: 'Admins only' }
+    return { status: 403, error: 'This is for an admin of the whole board — you run particular channels' }
+  }
   // Making one: it has to BE an ambassador, plain, with nothing else on it.
   if (!target) {
     const b = req.body || {}
