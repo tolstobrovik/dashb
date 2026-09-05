@@ -205,7 +205,7 @@ export default function Design() {
               <ChevronDown size={16} className={'dz-caret' + (open ? ' open' : '')} />
             </button>
             {open && (rows.length === 0 ? (
-              <div className="empty">{tx('Nothing here this month.')}</div>
+              <div className="empty">{tx('Nothing here')}</div>
             ) : (
               <div className="dz-rows">
                 {rows.map((t) => {

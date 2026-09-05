@@ -6,6 +6,7 @@ import { offerFilter } from '../lib/clutter.js'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, tashkentDay, isDeletedLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
+import { Dots } from '../components/Dots.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import StatsMonth from '../components/StatsMonth.jsx'
 import Fold from '../components/Fold.jsx'
@@ -591,8 +592,7 @@ export default function Missed() {
                   </span>
                   <b className="miss-person-n">{s.n}</b>
                   <span className="miss-person-split">
-                    <span className="mp-open">{s.open} open</span>
-                    <span className="mp-late">{s.late} late</span>
+                    <Dots late={s.late} open={s.open} />
                   </span>
                   <ChevronDown size={14} className={'miss-person-chev' + (opened ? ' open' : '')} />
                 </button>

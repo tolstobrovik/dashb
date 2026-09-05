@@ -324,12 +324,8 @@ export default function Schedule({ mode }) {
               </button>
             )}
           </div>
-          {late.length > LATE_SHOWN && (
-            <div className="late-hint">
-              The people carrying these are asked about them on their own My Day, and work that goes
-              quiet raises its own hand — this strip is for the ones you want to move yourself.
-            </div>
-          )}
+          {/* The strip said, in two sentences, what the strip itself already
+              shows. The data stands on its own. */}
         </div>
       )}
 

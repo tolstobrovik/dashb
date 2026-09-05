@@ -5163,3 +5163,50 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 .amb-pay-total .spacer { flex: 1 1 0; }
 .amb-pay-total b { font-size: 15px; }
+
+/* ---- counts as dots, not as sentences (round 91) ------------------------
+   "3 open · 2 overdue" was three short sentences where three marks would do.
+   The digit stays; the noun becomes a colour and a tooltip. Zero is not
+   drawn at all — a row that owes nothing should look like one. */
+.dots { display: inline-flex; align-items: center; gap: 10px; }
+.dot {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--ink-2); cursor: default;
+}
+.dot-mark { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.dot-late .dot-mark { background: var(--critical); }
+.dot-late { color: var(--critical); }
+.dot-open .dot-mark { background: var(--brand-500); }
+.dot-wait .dot-mark { background: #BA7517; }
+.dot-done .dot-mark { background: var(--good-ink, #0ca30c); }
+.dot-done { color: var(--muted); }
+
+/* The three or four doors somebody actually uses, lifted out of their hubs.
+   No heading over them: they are not a category, they are this person's day. */
+.nav-pins { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.08); }
+.side-pin { opacity: 0.4; }
+.side-pin:hover { opacity: 0.9; }
+.side-pin.on { opacity: 1; color: var(--brand-300, #e88); }
+
+/* ---- looking at a link without leaving the page (round 91) ---------------
+   Fixed, not absolute: these hang off rows inside scrolling panels and modals,
+   and an absolutely-positioned popover inherits every clip its ancestors have. */
+.hp-pop {
+  position: fixed; z-index: 90;
+  display: flex; flex-direction: column;
+  border-radius: 10px; overflow: hidden;
+  background: var(--surface); box-shadow: var(--shadow-lg, 0 12px 40px rgba(0,0,0,0.3));
+  pointer-events: none;            /* it is for looking at, never for catching the cursor */
+  animation: hp-in 120ms ease-out;
+}
+@keyframes hp-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.hp-img { display: block; width: 100%; max-height: 240px; object-fit: cover; background: rgba(127,127,127,0.12); }
+.hp-frame { display: block; width: 100%; height: 240px; border: 0; background: #fff; }
+.hp-meta { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0; }
+.hp-note { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--brand-600); }
+.hp-url { font-size: 11.5px; color: var(--muted); word-break: break-all; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* A finger cannot hover, so there is nothing to show and nothing to get in the way. */
+@media (hover: none) { .hp-pop { display: none; } }

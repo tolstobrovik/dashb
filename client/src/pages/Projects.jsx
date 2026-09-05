@@ -360,7 +360,7 @@ export default function Projects() {
                         : <div style={{ marginTop: 6 }}><PaceBarSafe c={c} /></div>}
                   </div>
                 ))}
-                {list.length === 0 && <div className="board-empty">{col.key === 'blocked' ? 'Empty — keep it that way' : '—'}</div>}
+                {list.length === 0 && <div className="board-empty">{col.key === 'blocked' ? '—' : '—'}</div>}
               </div>
             )
           })}

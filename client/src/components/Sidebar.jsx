@@ -3,7 +3,7 @@ import { NavLink, Link, useLocation } from 'react-router-dom'
 import {
   Shield, LogOut, Briefcase, LayoutDashboard, Sun, BarChart3, Clapperboard, UsersRound, ScrollText, Send, Palette,
   SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, Timer, GraduationCap,
-  ChevronRight,
+  ChevronRight, Pin,
 } from 'lucide-react'
 import { LogoLockup } from './Logo.jsx'
 import Avatar from './Avatar.jsx'
@@ -23,6 +23,9 @@ import { BUILD } from '../lib/useAutoUpdate.js'
 // and platform pickers never change, and new channels always appear.
 // "My Day" is the anchor and can't be hidden.
 const PREFS_KEY = (uid) => `satashkent_side2_${uid}`
+// Work is where the day is spent, so it stays open. The rest is where you go
+// when you need something, and a heading is enough to say it is there.
+const SHUT_AT_FIRST = ['channels', 'numbers', 'people']
 const readLegacy = (k) => {
   try { const a = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
 }
@@ -34,6 +37,7 @@ function readPrefs(uid) {
         order: { main: [], channels: [], manage: [], ...(o.order || {}) },
         hidden: Array.isArray(o.hidden) ? o.hidden : [],
         closed: Array.isArray(o.closed) ? o.closed : [],
+        pins: Array.isArray(o.pins) ? o.pins : [],
       }
     }
   } catch { /* fall through */ }
@@ -41,7 +45,12 @@ function readPrefs(uid) {
   return {
     order: { main: [], channels: readLegacy('satashkent_side_order'), manage: [] },
     hidden: readLegacy('satashkent_side_hidden'),
-    closed: [],
+    // Folded to start with. Eleven doors open at once is the wall the hubs
+    // were meant to replace; the hub holding the page you are on opens itself,
+    // so a first run shows your work and three headings rather than
+    // everything anybody could ever reach.
+    closed: SHUT_AT_FIRST,
+    pins: [],
   }
 }
 
@@ -74,7 +83,8 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   const hidden = useMemo(() => new Set(prefs.hidden), [prefs])
   // Folding a hub is a customization too, so somebody who has only folded
   // things still gets the way back to the default sidebar.
-  const customized = prefs.hidden.length > 0 || (prefs.closed || []).length > 0
+  const customized = prefs.hidden.length > 0 || (prefs.pins || []).length > 0
+    || (prefs.closed || []).join() !== SHUT_AT_FIRST.join()
     || Object.values(prefs.order).some((l) => l.length > 0)
 
   const { shows } = usePages()
@@ -159,6 +169,16 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       (pos.has(a.key) ? pos.get(a.key) : 1e9) - (pos.has(b.key) ? pos.get(b.key) : 1e9))
   }
   const closed = useMemo(() => new Set(prefs.closed || []), [prefs])
+  // The three or four doors you actually use, lifted out of their hubs and
+  // put at the top. Everything stays exactly where it was as well — pinning
+  // is a shortcut, not a move, so nothing is ever somewhere you did not
+  // expect and nothing has to be un-pinned to be found again.
+  const pins = useMemo(() => new Set(prefs.pins || []), [prefs])
+  const togglePin = (key) => save({
+    ...prefs,
+    pins: pins.has(key) ? (prefs.pins || []).filter((k) => k !== key) : [...(prefs.pins || []), key],
+  })
+  const pinned = HUB_KEYS.flatMap((g) => (groups[g] || []).filter((it) => pins.has(it.key)))
   const toggleFold = (g) => save({
     ...prefs,
     closed: closed.has(g) ? (prefs.closed || []).filter((k) => k !== g) : [...(prefs.closed || []), g],
@@ -189,7 +209,7 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   // Everything, including the hubs' own names — a reset that left an order
   // saved under a group name this sidebar no longer draws would look like it
   // had not worked.
-  const resetPrefs = () => save({ order: {}, hidden: [], closed: [] })
+  const resetPrefs = () => save({ order: {}, hidden: [], closed: SHUT_AT_FIRST, pins: [] })
 
   const Group = ({ g }) => {
     const items = orderedOf(g)
@@ -228,6 +248,15 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
               <button className="side-eye" onClick={() => moveBy(g, it.key, +1)} aria-label={`Move ${it.label} down`}>
                 <ChevronDown size={13} />
               </button>
+              <button
+                className={'side-eye side-pin' + (pins.has(it.key) ? ' on' : '')}
+                onClick={() => togglePin(it.key)}
+                data-tip={pins.has(it.key) ? 'Unpin from the top' : 'Pin to the top'}
+                data-tip-left=""
+                aria-label={pins.has(it.key) ? `Unpin ${it.label}` : `Pin ${it.label}`}
+              >
+                <Pin size={13} />
+              </button>
               {it.locked ? (
                 <span className="side-eye locked" data-tip="My Day is home — it always stays" data-tip-left=""><Eye size={14} /></span>
               ) : (
@@ -254,6 +283,20 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
         <LogoLockup />
       </Link>
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
+        {/* Pinned first, with no heading over them: they are not a category,
+            they are the four things this person opens all day. */}
+        {!editing && pinned.length > 0 && (
+          <div className="nav-pins">
+            {pinned.map((it) => {
+              const Icon = it.icon
+              return (
+                <NavLink key={`pin:${it.key}`} to={it.to} className={cls} onClick={onNavigate}>
+                  <Icon size={18} /> {it.label}
+                </NavLink>
+              )
+            })}
+          </div>
+        )}
         {HUBS.map(({ g, label }) => {
           // What is actually on screen for THIS person, after their own
           // hiding. A hub everybody's role emptied, or that somebody hid the

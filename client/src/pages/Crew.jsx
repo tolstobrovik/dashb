@@ -6,6 +6,7 @@ import {
 import { api, cache } from '../lib/api.js'
 import { getPicks, byPicks, bumpPick } from '../lib/picks.js'
 import { useTaskSync } from '../lib/useTaskSync.js'
+import { Dot } from '../components/Dots.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, scheduleLabel, WORK_DAYS, isDeletedLabel, tashkentDay } from '../lib/constants.js'
@@ -460,7 +461,7 @@ export default function Crew() {
                 <span className="stat-sub">{u.position || crewWord(u) || 'Designer'}</span>
               </div>
               {w.overdue.length > 0
-                ? <span className="load-badge load-hot">{w.overdue.length} overdue</span>
+                ? <Dot n={w.overdue.length} tone="late" />
                 : <span className="load-badge load-free">{tx("On schedule")}</span>}
             </div>
             <div className="crew-nums">
@@ -493,7 +494,7 @@ export default function Crew() {
         )
       })}
       {tab === 'design' && designers.length === 0 && (
-        <div className="card card-pad empty">{tx("Nobody to show.")}</div>
+        <div className="card card-pad empty">{tx('Nobody here')}</div>
       )}
 
       {/* ---- The design week: designers × days, every card draggable ----
@@ -696,7 +697,7 @@ export default function Crew() {
               })}
             </tbody>
           </table>
-          {crew.length === 0 && <div className="empty">{tx("Nobody to show.")}</div>}
+          {crew.length === 0 && <div className="empty">{tx('Nobody here')}</div>}
         </div>
           </>
         )
@@ -749,7 +750,7 @@ export default function Crew() {
           })}
           {crew.every((u) => loads.get(u.id).days.every((d) => d.shoots.length === 0)) &&
             crew.every((u) => loads.get(u.id).edits.every((t) => !week.includes(t.release_date))) && (
-            <div className="empty">{tx("Nothing booked this week.")}</div>
+            <div className="empty">{tx('Nothing booked')}</div>
           )}
         </div>
       )}

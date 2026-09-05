@@ -14,6 +14,7 @@ import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
 import { CHANNEL_ICONS, iconFor, PERMISSIONS, CONTENT_TYPES, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
+import { Dots } from '../components/Dots.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
@@ -484,7 +485,7 @@ function UsageTab() {
               <button className="btn btn-sm" onClick={() => setWho(0)}>{tx('Everyone')}</button>
             )}
           </div>
-          {mine.length === 0 && <div className="empty">{tx('Nothing pressed in this window.')}</div>}
+          {mine.length === 0 && <div className="empty">{tx('Nothing here')}</div>}
           {mine.map((b) => (
             <div key={b.action} className="usage-act">
               <span className="usage-act-name">{b.action}</span>
@@ -1582,9 +1583,7 @@ function ChannelsTab({ onOpenReport }) {
                 const st = statsFor(c.key)
                 return (
                   <span className="chan-stats">
-                    <span className="chan-stat" data-tip="Completed this month — same number as the Reports tab"><b>{st.done}</b> done</span>
-                    <span className="chan-stat" data-tip="Open tasks right now"><b>{st.open}</b> open</span>
-                    {st.overdue > 0 && <span className="chan-stat late" data-tip="Open tasks past their date"><b>{st.overdue}</b> overdue</span>}
+                    <Dots late={st.overdue} open={st.open} done={st.done} />
                     <button className="btn btn-ghost btn-sm" onClick={() => onOpenReport(c.key)} data-tip="This channel's full report">
                       Report →
                     </button>
@@ -2015,7 +2014,7 @@ function LadderEditor({ title, note, rows, cols, blank, onSave }) {
               </tr>
             ))}
             {draft.length === 0 && (
-              <tr><td colSpan={cols.length + 1} className="empty">{tx('Nothing set — nobody is measured against this.')}</td></tr>
+              <tr><td colSpan={cols.length + 1} className="empty">{tx('Nothing set')}</td></tr>
             )}
           </tbody>
         </table>
@@ -2329,7 +2328,7 @@ function ReportsTab({ channel, setChannel }) {
                   </tr>
                 ))}
                 {work.people.length === 0 && (
-                  <tr><td colSpan={7} className="empty">{tx('Nothing went out in this window.')}</td></tr>
+                  <tr><td colSpan={7} className="empty">{tx('Nothing here')}</td></tr>
                 )}
               </tbody>
             </table>

@@ -586,7 +586,7 @@ function ListView({ data, byId, onOpen, sprint }) {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={COLS.length} className="empty">{tx('Nothing here yet.')}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={COLS.length} className="empty">{tx('Nothing here')}</td></tr>}
           </tbody>
         </table>
       </div>

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import Modal from './Modal.jsx'
 import PersonPicker from './PersonPicker.jsx'
+import HoverPreview from './HoverPreview.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
 import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHref } from '../lib/text.js'
 import { useT, tr as tx, locale } from '../lib/i18n.jsx'
@@ -1531,7 +1532,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <div className="ref-links-view">
                 {form.reference_links.map((url, i) => (
                   /^https?:\/\//i.test(url)
-                    ? <a key={i} className="ref-link-chip" href={url} target="_blank" rel="noreferrer"><Link2 size={12} /> {shortUrl(url)} <ExternalLink size={11} /></a>
+                    ? <HoverPreview key={i} href={url}><a className="ref-link-chip" href={url} target="_blank" rel="noreferrer"><Link2 size={12} /> {shortUrl(url)} <ExternalLink size={11} /></a></HoverPreview>
                     : <span key={i} className="ref-link-chip"><Link2 size={12} /> {url}</span>
                 ))}
               </div>
@@ -1674,9 +1675,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {reviewLinks.length > 0 && (
               <div className="review-links">
                 {reviewLinks.map((l) => (
-                  <a key={l.label} className="btn btn-sm" href={l.url} target="_blank" rel="noreferrer">
-                    {l.label}{l.note ? ` · ${l.note}` : ''} <ExternalLink size={12} />
-                  </a>
+                  <HoverPreview key={l.label} href={l.url}>
+                    <a className="btn btn-sm" href={l.url} target="_blank" rel="noreferrer">
+                      {l.label}{l.note ? ` · ${l.note}` : ''} <ExternalLink size={12} />
+                    </a>
+                  </HoverPreview>
                 ))}
               </div>
             )}
@@ -1776,10 +1779,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {deliveryLinks.map((f) => {
               const Icon = f.icon
               return (
-                <a key={f.col} className={`file-link fl-${f.kind}`} href={f.href} target="_blank" rel="noreferrer"
-                  data-tip={f.note ? `${f.sub} — ${f.note}` : f.sub}>
-                  <Icon size={13} /> {f.label}{f.note ? ` · ${f.note}` : ''} <ExternalLink size={12} className="fl-go" />
-                </a>
+                <HoverPreview key={f.col} href={f.href}>
+                  <a className={`file-link fl-${f.kind}`} href={f.href} target="_blank" rel="noreferrer"
+                    data-tip={f.note ? `${f.sub} — ${f.note}` : f.sub}>
+                    <Icon size={13} /> {f.label}{f.note ? ` · ${f.note}` : ''} <ExternalLink size={12} className="fl-go" />
+                  </a>
+                </HoverPreview>
               )
             })}
           </div>
@@ -1859,7 +1864,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                         onChange={(e) => setForm({ ...form, [f.col]: e.target.value })} />
                     )}
                     {deliveryHref(form[f.col]) && (
-                      <a className="btn btn-sm" href={deliveryHref(form[f.col])} target="_blank" rel="noreferrer"><ExternalLink size={14} />{' '}{tx("Open")}</a>
+                      <HoverPreview href={deliveryHref(form[f.col])}><a className="btn btn-sm" href={deliveryHref(form[f.col])} target="_blank" rel="noreferrer"><ExternalLink size={14} />{' '}{tx("Open")}</a></HoverPreview>
                     )}
                   </span>
                 </label>
@@ -1886,7 +1891,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               value={form.post_link} disabled={!canEdit} placeholder="https://…"
               onChange={(e) => setForm({ ...form, post_link: e.target.value })} />
             {form.post_link && (
-              <a className="btn btn-sm" href={form.post_link} target="_blank" rel="noreferrer">{tx('Open it')}</a>
+              <HoverPreview href={form.post_link}><a className="btn btn-sm" href={form.post_link} target="_blank" rel="noreferrer">{tx('Open it')}</a></HoverPreview>
             )}
           </label>
         </div>

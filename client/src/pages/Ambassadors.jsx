@@ -7,6 +7,7 @@ import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
 import { useAuth } from '../lib/auth.jsx'
 import Modal from '../components/Modal.jsx'
+import HoverPreview from '../components/HoverPreview.jsx'
 import Fold from '../components/Fold.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
 
@@ -485,9 +486,11 @@ function TheirWork({ person, onClose, onChanged }) {
                   <span className="amb-hist-what">{c.format} · {c.script.slice(0, 90)}</span>
                   <span className="spacer" />
                   {c.main_video_url && (
-                    <a className="btn btn-sm" href={c.main_video_url} target="_blank" rel="noreferrer">
-                      <LinkIcon size={12} /> {tx('The post')}
-                    </a>
+                    <HoverPreview href={c.main_video_url}>
+                      <a className="btn btn-sm" href={c.main_video_url} target="_blank" rel="noreferrer">
+                        <LinkIcon size={12} /> {tx('The post')}
+                      </a>
+                    </HoverPreview>
                   )}
                   {c.state === 'done' && (
                     <button className="btn btn-sm" disabled={busy === c.id} onClick={() => markPaid(c)}>
@@ -709,9 +712,11 @@ function CheckPost({ card, onDecided }) {
       <div className="amb-script">{card.format} · {card.script}</div>
       {card.terms_other && <div className="amb-term-note">{card.terms_other}</div>}
       <div className="amb-links">
-        <a className="btn btn-sm btn-primary" href={card.main_video_url} target="_blank" rel="noreferrer">
-          <LinkIcon size={13} /> {tx('Open the post')}
-        </a>
+        <HoverPreview href={card.main_video_url}>
+          <a className="btn btn-sm btn-primary" href={card.main_video_url} target="_blank" rel="noreferrer">
+            <LinkIcon size={13} /> {tx('Open the post')}
+          </a>
+        </HoverPreview>
         {card.story_clip_url && (
           <a className="btn btn-sm" href={card.story_clip_url} target="_blank" rel="noreferrer">
             <LinkIcon size={13} /> {tx('The story')}
