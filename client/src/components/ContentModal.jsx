@@ -148,6 +148,39 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
 // logistics. Nothing is deleted and nothing is reordered; the rows move as
 // they are, so every rule, refusal and permission that stood over them still
 // does.
+// Has a person been in this view, or is it just showing its empty boxes?
+//
+// Any filled input, any chip that is on, any link, or any text that is not a
+// label. Deliberately generous: showing a tab that turns out to be empty is a
+// small cost, and hiding one that holds somebody's work is a large one.
+function hasSomethingIn(el) {
+  if (!el) return false
+  // Two things are on every piece whether anybody has touched it or not: the
+  // channel it runs on, and the line saying when it was created. Counting
+  // them made "has somebody been here" true for every piece ever made, which
+  // is how a rule about hiding empty views ended up hiding none of them.
+  // They carry data-quiet, and so does anything else that is furniture.
+  const quiet = (n) => !!n.closest('[data-quiet]')
+  for (const f of el.querySelectorAll('input, textarea')) {
+    if (quiet(f)) continue
+    if (f.type === 'checkbox' || f.type === 'radio') { if (f.checked) return true; continue }
+    if (f.type === 'file') continue
+    if (String(f.value || '').trim()) return true
+  }
+  // Selects are not asked: one always holds a value, so a view containing a
+  // dropdown would always read as filled.
+  for (const n of el.querySelectorAll('.chip:not(.chip-muted), .checkbox-chip.on, .pill.active, a[href], .assignee-chip, .cmt-row:not(.hist-row)')) {
+    if (!quiet(n)) return true
+  }
+  // Somebody in a seat. The picker marks the EMPTY case, not the filled one —
+  // a chosen person is an avatar and a name with no class of their own — so
+  // the question is asked the other way round.
+  for (const f of el.querySelectorAll('.pp-field')) {
+    if (!quiet(f) && !f.querySelector('.pp-empty')) return true
+  }
+  return false
+}
+
 const SECTIONS = [
   { key: 'brief', label: 'Brief' },
   { key: 'review', label: 'Execution' },
@@ -190,6 +223,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const bodyRef = useRef(null)
   const [sec, setSec] = useState('brief')
   const [pages, setPages] = useState(SECTIONS)
+  // The views nobody has been in are behind one control rather than laid out
+  // as empty tabs. Creating a piece opens them, because a new piece has
+  // nothing in ANY of them and hiding them all would leave a sheet with one
+  // tab and no way to reach the rest.
+  const [showAll, setShowAll] = useState(false)
+  // Creating? Everything is empty by definition, so everything is offered.
+  const shownPages = (showAll || creating) ? TABS : pages
+  const hiddenCount = (showAll || creating) ? 0 : TABS.length - pages.length
   // Measured, not predicted: a page is worth a tab when it actually put
   // something in the DOM. The rows are hidden with CSS rather than unmounted,
   // so what you typed on page two is still there when you come back to it,
@@ -199,15 +240,21 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     if (!el) return
     // Measured, not predicted, and measured per TAB: a tab is worth showing
     // when any of the sections behind it actually put something in the DOM.
+    // A view is worth a tab when it holds something SOMEBODY PUT THERE, not
+    // when it managed to render its empty boxes — which Execution and
+    // Logistics always do, so "hide the empty ones" hid nothing at all. A
+    // section counts as live when a box in it has a value, a chip is on, a
+    // link is in it, or there is prose: the things that mean a person has
+    // been here.
     const filled = new Set(SECTIONS
-      .filter((x) => (el.querySelector(`[data-sec="${x.key}"]`)?.children.length || 0) > 0)
+      .filter((x) => hasSomethingIn(el.querySelector(`[data-sec="${x.key}"]`)))
       .map((x) => tabOf(x.key)))
-    const live = TABS.filter((x) => filled.has(x.key))
+    const live = TABS.filter((x) => x.key === 'brief' || filled.has(x.key))
     setPages((prev) => (prev.map((x) => x.key).join() === live.map((x) => x.key).join() ? prev : live))
   })
   useEffect(() => {
-    if (pages.length && !pages.some((x) => x.key === sec)) setSec(pages[0].key)
-  }, [pages, sec])
+    if (shownPages.length && !shownPages.some((x) => x.key === sec)) setSec(shownPages[0].key)
+  }, [shownPages, sec])
   const secCls = (k) => 'cm-sec' + (tabOf(k) === sec ? ' on' : '') + (ideaOnly && k !== 'brief' ? ' cm-sec-later' : '')
   const [tools, setTools] = useState(false)
   // What the booking cards read. The FORM holds what is being typed; a
@@ -1171,11 +1218,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       title={creating ? tx('New task') : tx('Task')}
       onClose={tryClose}
       bodyRef={bodyRef}
-      bodyClass={pages.length > 1 ? 'cm-paged' : ''}
-      tall={pages.length > 1}
-      subhead={pages.length > 1 ? (
+      bodyClass={shownPages.length > 1 ? 'cm-paged' : ''}
+      tall={shownPages.length > 1}
+      subhead={shownPages.length > 1 || hiddenCount > 0 ? (
         <div className="cm-pages" role="tablist">
-          {pages.map((x) => (
+          {shownPages.map((x) => (
             <button key={x.key} type="button" role="tab" aria-selected={sec === x.key}
               className={'cm-page-tab' + (sec === x.key ? ' on' : '')}
               onClick={() => { setSec(x.key); bodyRef.current?.scrollTo({ top: 0 }) }}>
@@ -1187,6 +1234,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               {tx(x.key === 'review' && crewViewer ? 'Your part' : x.label)}
             </button>
           ))}
+          {hiddenCount > 0 && (
+            <button type="button" className="cm-page-more" onClick={() => setShowAll(true)}
+              data-tip={tx('The parts nobody has filled in yet')}>
+              <Plus size={13} /> {tx('Add details')}
+            </button>
+          )}
         </div>
       ) : null}
       footer={<>
@@ -1315,18 +1368,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* What is it? The type binds the task to each platform's plan. */}
       <div className="cm-row">
         <span className="cm-key">{t('task.type')}</span>
-        <div className="stage-chips">
-          {CONTENT_TYPES.map((t) => {
-            const Icon = t.icon
-            return (
-              <button key={t.key} type="button" disabled={detailsLocked}
-                className={`tchip ct-${t.key}` + (form.type === t.key ? ' on' : '')}
-                onClick={() => setForm({ ...form, type: t.key })}>
-                <Icon size={13} /> {t.label}
-              </button>
-            )
-          })}
-        </div>
+        {/* Six chips wrapping onto two rows to say one word. It is a choice
+            from a fixed short list that changes rarely — which is a dropdown,
+            and gives the height back to the form. */}
+        <select className="select cm-pick" value={form.type} disabled={detailsLocked}
+          onChange={(e) => setForm({ ...form, type: e.target.value })}>
+          {CONTENT_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
       </div>
       {(fOn('format') || fOn('rubrika')) && (
         <div className="cm-row">
@@ -1374,27 +1422,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       <div className="cm-row">
         <span className="cm-key">{t('task.stage')}</span>
         <div className="stage-wrap">
-        <div className="stage-chips">
-          {statuses.map((s) => {
-            const active = form.status_id === s.id
-            // The crew see the stage but never set it by hand (they tick their
-            // milestone instead) — only move_tasks unlocks the picker.
-            const locked = !creating && !canMove
-            return (
-              <button
-                key={s.id}
-                type="button"
-                className={'stage-chip' + (active ? ' on' : '')}
-                disabled={locked && !active}
-                style={active ? { background: s.color, borderColor: s.color, color: onColor(s.color) } : undefined}
-                onClick={() => !locked && setForm({ ...form, status_id: s.id })}
-              >
-                <span className="status-dot" style={{ background: active ? onColor(s.color) : s.color }} />
-                {s.label}
-              </button>
-            )
-          })}
-        </div>
+        {/* One row per stage was a colour bar the width of the sheet. The
+            colour is what people read it by, so it stays — as the dot beside
+            the name rather than as a wall of filled pills.
+            The crew see the stage but never set it by hand (they tick their
+            milestone instead); only move_tasks unlocks the picker. */}
+        <span className="cm-stage-pick">
+          <span className="status-dot" style={{ background: statuses.find((x) => x.id === form.status_id)?.color || 'transparent' }} />
+          <select className="select cm-pick" value={form.status_id ?? ''}
+            disabled={!creating && !canMove}
+            onChange={(e) => setForm({ ...form, status_id: e.target.value === '' ? null : Number(e.target.value) })}>
+            <option value="">{tx('Idea')}</option>
+            {statuses.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </span>
         {/* Still missing — the checker, in the open, on the row it is about. */}
         {gaps.length > 0 && (
           <div className="cm-gaps">
@@ -1931,8 +1972,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           recurring column). The admin decides which types carry them and
           whether they're demanded — Admin → Pipeline → The task form. */}
 
-      {/* Platforms — a task can go out on several at once */}
-      <div className="cm-row">
+      {/* Platforms — a task can go out on several at once. Quiet: every piece
+          has one, so it says nothing about whether anybody has been here. */}
+      <div className="cm-row" data-quiet>
         <span className="cm-key">{t('task.platforms')}</span>
         <div className="checkbox-row">
           {visible.map((c) => (
@@ -1961,8 +2003,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* Who is it for? Admins assign any number of people; an empty list
           leaves the task to the whole channel. */}
+      {/* Quiet, like the channel row above it: a new piece is assigned to
+          whoever made it, so an assignee is on every piece that exists and
+          says nothing about whether the production side has been set up.
+          What DOES mean that — a crew hat, a reviewer, a handover — is below,
+          and any of those opens this view on its own. */}
       {user.role === 'admin' && (
-        <div className="cm-row">
+        <div className="cm-row" data-quiet>
           <span className="cm-key"><UserRound size={13} style={{ verticalAlign: -2 }} /> {t('task.assignees')}</span>
           <div className="assignee-multi">
             {form.assignee_ids.length === 0 && <span className="chip chip-muted">{tx("Unassigned — whole channel")}</span>}

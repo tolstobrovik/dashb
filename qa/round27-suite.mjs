@@ -101,9 +101,17 @@ const cmTab = async (pg, name) => {
   // whoever does the work on it — it holds the crew, the handovers and the
   // crew's own tick, and which of those you are here for depends on who you
   // are. Either name reaches it.
-  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-    const tab = pg.locator('.cm-page-tab', { hasText: n })
-    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
   }
 }
 
@@ -137,7 +145,7 @@ await p.goto(BASE + '/dept/youtube'); await p.waitForTimeout(1400)
 await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
 await fullForm()
-await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(400)
+await p.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' }); await p.waitForTimeout(400)
 ok('the Brief row rides the video type', (await p.locator('.modal .cm-key', { hasText: 'Brief' }).count()) === 1)
 ok('Rubrika became a dropdown once options exist',
   (await p.locator('.modal .brief-field', { hasText: 'Rubrika' }).locator('option', { hasText: 'Book Hype' }).count()) === 1)
@@ -163,7 +171,7 @@ ok('…and the script reached the record', !!made && made.script === 'Opening sh
 await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
 await fullForm()
-await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(400)
+await p.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' }); await p.waitForTimeout(400)
 await p.fill('.modal .cm-title', 'x27: bare idea')
 await p.locator('.modal .btn-primary', { hasText: 'Create task' }).click(); await p.waitForTimeout(800)
 ok('a bare idea is not stopped by the form', (await p.locator('.modal').count()) === 0)
@@ -173,7 +181,7 @@ ok('…and it is on the board', !!(await req('/content')).data.find((c) => c.tit
 await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
 await fullForm()
-await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(600)
+await p.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' }); await p.waitForTimeout(600)
 await cmTab(p, 'Execution')
 const opSel = p.locator('.modal .crew-field', { hasText: 'Operator' }).locator('.pp-field')
 const opAnyone = await ppNames(opSel, 'Everyone else — one-time duty')

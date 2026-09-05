@@ -58,9 +58,17 @@ const cmTab = async (pg, name) => {
   // whoever does the work on it — it holds the crew, the handovers and the
   // crew's own tick, and which of those you are here for depends on who you
   // are. Either name reaches it.
-  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-    const tab = pg.locator('.cm-page-tab', { hasText: n })
-    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
   }
 }
 
@@ -83,10 +91,9 @@ await page.screenshot({ path: 'r16-board.png' })
 // open the today shoot → the crew modal
 await shootLane.locator('.cb-row', { hasText: 'r16: shoot today' }).click()
 await page.waitForSelector('.modal', { timeout: 8000 })
-// stage is read-only for the crew (no enabled non-active chip)
-const stageChips = page.locator('.modal .stage-chip')
-const enabledStage = await stageChips.evaluateAll((els) => els.filter((e) => !e.disabled).length)
-ok('the stage is read-only (only the current chip is live)', enabledStage <= 1, `enabled=${enabledStage}`)
+// The stage is read-only for the crew — one dropdown since round 91, so the
+// question is whether they can open it at all rather than how many chips are live.
+ok('the stage is read-only for the crew', await page.locator('.modal .cm-stage-pick select').isDisabled())
 // the operator gets a Shot tick, and the ready-link field
 ok('the operator sees a "Mark as shot" tick', (await page.locator('.modal .do-tick', { hasText: 'Mark as shot' }).count()) === 1)
 await cmTab(page, 'Execution')

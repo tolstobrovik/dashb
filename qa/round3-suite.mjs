@@ -94,9 +94,17 @@ const cmTab = async (pg, name) => {
   // whoever does the work on it — it holds the crew, the handovers and the
   // crew's own tick, and which of those you are here for depends on who you
   // are. Either name reaches it.
-  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-    const tab = pg.locator('.cm-page-tab', { hasText: n })
-    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
   }
 }
 

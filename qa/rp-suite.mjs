@@ -78,11 +78,15 @@ await page.getByRole('main').getByRole('button', { name: 'Channels' }).click()
 await page.waitForSelector('.chan-stats', { timeout: 10000 })
 
 const igRow = page.locator('.chan-row', { hasText: 'Instagram Main' })
-// The done-count arrives with the reports fetch; wait for it before reading.
-await igRow.locator('.chan-stat', { hasText: 'done' }).waitFor({ timeout: 10000 })
-const igTxt = await igRow.textContent()
-ok('channel row shows done this month', igTxt.includes('2 done'), igTxt.slice(0, 120))
-ok('channel row shows open + overdue', igTxt.match(/2 open.*1 overdue/s) !== null, igTxt.slice(0, 120))
+// Round 91 turned these counts into dots: the digit stays, the noun becomes a
+// colour. The done count still arrives with the reports fetch, so wait for it
+// before reading, and read each dot by the tone that says what it means.
+await igRow.locator('.dot-done').waitFor({ timeout: 10000 })
+const dotN = async (tone) => (await igRow.locator(`.dot-${tone}`).textContent().catch(() => '')).trim()
+ok('channel row counts what is done this month', (await dotN('done')) === '2', await igRow.textContent())
+ok('…what is open, and what is late',
+  (await dotN('open')) === '2' && (await dotN('late')) === '1',
+  `open=${await dotN('open')} late=${await dotN('late')}`)
 
 await igRow.getByRole('button', { name: 'Report →' }).click()
 await page.waitForSelector('.rp-big', { timeout: 8000 })
@@ -106,9 +110,17 @@ await page.waitForSelector('.tcard', { timeout: 12000 })
 // in Execution, and PICKING somebody there means going to that view first.
 // (Counting them does not: a hidden element still answers count().)
 const cmTab = async (pg, name) => {
-  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-    const tab = pg.locator('.cm-page-tab', { hasText: n })
-    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
   }
 }
 
@@ -120,9 +132,9 @@ await page.waitForSelector('.modal', { timeout: 8000 })
 // idea → shoot → edit, so every type carries the same two hats now instead
 // of a video carrying three and a post carrying one.
 ok('crew selects visible for video type', await page.locator('.modal .crew-field').count() === 2)
-await page.locator('.modal .tchip', { hasText: 'Post' }).click()
+await page.locator('.modal select.cm-pick').first().selectOption({ label: 'Post' })
 ok('a post carries the same two hats', await page.locator('.modal .crew-field').count() === 2)
-await page.locator('.modal .tchip', { hasText: 'Video' }).click()
+await page.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' })
 await cmTab(page, 'Execution')
 await ppPick(page.locator('.modal .crew-field .pp-field').nth(1), 'Eldor Cutter')
 await page.getByRole('button', { name: 'Save changes' }).click()

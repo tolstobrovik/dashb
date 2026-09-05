@@ -49,6 +49,12 @@ const openPiece = async () => {
 await openPiece()
 
 // ===================== the views =====================
+// Round 91 hides a view nobody has been in behind one control, so what is on
+// the strip depends on the piece. Open them all first: this suite is about the
+// views existing and holding the right things, not about which of them this
+// particular fixture happens to have filled in.
+const more = page.locator('.cm-page-more')
+if (await more.count()) { await more.first().click(); await page.waitForTimeout(250) }
 const tabs = (await page.locator('.cm-page-tab').allTextContents()).map((s) => s.replace(/\s*\d+\s*$/, '').trim())
 ok('the sheet is views, not one long scroll', tabs.length >= 3, tabs.join(' | '))
 ok('…and the first one is the brief', /brief/i.test(tabs[0] || ''), tabs[0])
