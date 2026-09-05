@@ -5108,3 +5108,43 @@ button.blame-person:hover { background: var(--surface-2); }
 
 /* Signing a student up sits at the head of the list it adds to. */
 .amb-add-row { display: flex; justify-content: flex-end; margin-bottom: var(--space-3, 12px); }
+
+/* ---- the ambassador programme, round 90 ---------------------------------
+   The half of the flow that was never built: saying a video is live, checking
+   it, and reading back what somebody has actually done. */
+
+/* What was agreed in words, when the three boxes could not say it. It is the
+   thing they have to DO, so it reads as an instruction, not as a note. */
+.amb-term-note {
+  border-left: 3px solid var(--brand-500);
+  padding: 6px 10px;
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--brand-500) 7%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+.amb-links { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.amb-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--muted); text-decoration: none; margin-top: 4px;
+}
+.amb-link:hover { color: var(--brand-600); text-decoration: underline; }
+.amb-contract { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.amb-contract .btn { cursor: pointer; }
+
+/* One person's whole record. A row per card, its state first because that is
+   what somebody is scanning for. */
+.amb-history { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.amb-hist-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 8px; background: var(--surface-2, rgba(127,127,127,0.06));
+}
+.amb-hist-state { font-weight: 700; font-size: 13px; white-space: nowrap; }
+.amb-hist-what { font-size: 12.5px; color: var(--muted); min-width: 0; }
+.amb-hist-row .spacer { flex: 1 1 0; min-width: 0; }
+.amb-hist-row.amb-go .amb-hist-state { color: var(--good-ink, #0ca30c); }
+.amb-hist-row.amb-stop .amb-hist-state { color: var(--critical); }
+.amb-hist-row.amb-done .amb-hist-state { color: var(--muted); }
+/* Finished work is not an alarm and not a call to action — it is a record. */
+.amb-card.amb-done { opacity: 0.82; }

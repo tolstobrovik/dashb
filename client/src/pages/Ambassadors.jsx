@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Plus, Send, Check, X, Clock, GraduationCap, FileText, Pencil, AlertCircle,
+  Link as LinkIcon, Upload, Trash2, Eye, Wallet,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
@@ -43,7 +44,10 @@ function saysWhat(c) {
   if (c.state === 'needs_changes') return { tone: 'stop', line: tx('Needs changes') }
   if (c.state === 'waiting') return { tone: 'idle', line: tx('Waiting for our answer') }
   if (c.state === 'posted') return { tone: 'idle', line: tx('Posted, we are checking') }
-  return { tone: 'idle', line: `${tx('Done')}. ${money(c.amount)}` }
+  // Done and paid are different facts and were saying the same sentence, so
+  // "have I been paid for that one?" had no answer on this page at all.
+  if (c.state === 'paid') return { tone: 'done', line: `${tx('Paid')}. ${money(c.amount)}` }
+  return { tone: 'done', line: `${tx('Done — waiting to be paid')}. ${money(c.amount)}` }
 }
 // Whose turn it is. Anything needing the ambassador comes first — the green
 // one they can act on now, then the red one asking them for something — and
@@ -61,6 +65,7 @@ function MyPage() {
   const [err, setErr] = useState('')
   const [sending, setSending] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [posting, setPosting] = useState(null)
 
   const load = useCallback(() => api.get('/ambassadors/me')
     .then((d) => { setData(d); setErr('') })
@@ -100,10 +105,30 @@ function MyPage() {
               {c.state === 'needs_changes' && c.feedback && (
                 <div className="amb-feedback">{c.feedback}</div>
               )}
+              {/* What was actually agreed, in words, when the three boxes
+                  could not say it. It is the thing they have to do, so it is
+                  on the card and not in a settings page. */}
+              {c.state === 'can_film' && c.terms_other && (
+                <div className="amb-term-note">{c.terms_other}</div>
+              )}
               <div className="amb-card-idea stat-sub">{c.format} · {c.script}</div>
+              {c.main_video_url && (
+                <a className="amb-link" href={c.main_video_url} target="_blank" rel="noreferrer">
+                  <LinkIcon size={12} /> {tx('The post')}
+                </a>
+              )}
               {c.state === 'needs_changes' && (
                 <button className="btn btn-sm" onClick={() => setEditing(c)}>
                   <Pencil size={13} /> {tx('Edit and send again')}
+                </button>
+              )}
+              {/* The half of this that was never built. Approved work had
+                  nowhere to go: the only button on this page was "Send idea",
+                  so the way to report a finished video was to ask for another
+                  one. */}
+              {c.state === 'can_film' && (
+                <button className="btn btn-sm btn-primary" onClick={() => setPosting(c)}>
+                  <Send size={13} /> {tx('I posted it')}
                 </button>
               )}
             </div>
@@ -111,6 +136,11 @@ function MyPage() {
         })}
         {cards.length === 0 && <div className="card card-pad empty">{tx('Nothing sent yet.')}</div>}
       </div>
+
+      {posting && (
+        <IPostedIt card={posting} onClose={() => setPosting(null)}
+          onSent={() => { setPosting(null); load() }} />
+      )}
 
       <Fold id="amb_details" title={tx('Your details')} icon={<GraduationCap size={15} />}>
         <div className="card card-pad amb-details">
@@ -216,6 +246,7 @@ function AdminPage() {
   const [openId, setOpenId] = useState(null)
   const [setup, setSetup] = useState(null)
   const [adding, setAdding] = useState(null)
+  const [looking, setLooking] = useState(null)
 
   const load = useCallback(() => api.get('/ambassadors')
     .then((d) => { setData(d); setErr('') })
@@ -294,6 +325,13 @@ function AdminPage() {
                   <td>{p.approved}</td>
                   <td>{p.status === 'active' ? tx('Active') : p.status === 'paused' ? tx('Paused') : tx('Ended')}</td>
                   <td className="right">
+                    {/* "Let me look at their account." Not by signing in as
+                        them — a board that records who did what should not
+                        have a way to be somebody else — but by opening every
+                        row they have, which is what anybody actually means. */}
+                    <button className="btn btn-sm" onClick={() => setLooking(p)}>
+                      <Eye size={13} /> {tx('Their work')}
+                    </button>
                     <button className="btn btn-sm" onClick={() => setSetup({ ...p, user_id: p.user_id })}>
                       <Pencil size={13} /> {tx('Details')}
                     </button>
@@ -308,6 +346,9 @@ function AdminPage() {
         </div>
       </Fold>
 
+      {looking && (
+        <TheirWork person={looking} onClose={() => setLooking(null)} onChanged={load} />
+      )}
       {adding && (
         <NewAmbassador draft={adding} onClose={() => setAdding(null)}
           onMade={(u) => { setAdding(null); load(); setSetup({ user_id: u.id, name: u.name }) }} />
@@ -316,6 +357,187 @@ function AdminPage() {
         <DetailsForm person={setup} onClose={() => setSetup(null)}
           onSaved={() => { setSetup(null); load() }} />
       )}
+    </div>
+  )
+}
+
+// Saying a video is live. One box that matters and one that does not.
+//
+// The link IS the work — it is what gets checked and what the money is for —
+// so it is required, and a sentence in that box ("I sent it to you on
+// Telegram") is refused here as well as by the server.
+function IPostedIt({ card, onClose, onSent }) {
+  const [main, setMain] = useState(card.main_video_url || '')
+  const [story, setStory] = useState(card.story_clip_url || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const send = async () => {
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      await api.post(`/ambassadors/me/cards/${card.id}/posted`, { main_video_url: main.trim(), story_clip_url: story.trim() })
+      toast(tx('Sent — we will check it'))
+      onSent()
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  return (
+    <Modal title={tx('I posted it')} onClose={onClose} footer={<>
+      <span className="foot-gap" />
+      <button className="btn" onClick={onClose}>{tx('Cancel')}</button>
+      <button className="btn btn-primary" onClick={send} disabled={busy || !main.trim()}>
+        {busy ? tx('Sending…') : tx('Send for checking')}
+      </button>
+    </>}>
+      {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
+      <div className="cm-row">
+        <span className="cm-key">{tx('Link to the post')}</span>
+        <input className="input" value={main} onChange={(e) => setMain(e.target.value)} autoFocus
+          placeholder="https://instagram.com/reel/…" autoCapitalize="off" autoCorrect="off" />
+      </div>
+      <div className="cm-row">
+        <span className="cm-key">{tx('Story link')} <span className="crew-opt">{tx('optional')}</span></span>
+        <input className="input" value={story} onChange={(e) => setStory(e.target.value)}
+          placeholder="https://instagram.com/stories/…" autoCapitalize="off" autoCorrect="off" />
+      </div>
+      <div className="cm-hint">{tx('We open the link, check it, and then it counts for this month.')}</div>
+    </Modal>
+  )
+}
+
+// One ambassador, whole: what they have done, what it earned, and every card
+// they have ever sent with its state on it. This is the page they see, from
+// this side — the counts on the list row say how many, and this says which.
+//
+// Paying is marked here because this is where you can see what you are paying
+// for: the video, the amount and the month, in one row.
+function TheirWork({ person, onClose, onChanged }) {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(0)
+  const load = useCallback(() => api.get(`/ambassadors/person/${person.user_id}/cards`)
+    .then((d) => { setData(d); setErr('') })
+    .catch((e) => setErr(e.message)), [person.user_id])
+  useEffect(() => { load() }, [load])
+
+  const markPaid = async (c) => {
+    setBusy(c.id)
+    try { await api.post(`/ambassadors/cards/${c.id}/paid`); await load(); onChanged?.() }
+    catch (e) { toast(e.message, 'err') } finally { setBusy(0) }
+  }
+
+  return (
+    <Modal title={person.name} onClose={onClose} wide footer={<>
+      <span className="foot-gap" />
+      <button className="btn" onClick={onClose}>{tx('Close')}</button>
+    </>}>
+      {err && <div className="form-error">{err}</div>}
+      {!data ? <div className="app-loading"><span className="spinner" /></div> : (
+        <>
+          <div className="amb-numbers">
+            <div className="amb-num">
+              <b>{data.done_all_time}</b>
+              <span className="stat-sub">{tx('Videos done, all time')}</span>
+            </div>
+            <div className="amb-num">
+              <b>{money(data.earned_all_time)}</b>
+              <span className="stat-sub">{tx('Earned, all time')}</span>
+            </div>
+            <div className="amb-num">
+              <b>{data.posted_this_month}</b>
+              <span className="stat-sub">{tx('This month')}</span>
+            </div>
+          </div>
+          <div className="amb-history">
+            {data.cards.map((c) => {
+              const said = saysWhat(c)
+              return (
+                <div key={c.id} className={'amb-hist-row amb-' + said.tone}>
+                  <span className="amb-hist-state">{said.line}</span>
+                  <span className="amb-hist-what">{c.format} · {c.script.slice(0, 90)}</span>
+                  <span className="spacer" />
+                  {c.main_video_url && (
+                    <a className="btn btn-sm" href={c.main_video_url} target="_blank" rel="noreferrer">
+                      <LinkIcon size={12} /> {tx('The post')}
+                    </a>
+                  )}
+                  {c.state === 'done' && (
+                    <button className="btn btn-sm" disabled={busy === c.id} onClick={() => markPaid(c)}>
+                      <Wallet size={12} /> {tx('Mark paid')}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            {data.cards.length === 0 && (
+              <div className="card card-pad empty">{tx('They have not sent anything yet.')}</div>
+            )}
+          </div>
+        </>
+      )}
+    </Modal>
+  )
+}
+
+// The contract, uploaded and taken off again. Read as a data URL in the
+// browser, the way person_docs does it — this board has no file server, and a
+// contract is small enough that it does not need one.
+function ContractBox({ person, onChanged }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [has, setHas] = useState(!!person.has_contract)
+  const [name, setName] = useState(person.contract_name || '')
+
+  const pick = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true); setErr('')
+    try {
+      const data = await new Promise((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res(String(r.result))
+        r.onerror = () => rej(new Error(tx('That file could not be read')))
+        r.readAsDataURL(file)
+      })
+      await api.put(`/ambassadors/person/${person.user_id}/contract`, { name: file.name, mime: file.type, data })
+      setHas(true); setName(file.name)
+      toast(tx('Contract saved'))
+      onChanged?.()
+    } catch (e2) { setErr(e2.message) } finally { setBusy(false) }
+  }
+
+  const remove = async () => {
+    if (!confirm(tx('Take the contract off this person?'))) return
+    setBusy(true); setErr('')
+    try {
+      await api.del(`/ambassadors/person/${person.user_id}/contract`)
+      setHas(false); setName('')
+      onChanged?.()
+    } catch (e2) { setErr(e2.message) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="amb-contract">
+      {err && <div className="form-error">{err}</div>}
+      {has ? (
+        <>
+          {/* The same opener the ambassador's own page uses — the route
+              answers with the file as a data URL, not with the file. */}
+          <ContractLink id={person.id} name={name || tx('Open it')} />
+          <button className="btn btn-sm" disabled={busy} onClick={remove}>
+            <Trash2 size={13} /> {tx('Remove')}
+          </button>
+        </>
+      ) : (
+        <span className="stat-sub">{tx('None yet')}</span>
+      )}
+      <label className="btn btn-sm">
+        <Upload size={13} /> {busy ? tx('Saving…') : has ? tx('Replace') : tx('Upload')}
+        <input type="file" hidden disabled={busy} onChange={pick}
+          accept=".pdf,.doc,.docx,image/*,text/plain" />
+      </label>
     </div>
   )
 }
@@ -387,11 +609,64 @@ function InboxRow({ card, open, onOpen, onDecided }) {
     <div className={'card amb-row' + (open ? ' open' : '')}>
       <button type="button" className="amb-row-head" onClick={onOpen}>
         <b>{card.name}</b>
-        <span className="stat-sub">{tx('New idea')}</span>
+        {/* Two different things wait here and they need two different answers:
+            an idea wants a yes and an amount, a posted video wants somebody to
+            open the link and look. */}
+        <span className="stat-sub">{card.kind === 'posted' ? tx('Filmed and posted') : tx('New idea')}</span>
         <span className="spacer" />
         <span className={'amb-wait' + (waited.hours >= 24 ? ' late' : '')}>{waited.text}</span>
       </button>
-      {open && <Decide card={card} onDecided={onDecided} />}
+      {open && (card.kind === 'posted'
+        ? <CheckPost card={card} onDecided={onDecided} />
+        : <Decide card={card} onDecided={onDecided} />)}
+    </div>
+  )
+}
+
+// Checking a video somebody has actually posted. The whole panel is the link
+// and two answers: it is there and it counts, or it is not right and here is
+// why. Sending it back returns it to "you can film this" rather than to the
+// beginning — they already have permission; what they need is to fix and
+// re-post.
+function CheckPost({ card, onDecided }) {
+  const [feedback, setFeedback] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const send = async (path, body) => {
+    setBusy(true); setErr('')
+    try { await api.post(`/ambassadors/cards/${card.id}/${path}`, body); onDecided() }
+    catch (e) { setErr(e.message); setBusy(false) }
+  }
+  return (
+    <div className="amb-decide">
+      {err && <div className="form-error">{err}</div>}
+      <div className="amb-who stat-sub">{card.university || tx('not set')} · {money(card.amount)}</div>
+      <div className="amb-script">{card.format} · {card.script}</div>
+      {card.terms_other && <div className="amb-term-note">{card.terms_other}</div>}
+      <div className="amb-links">
+        <a className="btn btn-sm btn-primary" href={card.main_video_url} target="_blank" rel="noreferrer">
+          <LinkIcon size={13} /> {tx('Open the post')}
+        </a>
+        {card.story_clip_url && (
+          <a className="btn btn-sm" href={card.story_clip_url} target="_blank" rel="noreferrer">
+            <LinkIcon size={13} /> {tx('The story')}
+          </a>
+        )}
+      </div>
+      <div className="field">
+        <label>{tx('If it is not right, say why')}</label>
+        <textarea className="input" rows={2} value={feedback} onChange={(e) => setFeedback(e.target.value)}
+          placeholder={tx('e.g. wrong account, or the tag is missing')} />
+      </div>
+      <div className="amb-actions">
+        <button className="btn btn-go" disabled={busy} onClick={() => send('done')}>
+          <Check size={14} /> {tx('It is up — counts this month')}
+        </button>
+        <button className="btn" disabled={busy || !feedback.trim()}
+          onClick={() => send('repost', { feedback: feedback.trim() })}>
+          <X size={14} /> {tx('Send it back')}
+        </button>
+      </div>
     </div>
   )
 }
@@ -411,6 +686,10 @@ function Decide({ card, onDecided }) {
     posts_own: card.defaults.posts_own,
     collaborator: card.defaults.collaborator,
   })
+  // Three boxes cannot describe every arrangement anybody agrees to. This is
+  // the one that says what was actually agreed, in words — it starts from
+  // their usual terms and is edited per video.
+  const [other, setOther] = useState(card.defaults.terms_other || '')
   const [amount, setAmount] = useState('')   // never pre-filled — a human types it
   const [feedback, setFeedback] = useState('')
   const [asking, setAsking] = useState(false)
@@ -459,6 +738,12 @@ function Decide({ card, onDecided }) {
       </div>
 
       <div className="field">
+        <label>{tx('Anything else agreed')} <span className="crew-opt">{tx('optional')}</span></label>
+        <input className="input" value={other} onChange={(e) => setOther(e.target.value)}
+          placeholder={tx('e.g. tag us in the caption and keep it up 30 days')} />
+      </div>
+
+      <div className="field">
         <label>{tx('What needs changing')}</label>
         <div className="amb-quick">
           {QUICK.map((q) => (
@@ -486,7 +771,7 @@ function Decide({ card, onDecided }) {
         <Modal title={tx('Approve')} onClose={() => setAsking(false)} footer={<>
           <button className="btn" onClick={() => setAsking(false)}>{tx('Cancel')}</button>
           <button className="btn btn-primary" disabled={busy}
-            onClick={() => send('approve', { amount: value, ...terms })}>
+            onClick={() => send('approve', { amount: value, ...terms, terms_other: other.trim() })}>
             {tx('Yes')}
           </button>
         </>}>
@@ -506,6 +791,7 @@ function DetailsForm({ person, onClose, onSaved }) {
     default_we_edit: !!person.default_we_edit,
     default_posts_own: person.default_posts_own === undefined ? true : !!person.default_posts_own,
     default_collaborator: !!person.default_collaborator,
+    default_terms_other: person.default_terms_other || '',
     status: person.status || 'active',
   })
   const [busy, setBusy] = useState(false)
@@ -544,7 +830,18 @@ function DetailsForm({ person, onClose, onSaved }) {
             </label>
           ))}
         </div>
+        <input className="input" value={form.default_terms_other}
+          placeholder={tx('Anything else you usually agree — in words')}
+          onChange={(e) => setForm({ ...form, default_terms_other: e.target.value })} />
         <span className="stat-sub">{tx('These only pre-tick the boxes when you approve. A card keeps whatever it was approved with.')}</span>
+      </div>
+
+      {/* The one piece of paper this programme has, and there was nowhere to
+          put it. Stored beside the person the way a document is, opened by
+          either side from their own page. */}
+      <div className="field">
+        <label>{tx('Contract')}</label>
+        <ContractBox person={person} onChanged={onSaved} />
       </div>
       <div className="field">
         <label>{tx('Status')}</label>

@@ -1046,6 +1046,9 @@ export async function initSchema() {
       default_we_edit      INTEGER NOT NULL DEFAULT 0,
       default_posts_own    INTEGER NOT NULL DEFAULT 1,
       default_collaborator INTEGER NOT NULL DEFAULT 0,
+      -- Three boxes cannot describe every arrangement anybody ever agrees to.
+      -- This is the one that says what was actually agreed, in words.
+      default_terms_other  TEXT    NOT NULL DEFAULT '',
       status               TEXT    NOT NULL DEFAULT 'active',  -- active|paused|ended
       created_at           TEXT    NOT NULL,
       updated_at           TEXT    NOT NULL
@@ -1069,6 +1072,8 @@ export async function initSchema() {
       we_edit        INTEGER NOT NULL DEFAULT 0,
       posts_own      INTEGER NOT NULL DEFAULT 0,
       collaborator   INTEGER NOT NULL DEFAULT 0,
+      terms_other    TEXT    NOT NULL DEFAULT '',  -- whatever the three boxes cannot say
+      posted_at      TEXT,                          -- when they said it was live
       amount         INTEGER,                             -- typed by a human, every time
       approved_by    INTEGER,
       approved_at    TEXT,
@@ -1534,6 +1539,13 @@ async function migrate() {
       ['views', 'INTEGER'], ['views_at', 'TEXT'], ['views_by', 'INTEGER'],
     ]) if (!(await hasColumn('content', col))) await exec(`ALTER TABLE content ADD COLUMN ${col} ${decl}`)
     if (!(await hasColumn('trackers', 'content_type'))) await exec('ALTER TABLE trackers ADD COLUMN content_type TEXT')
+    // The ambassador programme grew a terms line the three boxes could not say,
+    // and a moment somebody said their video was live.
+    for (const [tbl, col, decl] of [
+      ['ambassadors', 'default_terms_other', "TEXT NOT NULL DEFAULT ''"],
+      ['ambassador_cards', 'terms_other', "TEXT NOT NULL DEFAULT ''"],
+      ['ambassador_cards', 'posted_at', 'TEXT'],
+    ]) if (!(await hasColumn(tbl, col))) await exec(`ALTER TABLE ${tbl} ADD COLUMN ${col} ${decl}`)
     // Older databases stored a single channel per task — rebuild to the new shape.
     if (await hasColumn('content', 'channel')) {
       await exec(`

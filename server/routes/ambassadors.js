@@ -66,12 +66,15 @@ const cardOut = (c) => ({
   we_edit: !!c.we_edit,
   posts_own: !!c.posts_own,
   collaborator: !!c.collaborator,
+  terms_other: c.terms_other || '',
   amount: c.amount == null ? null : Number(c.amount),
   approved_by: c.approved_by,
   approved_at: c.approved_at,
   feedback: c.feedback,
   main_video_url: c.main_video_url,
   story_clip_url: c.story_clip_url,
+  posted_at: c.posted_at,
+  checked_at: c.checked_at,
   paid_month: c.paid_month,
   created_at: c.created_at,
   updated_at: c.updated_at,
@@ -87,6 +90,7 @@ const personOut = (a, user) => ({
   default_we_edit: !!a.default_we_edit,
   default_posts_own: !!a.default_posts_own,
   default_collaborator: !!a.default_collaborator,
+  default_terms_other: a.default_terms_other || '',
   // The bytes are never sent with a list. The file is fetched by its own
   // route when somebody actually opens it.
   contract_name: a.contract_name || '',
@@ -171,6 +175,142 @@ router.patch('/me/cards/:id', wrap(async (req, res) => {
   res.json({ ok: true })
 }))
 
+// ---- "I filmed it and it is live" --------------------------------------------
+// The half of this flow that was never built. A card was approved and then
+// stopped: the ambassador had nowhere to say they had done it, so the only
+// thing they could do next was ask for ANOTHER video, and the states after
+// can_film were unreachable in a programme that is entirely about them.
+//
+// The link is the work. It is what gets checked, and it is what the money is
+// for, so it is required and it has to be a link.
+router.post('/me/cards/:id(\\d+)/posted', wrap(async (req, res) => {
+  const me = await meAsAmbassador(req.user.id)
+  if (!me) return res.status(403).json({ error: 'You are not set up as an ambassador yet' })
+  const card = await get('SELECT * FROM ambassador_cards WHERE id = ?', req.params.id)
+  if (!card || card.ambassador_id !== me.id) return res.status(404).json({ error: 'No such card' })
+  if (card.state !== 'can_film')
+    return res.status(409).json({ error: 'This one is not one you have been told you can film' })
+  const main = clean(req.body?.main_video_url, 500)
+  const story = clean(req.body?.story_clip_url, 500)
+  if (!main) return res.status(400).json({ error: 'Paste the link to the post — that is what we check' })
+  const bad = linkProblem(main)
+  if (bad) return res.status(400).json({ error: bad })
+  if (story) { const b2 = linkProblem(story); if (b2) return res.status(400).json({ error: b2 }) }
+  const stamp = now()
+  await run(`
+    UPDATE ambassador_cards
+       SET state = 'posted', main_video_url = ?, story_clip_url = ?, posted_at = ?, feedback = '', updated_at = ?
+     WHERE id = ?
+  `, main, story, stamp, stamp, card.id)
+  res.json({ ok: true })
+}))
+
+// ---- checking it, and paying for it ------------------------------------------
+// DONE. Somebody opened the link and it is really there. This is the moment
+// the card counts for a month and for somebody's money, so the month is
+// stamped HERE and never moves again — a card checked in September belongs to
+// September however long the payment takes.
+router.post('/cards/:id(\\d+)/done', wrap(async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
+  const card = await get('SELECT * FROM ambassador_cards WHERE id = ?', req.params.id)
+  if (!card) return res.status(404).json({ error: 'No such card' })
+  if (card.state !== 'posted') return res.status(409).json({ error: 'This card has not been posted yet' })
+  const stamp = now()
+  await run(`
+    UPDATE ambassador_cards
+       SET state = 'done', checked_by = ?, checked_at = ?, paid_month = COALESCE(paid_month, ?), updated_at = ?
+     WHERE id = ?
+  `, req.user.id, stamp, monthNow(), stamp, card.id)
+  res.json({ ok: true })
+}))
+
+// NOT RIGHT. The post is up but it is not what was agreed — the wrong cut, the
+// wrong tag, the wrong account. Back to can_film with a reason, because they
+// already have permission to film it; what they need is to fix and re-post.
+router.post('/cards/:id(\\d+)/repost', wrap(async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
+  const card = await get('SELECT * FROM ambassador_cards WHERE id = ?', req.params.id)
+  if (!card) return res.status(404).json({ error: 'No such card' })
+  if (card.state !== 'posted') return res.status(409).json({ error: 'This card has not been posted yet' })
+  const feedback = clean(req.body?.feedback, 2000)
+  if (!feedback) return res.status(400).json({ error: 'Say what is wrong with it' })
+  await run(`
+    UPDATE ambassador_cards SET state = 'can_film', feedback = ?, updated_at = ? WHERE id = ?
+  `, feedback, now(), card.id)
+  res.json({ ok: true })
+}))
+
+// PAID. Paying happens outside this system; this records that somebody said it
+// had been. There is no way back from here, on purpose.
+router.post('/cards/:id(\\d+)/paid', wrap(async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
+  const card = await get('SELECT * FROM ambassador_cards WHERE id = ?', req.params.id)
+  if (!card) return res.status(404).json({ error: 'No such card' })
+  if (card.state !== 'done') return res.status(409).json({ error: 'Only a checked video can be marked paid' })
+  await run("UPDATE ambassador_cards SET state = 'paid', updated_at = ? WHERE id = ?", now(), card.id)
+  res.json({ ok: true })
+}))
+
+// ---- one person, whole ---------------------------------------------------------
+// Everything about one ambassador in one request: their details and every card
+// they have ever sent. This is what "let me look at their account" means here
+// — the same rows they see, read-only, without anybody having to log in as
+// somebody else. Signing in as another person is a thing that should not be
+// buildable on a board that records who did what.
+router.get('/person/:userId(\\d+)/cards', wrap(async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
+  const a = await get('SELECT * FROM ambassadors WHERE user_id = ?', req.params.userId)
+  if (!a) return res.status(404).json({ error: 'That person is not set up yet' })
+  const u = await get('SELECT id, name FROM users WHERE id = ?', a.user_id)
+  const cards = (await all(
+    'SELECT * FROM ambassador_cards WHERE ambassador_id = ? ORDER BY created_at DESC, id DESC', a.id)).map(cardOut)
+  const month = monthNow()
+  res.json({
+    person: personOut(a, u),
+    month,
+    cards,
+    // The two numbers their own page shows them, worked out the same way, so
+    // the admin and the ambassador are never looking at different totals.
+    posted_this_month: cards.filter((c) => ['done', 'paid'].includes(c.state) && c.paid_month === month).length,
+    earned_this_month: earned(inMonth(cards, month)),
+    earned_all_time: earned(cards.filter((c) => ['done', 'paid'].includes(c.state))),
+    done_all_time: cards.filter((c) => ['done', 'paid'].includes(c.state)).length,
+  })
+}))
+
+// ---- the contract --------------------------------------------------------------
+// Uploaded as a data URL, the way person_docs does it. A contract is the one
+// piece of paper this programme actually has, and there was no way to put it
+// anywhere.
+const CONTRACT_MAX = 8 * 1024 * 1024   // 8MB of base64, about 6MB of file
+router.put('/person/:userId(\\d+)/contract', wrap(async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
+  const a = await get('SELECT * FROM ambassadors WHERE user_id = ?', req.params.userId)
+  if (!a) return res.status(404).json({ error: 'Set this person up first' })
+  const name = clean(req.body?.name, 200)
+  const data = String(req.body?.data || '')
+  if (!name || !data) return res.status(400).json({ error: 'Pick a file' })
+  if (!/^data:[^;]*;base64,/.test(data)) return res.status(400).json({ error: 'That file did not come through' })
+  if (data.length > CONTRACT_MAX) return res.status(413).json({ error: 'That file is too big — 6MB is the limit' })
+  const mime = clean(req.body?.mime, 120) || (data.match(/^data:([^;]*);/) || [])[1] || ''
+  await run(`
+    UPDATE ambassadors SET contract_name = ?, contract_mime = ?, contract_data = ?,
+           contract_size = ?, contract_at = ?, updated_at = ? WHERE id = ?
+  `, name, mime, data, data.length, now(), now(), a.id)
+  res.json({ ok: true })
+}))
+
+router.delete('/person/:userId(\\d+)/contract', wrap(async (req, res) => {
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'This is for whoever runs the ambassador programme' })
+  const a = await get('SELECT * FROM ambassadors WHERE user_id = ?', req.params.userId)
+  if (!a) return res.status(404).json({ error: 'No such ambassador' })
+  await run(`
+    UPDATE ambassadors SET contract_name = '', contract_mime = '', contract_data = NULL,
+           contract_size = 0, contract_at = NULL, updated_at = ? WHERE id = ?
+  `, now(), a.id)
+  res.json({ ok: true })
+}))
+
 // Their contract, opened in a new tab. An ambassador may fetch their own; an
 // admin may fetch anybody's. Nobody may fetch somebody else's.
 router.get('/:id(\\d+)/contract', wrap(async (req, res) => {
@@ -197,19 +337,26 @@ router.get('/', wrap(async (req, res) => {
 
   // Waiting on US, oldest first: how long somebody has been waiting is the
   // only thing that decides what to open next.
+  //
+  // TWO kinds wait on us, not one. An idea waiting for a yes, and a video
+  // somebody has already filmed and posted, waiting for us to look at it. The
+  // second kind was invisible here — which is why the programme appeared to
+  // end at "you can film this" and the work nobody had checked simply piled
+  // up where nobody was looking.
   const inbox = cards
-    .filter((c) => c.state === 'waiting')
+    .filter((c) => c.state === 'waiting' || c.state === 'posted')
     .map((c) => {
       const a = people.find((p) => p.id === c.ambassador_id)
       return {
         ...c,
-        kind: 'idea',
+        kind: c.state === 'posted' ? 'posted' : 'idea',
         name: byId[a?.user_id]?.name || 'Someone who left',
         university: a?.university || '',
         defaults: {
           we_edit: !!a?.default_we_edit,
           posts_own: !!a?.default_posts_own,
           collaborator: !!a?.default_collaborator,
+          terms_other: a?.default_terms_other || '',
         },
         // The last three amounts this person was paid, as plain text beside
         // the box. Never pre-filled: a number that fills itself in is a number
@@ -219,7 +366,7 @@ router.get('/', wrap(async (req, res) => {
           .sort((x, y) => String(y.approved_at || '').localeCompare(String(x.approved_at || '')))
           .slice(0, 3)
           .map((x) => x.amount),
-        waiting_since: c.updated_at,
+        waiting_since: c.state === 'posted' ? (c.posted_at || c.updated_at) : c.updated_at,
       }
     })
     .sort((a, b) => String(a.waiting_since).localeCompare(String(b.waiting_since)))
@@ -258,19 +405,20 @@ router.put('/person/:userId(\\d+)', wrap(async (req, res) => {
   const university = clean(b.university, 120)
   const telegram = clean(b.telegram, 80)
   const flags = [b.default_we_edit ? 1 : 0, b.default_posts_own ? 1 : 0, b.default_collaborator ? 1 : 0]
+  const termsOther = clean(b.default_terms_other, 400)
   const existing = await get('SELECT id FROM ambassadors WHERE user_id = ?', userId)
   const stamp = now()
   if (existing) {
     await run(`
       UPDATE ambassadors SET university = ?, telegram = ?, default_we_edit = ?, default_posts_own = ?,
-             default_collaborator = ?, status = ?, updated_at = ? WHERE id = ?
-    `, university, telegram, ...flags, status, stamp, existing.id)
+             default_collaborator = ?, default_terms_other = ?, status = ?, updated_at = ? WHERE id = ?
+    `, university, telegram, ...flags, termsOther, status, stamp, existing.id)
   } else {
     await run(`
       INSERT INTO ambassadors (user_id, university, telegram, default_we_edit, default_posts_own,
-                               default_collaborator, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, userId, university, telegram, ...flags, status, stamp, stamp)
+                               default_collaborator, default_terms_other, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, userId, university, telegram, ...flags, termsOther, status, stamp, stamp)
   }
   res.json({ ok: true })
 }))
@@ -295,10 +443,10 @@ router.post('/cards/:id(\\d+)/approve', wrap(async (req, res) => {
     return res.status(400).json({ error: 'Type the amount for this video' })
   await run(`
     UPDATE ambassador_cards
-       SET state = 'can_film', we_edit = ?, posts_own = ?, collaborator = ?, amount = ?,
+       SET state = 'can_film', we_edit = ?, posts_own = ?, collaborator = ?, terms_other = ?, amount = ?,
            approved_by = ?, approved_at = ?, feedback = '', updated_at = ?
      WHERE id = ?
-  `, b.we_edit ? 1 : 0, b.posts_own ? 1 : 0, b.collaborator ? 1 : 0, Math.round(amount),
+  `, b.we_edit ? 1 : 0, b.posts_own ? 1 : 0, b.collaborator ? 1 : 0, clean(b.terms_other, 400), Math.round(amount),
   req.user.id, now(), now(), card.id)
   res.json({ ok: true })
 }))
