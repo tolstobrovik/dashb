@@ -371,9 +371,35 @@ router.get('/', wrap(async (req, res) => {
     })
     .sort((a, b) => String(a.waiting_since).localeCompare(String(b.waiting_since)))
 
+  // What this costs, which the programme could not answer at all. It has a
+  // queue of work to check and had no view of money to settle: "what do I owe
+  // this month" was a question you answered by opening every person in turn
+  // and adding it up yourself.
+  //
+  // A card is owed from the moment it is checked (done) until somebody says it
+  // was paid. The month it counts for is stamped at that check and never
+  // moves, so a video checked in September stays September's however long the
+  // payment takes.
+  const owedCards = cards.filter((c) => c.state === 'done')
+  const owed = owedCards.map((c) => {
+    const a = people.find((p) => p.id === c.ambassador_id)
+    return { ...c, name: byId[a?.user_id]?.name || 'Someone who left', university: a?.university || '' }
+  }).sort((x, y) => String(x.paid_month || '').localeCompare(String(y.paid_month || '')) || x.id - y.id)
+
   res.json({
     month,
     today: dayNow(),
+    money: {
+      // Everything checked and not yet paid, whatever month it belongs to —
+      // last month's unpaid work does not stop being owed because the calendar
+      // turned over.
+      owed_total: earned(owedCards),
+      owed_count: owedCards.length,
+      done_this_month: cards.filter((c) => ['done', 'paid'].includes(c.state) && c.paid_month === month).length,
+      paid_this_month: earned(cards.filter((c) => c.state === 'paid' && c.paid_month === month)),
+      cost_this_month: earned(cards.filter((c) => ['done', 'paid'].includes(c.state) && c.paid_month === month)),
+    },
+    owed,
     people: people.map((a) => {
       const mine = perPerson[a.id] || []
       return {
@@ -381,6 +407,10 @@ router.get('/', wrap(async (req, res) => {
         sent: mine.filter((c) => String(c.created_at).slice(0, 7) === month).length,
         approved: mine.filter((c) => String(c.approved_at || '').slice(0, 7) === month).length,
         posted: mine.filter((c) => ['done', 'paid'].includes(c.state) && c.paid_month === month).length,
+        // Their money, on their row, so the table answers "who am I paying and
+        // how much" without opening anybody.
+        earned_month: earned(mine.filter((c) => ['done', 'paid'].includes(c.state) && c.paid_month === month)),
+        owed: earned(mine.filter((c) => c.state === 'done')),
       }
     }),
     // Accounts made in user management that nobody has set up yet. They are

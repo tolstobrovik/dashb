@@ -118,6 +118,35 @@ ok('…and it can be taken off again',
 ok('…leaving nothing behind',
   (await req('/ambassadors')).data.people.find((p) => p.user_id === stu.id).has_contract === false)
 
+// ===================== what it costs, and what is owed =====================
+// The programme had a queue of work to CHECK and no view of money to SETTLE.
+// "What do I owe this month" was a question you answered by opening every
+// person in turn and adding it up yourself.
+const other = (await req('/users', 'POST', {
+  name: 'Round90 Second', username: `r90b${stamp}`, password: 's1234', role: 'ambassador',
+})).data
+await req(`/ambassadors/person/${other.id}`, 'PUT', { university: 'INHA', status: 'active' })
+const S2 = await login(`r90b${stamp}`, 's1234')
+await req('/ambassadors/me/cards', 'POST', idea, S2)
+const oid = (await req('/ambassadors')).data.inbox.find((c) => c.kind === 'idea').id
+await req(`/ambassadors/cards/${oid}/approve`, 'POST', { amount: 90000 })
+await req(`/ambassadors/me/cards/${oid}/posted`, 'POST', { main_video_url: 'https://instagram.com/reel/r90d' }, S2)
+await req(`/ambassadors/cards/${oid}/done`, 'POST')
+
+const q = (await req('/ambassadors')).data
+ok('the admin can see what the month cost', q.money.cost_this_month === 240000, String(q.money.cost_this_month))
+ok('…what has already gone out', q.money.paid_this_month === 150000, String(q.money.paid_this_month))
+ok('…and what is still owed, over how many videos',
+  q.money.owed_total === 90000 && q.money.owed_count === 1, `${q.money.owed_total} over ${q.money.owed_count}`)
+ok('every unpaid video is listed, with a name and an amount on it',
+  q.owed.length === 1 && q.owed[0].name === 'Round90 Second' && q.owed[0].amount === 90000,
+  JSON.stringify(q.owed.map((c) => [c.name, c.amount])))
+ok('…and each person carries their own owed on their row',
+  q.people.find((p) => p.user_id === other.id).owed === 90000)
+// Last month's unpaid work does not stop being owed because the calendar
+// turned over, so owed is not filtered by month.
+ok('…while a paid one is off the list', !q.owed.some((c) => c.id === cid))
+
 // ===================== both screens =====================
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const signIn = async (u, p) => {
@@ -167,8 +196,20 @@ ok('the admin can open one person and read their whole record',
   /Videos done, all time/.test(record), record.slice(0, 110))
 ok('…and mark a checked video paid from there',
   (await ap.locator('.modal button').filter({ hasText: 'Mark paid' }).count()) >= 1)
+await ap.keyboard.press('Escape'); await ap.waitForTimeout(400)
+const strip = (await ap.locator('.amb-money').textContent()).replace(/\s+/g, ' ')
+ok('the money is on the page, not inside each person', /Still to pay/.test(strip), strip.slice(0, 110))
+ok('…with every unpaid video in one list to work through',
+  (await ap.locator('.amb-pay-total').count()) === 1)
+const owedBefore = (await req('/ambassadors')).data.money.owed_total
+await ap.locator('.amb-history button').filter({ hasText: 'Mark paid' }).first().click()
+await ap.waitForTimeout(1500)
+ok('…and paying one takes it off the total',
+  (await req('/ambassadors')).data.money.owed_total < owedBefore,
+  `${owedBefore} → ${(await req('/ambassadors')).data.money.owed_total}`)
 await browser.close()
 
 await req(`/users/${stu.id}`, 'DELETE')
+await req(`/users/${other.id}`, 'DELETE')
 console.log(fails === 0 ? '\nRound-90 suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails ? 1 : 0)

@@ -5148,3 +5148,18 @@ button.blame-person:hover { background: var(--surface-2); }
 .amb-hist-row.amb-done .amb-hist-state { color: var(--muted); }
 /* Finished work is not an alarm and not a call to action — it is a record. */
 .amb-card.amb-done { opacity: 0.82; }
+
+/* What the programme costs, and what is still owed. Money is the one number
+   here that is a call to action, so it is the only one that gets a colour. */
+.amb-money { margin-bottom: var(--space-4, 16px); }
+.amb-num-owed b { color: var(--brand-600); }
+.amb-owed-cell { color: var(--brand-600); font-variant-numeric: tabular-nums; }
+.amb-pay-amount { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.amb-pay-total {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 10px 12px; margin-top: 4px;
+  border-top: 1px solid var(--hairline);
+  font-variant-numeric: tabular-nums;
+}
+.amb-pay-total .spacer { flex: 1 1 0; }
+.amb-pay-total b { font-size: 15px; }

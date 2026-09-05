@@ -280,6 +280,31 @@ function AdminPage() {
         </div>
       </Fold>
 
+      {/* What this costs, and what is still owed. The programme had a queue of
+          work to check and no view of money to settle, so "what do I owe" was
+          a question you answered by opening every person and adding it up. */}
+      <div className="amb-numbers amb-money">
+        <div className="amb-num">
+          <b>{data.money?.done_this_month ?? 0}</b>
+          <span className="stat-sub">{tx('Videos this month')}</span>
+        </div>
+        <div className="amb-num">
+          <b>{money(data.money?.cost_this_month || 0)}</b>
+          <span className="stat-sub">{tx('This month costs')}</span>
+        </div>
+        <div className={'amb-num' + ((data.money?.owed_total || 0) > 0 ? ' amb-num-owed' : '')}>
+          <b>{money(data.money?.owed_total || 0)}</b>
+          <span className="stat-sub">{tx('Still to pay')}</span>
+        </div>
+      </div>
+
+      {(data.owed || []).length > 0 && (
+        <Fold id="amb_owed" title={tx('Waiting to be paid')} icon={<Wallet size={15} />}
+          count={data.owed.length}>
+          <PayList rows={data.owed} onPaid={load} />
+        </Fold>
+      )}
+
       <Fold id="amb_people" title={tx('Ambassadors')} icon={<GraduationCap size={15} />}
         count={data.people.length}>
         {/* Signing a student up used to mean going to the Admin panel, making
@@ -312,6 +337,7 @@ function AdminPage() {
                 <th>{tx('University')}</th>
                 <th>{tx('Sent')}</th>
                 <th>{tx('Approved')}</th>
+                <th>{tx('Owed')}</th>
                 <th>{tx('Status')}</th>
                 <th />
               </tr>
@@ -323,6 +349,7 @@ function AdminPage() {
                   <td>{p.university || <span className="amb-missing">{tx('not set')}</span>}</td>
                   <td>{p.sent}</td>
                   <td>{p.approved}</td>
+                  <td>{p.owed > 0 ? <b className="amb-owed-cell">{money(p.owed)}</b> : <span className="stat-sub">—</span>}</td>
                   <td>{p.status === 'active' ? tx('Active') : p.status === 'paused' ? tx('Paused') : tx('Ended')}</td>
                   <td className="right">
                     {/* "Let me look at their account." Not by signing in as
@@ -477,6 +504,44 @@ function TheirWork({ person, onClose, onChanged }) {
         </>
       )}
     </Modal>
+  )
+}
+
+// Everything checked and not yet paid, in one list, with one press each and a
+// total at the bottom. Paying is a sitting — you do all of them at once with
+// the bank open — so it is a screen, not a button hidden inside each person.
+function PayList({ rows, onPaid }) {
+  const [busy, setBusy] = useState(0)
+  const pay = async (c) => {
+    setBusy(c.id)
+    try { await api.post(`/ambassadors/cards/${c.id}/paid`); toast(tx('Marked paid')); onPaid() }
+    catch (e) { toast(e.message, 'err') } finally { setBusy(0) }
+  }
+  const total = rows.reduce((n, c) => n + (Number(c.amount) || 0), 0)
+  return (
+    <div className="amb-history">
+      {rows.map((c) => (
+        <div key={c.id} className="amb-hist-row">
+          <span className="amb-hist-state">{c.name}</span>
+          <span className="amb-hist-what">{c.format} · {String(c.script || '').slice(0, 70)}</span>
+          <span className="spacer" />
+          <span className="amb-pay-amount">{money(c.amount)}</span>
+          {c.main_video_url && (
+            <a className="btn btn-sm" href={c.main_video_url} target="_blank" rel="noreferrer">
+              <LinkIcon size={12} /> {tx('The post')}
+            </a>
+          )}
+          <button className="btn btn-sm btn-primary" disabled={busy === c.id} onClick={() => pay(c)}>
+            <Wallet size={12} /> {tx('Mark paid')}
+          </button>
+        </div>
+      ))}
+      <div className="amb-pay-total">
+        <span className="spacer" />
+        <span className="stat-sub">{tx('Altogether')}</span>
+        <b>{money(total)}</b>
+      </div>
+    </div>
   )
 }
 
