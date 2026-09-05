@@ -4,7 +4,9 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import { AuthProvider } from './lib/auth.jsx'
 import { ChannelsProvider } from './lib/channels.jsx'
+import { PagesProvider } from './lib/pages.jsx'
 import { ContextMenuProvider } from './components/ContextMenu.jsx'
+import { I18nProvider } from './lib/i18n.jsx'
 import Toasts from './components/Toasts.jsx'
 import { applyTextSize } from './lib/textSize.js'
 import { applyTheme } from './lib/theme.js'
@@ -27,14 +29,18 @@ window.addEventListener('vite:preloadError', (e) => {
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <ChannelsProvider>
-          <ContextMenuProvider>
-            <App />
-            <Toasts />
-          </ContextMenuProvider>
-        </ChannelsProvider>
-      </AuthProvider>
+      <I18nProvider>
+        <AuthProvider>
+          <ChannelsProvider>
+            <PagesProvider>
+            <ContextMenuProvider>
+              <App />
+              <Toasts />
+            </ContextMenuProvider>
+            </PagesProvider>
+          </ChannelsProvider>
+        </AuthProvider>
+      </I18nProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

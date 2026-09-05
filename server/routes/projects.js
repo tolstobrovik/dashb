@@ -16,23 +16,40 @@ const canWrite = (user, row) => user.role === 'admin' || (row.owner_id && row.ow
 // Health: red if no owner OR zero live campaigns OR silent for 14+ days.
 // Amber if behind target pace (created → deadline). Green otherwise.
 // Returns [health, reason] so the UI can say WHY, not just flash a color.
-function health(p, liveCount, today) {
-  if (!p.owner_id) return ['red', 'No owner — assign one']
-  if (liveCount === 0) return ['red', 'No live campaign right now']
+function health(p, liveCount, today, pct = 0) {
+  // Red is for work that needs somebody TODAY. It used to fire on "no live
+  // campaign", which is not trouble — it is a project that has not started, or
+  // one that has finished. A finished project showing the same alarm as a
+  // missed deadline teaches people to read past the colour, and once they do
+  // that the colour is worth nothing.
+  if (pct >= 100) return ['done', '']
   const lastIso = p.last_activity || p.created_at
-  if (!lastIso || Date.now() - Date.parse(lastIso) > 14 * 86400000) return ['red', 'Silent for 14+ days — no activity']
-  if (Number(p.target) > 0) {
-    if (p.deadline && p.deadline < today && Number(p.actual) < Number(p.target)) return ['amber', 'Deadline passed with the target unmet']
-    if (p.deadline && p.created_at) {
-      const startMs = Date.parse(p.created_at)
-      const endMs = Date.parse(`${p.deadline}T00:00:00Z`)
-      if (endMs > startMs) {
-        const timePct = Math.min(1, Math.max(0, (Date.now() - startMs) / (endMs - startMs)))
-        if (Number(p.actual) / Number(p.target) < timePct) return ['amber', 'Progress is behind the deadline pace']
-      }
+  const silentDays = lastIso ? Math.floor((Date.now() - Date.parse(lastIso)) / 86400000) : null
+
+  // Actually late: the day passed and the work is not finished.
+  if (p.deadline && p.deadline < today) return ['red', 'past its deadline']
+  // Nobody to ask about it.
+  if (!p.owner_id) return ['red', 'nobody owns it']
+  // Nothing has happened for a fortnight.
+  if (silentDays === null || silentDays >= 14) return ['red', `silent for ${silentDays ?? 'a while'} days`]
+
+  // Not started is a state, not a fault — but it has to mean nothing has
+  // happened at all. Counting only checklist steps and campaigns called a
+  // project sitting at 210 of its 400 target "not started", which is the kind
+  // of wrong that makes people stop believing the column.
+  const metricMoved = Number(p.target) > 0 && Number(p.actual) > 0
+  if (liveCount === 0 && pct === 0 && !metricMoved) return ['idle', '']
+
+  if (Number(p.target) > 0 && p.deadline && p.created_at) {
+    const startMs = Date.parse(p.created_at)
+    const endMs = Date.parse(`${p.deadline}T00:00:00Z`)
+    if (endMs > startMs) {
+      const timePct = Math.min(1, Math.max(0, (Date.now() - startMs) / (endMs - startMs)))
+      if (Number(p.actual) / Number(p.target) < timePct) return ['amber', 'behind the pace its deadline needs']
     }
   }
-  return ['green', 'Owner set, campaign live, on pace']
+  if (liveCount === 0) return ['amber', 'no campaign running']
+  return ['green', '']
 }
 
 // Progress is earned, not typed: every checklist item and every campaign of
@@ -54,7 +71,8 @@ function progressOf(p, camps, today) {
 }
 
 function view(p, liveCount, today, camps = []) {
-  const [h, reason] = health(p, liveCount, today)
+  const prog = progressOf(p, camps, today)
+  const [h, reason] = health(p, liveCount, today, prog.pct)
   return {
     id: p.id,
     name: p.name,
@@ -71,14 +89,15 @@ function view(p, liveCount, today, camps = []) {
     checklist: parseList(p.checklist),
     last_activity: p.last_activity || p.created_at || null,
     live_campaigns: liveCount,
-    progress: progressOf(p, camps, today),
+    progress: prog,
     health: h,
     health_reason: reason,
     created_at: p.created_at,
   }
 }
 
-const HEALTH_ORDER = { red: 0, amber: 1, green: 2 }
+// What needs a person comes first; what is finished sinks to the bottom.
+const HEALTH_ORDER = { red: 0, amber: 1, green: 2, idle: 3, done: 4 }
 
 router.get('/metrics', wrap(async (req, res) => res.json(METRICS)))
 

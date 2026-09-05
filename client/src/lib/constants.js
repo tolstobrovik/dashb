@@ -1,3 +1,4 @@
+import { tr as tx, locale } from './i18n.jsx'
 import {
   Instagram, Send, Youtube, Target, Camera, Clapperboard, Megaphone,
   Star, BarChart3, Globe, Music2, PenTool, Image as ImageIcon, Film, CirclePlay, Video, FileText,
@@ -31,6 +32,8 @@ export const PERMISSIONS = [
   { key: 'review_publish',  label: 'Review & publish',          desc: 'Move Ready tasks to Published, on your channels' },
   { key: 'request_changes', label: 'Request changes (Pravki)',  desc: 'Send a Ready task back to the crew with notes' },
   { key: 'deliver_work',    label: 'Deliver / re-deliver work', desc: 'Update a stage’s delivery link and mark fixes done' },
+  { key: 'manage_ambassadors', label: 'Run the ambassador programme',
+    desc: 'Check students’ posts, set their terms, and sign new ones up' },
 ]
 
 export const can = (user, perm) =>
@@ -99,7 +102,9 @@ export const CONTENT_TYPES = [
   { key: 'reel',  label: 'Reel',  plan: 'Reels',   icon: Film },
   { key: 'story', label: 'Story', plan: 'Stories', icon: CirclePlay },
   { key: 'video', label: 'Video', plan: 'Videos',  icon: Video },
-  { key: 'other', label: 'Other', plan: null,      icon: FileText },
+  // Paid promotion: a creative made for an ad set rather than for the feed.
+  { key: 'target', label: 'Target', plan: 'Target', icon: Target },
+  { key: 'other', label: tx('Other'), plan: null,      icon: FileText },
 ]
 export const typeInfo = (key) => CONTENT_TYPES.find((t) => t.key === key) || CONTENT_TYPES[CONTENT_TYPES.length - 1]
 
@@ -130,7 +135,7 @@ export function dateLabel(iso) {
   if (iso === t) return 'Today'
   if (iso === addDaysISO(t, 1)) return 'Tomorrow'
   if (iso === addDaysISO(t, -1)) return 'Yesterday'
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 }
 
 // Distinct solid colors for departments — the admin overview and timeline
@@ -161,3 +166,11 @@ export function initials(name = '') {
     .map((w) => w[0]?.toUpperCase() || '')
     .join('')
 }
+
+// ---- what counts as an answer ----------------------------------------------
+// The form asks these BEFORE the save so the message lands next to the field
+// rather than arriving as a refusal. The rules themselves live in one place —
+// lib/text.js, mirroring server/text.js — because "is this a link" and "is
+// this a sentence" are two different questions and were being answered by the
+// same blunt check. The server is still the one that decides.
+export { readText, hasSubstance, hasLink, isSentence, isBareLink, MIN_SENTENCE_WORDS } from './text.js'

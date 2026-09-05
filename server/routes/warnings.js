@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { all, dayISO, publicUser } from '../db.js'
 import { authRequired, wrap } from '../auth.js'
-import { warningsOf, phasesOf, isDeleted, PHASE_LABEL } from '../deadlines.js'
+import { warningsOf, phasesOf, isDeleted, PHASE_LABEL, resolveGates } from '../deadlines.js'
 
 // The account record: who missed which deadline, and by how long.
 //
@@ -31,8 +31,9 @@ const withChannels = (w) => {
 // GET /api/warnings/me — the warnings on my own account.
 router.get('/me', wrap(async (req, res) => {
   const today = dayISO()
+  const gates = resolveGates(await all('SELECT id, label, sort, is_final FROM statuses'))
   const mine = (await liveTasks())
-    .flatMap((t) => warningsOf(t, today))
+    .flatMap((t) => warningsOf(t, today, gates))
     .filter((w) => w.owner_id === req.user.id)
     .map(withChannels)
     .sort((a, b) => (b.days_late - a.days_late) || String(a.due).localeCompare(String(b.due)))
@@ -48,9 +49,10 @@ router.get('/', wrap(async (req, res) => {
   if (req.user.role !== 'admin')
     return res.status(403).json({ error: 'Only an admin sees the whole team’s record' })
   const today = dayISO()
+  const gates = resolveGates(await all('SELECT id, label, sort, is_final FROM statuses'))
   const only = req.query.user_id ? Number(req.query.user_id) : null
   const list = (await liveTasks())
-    .flatMap((t) => warningsOf(t, today))
+    .flatMap((t) => warningsOf(t, today, gates))
     .filter((w) => (only ? w.owner_id === only : true))
     .map(withChannels)
     .sort((a, b) => b.days_late - a.days_late)
@@ -65,6 +67,7 @@ router.get('/report', wrap(async (req, res) => {
   if (req.user.role !== 'admin')
     return res.status(403).json({ error: 'Only an admin sees the whole team’s record' })
   const today = dayISO()
+  const gates = resolveGates(await all('SELECT id, label, sort, is_final FROM statuses'))
   const tasks = await liveTasks()
   const team = (await all('SELECT * FROM users')).map(publicUser)
   const nameOf = (id) => team.find((u) => u.id === id)?.name || null
@@ -85,7 +88,7 @@ router.get('/report', wrap(async (req, res) => {
   }
 
   for (const t of tasks) {
-    for (const p of phasesOf(t, today)) {
+    for (const p of phasesOf(t, today, gates)) {
       const slot = byPhase[p.phase]
       if (p.state === 'none' || p.state === 'waiting' || p.state === 'pending') continue
       slot.judged++

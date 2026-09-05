@@ -85,6 +85,41 @@ ok('deleted', (await req('/hiring')).data.every((n) => n.id !== need.id))
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
+
+// The crew seats are searchable pickers now, not <select> elements: typing in
+// a select jumps to the first match instead of narrowing, which is what was
+// wrong with it. Drive it the way a person does — open, type, press the row.
+const ppPick = async (root, name) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -201,13 +236,17 @@ ok('member card edit persisted', (await jasCard.textContent()).includes('SMM lea
 const probe = (await mk({ title: 'Conflict UI probe', channels: ['instagram_main'], type: 'video' })).data
 // The to-do list always shows your own tasks, whatever the channel dashboards
 // are configured to display — the stable way to reach the task modal.
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
 await page.waitForTimeout(500)
-await page.locator('.todo-row', { hasText: 'Conflict UI probe' }).locator('.todo-main').click()
+await page.locator('.tcard', { hasText: 'Conflict UI probe' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
+// Who films it lives on Execution, when it happens on Logistics — one click
+// apart, the way the sheet is laid out now.
+await cmTab(page, 'Execution')
+await ppPick(page.locator('.modal .crew-row .pp-field').first(), 'Ravshan Umarov')
+await cmTab(page, 'Logistics')
 ok('shoot row has from–to time inputs', (await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').count()) === 2)
-await page.locator('.modal .crew-row select').first().selectOption(String(rav.id))
 await page.locator('.modal .dates-block input[type="date"]').first().fill(today)
 await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').first().fill('10:30')
 await page.locator('.modal .dates-block .drow').first().locator('input[type="time"]').last().fill('11:15')

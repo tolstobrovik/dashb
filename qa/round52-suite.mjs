@@ -203,6 +203,25 @@ await page.waitForTimeout(400)
 await page.locator('.tcard-title', { hasText: 'd52: no paperwork' }).click()
 await page.waitForTimeout(700)
 ok('an empty task shows no Documents row', await page.locator('.doc-block').count() === 0)
+// The task sheet is views now — Brief, Execution, Logistics, Talk — so a
+// field is reached the way a person reaches it: open the view holding it
+// first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
+await cmTab(page, 'Talk')
 const openBtn = page.locator('.extra-btn', { hasText: 'Documents' })
 ok('…but offers to start one', await openBtn.count() === 1)
 await openBtn.click()

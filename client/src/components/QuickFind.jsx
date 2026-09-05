@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, CornerDownLeft } from 'lucide-react'
+import { Search, CornerDownLeft, X } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { typeInfo, onColor } from '../lib/constants.js'
 import ContentModal from './ContentModal.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Ctrl/Cmd-K quick find: one box that reaches anything from anywhere —
 // pages by name, tasks by title. Enter takes the highlighted row; a task
@@ -32,15 +33,14 @@ export default function QuickFind({ onClose }) {
   const pages = useMemo(() => [
     isAdmin && { label: 'Overview', to: '/overview' },
     { label: 'My Day', to: '/brief' },
-    { label: 'To-Do', to: '/todo' },
-    { label: 'Releases', to: '/releases' },
-    { label: 'Recordings', to: '/recordings' },
+    { label: tx('Releases'), to: '/releases' },
+    { label: tx('Recordings'), to: '/recordings' },
     { label: 'Statistics', to: '/missed' },
-    isAdmin && { label: 'Unassigned', to: '/unassigned' },
-    { label: 'Docs & KPIs', to: '/docs' },
+    { label: tx('Design'), to: '/design' },
+    { label: tx('Documents'), to: '/docs' },
     isAdmin && { label: 'Projects', to: '/projects' },
     ...visible.map((c) => ({ label: c.label, to: `/dept/${c.key}` })),
-    isAdmin && { label: 'Post Production', to: '/crew' },
+    isAdmin && { label: tx('Post Production'), to: '/crew' },
     isAdmin && { label: 'Team & hiring', to: '/team' },
     isAdmin && { label: 'Admin', to: '/admin' },
     { label: 'My profile', to: '/profile' },
@@ -89,18 +89,21 @@ export default function QuickFind({ onClose }) {
     <>
       {!openItem && (
         <div className="qf-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-          <div className="qf card" role="dialog" aria-label="Quick find">
+          <div className="qf card" role="dialog" aria-label={tx("Quick find")}>
             <div className="qf-box">
               <Search size={16} />
               <input
                 ref={inputRef}
                 className="qf-input"
                 value={q}
-                placeholder="Find a task or page…"
+                placeholder={tx("Find a task or page…")}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={onKey}
               />
-              <span className="qf-esc">esc</span>
+              {/* A phone has no Esc key, so naming one is a leftover from the
+                  desk. Same corner, same job, a control a thumb can use. */}
+              <span className="qf-esc">{tx("esc")}</span>
+              <button type="button" className="qf-x" onClick={onClose} aria-label={tx("Close")}><X size={18} /></button>
             </div>
             {needle && (
               <div className="qf-list">
@@ -110,7 +113,7 @@ export default function QuickFind({ onClose }) {
                     return (
                       <button key={`p${r.to}`} className={'qf-row' + (i === sel ? ' on' : '')}
                         onMouseEnter={() => setSel(i)} onClick={() => go(r)}>
-                        <span className="qf-kind">Page</span>
+                        <span className="qf-kind">{tx("Page")}</span>
                         <span className="qf-title">{r.label}</span>
                         <span className="spacer" />
                         {i === sel && <CornerDownLeft size={13} className="qf-enter" />}
@@ -137,7 +140,7 @@ export default function QuickFind({ onClose }) {
         </div>
       )}
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
           onClose={() => { setOpenItem(null); onClose() }}

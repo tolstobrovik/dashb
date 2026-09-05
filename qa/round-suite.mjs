@@ -28,7 +28,7 @@ const in7 = (await mk({ title: 'Shoot: library opening', channels: ['telegram_ma
 const inMonth = (await mk({ title: 'Edit: admissions FAQ film', channels: ['youtube'], type: 'video', editor_id: nod.id, release_date: add(18) })).data
 const crewMiss = (await mk({ title: 'Cut: overdue trailer', channels: ['youtube'], type: 'video', editor_id: nod.id, recording_date: add(-9), release_date: add(-2) })).data
 const dueToday = (await mk({ title: 'Release: due today — not missed yet', channels: ['instagram_main'], type: 'post', assignee_id: nod.id, release_date: today })).data
-await req(`/content/${doneVid.id}`, 'PATCH', { done: true })
+await req(`/content/${doneVid.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 ok('crew fixtures in place', [doneVid, recNow, tmrw, in3, in7, inMonth, crewMiss, dueToday].every((c) => c?.id))
 
 // ============ missed rule, straight from the data ============

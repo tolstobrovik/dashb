@@ -20,40 +20,53 @@ await cleanup()
 const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
 const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + d * 864e5))
-// seeds start in To shoot: since round 35, Idea-stage tasks sit out the gap views
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// Seeds start in Shot: Idea-stage tasks sit out the gap views (round 35), and
+// since round 66 the shooting stage is a BOOKING that refuses exactly the
+// holes this page exists to show. Work logged after the fact is where those
+// holes really live now, and Shot is where it lands.
+const shootId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
 const orphan = (await req('/content', 'POST', { title: 'x24: orphan video', channels: ['youtube'], type: 'video', status_id: shootId })).data
 const dateless = (await req('/content', 'POST', { title: 'x24: staffed dateless', channels: ['instagram_main'], type: 'reel', assignees: [jas.id], operator_id: jas.id, editor_id: jas.id, status_id: shootId })).data
-await req('/content', 'POST', { title: 'x24: late post', channels: ['instagram_main'], type: 'post', assignees: [jas.id], designer_id: jas.id, release_date: iso(-2), status_id: shootId })
+const late = (await req('/content', 'POST', { title: 'x24: late post', channels: ['instagram_main'], type: 'post', assignees: [jas.id], designer_id: jas.id, release_date: iso(-2), status_id: shootId })).data
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
-// ---- 1) admin: the Unassigned page ----
+// ---- 1) admin: what a task still owes, on the task ----
+// Round 82 removed the Unassigned page — a whole destination whose only job
+// was to list holes. The reading survived it: the task itself now says what it
+// is missing, so this section asks the same questions of the same fixtures,
+// one deep link at a time.
 const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
 await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
 await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 15000 })
 await p.waitForTimeout(600)
-ok('the sidebar offers Unassigned', (await p.locator('.nav-item', { hasText: 'Unassigned' }).count()) === 1)
-await p.goto(BASE + '/unassigned'); await p.waitForTimeout(1200)
-const orphanRow = p.locator('.ov-row', { hasText: 'x24: orphan video' })
-ok('the orphan video is listed', (await orphanRow.count()) === 1)
-ok('…wearing its people-holes', (await orphanRow.locator('.chip', { hasText: 'needs an operator' }).count()) === 1
-  && (await orphanRow.locator('.chip', { hasText: 'needs an editor' }).count()) === 1)
-const datelessRow = p.locator('.ov-row', { hasText: 'x24: staffed dateless' })
-ok('the staffed-but-dateless reel is listed for dates only', (await datelessRow.count()) === 1
-  && (await datelessRow.locator('.chip', { hasText: 'no shoot day' }).count()) === 1
-  && (await datelessRow.locator('.chip', { hasText: 'needs an operator' }).count()) === 0)
-ok('the fully-planned late post stays off this page', (await p.locator('.ov-row', { hasText: 'x24: late post' }).count()) === 0)
-await p.screenshot({ path: 'r24s-unassigned.png' })
-// filling the holes clears the row
-await req(`/content/${dateless.id}`, 'PATCH', { recording_date: iso(1), release_date: iso(3) })
-await p.reload(); await p.waitForTimeout(1000)
-ok('dates filled → the row leaves', (await p.locator('.ov-row', { hasText: 'x24: staffed dateless' }).count()) === 0)
-// a row opens the task to fix it
-await p.locator('.ov-row', { hasText: 'x24: orphan video' }).click()
-await p.waitForSelector('.modal', { timeout: 5000 })
-ok('a row opens the task', (await p.locator('.modal .cm-title').inputValue()) === 'x24: orphan video')
+ok('the sidebar no longer offers Unassigned', (await p.locator('.nav-item', { hasText: 'Unassigned' }).count()) === 0)
+const openTask = async (id) => {
+  await p.goto(`${BASE}/brief?task=${id}`)
+  await p.waitForSelector('.modal .cm-title', { timeout: 10000 })
+  await p.waitForTimeout(500)
+}
+const gapChip = (t) => p.locator('.cm-gaps .chip-gap', { hasText: t })
+await openTask(orphan.id)
+ok('the orphan video opens from its link', (await p.locator('.modal .cm-title').inputValue()) === 'x24: orphan video')
+ok('…wearing its people-holes', (await gapChip('needs an operator').count()) === 1
+  && (await gapChip('needs an editor').count()) === 1)
+await p.screenshot({ path: 'r24s-gaps.png' })
+await p.keyboard.press('Escape'); await p.waitForTimeout(300)
+await openTask(dateless.id)
+ok('the staffed-but-dateless reel begs for dates only', (await gapChip('no shoot day').count()) === 1
+  && (await gapChip('needs an operator').count()) === 0)
+await p.keyboard.press('Escape'); await p.waitForTimeout(300)
+await openTask(late.id)
+ok('the fully-planned late post owes nothing', (await p.locator('.cm-gaps').count()) === 0)
+await p.keyboard.press('Escape'); await p.waitForTimeout(300)
+// filling the holes clears the chips
+const filled = await req(`/content/${dateless.id}`, 'PATCH', { recording_date: iso(1), release_date: iso(3) })
+ok('the dates really got set', filled.status === 200, `${filled.status} ${filled.data.error || ''}`)
+await openTask(dateless.id)
+ok('dates filled → the begging stops', (await p.locator('.cm-gaps').count()) === 0,
+  (await p.locator('.cm-gaps .chip-gap').allTextContents()).join(' · '))
 await p.keyboard.press('Escape'); await p.waitForTimeout(300)
 
 // ---- 2) admin: person receipts on Statistics ----
@@ -69,15 +82,16 @@ await row.click(); await p.waitForTimeout(300)
 ok('a second tap folds the receipts', (await p.locator('.miss-person-tasks').count()) === 0)
 await p.close()
 
-// ---- 3) members neither see nor reach it ----
+// ---- 3) the dead route is dead for everyone ----
 const m = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
 await m.goto(BASE + '/login')
 await m.fill('input[name="username"]', 'jas'); await m.fill('input[name="password"]', 'j1234')
 await m.click('button[type="submit"]'); await m.waitForURL(/brief/, { timeout: 15000 })
 await m.waitForTimeout(600)
 ok('no Unassigned in a member sidebar', (await m.locator('.nav-item', { hasText: 'Unassigned' }).count()) === 0)
-await m.goto(BASE + '/unassigned'); await m.waitForTimeout(1000)
-ok('the route bounces members away', !m.url().includes('/unassigned'))
+await m.goto(BASE + '/unassigned'); await m.waitForTimeout(1200)
+ok('the retired route lands somewhere real, not on a blank page',
+  (await m.locator('.sidebar, .app-tabs').count()) > 0 && (await m.locator('.app-loading').count()) === 0)
 await m.close()
 await browser.close()
 await cleanup()

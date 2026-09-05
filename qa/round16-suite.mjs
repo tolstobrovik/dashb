@@ -22,7 +22,7 @@ for (const u of (await req('/users')).data.filter((u) => ['r16op', 'r16ed'].incl
 const op = (await req('/users', 'POST', { name: 'Oybek Operator', username: 'r16op', password: 'o1234', role: 'operator' })).data
 const ed = (await req('/users', 'POST', { name: 'Eldor Editor', username: 'r16ed', password: 'e1234', role: 'editor' })).data
 const statuses = (await req('/statuses')).data
-const shotSt = statuses.find((s) => /^shot$/i.test(s.label))
+const shotSt = statuses.find((s) => /^editing$/i.test(s.label))
 const readySt = statuses.find((s) => /^ready$/i.test(s.label))
 
 // operator: a shoot TODAY + a shoot that's OVERDUE (haunting)
@@ -38,7 +38,7 @@ const r1 = await req(`/content/${shootToday.id}`, 'PATCH', { milestone: 'shot' }
 ok('operator tick "shot" lands on the Shot stage', r1.status === 200 && r1.data.status_id === shotSt.id)
 ok('operator cannot set a raw stage', (await req(`/content/${shootToday.id}`, 'PATCH', { status_id: readySt.id }, tOp)).status === 403)
 ok('operator cannot mark a cut edited', (await req(`/content/${cutToday.id}`, 'PATCH', { milestone: 'edited' }, tOp)).status === 403)
-ok('operator cannot blanket-complete', (await req(`/content/${shootToday.id}`, 'PATCH', { done: true }, tOp)).status === 403)
+ok('operator cannot blanket-complete', (await req(`/content/${shootToday.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, tOp)).status === 403)
 // reset shootToday back so the UI still shows it in today
 await req(`/content/${shootToday.id}`, 'PATCH', { status_id: statuses[0].id })
 const tEd = await login('r16ed', 'e1234')
@@ -49,6 +49,29 @@ ok('a non-URL link is refused', (await req(`/content/${cutToday.id}`, 'PATCH', {
 // ============ UI: the operator's modal + board ============
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -68,12 +91,12 @@ await page.screenshot({ path: 'r16-board.png' })
 // open the today shoot → the crew modal
 await shootLane.locator('.cb-row', { hasText: 'r16: shoot today' }).click()
 await page.waitForSelector('.modal', { timeout: 8000 })
-// stage is read-only for the crew (no enabled non-active chip)
-const stageChips = page.locator('.modal .stage-chip')
-const enabledStage = await stageChips.evaluateAll((els) => els.filter((e) => !e.disabled).length)
-ok('the stage is read-only (only the current chip is live)', enabledStage <= 1, `enabled=${enabledStage}`)
+// The stage is read-only for the crew — one dropdown since round 91, so the
+// question is whether they can open it at all rather than how many chips are live.
+ok('the stage is read-only for the crew', await page.locator('.modal .cm-stage-pick select').isDisabled())
 // the operator gets a Shot tick, and the ready-link field
 ok('the operator sees a "Mark as shot" tick', (await page.locator('.modal .do-tick', { hasText: 'Mark as shot' }).count()) === 1)
+await cmTab(page, 'Execution')
 ok('the operator does NOT get an edit tick', (await page.locator('.modal .do-tick', { hasText: 'edited' }).count()) === 0)
 ok('the ready-file link field is offered', (await page.locator('.modal .ready-link-field').count()) === 1)
 
@@ -103,6 +126,8 @@ ok('with nothing overdue the section is the calm all-clear', (await editLane.loc
   && /all clear/i.test(await editLane.locator('.cb-clear').textContent()))
 // the editor can open the ready link they saved
 await editLane.locator('.cb-row', { hasText: 'r16: cut today' }).click()
+await page2.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page2, 'Execution')
 await page2.waitForSelector('.modal .ready-link-field', { timeout: 8000 })
 ok('the saved ready link is shown with an Open button', (await page2.locator('.modal .ready-link-input a', { hasText: 'Open' }).count()) === 1)
 await page2.screenshot({ path: 'r16-modal.png' })

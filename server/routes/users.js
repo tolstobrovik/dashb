@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import { all, get, run, batch, publicUser, crewRolesOf, getChannelKeys, PERM_KEYS } from '../db.js'
-import { authRequired, adminOnly, wrap } from '../auth.js'
+import { authRequired, adminOnly, wrap, isFullAdmin } from '../auth.js'
 
 const router = Router()
 router.use(authRequired)
@@ -9,13 +9,48 @@ router.use(authRequired)
 // Admins see everyone; members see themselves, admins, teammates who share a
 // channel, and the video crew (editors/operators work across every channel).
 // Crew see the whole team — their tasks can come from anywhere.
+//
+// And whoever is ON a piece you can see. A member could open a task, read that
+// somebody is editing it, and get a chip with an ellipsis in it: the task
+// names the id, the directory would not resolve it, and the seat rendered as
+// though nobody held it. That is not privacy — the piece already told you
+// there is a person there — it is the board lying about its own contents. The
+// only thing the old rule protected was a name you were already being shown a
+// gap where.
 router.get('/', wrap(async (req, res) => {
   const users = (await all('SELECT * FROM users ORDER BY role DESC, name')).map(publicUser)
   if (req.user.role === 'admin' || isCrewRole(req.user.role)) return res.json(users)
   const mine = new Set(req.user.departments)
+  const seated = await seatedOnMyChannels(mine)
+  // Whoever runs the ambassador programme sees the students, because signing
+  // them up and answering their work is the job. Only the students: it adds
+  // the one group they are responsible for, not the directory.
+  const programme = runsProgramme(req.user)
   res.json(users.filter((u) =>
-    u.id === req.user.id || u.role === 'admin' || isCrewRole(u.role) || u.departments.some((d) => mine.has(d))))
+    u.id === req.user.id || u.role === 'admin' || isCrewRole(u.role) || seated.has(u.id)
+    || (programme && u.role === 'ambassador')
+    || u.departments.some((d) => mine.has(d))))
 }))
+
+// Everybody holding a seat on a piece that runs on one of these channels.
+// Seven small columns, no bodies and no blobs, and only for the members who
+// are scoped at all — an admin and the crew already have the whole list.
+async function seatedOnMyChannels(mine) {
+  const seated = new Set()
+  if (!mine.size) return seated
+  const rows = await all(
+    'SELECT channels, assignee_id, assignees, operator_id, editor_id, designer_id, face_id FROM content')
+  for (const r of rows) {
+    let chans = []
+    try { chans = JSON.parse(r.channels || '[]') } catch { chans = [] }
+    if (!chans.some((c) => mine.has(c))) continue
+    for (const k of ['assignee_id', 'operator_id', 'editor_id', 'designer_id', 'face_id']) {
+      if (r[k]) seated.add(Number(r[k]))
+    }
+    try { for (const id of JSON.parse(r.assignees || '[]')) if (id) seated.add(Number(id)) } catch { /* not a list */ }
+  }
+  return seated
+}
 
 async function cleanDepartments(list) {
   if (!Array.isArray(list)) return null
@@ -28,15 +63,64 @@ async function cleanDepartments(list) {
 // cross-department production people: they see and move only the tasks where
 // they hold a hat, no department powers at all. The legacy single-role values
 // stay valid; 'crew' means a combination (spelled out in crew_roles).
-const ROLES = ['admin', 'member', 'editor', 'operator', 'designer', 'crew']
+// 'ambassador' is a login to the ambassador page and nothing else — see the
+// gate in auth.js. Their university, contract and terms are not set here.
+const ROLES = ['admin', 'member', 'editor', 'operator', 'designer', 'crew', 'ambassador']
 const CREW_CAPS = ['editor', 'operator', 'designer']
 const isCrewRole = (r) => r === 'editor' || r === 'operator' || r === 'designer' || r === 'crew'
+
+// ---- the ambassador programme's own door -----------------------------------
+// Whoever runs the programme signs students up, which means creating accounts
+// — and creating accounts was an admin-of-the-whole-board power, so the job
+// could not be handed to the person actually doing it without handing them
+// the board as well.
+//
+// This is the narrowest carve-out that lets them do the job: they may make,
+// edit and remove accounts whose role is 'ambassador', and nothing else. Not
+// a member, not a crew hat, not another admin. They cannot grant a permission
+// (including their own), cannot name channels, and cannot turn an existing
+// colleague into an ambassador or an ambassador into a colleague — an account
+// that is somebody's staff login is not theirs to touch, in either direction.
+const runsProgramme = (u) => !!(u?.permissions && u.permissions.manage_ambassadors)
+
+// May this request act on users at all, and if so, how narrowly? Returns
+// null when allowed, or the refusal to send.
+function ambassadorScope(req, target) {
+  if (isFullAdmin(req.user)) return null            // an admin of the whole board
+  if (!runsProgramme(req.user)) {
+    // Same refusals adminOnly gave, because they say different things and a
+    // channel admin being told "Admins only" when they ARE one is the sort of
+    // message that sends somebody to ask why their account is broken.
+    if (req.user?.role !== 'admin') return { status: 403, error: 'Admins only' }
+    return { status: 403, error: 'This is for an admin of the whole board — you run particular channels' }
+  }
+  // Making one: it has to BE an ambassador, plain, with nothing else on it.
+  if (!target) {
+    const b = req.body || {}
+    if (b.role !== 'ambassador')
+      return { status: 403, error: 'You can add ambassadors — a colleague’s account is an admin’s to make' }
+    if (Object.keys(b.permissions || {}).length || (b.admin_channels || []).length || (b.departments || []).length)
+      return { status: 403, error: 'An ambassador holds no rights and no channels' }
+    return null
+  }
+  // Touching one: it has to already be an ambassador, and stay one.
+  if (target.role !== 'ambassador')
+    return { status: 403, error: 'That account is not an ambassador' }
+  const b = req.body || {}
+  if (b.role !== undefined && b.role !== 'ambassador')
+    return { status: 403, error: 'Changing what somebody IS on this board is an admin’s call' }
+  if (b.permissions !== undefined || b.admin_channels !== undefined)
+    return { status: 403, error: 'An ambassador holds no rights and no channels' }
+  return null
+}
 
 // Normalize role + crew_roles into one consistent pair. Multi-select rules:
 // any capability list collapses to its single value as the role, or 'crew'
 // for a mix; admin/member always carry an empty capability list.
 function roleFields(role, crewRoles) {
-  if (role === 'admin' || role === 'member') return { role, crew_roles: '[]' }
+  // An ambassador holds no crew capability and never will — they are a student
+  // with a login to one page, not a production hat.
+  if (role === 'admin' || role === 'member' || role === 'ambassador') return { role, crew_roles: '[]' }
   // An OMITTED list falls back to what the role implies; an EXPLICITLY empty
   // one is a mistake — a crew account holds at least one capability.
   const caps = crewRoles === undefined
@@ -85,8 +169,20 @@ function scheduleFields(b, patch, { own = false } = {}) {
   return null
 }
 
-router.post('/', adminOnly, wrap(async (req, res) => {
+router.post('/', wrap(async (req, res) => {
+  {
+    const no = ambassadorScope(req, null)
+    if (no) return res.status(no.status).json({ error: no.error })
+  }
   const { name, username, email = null, password, role = 'member', crew_roles, departments = [], permissions = {}, color = '#a32234' } = req.body || {}
+  // Which channels this admin runs. Empty means the whole board, which is
+  // what an admin was before this existed.
+  const adminChans = role === 'admin' ? ((await cleanDepartments(req.body?.admin_channels ?? [])) || []) : []
+  // How many pieces this person takes in a day (0 = no ceiling), and which
+  // channels they work on (empty = all). Both belong to crew hats; an admin or
+  // a member is not handed work by the hour.
+  const cap = Math.max(0, Math.min(50, Math.round(Number(req.body?.daily_cap) || 0)))
+  const crewChans = (await cleanDepartments(req.body?.crew_channels ?? [])) || []
   if (!name || !username || !password) return res.status(400).json({ error: 'Name, username and password are required' })
   if (!ROLES.includes(role)) return res.status(400).json({ error: 'Unknown role' })
   const rf = roleFields(role, crew_roles)
@@ -100,8 +196,8 @@ router.post('/', adminOnly, wrap(async (req, res) => {
   try {
     const info = await run(`
       INSERT INTO users (name, username, email, password_hash, role, crew_roles, departments, permissions, color,
-        phone, position, duties, work_start, work_end, work_days, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        admin_channels, daily_cap, crew_channels, phone, position, duties, work_start, work_end, work_days, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       name.trim(),
       String(username).toLowerCase().trim(),
@@ -111,6 +207,7 @@ router.post('/', adminOnly, wrap(async (req, res) => {
       JSON.stringify(depts),
       JSON.stringify(perms),
       color,
+      JSON.stringify(adminChans), cap, JSON.stringify(crewChans),
       extra.phone, extra.position, extra.duties, extra.work_start, extra.work_end, extra.work_days,
       new Date().toISOString(),
     )
@@ -164,9 +261,13 @@ router.patch('/me', wrap(async (req, res) => {
   res.json(publicUser(await get('SELECT * FROM users WHERE id = ?', row.id)))
 }))
 
-router.patch('/:id', adminOnly, wrap(async (req, res) => {
+router.patch('/:id', wrap(async (req, res) => {
   const row = await get('SELECT * FROM users WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'User not found' })
+  {
+    const no = ambassadorScope(req, row)
+    if (no) return res.status(no.status).json({ error: no.error })
+  }
   const { name, username, email, role, crew_roles, departments, permissions, color, password } = req.body || {}
   if (!ROLES.includes(role ?? row.role)) return res.status(400).json({ error: 'Unknown role' })
   // crew_roles alone may also change the role (multi-select chips).
@@ -183,6 +284,27 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
   }
   // Admins see every channel; crew roles belong to none — both carry no list.
   if (nextRole !== 'member') depts = '[]'
+  // Which channels an admin runs. Empty is the whole board. Stops being a
+  // question the moment somebody is not an admin any more.
+  let cap = row.daily_cap || 0
+  if (req.body?.daily_cap !== undefined) cap = Math.max(0, Math.min(50, Math.round(Number(req.body.daily_cap) || 0)))
+  let crewChans = row.crew_channels || '[]'
+  if (req.body?.crew_channels !== undefined) {
+    const cleaned = await cleanDepartments(req.body.crew_channels)
+    if (!cleaned) return res.status(400).json({ error: 'crew_channels must be an array' })
+    crewChans = JSON.stringify(cleaned)
+  }
+  let adminChans = row.admin_channels || '[]'
+  if (nextRole !== 'admin') adminChans = '[]'
+  else if (req.body?.admin_channels !== undefined) {
+    const cleaned = await cleanDepartments(req.body.admin_channels)
+    if (!cleaned) return res.status(400).json({ error: 'admin_channels must be an array' })
+    // Nobody may narrow their OWN writ to nothing by accident, and nobody may
+    // quietly widen it either: this route already belongs to a full admin.
+    if (row.id === req.user.id && cleaned.length > 0)
+      return res.status(400).json({ error: 'You can’t scope yourself to particular channels — ask another full admin to do it' })
+    adminChans = JSON.stringify(cleaned)
+  }
   if (username !== undefined && !String(username).trim()) return res.status(400).json({ error: 'Username cannot be empty' })
   const nextUsername = username !== undefined ? String(username).toLowerCase().trim() : row.username
   const nextEmail = email !== undefined ? (email ? String(email).toLowerCase().trim() : null) : row.email
@@ -195,8 +317,8 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
   if (schedErr) return res.status(400).json({ error: schedErr })
   try {
     const extraSql = Object.keys(extra).map((k) => `, ${k}=?`).join('')
-    await run(`UPDATE users SET name=?, username=?, email=?, role=?, crew_roles=?, color=?, departments=?, permissions=?, password_hash=?${extraSql} WHERE id=?`,
-      name ?? row.name, nextUsername, nextEmail, nextRole, rf.crew_roles, color ?? row.color, depts, nextPerms, pwHash,
+    await run(`UPDATE users SET name=?, username=?, email=?, role=?, crew_roles=?, color=?, departments=?, permissions=?, admin_channels=?, daily_cap=?, crew_channels=?, password_hash=?${extraSql} WHERE id=?`,
+      name ?? row.name, nextUsername, nextEmail, nextRole, rf.crew_roles, color ?? row.color, depts, nextPerms, adminChans, cap, crewChans, pwHash,
       ...Object.keys(extra).map((k) => extra[k]), row.id)
   } catch (e) {
     if (/unique/i.test(String(e))) return res.status(409).json({ error: 'That username or email is already taken' })
@@ -205,8 +327,14 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
   res.json(publicUser(await get('SELECT * FROM users WHERE id = ?', row.id)))
 }))
 
-router.delete('/:id', adminOnly, wrap(async (req, res) => {
+router.delete('/:id', wrap(async (req, res) => {
   if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account' })
+  {
+    const gone = await get('SELECT id, role FROM users WHERE id = ?', req.params.id)
+    if (!gone) return res.status(404).json({ error: 'User not found' })
+    const no = ambassadorScope(req, gone)
+    if (no) return res.status(no.status).json({ error: no.error })
+  }
   // Un-assign their tasks explicitly — remote databases may not enforce the
   // schema's ON DELETE SET NULL, so don't rely on it.
   await batch([
@@ -217,9 +345,124 @@ router.delete('/:id', adminOnly, wrap(async (req, res) => {
     ['UPDATE content SET editor_id = NULL WHERE editor_id = ?', req.params.id],
     ['UPDATE content SET designer_id = NULL WHERE designer_id = ?', req.params.id],
     ['DELETE FROM personal_tasks WHERE user_id = ?', req.params.id],
+    // Their register goes with them. The month grid draws a row per person,
+    // so rows for somebody who is gone are invisible — but the month's late
+    // and away counts were still adding them up, and a total that disagrees
+    // with the squares under it is worse than no total. Who MARKED a day is
+    // a different fact: that day still happened to somebody who is still here.
+    ['DELETE FROM attendance WHERE user_id = ?', req.params.id],
+    ['UPDATE attendance SET marked_by = NULL WHERE marked_by = ?', req.params.id],
+    // Nobody can ever open their bell again either.
+    ['DELETE FROM notifications WHERE user_id = ?', req.params.id],
+    // Their own papers and their own numbers. The Docs & KPI page reads
+    // person_docs with no join, so these rows do not quietly disappear when
+    // the person does — they go on being listed, under a name that no longer
+    // resolves, and a document blob is one of the heaviest rows here.
+    ['DELETE FROM person_docs WHERE user_id = ?', req.params.id],
+    ['DELETE FROM person_kpis WHERE user_id = ?', req.params.id],
+    // Their place in the ambassador programme, the cards they sent and what
+    // they were paid for them. The admin's queue draws a row per ambassador
+    // and falls back to "Someone who left" when the account behind one is
+    // gone — which is a sensible answer to a race, and a terrible one to a
+    // permanent state: the queue filled up with people who are not there.
+    ['DELETE FROM ambassador_cards WHERE ambassador_id IN (SELECT id FROM ambassadors WHERE user_id = ?)', req.params.id],
+    ['DELETE FROM ambassador_payouts WHERE ambassador_id IN (SELECT id FROM ambassadors WHERE user_id = ?)', req.params.id],
+    ['DELETE FROM ambassadors WHERE user_id = ?', req.params.id],
+    // How much time they spent on the board, and what they pressed, is about
+    // a person — so it leaves with the person. The Usage panel rolls its
+    // totals across every row it finds, and rows belonging to nobody would go
+    // on being counted under a name that no longer resolves.
+    ['DELETE FROM usage_day WHERE user_id = ?', req.params.id],
+    ['DELETE FROM usage_tap WHERE user_id = ?', req.params.id],
+    // And the sprint board stops holding a seat for somebody who has gone.
+    ['DELETE FROM sprint_task_assignees WHERE user_id = ?', req.params.id],
+    ['DELETE FROM sprint_owners WHERE user_id = ?', req.params.id],
     ['DELETE FROM users WHERE id = ?', req.params.id],
   ])
   res.json({ ok: true })
+}))
+
+// ---- when is somebody actually free -----------------------------------------
+// Booking a shoot used to be typing a date and a time and finding out
+// afterwards — from a 409, or from the operator on the day — whether that time
+// existed. The person holding the camera knows their week; the board did not,
+// so the board guessed and the guess was corrected by a human every time.
+//
+// This turns the same three facts the account already carries (which days they
+// work, from when, to when) plus the bookings they already have into the only
+// question a planner actually has: SHOW ME WHEN THEY ARE FREE, for this long.
+//
+// It is deliberately not a new store. An availability system that has to be
+// filled in separately from the working hours already on the account is two
+// sources of truth for one fact, and the second one goes stale in a fortnight.
+const SLOT_STEP = 30           // half-hour starts, like every calendar people know
+const DEFAULT_LEN = 120
+const toMin = (t) => Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5))
+const toHHMM = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
+const addDays = (iso, n) => {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+router.get('/:id/slots', wrap(async (req, res) => {
+  const who = Number(req.params.id)
+  const u = await get('SELECT id, name, work_start, work_end, work_days FROM users WHERE id = ?', who)
+  if (!u) return res.status(404).json({ error: 'No such person' })
+
+  const from = isDay(req.query.from) ? req.query.from : new Date().toISOString().slice(0, 10)
+  const days = Math.min(31, Math.max(1, Number(req.query.days) || 14))
+  const mins = Math.min(600, Math.max(15, Number(req.query.mins) || DEFAULT_LEN))
+  const excludeId = Number(req.query.exclude) || 0
+
+  // A day with no hours set is not a day with no work — it is a day nobody
+  // wrote hours for. Treated as a normal working day between sensible ends,
+  // so the picker is useful before anybody has filled anything in, and the
+  // answer says which it was so the UI can ask them to set theirs.
+  const setHours = !!(u.work_start && u.work_end)
+  const openAt = setHours ? toMin(u.work_start) : toMin('09:00')
+  const shutAt = setHours ? toMin(u.work_end) : toMin('18:00')
+  let workDays = null
+  try { workDays = JSON.parse(u.work_days || 'null') } catch { /* unset */ }
+  const setDays = Array.isArray(workDays) && workDays.length > 0
+
+  const to = addDays(from, days - 1)
+  // Everything already in their day — their shoots and their edit deadlines
+  // both, because an editor with a cut due on Thursday is not free all
+  // Thursday just because nobody booked an hour of it.
+  const booked = await all(
+    `SELECT id, title, recording_date, recording_time, recording_end
+     FROM content
+     WHERE operator_id = ? AND recording_date >= ? AND recording_date <= ?
+       AND recording_time IS NOT NULL AND done_at IS NULL`, who, from, to)
+
+  const out = []
+  for (let i = 0; i < days; i++) {
+    const day = addDays(from, i)
+    const weekday = new Date(`${day}T12:00:00Z`).getUTCDay()
+    const working = !setDays || workDays.includes(weekday)
+    const busy = booked.filter((b) => b.recording_date === day && b.id !== excludeId).map((b) => ({
+      id: b.id, title: b.title, from: b.recording_time,
+      to: b.recording_end || toHHMM(toMin(b.recording_time) + DEFAULT_LEN),
+    })).sort((a, b) => a.from.localeCompare(b.from))
+
+    const slots = []
+    if (working) {
+      for (let t = openAt; t + mins <= shutAt; t += SLOT_STEP) {
+        const clash = busy.some((b) => t < toMin(b.to) && toMin(b.from) < t + mins)
+        if (!clash) slots.push({ from: toHHMM(t), to: toHHMM(t + mins) })
+      }
+    }
+    out.push({ day, weekday, working, slots, busy })
+  }
+  res.json({
+    user: { id: u.id, name: u.name },
+    hours: setHours ? { from: u.work_start, to: u.work_end } : null,
+    days: setDays ? workDays : null,
+    mins,
+    calendar: out,
+  })
 }))
 
 export default router

@@ -80,7 +80,7 @@ const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' })
 await reset()
 const task = (await req('/content', 'POST', {
   title: 'x42 <b>&clip', channels: [chKey], type: 'video',
-  assignee_ids: [m2.id], editor_id: m1.id, status_id: sid(/to shoot/i), recording_date: tomorrow,
+  assignee_ids: [m2.id], editor_id: m1.id, status_id: sid(/^editing$/i), recording_date: tomorrow,
 })).data
 let sent = await sentList()
 let m = sent.find((s) => String(s.chat_id) === '121' && /📌/.test(s.text || ''))
@@ -97,7 +97,7 @@ sent = await sentList()
 const toAdmin = sent.find((s) => String(s.chat_id) === '120' && /✅/.test(s.text || ''))
 ok('the ADMIN hears the cut is ready — without being on the task', !!toAdmin && /Ready for your review/.test(toAdmin.text))
 ok('…the message hands over the file', !!toAdmin && /Watch it/.test(toAdmin.text) && toAdmin.text.includes('https://drive.google.com/x42cut'))
-ok('…and the task link', !!toAdmin && toAdmin.text.includes(`/todo?task=${task.id}`))
+ok('…and the task link', !!toAdmin && toAdmin.text.includes(`/brief?task=${task.id}`))
 ok('…names who finished it', !!toAdmin && /finished by Rita Editor/.test(toAdmin.text))
 ok('the owner hears it too', sent.some((s) => String(s.chat_id) === '122' && /Ready for your review/.test(s.text || '')))
 ok('the editor never hears their own delivery', !sent.some((s) => String(s.chat_id) === '121' && /✅/.test(s.text || '')))
@@ -110,6 +110,10 @@ await req(`/content/${task.id}`, 'PATCH', { status_id: sid(/editing/i) })
 sent = await sentList()
 m = sent.find((s) => String(s.chat_id) === '121' && /🔔/.test(s.text || ''))
 ok('a working-stage move says who moved it', !!m && /by Admin/.test(m.text) && /moved to <b>Editing<\/b>/.test(m.text))
+await reset()
+// The last stage will not take a piece without the address it went to, so the
+// fixture says where it went — as a real one does before anybody publishes it.
+await req(`/content/${task.id}`, 'PATCH', { post_link: 'https://instagram.com/p/x42' })
 await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: statuses.find((s) => s.is_final).id })
 ok('publishing celebrates', (await sentList()).some((s) => String(s.chat_id) === '121' && /🚀/.test(s.text || '') && /It's out!/.test(s.text)))
@@ -221,9 +225,19 @@ ok('…and the chip waits in the tray', (await p.locator('.cal-tray-chip', { has
 await mreq(`/content/${drag1.id}`, 'PATCH', { release_date: today })
 await p.reload(); await p.waitForTimeout(1200)
 await p.locator('.cal-scale .pill', { hasText: 'Week' }).click(); await p.waitForTimeout(600)
-ok('week cards drag too', await dragPill(p, p.locator('.wk-card', { hasText: 'x42ui drag video' }), p.locator(`.wk-col[data-drop="${targetIso}"]`)))
+// The month grid always holds tomorrow; the WEEK only holds it five days out
+// of seven. Today is Sunday and the week runs Monday to Sunday, so tomorrow
+// belongs to next week and there is no column to drop on — which is the
+// calendar being right, not the drag being broken. So the target is picked
+// from the days the week actually shows, and any day but the card's own will
+// prove a drag moved it.
+const weekDays = await p.locator('.wk-col[data-drop]').evaluateAll(
+  (els) => els.map((e) => e.getAttribute('data-drop')).filter(Boolean))
+const weekTarget = weekDays.includes(targetIso) ? targetIso : weekDays.find((d) => d !== today)
+ok('the week shows days that can be dropped on', !!weekTarget, JSON.stringify(weekDays))
+ok('week cards drag too', await dragPill(p, p.locator('.wk-card', { hasText: 'x42ui drag video' }), p.locator(`.wk-col[data-drop="${weekTarget}"]`)))
 after = (await mreq('/content')).data.find((x) => x.id === drag1.id)
-ok('…across the week columns', after.release_date === targetIso, `got ${after.release_date}`)
+ok('…across the week columns', after.release_date === weekTarget, `got ${after.release_date}, wanted ${weekTarget}`)
 await p.screenshot({ path: SP + 'r42-week-drag.png' })
 
 // ---- the reviewer's queue hands over the file ----
@@ -235,7 +249,7 @@ await p.goto(MAIN + '/brief'); await p.waitForTimeout(1400)
 const rqRow = p.locator('.rq-row', { hasText: 'x42ui review me' })
 ok('the review row shows a watch-the-cut button', (await rqRow.locator('a.rq-open').count()) === 1 &&
   (await rqRow.locator('a.rq-open').getAttribute('href')) === 'https://drive.google.com/x42uicut')
-await p.goto(MAIN + `/todo?task=${review.id}`); await p.waitForTimeout(1400)
+await p.goto(MAIN + `/brief?task=${review.id}`); await p.waitForTimeout(1400)
 ok('the modal’s Review block opens with the cut in reach', (await p.locator('.review-links a', { hasText: 'Watch the cut' }).count()) === 1)
 await p.screenshot({ path: SP + 'r42-review.png' })
 await p.close()

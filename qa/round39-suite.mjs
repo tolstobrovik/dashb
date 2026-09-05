@@ -85,9 +85,15 @@ await msg(700, `/start ${l1.code}`)
 ok('the OLD code is dead after re-linking', (await sentList()).some((s) => String(s.chat_id) === '700' && /Profile → Telegram/.test(s.text || '')))
 
 // the bell follows the person to the new chat only
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
-const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
-const task = (await req('/content', 'POST', { title: 'x39: moved phone video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shootId })).data
+// Fixtures park on Shot, not To shoot: since round 66 the shooting stage is a
+// BOOKING and demands a crew, three days and a brief. Shot is the same thing
+// this suite actually wants — real work, past the Idea stage — without
+// pretending to book a shoot these tests are not about.
+const shotId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
+// Shot folded into Editing in round 82, so the second stage this suite
+// moves to is Ready — it needs two distinct stages, not two names for one.
+const editId = (await req('/statuses')).data.find((s) => /^ready$/i.test(s.label)).id
+const task = (await req('/content', 'POST', { title: 'x39: moved phone video', channels: [chKey], type: 'video', assignee_ids: [member.id], status_id: shotId })).data
 await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 const afterMove = await sentList()
@@ -102,7 +108,7 @@ ok('…with a farewell', (await sentList()).some((s) => String(s.chat_id) === '7
 await reset()
 await msg(701, '/stop')
 ok('a second /stop does not crash', true)
-await req(`/content/${task.id}`, 'PATCH', { status_id: shootId })
+await req(`/content/${task.id}`, 'PATCH', { status_id: shotId })
 ok('a stopped chat hears nothing more', !(await sentList()).some((s) => String(s.chat_id) === '701' && /🔔/.test(s.text || '')))
 
 // ---- the nightly digest skips killed work ----

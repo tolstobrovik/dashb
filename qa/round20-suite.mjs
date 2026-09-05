@@ -26,48 +26,60 @@ const logout = async () => {
 
 await login('admin', 'admin123')
 await p.locator('.side-edit-btn', { hasText: 'Personalize' }).click()
-ok('main pages become editable rows', (await p.locator('.side-edit-row.grp-main').count()) >= 5)
-ok('the Manage group is editable too', (await p.locator('.side-edit-row.grp-manage').count()) === 3)
+// Round 88 sorted the sidebar's one column into four hubs, so the groups an
+// edit row belongs to are named for them: Work (what you are doing),
+// Channels, Numbers (what happened), People (who does it). The rows, the
+// eye, the arrows and the locked anchor are the same machinery.
+ok('the work pages become editable rows', (await p.locator('.side-edit-row.grp-work').count()) >= 5,
+  (await p.locator('.side-edit-row.grp-work').allTextContents()).join(' | '))
+// Post Production, Ambassadors, Team, Admin — the ambassador programme joined
+// the group in round 86.
+ok('the People hub is editable too', (await p.locator('.side-edit-row.grp-people').count()) === 4,
+  (await p.locator('.side-edit-row.grp-people').allTextContents()).join(' | '))
 ok('My Day is the locked anchor — no hide toggle',
-  (await p.locator('.side-edit-row.grp-main', { hasText: 'My Day' }).locator('.side-eye.locked').count()) === 1)
+  (await p.locator('.side-edit-row.grp-work', { hasText: 'My Day' }).locator('.side-eye.locked').count()) === 1)
 
-// hide To-Do (main) and Post Production (manage)
-await p.locator('.side-edit-row.grp-main', { hasText: 'To-Do' }).locator('button.side-eye').last().click()
-await p.locator('.side-edit-row.grp-manage', { hasText: 'Post Production' }).locator('button.side-eye').last().click()
-// move Statistics up one slot with the arrow
-const yBefore = (await p.locator('.side-edit-row.grp-main', { hasText: 'Statistics' }).boundingBox()).y
-await p.locator('.side-edit-row.grp-main', { hasText: 'Statistics' }).locator('button.side-eye').first().click()
+// hide Sprints (Work) and Post Production (People)
+await p.locator('.side-edit-row.grp-work', { hasText: 'Sprints' }).locator('button.side-eye').last().click()
+await p.locator('.side-edit-row.grp-people', { hasText: 'Post Production' }).locator('button.side-eye').last().click()
+// Move Design up one slot with the arrow. Measured as its PLACE in the
+// list, not its y: the sidebar's list scrolls once it is long enough, and a
+// pixel that moved because the list scrolled says nothing about the arrow.
+const placeOf = async (label) => (await p.locator('.side-edit-row.grp-work').allTextContents())
+  .findIndex((t) => t.includes(label))
+const iBefore = await placeOf('Design')
+await p.locator('.side-edit-row.grp-work', { hasText: 'Design' }).locator('button.side-eye').first().click()
 await p.waitForTimeout(200)
-const yAfter = (await p.locator('.side-edit-row.grp-main', { hasText: 'Statistics' }).boundingBox()).y
-ok('the arrow moves a page up the list', yAfter < yBefore, `${yBefore}→${yAfter}`)
+const iAfter = await placeOf('Design')
+ok('the arrow moves a page up the list', iAfter >= 0 && iAfter < iBefore, `${iBefore}→${iAfter}`)
 await p.locator('.side-edit-btn', { hasText: 'Done' }).click()
 
 const nav1 = await p.locator('.sidebar nav').textContent()
-ok('hidden pages left the sidebar', !nav1.includes('To-Do') && !nav1.includes('Post Production'))
+ok('hidden pages left the sidebar', !nav1.includes('Sprints') && !nav1.includes('Post Production'))
 ok('badge counts them', nav1.includes('2 hidden'))
 ok('hidden page still opens by URL', await (async () => {
-  await p.goto(BASE + '/todo'); await p.waitForTimeout(800)
-  return (await p.locator('.topbar h1').textContent()).includes('To-Do')
+  await p.goto(BASE + '/sprints'); await p.waitForTimeout(900)
+  return (await p.locator('.topbar h1').textContent()).includes('Sprints')
 })())
 await p.reload(); await p.waitForSelector('.sidebar nav', { timeout: 10000 }); await p.waitForTimeout(700)
-ok('preferences survive a reload', !(await p.locator('.sidebar nav').textContent()).includes('To-Do'))
+ok('preferences survive a reload', !(await p.locator('.sidebar nav').textContent()).includes('Sprints'))
 await p.screenshot({ path: 'r20-sidebar.png' })
 
 // ---- per-account: jas gets her own defaults in the same browser ----
 await logout()
 await login('jas', 'j1234')
 const jasNav = await p.locator('.sidebar nav').textContent()
-ok('another account keeps its own sidebar (To-Do visible)', jasNav.includes('To-Do'))
+ok('another account keeps its own sidebar (Sprints visible)', jasNav.includes('Sprints'))
 await logout()
 await login('admin', 'admin123')
-ok('the admin’s trims are still theirs', !(await p.locator('.sidebar nav').textContent()).includes('To-Do'))
+ok('the admin’s trims are still theirs', !(await p.locator('.sidebar nav').textContent()).includes('Sprints'))
 
 // ---- reset leaves no trace ----
 await p.locator('.side-edit-btn', { hasText: /Personalize/ }).click()
 await p.locator('.side-edit-btn', { hasText: 'Reset' }).click()
 await p.locator('.side-edit-btn', { hasText: 'Done' }).click()
 const navReset = await p.locator('.sidebar nav').textContent()
-ok('reset restores the full sidebar', navReset.includes('To-Do') && navReset.includes('Post Production'))
+ok('reset restores the full sidebar', navReset.includes('Sprints') && navReset.includes('Post Production'))
 
 await browser.close()
 console.log(fails === 0 ? '\nRound-20 suite clean.' : `\n${fails} PROBLEMS`)

@@ -22,8 +22,12 @@ if (oldDez) await req(`/users/${oldDez.id}`, 'DELETE')
 const dez = (await req('/users', 'POST', { name: 'Dana Designer', username: 'r11dez', password: 'd1234', role: 'designer' })).data
 ok('designer account in place', !!dez.id && (dez.crew_roles || []).includes('designer'))
 
-const p1 = await req('/content', 'POST', { title: 'r11: designed post', channels: ['instagram_main'], type: 'post' })
-ok('post fixture created', p1.status === 201)
+// The designer is set here rather than through the form: since round 78 the
+// form does not offer that hat, and what this suite is about is that the
+// COLUMN still works — the person is stored, judged by the design-ready date,
+// shown the post, and kept through a save made by somebody else.
+const p1 = await req('/content', 'POST', { title: 'r11: designed post', channels: ['instagram_main'], type: 'post', designer_id: dez.id })
+ok('post fixture created with its designer', p1.status === 201 && p1.data.designer_id === dez.id)
 const p2 = await req('/content', 'POST', {
   title: 'r11: late artwork', channels: ['instagram_main'], type: 'post',
   designer_id: dez.id, design_ready_date: yesterday,
@@ -34,16 +38,70 @@ ok('bogus designer rejected', (await req(`/content/${p2.data.id}`, 'PATCH', { de
 const tokD = await login('r11dez', 'd1234')
 const dezSees = (await req('/content', 'GET', null, tokD)).data
 ok('designer sees their post without holding the channel', dezSees.some((c) => c.id === p2.data.id))
-const doneOn = await req(`/content/${p1.data.id}`, 'PATCH', { done: true }, tokD)
+const doneOn = await req(`/content/${p1.data.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, tokD)
 ok('…but not posts they are not the designer of', doneOn.status === 403)
 const p3 = await req('/content', 'POST', { title: 'r11: crew right probe', channels: ['instagram_main'], type: 'post', designer_id: dez.id })
 const readySt11 = (await req('/statuses')).data.find((s) => /^ready$/i.test(s.label))
-const p3done = await req(`/content/${p3.data.id}`, 'PATCH', { milestone: 'designed' }, tokD)
+// The artwork rides along with the tick since round 69 — a stage that says
+// finished with nothing attached is one the reviewer has to chase.
+const p3bare = await req(`/content/${p3.data.id}`, 'PATCH', { milestone: 'designed' }, tokD)
+ok('the tick without the artwork is refused', p3bare.status === 400, `${p3bare.status} ${p3bare.data.error || ''}`)
+const p3done = await req(`/content/${p3.data.id}`, 'PATCH', { milestone: 'designed', design_link: 'https://drive.google.com/r11-art' }, tokD)
 ok('the designer marks their post designed → Ready (crew tick)', p3done.status === 200 && p3done.data.status_id === readySt11.id)
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
+
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") + button, .pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -52,39 +110,56 @@ await page.fill('input[name="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'r11: designed post' }).locator('.todo-main').click()
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'r11: designed post' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-ok('a post carries exactly one crew hat', (await page.locator('.modal .crew-field').count()) === 1)
+// The designer hat came off the picker in round 78: this board runs
+// idea → shoot → edit and a designer has no stage in it, so the hat was
+// offered on every task and picked on almost none. The COLUMN is untouched —
+// everything above still stores a designer, judges them by the design-ready
+// date, shows them the post and lets them tick it done — it is simply not
+// offered in the form any more, and every type carries the same two hats.
 const crewLabels = await page.locator('.modal .crew-field .crew-label').allTextContents()
-ok('…and that hat is the Designer', crewLabels.length === 1 && /Designer/.test(crewLabels[0]), crewLabels.join(' | '))
-ok('the ready deadline is labeled for design', /Design ready/.test(await page.locator('.modal .dates-block').textContent()))
+ok('a post carries the two hats with a stage', crewLabels.length === 2, crewLabels.join(' | '))
+ok('…and neither of them is the Designer', !crewLabels.some((l) => /Designer/i.test(l)), crewLabels.join(' | '))
+ok('the ready deadline is still labeled for design', /Design ready/.test(await page.locator('.modal .dates-block').textContent()))
 // Round 27: specialists lead their own group; everyone else may still take
 // a one-time duty from the group below.
-const dezSel = page.locator('.modal .crew-field select').first()
-const dezSpecial = await dezSel.locator('optgroup[label="Designers"] option').allTextContents()
-const dezAnyone = await dezSel.locator('optgroup[label*="Everyone"] option').allTextContents()
-ok('the designer list offers designer-role people', dezSpecial.some((o) => o.includes('Dana Designer')))
-ok('…and non-designers wait in the one-time group', !dezSpecial.some((o) => o.includes('Mirabbos') || o.includes('Jasmina'))
-  && dezAnyone.some((o) => o.includes('Mirabbos')), dezSpecial.join(' | '))
-await page.locator('.modal .tchip', { hasText: 'Video' }).click()
-ok('flipping to video brings Operator + Editor + Designer', (await page.locator('.modal .crew-field').count()) === 3)
-await page.locator('.modal .tchip', { hasText: 'Post' }).click()
-ok('…and back to post → one designer again', (await page.locator('.modal .crew-field').count()) === 1)
+const opSel = page.locator('.modal .crew-field .pp-field').first()
+const opSpecial = await ppNames(opSel, 'Operators')
+const opAnyone = await ppNames(opSel, 'Everyone else — one-time duty')
+// Who LEADS, not who appears — and the pool is scoped to the channel now
+// (round 70), so which specialists a given board offers depends on who is
+// assigned to it. What is invariant, and what this is about, is the parting:
+// a designer is never an operator specialist, and is still offered below for
+// a one-time duty.
+ok('the operator list keeps its specialists apart from one-time duty',
+  !opSpecial.some((o) => o.includes('Dana Designer')) && opAnyone.some((o) => o.includes('Dana Designer')),
+  `specialists=[${opSpecial.join(', ')}] anyone=[${opAnyone.join(', ')}]`)
+// What KIND of piece it is belongs to the brief, and the crew belongs to
+// Execution — so changing the type and then counting hats is two views, the
+// way a person would do it.
+await cmTab(page, 'Brief')
+await page.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' })
+await cmTab(page, 'Execution')
+ok('a video carries the same two hats', (await page.locator('.modal .crew-field').count()) === 2)
+await cmTab(page, 'Brief')
+await page.locator('.modal select.cm-pick').first().selectOption({ label: 'Post' })
+await cmTab(page, 'Execution')
+ok('…and so does a post — the hats no longer depend on the type', (await page.locator('.modal .crew-field').count()) === 2)
 
-await page.locator('.modal .crew-field select').first().selectOption(String(dez.id))
 await page.screenshot({ path: 'r11-modal.png' })
 await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 await page.locator('.toast', { hasText: 'synced' }).waitFor({ timeout: 6000 })
 await page.waitForTimeout(300)
 const savedP1 = (await req('/content')).data.find((c) => c.id === p1.data.id)
-ok('the modal save persisted the designer', savedP1.designer_id === dez.id)
-const picksCookie = (await ctx.cookies(BASE)).find((c) => c.name === 'satashkent_picks')
-ok('designer picks feed the learning cookie', !!picksCookie && decodeURIComponent(picksCookie.value).includes(`"${dez.id}"`))
+ok('the designer the API set is kept through a form save', savedP1.designer_id === dez.id)
 
-const rowTxt = await page.locator('.todo-row', { hasText: 'r11: designed post' }).textContent()
+const rowTxt = await page.locator('.tcard', { hasText: 'r11: designed post' }).first().textContent()
 ok('to-do row shows the designer chip', rowTxt.includes('Dana'))
 
 await page.goto(BASE + '/missed')

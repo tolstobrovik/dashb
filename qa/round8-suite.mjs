@@ -27,6 +27,29 @@ ok('fixtures in place', [t1, t2, prog, need].every((x) => x?.id))
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -36,10 +59,10 @@ await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 
 // ---- to-do rows ----
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
 await page.waitForTimeout(500)
-const row1 = page.locator('.todo-row', { hasText: 'r8: task for the menu' })
+const row1 = page.locator('.tcard', { hasText: 'r8: task for the menu' }).first()
 await row1.click({ button: 'right' })
 await page.waitForSelector('.ctx-menu', { timeout: 5000 })
 const items1 = await page.locator('.ctx-item').allTextContents()
@@ -55,10 +78,26 @@ ok('Esc closes the menu', (await page.locator('.ctx-menu').count()) === 0)
 await row1.click({ button: 'right' })
 await page.waitForSelector('.ctx-menu', { timeout: 5000 })
 await page.locator('.ctx-item', { hasText: 'Mark as done' }).click()
+await page.waitForTimeout(700)
+// Finishing a piece means it is published, and since round 86 the board will
+// not take that word without the link. A card has nowhere to paste one, so the
+// refusal opens the task on the box it is asking for rather than dead-ending
+// in an alert.
+ok('done without the link is refused, and the task opens on it',
+  !(await req('/content')).data.find((c) => c.id === t1.id).done_at
+  && (await page.locator('.modal').count()) === 1
+  && (await page.locator('.modal [data-field="post_link"] input').count()) === 1)
+await page.fill('.modal [data-field="post_link"] input', 'https://instagram.com/p/r8menu')
+await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
+await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
+await page.waitForTimeout(400)
+await row1.click({ button: 'right' })
+await page.waitForSelector('.ctx-menu', { timeout: 5000 })
+await page.locator('.ctx-item', { hasText: 'Mark as done' }).click()
 await page.waitForTimeout(600)
 ok('menu → Mark as done really lands', !!(await req('/content')).data.find((c) => c.id === t1.id).done_at)
 // delete through the menu (confirm auto-accepted)
-const row2 = page.locator('.todo-row', { hasText: 'r8: task to delete' })
+const row2 = page.locator('.tcard', { hasText: 'r8: task to delete' }).first()
 await row2.click({ button: 'right' })
 await page.waitForSelector('.ctx-menu', { timeout: 5000 })
 await page.locator('.ctx-item.danger', { hasText: 'Delete' }).click()

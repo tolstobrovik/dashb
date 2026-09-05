@@ -55,19 +55,37 @@ const newTask = async (over = {}) => {
   return data
 }
 
-// ---- gate 1: naming the shooter ----------------------------------------
+// ---- gate 1: booking the shoot -----------------------------------------
 {
   const t = await newTask()
-  // The gates ADVISE rather than refuse (the owner's call: ordinary work was
-  // being blocked — a written post has no cut, and footage handed over on a
-  // drive never becomes a link). What a stage is missing is still worked out
-  // and still shown on the card; the move itself is accepted.
+  // The later gates ADVISE rather than refuse (a written post has no cut, and
+  // footage handed over on a drive never becomes a link) — but BOOKING a shoot
+  // is a wall since round 66. The day passes whether or not a camera, a crew
+  // and a brief turned up, so it is the one promise that cannot be tidied up
+  // afterwards, and the wall stands exactly where the promise is made.
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, shooterT)
-  ok('→ To shoot is accepted even with no shooter named', r.status === 200, `${r.status} ${r.data.error || ''}`)
-  ok('  and the card really moved', r.data.status_id === S['To shoot'], String(r.data.status_id))
+  ok('→ To shoot is refused while nobody is holding the camera', r.status === 400, `${r.status} ${r.data.error || ''}`)
+  ok('  and the card did not move', (await req(`/content/${t.id}`)).data.status_id === S['Idea'])
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'], operator_id: shooter }, shooterT)
-  ok('→ To shoot passes once a shooter is named', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  a shooter alone is not the whole booking — the brief is asked for too',
+    r.status === 400, `${r.status} ${r.data.error || ''}`)
+
+  // A reference link used to be enough on its own. It is not any more: a crew
+  // can be booked for a day, and turning up to a link to somebody else's video
+  // is a day spent working out what to film. The script is asked for too.
+  r = await req(`/content/${t.id}`, 'PATCH', {
+    status_id: S['To shoot'], operator_id: shooter, reference_links: ['https://example.com/reference'],
+  }, shooterT)
+  ok('  …and so is the script — a booked day needs something to film',
+    r.status === 400 && /script/i.test(r.data.error || ''), `${r.status} ${r.data.error || ''}`)
+
+  r = await req(`/content/${t.id}`, 'PATCH', {
+    status_id: S['To shoot'], operator_id: shooter, reference_links: ['https://example.com/reference'],
+    script: 'Open on the main gate, walk through the courtyard, two students say why they chose it, close on the library.',
+  }, shooterT)
+  ok('→ To shoot passes once the shoot is properly booked', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and the card really moved', r.data.status_id === S['To shoot'], String(r.data.status_id))
 }
 
 // ---- gate 2: advice for every type, filmed work included ---------------
@@ -78,7 +96,9 @@ const newTask = async (over = {}) => {
 // work is. The gap is worked out and shown; the move goes through.
 {
   const t = await newTask({ operator_id: shooter })   // a reel
-  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, shooterT)
+  // Straight to Editing rather than by way of Shot: landing ON Shot is where
+  // the editor is demanded (round 66), and this block is about what happens
+  // when no editor has been named at all.
 
   // The card knows what the move is missing BEFORE it is made — this is the
   // question the board asks to decide whether to open the handover panel.
@@ -86,12 +106,20 @@ const newTask = async (over = {}) => {
   ok('the board is told the editing gate has a gap', (ask.data.gates || []).some((g) => g.key === 'edit'),
     JSON.stringify(ask.data.gates || []).slice(0, 200))
 
+  // The wall that asks for an editor stands on the stage AFTER the shoot.
+  // That used to be a stage called Shot — which left a hole, because a card
+  // dragged straight to Editing skipped the exact stage the wall matched and
+  // was never asked. Round 82 folded Shot away, so the stage after the shoot
+  // IS Editing, the rule lands where it always meant to, and the hole is
+  // closed. The crew's own tick is unaffected: it never met this gate.
   let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, shooterT)
-  ok('…and a REEL still moves to Editing with no editor named', r.status === 200, `${r.status} ${r.data.error || ''}`)
-  ok('  and it really moved', r.data.status_id === S['Editing'], String(r.data.status_id))
+  ok('…and a REEL is asked who cuts it before it reaches Editing', r.status === 400, `${r.status} ${r.data.error || ''}`)
+  ok('  and the card did not move',
+    (await req(`/content/${t.id}`)).data.status_id !== S['Editing'], String(r.data.status_id))
 
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'], editor_id: editor }, shooterT)
-  ok('naming the editor is accepted too', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('naming the editor lets it through', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  and now it really moved', r.data.status_id === S['Editing'], String(r.data.status_id))
 
   r = await req(`/content/${t.id}`, 'PATCH', {
     status_id: S['Editing'], editor_id: editor, shot_link: 'https://drive.google.com/raw-1',

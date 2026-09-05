@@ -1,12 +1,13 @@
+import { tr as tx } from '../lib/i18n.jsx'
 // One role picker for everywhere a person's role is set (Admin → People and
 // Team & hiring). Three account kinds — member, production crew, admin — and
 // for crew the capabilities MULTI-SELECT: editor, operator, designer, in any
 // mix. onChange always reports a normalized (role, crew_roles) pair; the
 // server applies the same normalization, so both stay in agreement.
 export const CREW_CAPS = [
-  { key: 'editor', label: 'Editor', desc: 'edits videos' },
-  { key: 'operator', label: 'Operator', desc: 'films videos' },
-  { key: 'designer', label: 'Designer', desc: 'designs posts & artwork' },
+  { key: 'editor', label: tx('Editor'), desc: 'edits videos' },
+  { key: 'operator', label: tx('Operator'), desc: 'films videos' },
+  { key: 'designer', label: tx('Designer'), desc: 'designs posts & artwork' },
 ]
 
 export const kindOf = (role) => (role === 'admin' ? 'admin' : role === 'member' ? 'member' : 'crew')

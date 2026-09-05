@@ -33,6 +33,56 @@ ok('fixtures in place', [op, relTask, shootTask, legacy].every((x) => x?.id))
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
+
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") + button, .pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -80,23 +130,27 @@ ok('shoot task sits in the Shooting table only',
 await page.screenshot({ path: 'r6-timetables.png', fullPage: true })
 
 // ---- crew dropdowns: operators & editors only (legacy picks stay) ----
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'r6: shoot in two days' }).locator('.todo-main').click()
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'r6: shoot in two days' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 // Round 27 freed the pickers: specialists lead their own group, everyone
 // else waits in the one-time-duty group below.
-const opSel = page.locator('.modal .crew-field select').first()
-const opSpecial = await opSel.locator('optgroup[label="Operators"] option').allTextContents()
-const opAnyone = await opSel.locator('optgroup[label*="Everyone"] option').allTextContents()
+const opSel = page.locator('.modal .crew-field .pp-field').first()
+const opSpecial = await ppNames(opSel, 'Operators')
+const opAnyone = await ppNames(opSel, 'Everyone else — one-time duty')
 ok('operator specialists lead their own group', opSpecial.some((o) => o.includes('Round Six Operator'))
   && !opSpecial.some((o) => o.includes('Jasmina') || o.includes('Mirabbos')), opSpecial.join(' | '))
 ok('…and anyone can take a one-time duty', opAnyone.some((o) => o.includes('Jasmina')), opAnyone.join(' | '))
 await page.keyboard.press('Escape')
 await page.waitForTimeout(200)
-await page.locator('.todo-row', { hasText: 'r6: legacy member crew' }).locator('.todo-main').click()
+await page.locator('.tcard', { hasText: 'r6: legacy member crew' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-const legacyOptions = await page.locator('.modal .crew-field select').first().locator('option').allTextContents()
+const legacyOptions = await ppNames(page.locator('.modal .crew-field .pp-field').first())
 ok('an old pick stays selectable on its task', legacyOptions.some((o) => o.includes('Jasmina')))
 await page.keyboard.press('Escape')
 await page.waitForTimeout(200)

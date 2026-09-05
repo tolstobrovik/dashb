@@ -25,6 +25,56 @@ ok('multi-role account stores both capabilities', Array.isArray(cru.crew_roles) 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 980 } })
 const page = await ctx.newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
+
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") + button, .pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
 await page.goto(BASE + '/login')
@@ -34,23 +84,26 @@ await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 
 // ---- 1. a person with both roles is offered for both hats ----
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'r10: crew pick probe' }).locator('.todo-main').click()
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-const opSel = page.locator('.modal .crew-field select').first()
-const edSel = page.locator('.modal .crew-field select').nth(1)
-const opOptions = await opSel.locator('option').allTextContents()
-const edOptions = await edSel.locator('option').allTextContents()
+const opSel = page.locator('.modal .crew-field .pp-field').first()
+const edSel = page.locator('.modal .crew-field .pp-field').nth(1)
+const opOptions = await ppNames(opSel)
+const edOptions = await ppNames(edSel)
 ok('an operator-role holder is offered as operator', opOptions.some((o) => o.includes('Rustam Multihat')))
 ok('…and, holding the editor role too, as editor of the same video', edOptions.some((o) => o.includes('Rustam Multihat')))
-await opSel.selectOption(String(cru.id))
-await edSel.selectOption(String(cru.id))
+await ppPick(opSel, 'Rustam Multihat')
+await ppPick(edSel, 'Rustam Multihat')
 await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 await page.waitForTimeout(400)
 const saved = (await req('/content')).data.find((c) => c.id === t1.id)
-ok('one person holds both hats after save', saved.operator_id === cru.id && saved.editor_id === cru.id)
+ok('one person holds both hats after save', saved.operator_id === cru.id && saved.editor_id === cru.id,
+  `want=${cru.id} op=${saved.operator_id} ed=${saved.editor_id}`)
 
 // ---- 3. the toast confirms only after the server did ----
 ok('a synced toast appeared for the save', (await page.locator('.toast').count()) >= 1
@@ -62,29 +115,40 @@ ok('toasts dismiss themselves', (await page.locator('.toast').count()) === 0)
 const picksCookie = (await ctx.cookies(BASE)).find((c) => c.name === 'satashkent_picks')
 ok('picks cookie written after the confirmed save', !!picksCookie && decodeURIComponent(picksCookie.value).includes(`"${cru.id}"`))
 for (let i = 0; i < 2; i++) {
-  await page.locator('.todo-row', { hasText: 'r10: crew pick probe' }).locator('.todo-main').click()
+  await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
+  await page.waitForSelector('.modal', { timeout: 8000 })
+  await cmTab(page, 'Execution')
   await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
   await page.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
   await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
   await page.waitForTimeout(300)
 }
-await page.locator('.todo-row', { hasText: 'r10: crew pick probe' }).locator('.todo-main').click()
+await page.locator('.tcard', { hasText: 'r10: crew pick probe' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-const rankedOps = await page.locator('.modal .crew-field select').first().locator('option').allTextContents()
+const rankedOps = await ppNames(page.locator('.modal .crew-field .pp-field').first())
+// [1], not [0]: the list opens with the "— nobody —" row, exactly as the old
+// <select> opened with its empty option.
 ok('most-picked person now leads the operator list', rankedOps[1].includes('Rustam Multihat'), rankedOps.slice(0, 3).join(' | '))
 await page.keyboard.press('Escape')
 await page.waitForTimeout(300)
 
 // quick-add fires a toast after the server confirms
-await page.locator('form.card input.input').first().fill('r10: toast probe')
-await page.locator('form.card button[type="submit"]').click()
-await page.locator('.toast', { hasText: 'Task added' }).waitFor({ timeout: 6000 })
-ok('quick-add toast says added + synced', /synced/.test(await page.locator('.toast', { hasText: 'Task added' }).textContent()))
+// The To-Do page's add line is gone; the board's own column foot took the job
+// and toasts the same way, once the server has actually answered.
+await page.locator('.board-col').first().locator('.board-quick-btn').click()
+await page.locator('.board-quick-input').fill('r10: toast probe')
+await page.keyboard.press('Enter')
+// "Added", not just any synced toast: the saves above leave their own on
+// screen and a strict locator matching two of them is a false failure.
+await page.locator('.toast', { hasText: 'Added' }).first().waitFor({ timeout: 6000 })
+ok('quick-add toast says added + synced', /synced/.test(await page.locator('.toast', { hasText: 'Added' }).first().textContent()))
 await page.screenshot({ path: 'r10-toast.png' })
 await page.waitForTimeout(2800)
 
 // delete via right-click → toast
-const probeRow = page.locator('.todo-row', { hasText: 'r10: toast probe' })
+const probeRow = page.locator('.tcard', { hasText: 'r10: toast probe' }).first()
 await probeRow.click({ button: 'right' })
 await page.waitForSelector('.ctx-menu', { timeout: 5000 })
 await page.locator('.ctx-item.danger', { hasText: 'Delete' }).click()

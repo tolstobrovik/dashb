@@ -76,9 +76,11 @@ ok('project detail shows earned progress with the breakdown', detTxt.includes('6
 await page.screenshot({ path: 'r4-project.png', fullPage: true })
 
 await page.goto(BASE + '/projects')
-await page.waitForSelector('.tbl', { timeout: 10000 })
-const probeRow = page.locator('tr', { hasText: 'R4 progress probe' })
-ok('projects table: progress bar + %', (await probeRow.locator('.proj-progress').count()) === 1 && (await probeRow.textContent()).includes('67%'))
+// The projects table became a list of cards in round 66 — one line per
+// project, scannable, with the bar and the number on the card itself.
+await page.waitForSelector('.proj-list', { timeout: 10000 })
+const probeRow = page.locator('.proj-card', { hasText: 'R4 progress probe' })
+ok('projects list: progress bar + %', (await probeRow.locator('.proj-bar-fill').count()) === 1 && (await probeRow.textContent()).includes('67%'))
 
 // ---- crew: three views, one filter ----
 await page.goto(BASE + '/crew')

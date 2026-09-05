@@ -35,7 +35,7 @@ const tag = Date.now().toString(36).slice(-4)
 const statuses = (await api('/statuses', 'GET', null, T)).data
 const sid = (re) => statuses.find((s) => re.test(s.label))?.id
 const mk = (over) => api('/content', 'POST', {
-  channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), ...over,
+  channels: ['instagram_main'], type: 'video', status_id: sid(/^editing$/i), ...over,
 }, T).then((r) => r.data)
 
 const relA = await mk({ title: `r60 ${tag} release on IG`, release_date: day(2), release_time: '18:00' })
@@ -90,8 +90,11 @@ await page.goto(BASE + '/brief')
 // Wait for the shell to actually paint rather than guessing at a duration —
 // the first load after a restart is slower than any number worth hard-coding.
 await page.waitForSelector('a[href="/dept/instagram_main"]', { timeout: 20000 })
-ok('the sidebar offers Releases', await page.locator('a[href="/releases"]').count() === 1)
-ok('…and Recordings', await page.locator('a[href="/recordings"]').count() === 1)
+// Scoped to the sidebar: round 82 gave the phone's tab bar the slot To-Do used
+// to hold, and that bar is in the DOM on a desktop too (CSS hides it), so a
+// bare href count sees Releases twice and says the sidebar has lost it.
+ok('the sidebar offers Releases', await page.locator('.sidebar a[href="/releases"]').count() === 1)
+ok('…and Recordings', await page.locator('.sidebar a[href="/recordings"]').count() === 1)
 
 // ---- Releases: every channel at once ----
 await openPage('/releases')
@@ -137,7 +140,9 @@ ok('…and it survives a reload, being in the address', (await (async () => {
 })()))
 await page.locator('.section-head .cf-sel').first().selectOption('')
 await page.waitForTimeout(500)
-await page.locator('.cf-bar .cf-sel').nth(1).selectOption('video') // a post is never a shoot, so Recordings offers no 'post'
+// The person filter became a picker in round 86, so type is the first select
+// left in the row. A post is never a shoot, so Recordings offers no 'post'.
+await page.locator('.cf-bar .cf-sel').nth(0).selectOption('video')
 await page.waitForTimeout(500)
 ok('the person / type / stage row narrows it too', (await page.locator('.cf-count').count()) === 1)
 await page.locator('.cf-clear').click()

@@ -15,13 +15,15 @@ const req = async (p, m = 'GET', b, t = T) => {
 // ---- dashboard config API ----
 const chans = (await req('/channels')).data
 const ig = chans.find((c) => c.key === 'instagram_main')
-ok('channels carry a dashboard field (default null)', 'dashboard' in ig && ig.dashboard == null)
+ok('channels carry a dashboard field', 'dashboard' in ig, JSON.stringify(ig.dashboard))
+// 'metrics' is an unknown key now — the trackers it drew went in round 82 —
+// so it is dropped exactly like 'bogus', which is the point of this check.
 const saved = await req(`/channels/${ig.id}/dashboard`, 'PATCH', { dashboard: ['timetable', 'metrics', 'campaigns', 'upcoming', 'done', 'bogus'] })
-ok('admin saves a layout; unknown keys dropped', saved.status === 200 && JSON.parse(saved.data.dashboard).join(',') === 'timetable,metrics,campaigns,upcoming,done', JSON.stringify(saved.data.dashboard))
+ok('admin saves a layout; unknown keys dropped', saved.status === 200 && JSON.parse(saved.data.dashboard).join(',') === 'timetable,campaigns,upcoming,done', JSON.stringify(saved.data.dashboard))
 ok('empty layout refused', (await req(`/channels/${ig.id}/dashboard`, 'PATCH', { dashboard: [] })).status === 400)
-ok('member without the layout right is refused', (await req(`/channels/${ig.id}/dashboard`, 'PATCH', { dashboard: ['metrics'] }, JT)).status === 403)
+ok('member without the layout right is refused', (await req(`/channels/${ig.id}/dashboard`, 'PATCH', { dashboard: ['content'] }, JT)).status === 403)
 const yt = chans.find((c) => c.key === 'youtube')
-ok('outsider member refused even with array', (await req(`/channels/${yt.id}/dashboard`, 'PATCH', { dashboard: ['metrics'] }, JT)).status === 403)
+ok('outsider member refused even with array', (await req(`/channels/${yt.id}/dashboard`, 'PATCH', { dashboard: ['content'] }, JT)).status === 403)
 
 // ---- notes CRUD ----
 const projects = (await req('/projects')).data
@@ -60,29 +62,32 @@ await page.goto(BASE + '/dept/instagram_main')
 await page.waitForSelector('.section-head', { timeout: 10000 })
 await page.waitForTimeout(600)
 const heads = await page.locator('.section-head h2').allTextContents()
-ok('customized layout renders in saved order', heads.join(',') === 'Releasing,Shooting,Metrics,Campaigns,Upcoming,Done', heads.join(','))
-ok('growth hidden when toggled off', !heads.includes('Growth'))
+ok('customized layout renders in saved order', heads.join(',') === 'Releasing,Shooting,Campaigns,Upcoming,Done', heads.join(','))
 ok('release + shooting timetables show 7 day rows each', await page.locator('.tt-row').count() === 14)
 ok('campaigns board lists this channel’s campaigns', (await page.locator('.pc-camp-row').count()) >= 1)
 ok('upcoming board lists dated tasks', (await page.locator('.ov-row').count()) >= 2)
 await page.screenshot({ path: 'dash-custom.png', fullPage: true })
 
-// Customize modal round-trip: put Growth back on top via the UI
+// Customize modal round-trip: put a hidden section back on top via the UI.
+// This used to move Growth, which drew the metric trackers; both went in
+// round 82, so it moves the Content workspace instead — the same round trip
+// through the same modal.
 await page.getByRole('button', { name: 'Customize' }).click()
 await page.waitForSelector('.dash-row', { timeout: 8000 })
-ok('modal lists every section once', await page.locator('.dash-row').count() === 8)
+ok('modal lists every section once', await page.locator('.dash-row').count() === 6,
+  String(await page.locator('.dash-row').count()))
 await page.screenshot({ path: 'dash-modal.png' })
-const growthRow = page.locator('.dash-row', { hasText: 'Growth' })
-await growthRow.locator('input[type=checkbox]').check()
-for (let i = 0; i < 6; i++) {
-  const idx = await page.locator('.dash-row').evaluateAll((rows) => rows.findIndex((r) => r.textContent.includes('Growth')))
+const contentRow = page.locator('.dash-row', { hasText: 'Content workspace' })
+await contentRow.locator('input[type=checkbox]').check()
+for (let i = 0; i < 8; i++) {
+  const idx = await page.locator('.dash-row').evaluateAll((rows) => rows.findIndex((r) => r.textContent.includes('Content workspace')))
   if (idx === 0) break
-  await growthRow.getByRole('button', { name: 'Move up' }).click()
+  await contentRow.getByRole('button', { name: 'Move up' }).click()
 }
 await page.getByRole('button', { name: 'Save layout' }).click()
 await page.waitForTimeout(800)
 const heads2 = await page.locator('.section-head h2').allTextContents()
-ok('UI save puts Growth first', heads2[0] === 'Growth', heads2.join(','))
+ok('UI save puts the moved section first', heads2[0] === 'Content', heads2.join(','))
 
 // A member sees the same customized layout
 const mctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -96,7 +101,16 @@ await mp.goto(BASE + '/dept/instagram_main')
 await mp.waitForSelector('.section-head', { timeout: 10000 })
 await mp.waitForTimeout(600)
 const mheads = await mp.locator('.section-head h2').allTextContents()
-ok('member sees the customized layout too', mheads[0] === 'Growth' && mheads.includes('Releasing') && mheads.includes('Shooting'), mheads.join(','))
+ok('member sees the customized layout too', mheads[0] === 'Content' && mheads.includes('Releasing') && mheads.includes('Shooting'), mheads.join(','))
+
+// Put the channel back the way it was found, the moment the custom layout
+// stops being needed. This suite is the only one that customizes a dashboard,
+// and it runs FIRST on a stack sixty-odd other suites share — so the layout
+// it leaves behind is the layout they all inherit, and a layout without the
+// content workspace means that channel's board has no kanban, which is what
+// most of them open it for. Restored here rather than at the end so a failure
+// further down cannot skip it.
+await req(`/channels/${ig.id}/dashboard`, 'PATCH', { dashboard: ['content'] })
 ok('member without rights sees no Customize button', (await mp.getByRole('button', { name: 'Customize' }).count()) === 0)
 await mctx.close()
 

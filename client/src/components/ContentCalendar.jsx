@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clapperboard, Send, Plus } from 'lucide-react'
 import { WEEKDAYS, MONTHS, localISO, todayISO, addDaysISO, typeInfo, onColor, statusIcon, isDeletedLabel } from '../lib/constants.js'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1)
@@ -20,7 +21,7 @@ function mondayOf(iso) {
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
   return localISO(d)
 }
-const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 
 // The content calendar, used for both date fields: mode 'release' reads
 // release_date, mode 'recording' reads recording_date. Two scales:
@@ -28,11 +29,25 @@ const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US'
 //  - Week: seven tall columns with rich cards (type, stage, time) — the
 //    day-to-day working view. Cards drag between days in both scales;
 //    click a card to open it, a day to plan it, + to add straight there.
+// How many pills a day draws before it stops and offers the day instead. A
+// month whose rows are all different heights is a month you cannot scan, and
+// the row height is set by whichever day happens to be busiest.
+const CAL_MAX = 3
+const WK_MAX = 6
+
 export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [], onRange }) {
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
   const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()))
-  // The last used scale is remembered — most people live in one of them.
+  // The last used scale is remembered — most people live in one of them. On a
+  // phone the first answer is the week, not the month: a month of seven
+  // columns on a 390px screen can only show a dot per piece of work, and the
+  // day-to-day question is "what is on this week", which the week view answers
+  // with the titles still readable. A choice, once made, is still remembered.
+  // The month is the default everywhere now, a phone included. A week is a
+  // horizon you check; a month is the one you PLAN in, and the planning is
+  // what people open a calendar for. The week is still one press away and,
+  // once chosen, is still remembered.
   const [scale, setScaleState] = useState(() => localStorage.getItem('satashkent_cal_scale') || 'month')
   const setScale = (s) => { setScaleState(s); localStorage.setItem('satashkent_cal_scale', s) }
   const today = todayISO()
@@ -219,13 +234,13 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
   return (
     <div className="card cal">
       <div className="cal-head">
-        <button className="icon-btn" onClick={() => shift(-1)} data-tip="Previous" aria-label="Previous"><ChevronLeft size={18} /></button>
+        <button className="icon-btn" onClick={() => shift(-1)} data-tip={tx("Previous")} aria-label={tx("Previous")}><ChevronLeft size={18} /></button>
         <h3>{title}</h3>
-        <button className="icon-btn" onClick={() => shift(1)} data-tip="Next" aria-label="Next"><ChevronRight size={18} /></button>
-        <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={goToday} data-tip="Jump back to today">Today</button>
+        <button className="icon-btn" onClick={() => shift(1)} data-tip={tx("Next")} aria-label={tx("Next")}><ChevronRight size={18} /></button>
+        <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={goToday} data-tip={tx("Jump back to today")}>{tx("Today")}</button>
         <div className="pill-group cal-scale">
-          <button className={'pill' + (scale === 'month' ? ' active' : '')} onClick={() => setScale('month')} data-tip="Whole month at a glance">Month</button>
-          <button className={'pill' + (scale === 'week' ? ' active' : '')} onClick={() => setScale('week')} data-tip="One week with full task cards">Week</button>
+          <button className={'pill' + (scale === 'month' ? ' active' : '')} onClick={() => setScale('month')} data-tip={tx("Whole month at a glance")}>{tx("Month")}</button>
+          <button className={'pill' + (scale === 'week' ? ' active' : '')} onClick={() => setScale('week')} data-tip={tx("One week with full task cards")}>{tx("Week")}</button>
         </div>
 
       </div>
@@ -257,16 +272,16 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   <span className={`chip ct-${it.type} tray-type`}>{typeInfo(it.type).label}</span>
                   {canMove && (
                     <span className="tray-quick">
-                      <button type="button" className="qbtn" data-tip="Schedule for today"
-                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, todayISO()) }}>Today</button>
-                      <button type="button" className="qbtn" data-tip="Schedule for tomorrow"
-                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, addDaysISO(todayISO(), 1)) }}>Tmrw</button>
+                      <button type="button" className="qbtn" data-tip={tx("Schedule for today")}
+                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, todayISO()) }}>{tx("Today")}</button>
+                      <button type="button" className="qbtn" data-tip={tx("Schedule for tomorrow")}
+                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, addDaysISO(todayISO(), 1)) }}>{tx("Tmrw")}</button>
                     </span>
                   )}
                 </div>
               )
             })}
-            {trayItems.length === 0 && <span className="tt-none">drop here to unschedule</span>}
+            {trayItems.length === 0 && <span className="tt-none">{tx("drop here to unschedule")}</span>}
           </div>
         </div>
       )}
@@ -289,14 +304,14 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   {dayItems.length > 0 && <span className="wk-count">{dayItems.length}</span>}
                   <span style={{ flex: 1 }} />
                   {onAddAt && (
-                    <button className="icon-btn wk-add" data-tip="New task on this day" aria-label="New task on this day"
+                    <button className="icon-btn wk-add" data-tip={tx("New task on this day")} aria-label={tx("New task on this day")}
                       onClick={(e) => { e.stopPropagation(); onAddAt(iso) }}>
                       <Plus size={14} />
                     </button>
                   )}
                 </div>
                 <div className="wk-cards">
-                  {dayItems.map((it) => {
+                  {dayItems.slice(0, WK_MAX).map((it) => {
                     const st = statusesById[it.status_id]
                     const TIcon = typeInfo(it.type).icon
                     const SIcon = st ? statusIcon(st.label) : null
@@ -320,6 +335,9 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                       </div>
                     )
                   })}
+                  {dayItems.length > WK_MAX && (
+                    <span className="cal-more">{tx('{n} more', { n: dayItems.length - WK_MAX })}</span>
+                  )}
                 </div>
               </div>
             )
@@ -346,7 +364,12 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   >
                     <div className="cal-daynum">{date.getDate()}</div>
                     <div className="cal-events">
-                      {dayItems.map((it) => {
+                      {/* A ceiling, so one busy day cannot make its whole week
+                          row twice the height of the others and push the month
+                          off the screen. What does not fit is not hidden — the
+                          day says how many more it holds, and opens on the
+                          whole list in time order. */}
+                      {dayItems.slice(0, CAL_MAX).map((it) => {
                         // Every task shows — a crowded day makes its week row
                         // taller instead of hiding work behind a "+N more".
                         // The pill wears its pipeline stage's color (To shoot =
@@ -384,6 +407,13 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                           </div>
                         )
                       })}
+                      {/* Not a button. The whole day already opens the day,
+                           so a second control inside it would be a 36px target
+                           competing with a 90px one for the same press. This
+                           is the count; the cell is the door. */}
+                      {dayItems.length > CAL_MAX && (
+                        <span className="cal-more">{tx('{n} more', { n: dayItems.length - CAL_MAX })}</span>
+                      )}
                     </div>
                   </div>
                 )

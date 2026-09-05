@@ -1,5 +1,6 @@
-// This round's four changes, verified in the real UI: the add-metric tile
-// under pinned metrics, the bigger Gantt, site-wide text size, crew on
+// This round's changes, verified in the real UI: the bigger Gantt, site-wide
+// text size, and crew on a post. (The fourth — an add-metric tile under the
+// pinned metrics — went with the metrics themselves in round 82.) Crew on
 // every task type.
 import { chromium } from 'playwright'
 const BASE = 'http://localhost:4090'
@@ -22,29 +23,38 @@ const post = (await req('/content', 'POST', { title: 'Crew on a post', channels:
 ok('post carries optional crew', post.operator_id === jas.id && post.editor_id === jas.id)
 ok('crew clears with null', (await req(`/content/${post.id}`, 'PATCH', { operator_id: null })).data.operator_id === null)
 
-// pin a metric so the hero row renders (Brand Awareness case)
-const tr = (await req('/trackers', 'POST', { department: 'instagram_main', label: 'Brand Awareness', current: 40, target: 100, unit: 'pts', period: 'monthly' })).data
-await req(`/trackers/${tr.id}`, 'PATCH', { is_primary: 1 })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await browser.newPage({ viewport: { width: 1440, height: 950 } })
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 await page.goto(BASE + '/login')
 await page.fill('input[name="username"]', 'admin')
 await page.fill('input[name="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
-
-// 1. Add-metric tile under the pinned metric
-await page.goto(BASE + '/dept/instagram_main')
-await page.waitForSelector('.hero-metric', { timeout: 10000 })
-const tile = page.locator('.add-metric-tile')
-ok('add-metric tile sits under Brand Awareness', (await tile.count()) === 1)
-await tile.click()
-await page.waitForSelector('.modal', { timeout: 8000 })
-ok('tile opens the metric form', (await page.locator('.modal').textContent()).includes('Add metric'))
-await page.screenshot({ path: 'polish-metric.png' })
-await page.keyboard.press('Escape')
 
 // 2. Gantt is bigger
 await page.goto(BASE + '/projects')
@@ -72,22 +82,44 @@ ok('Small works too', (await page.evaluate(() => document.documentElement.style.
 await page.locator('.seg-btn', { hasText: 'Medium' }).click()
 ok('Medium resets to normal', (await page.evaluate(() => document.documentElement.style.zoom)) === '')
 
-// 4. A post carries the designer hat, offered to designer-role people
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'Crew on a post' }).locator('.todo-main').click()
+// 4. A post carries the hats that have a stage, and they persist
+// This board runs idea → shoot → edit. The designer hat came off the picker
+// in round 78 — it was offered on every task and picked on almost none — so
+// a post now gets the same two hats every other type has, not a design
+// pipeline of its own. The column and anyone already holding it are
+// untouched; it is simply not offered any more.
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'Crew on a post' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-ok('a post carries one designer hat', (await page.locator('.modal .crew-field').count()) === 1)
+const hats = await page.locator('.modal .crew-label').allTextContents()
+ok('a post carries the two hats with a stage', hats.length === 2, hats.join(' / '))
+ok('the designer hat is not offered', !hats.some((h) => /designer/i.test(h)), hats.join(' / '))
 ok('marked optional', (await page.locator('.modal').textContent()).includes('optional'))
-await page.locator('.modal .crew-field select').first().selectOption({ label: 'Polish Designer' })
+// The crew seats are a searchable picker now, not a <select> — a select's
+// type-ahead jumps to the first matching name instead of narrowing the list,
+// which is the thing that was wrong with it. Driven the way a person drives
+// it: open the second seat, type part of the name, press the row.
+await page.locator('.modal .crew-field .pp-field').nth(1).click()
+await page.waitForSelector('.pp-pop .pp-search .input', { timeout: 8000 })
+await page.fill('.pp-pop .pp-search .input', 'Polish Oper')
+await page.waitForTimeout(250)
+const narrowed = await page.locator('.pp-pop .pp-row').allTextContents()
+ok('typing a name narrows the list rather than jumping to it',
+  narrowed.length > 0 && narrowed.every((n) => /Polish Oper/i.test(n)), narrowed.join(' / '))
+await page.locator('.pp-pop .pp-row', { hasText: 'Polish Operator' }).first().click()
+await page.waitForTimeout(300)
 await page.getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
-ok('crew persisted from the modal', (await req(`/content/${post.id}`)).data.designer_id === poldes.id)
+const savedPost = (await req(`/content/${post.id}`)).data
+ok('crew persisted from the modal', savedPost.editor_id === polop.id,
+  `wanted ${polop.id}, got editor=${savedPost.editor_id} operator=${savedPost.operator_id}`)
 
 await browser.close()
 await req(`/content/${post.id}`, 'DELETE')
 await req(`/users/${polop.id}`, 'DELETE')
 await req(`/users/${poldes.id}`, 'DELETE')
-await req(`/trackers/${tr.id}`, 'DELETE')
 console.log(fails === 0 ? '\nPolish suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails === 0 ? 0 : 1)

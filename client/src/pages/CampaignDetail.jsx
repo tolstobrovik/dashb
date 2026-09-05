@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import { api } from '../lib/api.js'
+import { rewardIfFinished } from '../lib/reward.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { can, dateLabel } from '../lib/constants.js'
@@ -70,6 +71,7 @@ export default function CampaignDetail() {
 
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
+    rewardIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   const createContent = async (payload) => {
@@ -226,11 +228,11 @@ export default function CampaignDetail() {
         />
       )}
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem === 'new' ? null : openItem}
           statuses={statuses}
           defaults={{ campaign_id: c.id }}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onCreate={createContent}
           onUpdate={updateContent}
           onDelete={deleteContent}

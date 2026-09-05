@@ -1,18 +1,26 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Sun, Clapperboard, Scissors, Send, AlertCircle, CheckCircle2, CalendarRange, Check, StickyNote, ListTodo, PenLine, Trash2, Palette,
   Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, RotateCcw, ExternalLink, Link2,
-  SlidersHorizontal, Eye, EyeOff,
+  SlidersHorizontal, Eye, EyeOff, CalendarClock, Plus,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, onColor, isDeletedLabel, can, tashkentDay } from '../lib/constants.js'
 import ContentModal from '../components/ContentModal.jsx'
+import { rewardIfFinished } from '../lib/reward.js'
+import MyLate from '../components/MyLate.jsx'
+import MyPay from '../components/MyPay.jsx'
+import MyGrade from '../components/MyGrade.jsx'
+import Streak from '../components/Streak.jsx'
+import { deliveryHref, splitDelivery } from '../lib/text.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone, moveTo } from '../lib/finish.js'
 import { playDone } from '../lib/sound.js'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 
 // My Day — the deadline-first landing page, in two shapes:
 //   crew (operator / editor / both): what to shoot at which hour, the editing
@@ -88,10 +96,10 @@ function CrewCalendar({ tasks, userId, today, byKey, onOpen }) {
   return (
     <div className="card card-pad">
       <div className="cc-nav">
-        <button className="icon-btn" onClick={() => move(-1)} aria-label="Previous month"><ChevronLeft size={16} /></button>
+        <button className="icon-btn" onClick={() => move(-1)} aria-label={tx("Previous month")}><ChevronLeft size={16} /></button>
         <b>{monthName}</b>
-        <button className="icon-btn" onClick={() => move(1)} aria-label="Next month"><ChevronRight size={16} /></button>
-        {month !== today.slice(0, 7) && <button className="lnk" onClick={() => setMonth(today.slice(0, 7))}>today</button>}
+        <button className="icon-btn" onClick={() => move(1)} aria-label={tx("Next month")}><ChevronRight size={16} /></button>
+        {month !== today.slice(0, 7) && <button className="lnk" onClick={() => setMonth(today.slice(0, 7))}>{tx("today")}</button>}
       </div>
       <div className="cc-grid cc-headrow">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} className="cc-head">{d}</div>)}
@@ -132,13 +140,13 @@ function BriefRow({ item, when, time, late = false, done = false, work = null, b
     <button className="ov-row" onClick={() => onOpen(item)}
       onContextMenu={onMenu ? (e) => onMenu(e, item) : undefined}>
       <span className={'brief-when' + (late ? ' late' : '')}>
-        {time ? <b>{time}</b> : <span className="brief-anytime">any time</span>}
+        {time ? <b>{time}</b> : <span className="brief-anytime">{tx("any time")}</span>}
         {when && <span className="brief-when-sub">{when}</span>}
       </span>
       <span className="brief-main">
         <span className={'ov-title' + (done ? ' done-txt' : '')}>{item.title}</span>
         {item.description && !done && (
-          <span className="brief-note" data-tip="Notes for shooting / editing — open the task for the full text">
+          <span className="brief-note" data-tip={tx("Notes for shooting / editing — open the task for the full text")}>
             <StickyNote size={11} /> {item.description}
           </span>
         )}
@@ -205,13 +213,17 @@ function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
     // The files this row's work runs on, told apart at a glance: the
     // operator's raw FOOTAGE is the editor's source; the CUT (or the DESIGN)
     // is this person's own deliverable. No more guessing which link is which.
-    const ok = (u) => u && /^https?:\/\//i.test(u)
+    // A delivery through a channel's shared folder is stored as the folder
+    // and the file the person named — the address has to be taken out of it
+    // before it can be opened (see splitDelivery in lib/text.js).
+    const ok = (u) => deliveryHref(u)
+    const note = (u) => { const n = splitDelivery(u).note; return n ? ` · ${n}` : '' }
     const links = [
       ok(e.t.shot_link) && (e.kind !== 'shoot'
-        ? { url: e.t.shot_link, label: 'Footage', cls: 'src', LIcon: Clapperboard, tip: 'The raw material from the operator — your source' }
-        : { url: e.t.shot_link, label: 'Footage', cls: 'mine', LIcon: Clapperboard, tip: 'Your delivered footage' }),
-      e.kind === 'edit' && ok(e.t.ready_link) && { url: e.t.ready_link, label: 'Cut', cls: 'mine', LIcon: Scissors, tip: 'Your finished cut' },
-      e.kind === 'design' && ok(e.t.design_link) && { url: e.t.design_link, label: 'Design', cls: 'mine', LIcon: Palette, tip: 'Your finished artwork' },
+        ? { url: ok(e.t.shot_link), label: 'Footage' + note(e.t.shot_link), cls: 'src', LIcon: Clapperboard, tip: 'The raw material from the operator — your source' }
+        : { url: ok(e.t.shot_link), label: 'Footage' + note(e.t.shot_link), cls: 'mine', LIcon: Clapperboard, tip: 'Your delivered footage' }),
+      e.kind === 'edit' && ok(e.t.ready_link) && { url: ok(e.t.ready_link), label: 'Cut' + note(e.t.ready_link), cls: 'mine', LIcon: Scissors, tip: 'Your finished cut' },
+      e.kind === 'design' && ok(e.t.design_link) && { url: ok(e.t.design_link), label: 'Design' + note(e.t.design_link), cls: 'mine', LIcon: Palette, tip: 'Your finished artwork' },
     ].filter(Boolean)
     return (
       <div className="cb-row" role="button" tabIndex={0} onClick={() => onOpen(e.t)}
@@ -270,7 +282,7 @@ function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
   // (red, open by default) and goes calm — "read" — the moment it hits zero.
   const MissedSec = ({ laneKey, items }) => {
     if (items.length === 0) {
-      return <div className="cb-sec cb-clear"><CheckCircle2 size={13} /> Nothing overdue — all clear</div>
+      return <div className="cb-sec cb-clear"><CheckCircle2 size={13} />{' '}{tx("Nothing overdue — all clear")}</div>
     }
     const k = `${laneKey}:missed`
     const open = unfolded[k] === undefined ? true : unfolded[k]
@@ -316,7 +328,10 @@ function CrewBoard({ lanes, caps = [], today, byKey, onOpen, onMenu }) {
    task to Ready for the SMM. Module-level so poll ticks don't remount it. */
 function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
   const relCol = rev.target === 'operator' ? 'shot_link' : rev.target === 'designer' ? 'design_link' : 'ready_link'
-  const [link, setLink] = useState(rev[relCol] || '')
+  // Deliberately EMPTY, not pre-filled with the file that was sent back.
+  // Pre-filling it made "Fixed" one press away from re-delivering the same
+  // cut — which is how a whole revision round used to evaporate.
+  const [link, setLink] = useState('')
   const [busy, setBusy] = useState(false)
   // The task's other rounds — everything asked before this one.
   const prior = (rev.history || []).filter((h) => h.round !== rev.round)
@@ -353,7 +368,7 @@ function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
           {rev.rubrika && <span className="chip chip-muted">#{rev.rubrika}</span>}
           {rev.script && (
             <details className="pravki-extra">
-              <summary>The script / ТЗ</summary>
+              <summary>{tx("The script / ТЗ")}</summary>
               <div className="crew-script">{rev.script}</div>
             </details>
           )}
@@ -373,13 +388,18 @@ function PravkiCard({ rev, byKey, today, onOpen, onFixed }) {
         </details>
       )}
       <div className="pravki-fix">
-        <input className="input" placeholder="Updated Google-Drive link…" value={link} onChange={(e) => setLink(e.target.value)} />
-        {rev[relCol] && /^https?:\/\//i.test(rev[relCol]) && (
-          <a className="btn btn-sm" href={rev[relCol]} target="_blank" rel="noreferrer"
-            data-tip="Open the current file" aria-label="Open the current file"><ExternalLink size={14} /></a>
+        <input className="input" placeholder={tx("Link to the NEW file…")} value={link} onChange={(e) => setLink(e.target.value)} />
+        {deliveryHref(rev[relCol]) && (
+          <a className="btn btn-sm" href={deliveryHref(rev[relCol])} target="_blank" rel="noreferrer"
+            data-tip={tx("Open the file that was sent back")} aria-label={tx("Open the file that was sent back")}><ExternalLink size={14} /></a>
         )}
-        <button className="btn btn-sm btn-primary" disabled={busy} onClick={fix}><Check size={14} /> Fixed</button>
+        <button className="btn btn-sm btn-primary" disabled={busy || !link.trim() || link.trim() === (rev[relCol] || '')}
+          data-tip={link.trim() && link.trim() === (rev[relCol] || '') ? 'That is the file that was sent back' : 'Deliver the fix'}
+          onClick={fix}><Check size={14} />{' '}{tx("Fixed")}</button>
       </div>
+      {link.trim() && link.trim() === (rev[relCol] || '') && (
+        <div className="pravki-same">{tx("That is the same file that was sent back — upload the new one.")}</div>
+      )}
     </div>
   )
 }
@@ -398,6 +418,32 @@ export default function Brief() {
   const [pravki, setPravki] = useState(boot?.pravki || [])
   const [loading, setLoading] = useState(!boot)
   const [openItem, setOpenItem] = useState(null)
+
+  // A task link (…/brief?task=123) opens that task. The bell, Telegram and a
+  // pasted link all land here now that the To-Do page is gone — and unlike
+  // that page, a task that is not in MY list is fetched rather than refused,
+  // because "somebody sent you this task" and "this task is yours" are
+  // different things and the link should work either way.
+  const location = useLocation()
+  const linkOpened = useRef('')
+  useEffect(() => {
+    if (loading) return
+    const id = Number(new URLSearchParams(location.search).get('task'))
+    if (!id || linkOpened.current === location.search) return
+    linkOpened.current = location.search
+    // Always from the server, never from the copy this browser happens to
+    // hold: My Day boots from a cache so the page paints instantly, and a link
+    // opened against that cache showed the task as it was last time — dates
+    // somebody has since filled in still missing, a stage it has since left.
+    const mine = content.find((x) => x.id === id)
+    api.get(`/content/${id}`)
+      .then((t) => setOpenItem(t))
+      .catch(() => {
+        if (mine) { setOpenItem(mine); return }
+        toast(tx('That task isn’t on your channels — ask an admin to show it to you'), 'err')
+      })
+  }, [loading, content, location.search]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // the simple view's custom horizon — folded until asked for
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -477,6 +523,24 @@ export default function Brief() {
   const open = useMemo(
     () => mine.filter((t) => !t.done_at && !isDeletedLabel(statusesById[t.status_id]?.label)),
     [mine, statusesById])
+
+  // ---- times somebody has booked and is waiting on you for ----
+  // A booking answered late is a booking answered on the day, which is the
+  // thing it was meant to replace. It waits at the top of the day, above the
+  // work, because it is not work — it is one tap that lets somebody else
+  // finish planning.
+  const toAnswer = useMemo(() => {
+    // Only days still ahead. "Can you make Tuesday?" is not a question about a
+    // Tuesday three weeks gone — that day either happened or it did not, and
+    // asking about it for ever teaches people to scroll past the tray.
+    const out = []
+    for (const t of open) {
+      if (t.operator_id === user.id && t.recording_date >= today && !t.shoot_ack) out.push({ t, which: 'shoot' })
+      if (t.editor_id === user.id && t.edit_ready_date >= today && !t.edit_ack) out.push({ t, which: 'edit' })
+    }
+    return out.sort((a, b) => (a.t[a.which === 'shoot' ? 'recording_date' : 'edit_ready_date'] || '')
+      .localeCompare(b.t[b.which === 'shoot' ? 'recording_date' : 'edit_ready_date'] || ''))
+  }, [open, user.id, today])
 
   const recordToday = useMemo(
     () => open.filter((t) => t.recording_date === today)
@@ -586,6 +650,24 @@ export default function Brief() {
     () => mine.filter((t) => t.done_at).sort((a, b) => b.done_at.localeCompare(a.done_at)).slice(0, 10),
     [mine])
 
+  // Your own list, added to from your own page. The To-Do page carried the
+  // only way to write one of these down, and when that page went the section
+  // below it could still be read and ticked off but never added to — a list
+  // nobody can put anything on stops being a list.
+  const [pDraft, setPDraft] = useState('')
+  const [pBusy, setPBusy] = useState(false)
+  const addPersonal = async () => {
+    const title = pDraft.trim()
+    if (!title || pBusy) return
+    setPBusy(true)
+    try {
+      const p = await api.post('/personal', { title })
+      setPersonal((prev) => [p, ...prev])
+      setPDraft('')
+      toast(tx('Added — synced'))
+    } catch (e) { alert(e.message) } finally { setPBusy(false) }
+  }
+
   const togglePersonal = async (p) => {
     try {
       if (!p.done_at) playDone()
@@ -595,6 +677,7 @@ export default function Brief() {
   }
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
+    rewardIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   const deleteContent = async (item) => {
@@ -607,7 +690,7 @@ export default function Brief() {
       const r = await api.post(`/content/revisions/${rev.id}/resolve`, link ? { link } : {})
       if (r.task) setContent((prev) => prev.map((x) => (x.id === r.task.id ? r.task : x)))
       setPravki((prev) => prev.filter((x) => x.id !== rev.id))
-      toast('Fixed — back to the SMM')
+      toast(tx('Fixed — back to the SMM'))
     } catch (e) { alert(e.message) }
   }
   const openByContentId = (cid) => { const t = content.find((x) => x.id === cid); if (t) setOpenItem(t) }
@@ -616,14 +699,14 @@ export default function Brief() {
   const { openMenu } = useContextMenu()
   const rowMenu = (e, item) => openMenu(e, [
     { label: 'Open', icon: PenLine, onClick: () => setOpenItem(item) },
-    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast('Saved — synced')).catch((err) => alert(err.message)) },
+    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: Check, onClick: () => markDone(item, updateContent, setOpenItem) },
     { sep: true },
     { label: 'Delete', icon: Trash2, danger: true, onClick: () => { if (confirm(`Delete “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) } },
   ])
 
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 
-  const niceDate = new Date(`${today}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  const niceDate = new Date(`${today}T12:00:00Z`).toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
   const firstName = user.name.split(' ')[0]
 
   const missingBlock = overdue.length > 0 && (
@@ -633,7 +716,7 @@ export default function Brief() {
         <h2 style={{ color: '#A32D2D' }}>{isCrew ? 'Needs attention' : 'Missing'}</h2>
         <span className="count">· past the deadline</span>
         <span className="spacer" />
-        <Link className="btn btn-sm" to="/missed">All missed deadlines →</Link>
+        <Link className="btn btn-sm" to="/missed">{tx("All missed deadlines →")}</Link>
       </div>
       <div className="card card-pad brief-list">
         {overdue.map((t) => (
@@ -645,21 +728,18 @@ export default function Brief() {
     </>
   )
 
-  const publishNow = async (t) => {
+  const publishNow = (t) => {
     const fin = statuses.find((s) => s.is_final)
     if (!fin) return
-    try {
-      playDone()
-      await updateContent(t, { status_id: fin.id })
-      toast('Published — synced')
-    } catch (e) { alert(e.message) }
+    playDone()
+    return moveTo(t, updateContent, fin.id, setOpenItem, tx('Published — synced'))
   }
 
   const reviewBlock = reviewQueue.length > 0 && (
     <>
       <div className="section-head">
         <Send size={17} style={{ color: '#2a78d6' }} />
-        <h2 style={{ color: '#2a78d6' }}>Waiting for your review</h2>
+        <h2 style={{ color: '#2a78d6' }}>{tx("Waiting for your review")}</h2>
         <span className="count">· {reviewQueue.length}</span>
       </div>
       <div className="card card-pad brief-list">
@@ -670,7 +750,7 @@ export default function Brief() {
             <span className="brief-when">
               {t.release_date
                 ? <span className="brief-when-sub">{dateLabel(t.release_date)}{t.release_time ? ` · ${t.release_time.slice(0, 5)}` : ''}</span>
-                : <span className="brief-anytime">no date</span>}
+                : <span className="brief-anytime">{tx("no date")}</span>}
             </span>
             <span className="brief-main"><span className="ov-title">{t.title}</span></span>
             <span className="ov-chips">
@@ -678,28 +758,30 @@ export default function Brief() {
               {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
               {(t.ready_link || t.design_link) && (
                 <>
-                  {/^https?:\/\//i.test(t.ready_link || t.design_link) && (
-                    <a className="btn btn-sm rq-open" href={t.ready_link || t.design_link}
+                  {deliveryHref(t.ready_link || t.design_link) && (
+                    <a className="btn btn-sm rq-open" href={deliveryHref(t.ready_link || t.design_link)}
                       target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
-                      data-tip="Watch the finished file before releasing it">
+                      data-tip={tx("Watch the finished file before releasing it")}>
                       <ExternalLink size={13} /> {t.ready_link ? 'Cut' : 'Design'}
+                      {splitDelivery(t.ready_link || t.design_link).note
+                        ? ` · ${splitDelivery(t.ready_link || t.design_link).note}` : ''}
                     </a>
                   )}
                   <button className="icon-btn rq-copy"
                     onClick={(e) => {
                       e.stopPropagation()
                       navigator.clipboard?.writeText(t.ready_link || t.design_link)
-                        .then(() => toast('Delivery link copied — paste it into the platform'))
+                        .then(() => toast(tx('Delivery link copied — paste it into the platform')))
                         .catch(() => {})
                     }}
-                    data-tip="Copy the finished file's link" aria-label="Copy delivery link">
+                    data-tip={tx("Copy the finished file's link")} aria-label={tx("Copy delivery link")}>
                     <Link2 size={14} />
                   </button>
                 </>
               )}
               <button className="btn btn-sm btn-primary rq-pub"
                 onClick={(e) => { e.stopPropagation(); publishNow(t) }}
-                data-tip="Release it — Ready → Published">
+                data-tip={tx("Release it — Ready → Published")}>
                 <Send size={13} /> Publish
               </button>
             </span>
@@ -714,7 +796,7 @@ export default function Brief() {
     <>
       <div className="section-head">
         <RotateCcw size={17} style={{ color: '#b5324a' }} />
-        <h2 style={{ color: '#b5324a' }}>Pravki — changes to make</h2>
+        <h2 style={{ color: '#b5324a' }}>{tx("Pravki — changes to make")}</h2>
         <span className="count">· {pravki.length}</span>
       </div>
       <div className="pravki-lane">
@@ -725,17 +807,24 @@ export default function Brief() {
     </>
   )
 
-  const personalBlock = personalToday.length > 0 && (
+  const personalBlock = (
     <>
       <div className="section-head">
         <CheckCircle2 size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Also on your list</h2>
+        <h2>{tx("Also on your list")}</h2>
         <span className="count">· {personalToday.length}</span>
       </div>
       <div className="card card-pad brief-list">
+        <form className="pers-add" onSubmit={(e) => { e.preventDefault(); addPersonal() }}>
+          <input className="input" value={pDraft} onChange={(e) => setPDraft(e.target.value)}
+            placeholder={tx('Something of your own — Enter adds it')} />
+          <button className="btn btn-sm btn-primary" type="submit" disabled={!pDraft.trim() || pBusy}>
+            <Plus size={14} />{' '}{tx('Add')}
+          </button>
+        </form>
         {personalToday.map((p) => (
           <div key={p.id} className="ov-row" style={{ cursor: 'default' }}>
-            <button className="todo-check" onClick={() => togglePersonal(p)} data-tip="Mark as done" aria-label="Complete">
+            <button className="todo-check" onClick={() => togglePersonal(p)} data-tip={tx("Mark as done")} aria-label={tx("Complete")}>
               {p.done_at && <Check size={15} strokeWidth={3.5} />}
             </button>
             <span className="ov-title">{p.title}</span>
@@ -753,7 +842,7 @@ export default function Brief() {
     <>
       <div className="section-head">
         <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
-        <h2>What you’ve done</h2>
+        <h2>{tx("What you’ve done")}</h2>
         <span className="count">· last {doneRows.length}</span>
       </div>
       {doneRows.length > 0 && (
@@ -775,7 +864,7 @@ export default function Brief() {
       <>
         <div className="section-head">
           <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>To do today</h2>
+          <h2>{tx("To do today")}</h2>
           <span className="count">· {dueToday.length}</span>
         </div>
         <div className="card card-pad brief-list">
@@ -791,14 +880,14 @@ export default function Brief() {
       <>
         <div className="section-head">
           <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Coming up</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>tomorrow · 3 days · 7 days · your dates</span>
+          <h2>{tx("Coming up")}</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("tomorrow · 3 days · 7 days · your dates")}</span>
         </div>
         <div className="card card-pad brief-list">
           {/* Only horizons that hold work render — a quiet week is one calm
               line, not four headed blocks of dashes. */}
           {horizons.every((b) => b.items.length === 0) && (
-            <div className="tt-none" style={{ padding: '2px 0 6px' }}>Nothing scheduled in the next 7 days.</div>
+            <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("Nothing scheduled in the next 7 days.")}</div>
           )}
           {horizons.filter((b) => b.items.length > 0).map((b) => (
             <div key={b.key} className="brief-horizon">
@@ -816,7 +905,7 @@ export default function Brief() {
           <div className="brief-horizon">
             {!customOpen ? (
               <button className="extra-btn" onClick={() => setCustomOpen(true)}>
-                <CalendarRange size={13} /> Pick your own dates
+                <CalendarRange size={13} />{' '}{tx('Pick your own dates')}
               </button>
             ) : (
               <>
@@ -830,9 +919,9 @@ export default function Brief() {
                   {customItems && <span className="count">· {customItems.length}</span>}
                 </div>
                 {customItems === null ? (
-                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>pick dates to see that stretch</div>
+                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("pick dates to see that stretch")}</div>
                 ) : customItems.length === 0 ? (
-                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>nothing in those dates</div>
+                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("nothing in those dates")}</div>
                 ) : customItems.map((t) => (
                   <BriefRow key={`${t.id}-c`} item={t} when={dateLabel(t._next)} time={null} work={workOnDate(t, t._next)}
                     byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
@@ -861,8 +950,8 @@ export default function Brief() {
         <div className="card card-pad brief-hero">
           <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
           <h2 className="brief-title">
-            {firstName}, today:{' '}
-            {nothingToday ? 'nothing on the schedule — enjoy the quiet.' : (
+            {tx('{name}, today:', { name: firstName })}{' '}
+            {nothingToday ? tx('nothing on the schedule — enjoy the quiet.') : (
               [
                 dueToday.length > 0 && `${dueToday.length} to do`,
                 overdue.length > 0 && `${overdue.length} missing`,
@@ -871,16 +960,28 @@ export default function Brief() {
           </h2>
           <button className={'icon-btn brief-arrange' + (arranging ? ' on' : '')}
             onClick={() => setArranging((v) => !v)}
-            data-tip="Arrange your day — order and hide sections" data-tip-left="" aria-label="Arrange sections">
+            data-tip={tx("Arrange your day — order and hide sections")} data-tip-left="" aria-label={tx("Arrange sections")}>
             <SlidersHorizontal size={15} />
           </button>
         </div>
 
+        {/* What they have DONE, before what they owe. Every other line on
+            this page is a deadline or a miss; this is the only one that says
+            somebody has been getting on with it. */}
+        <Streak />
+
+        {/* What the month is worth so far. Silent until an admin has set
+            rates — a card reading "0" says something about the person that
+            it does not mean. */}
+        <MyPay />
+      <MyGrade />
+        <MyGrade />
+
         {arranging && (
           <div className="card card-pad br-arrange">
             <div className="pc-check-head" style={{ marginBottom: 6 }}>
-              <h3>Arrange your day</h3>
-              <span className="stat-sub">order and visibility — saved to this account</span>
+              <h3>{tx("Arrange your day")}</h3>
+              <span className="stat-sub">{tx("order and visibility — saved to this account")}</span>
             </div>
             {orderedKeys.map((k) => {
               const off = dayPrefs.hidden.includes(k)
@@ -898,8 +999,8 @@ export default function Brief() {
               )
             })}
             <div className="br-arr-foot">
-              {customized && <button className="btn btn-sm" onClick={resetDayPrefs}><RotateCcw size={13} /> Reset</button>}
-              <button className="btn btn-sm btn-primary" onClick={() => setArranging(false)}><Check size={14} /> Done</button>
+              {customized && <button className="btn btn-sm" onClick={resetDayPrefs}><RotateCcw size={13} />{' '}{tx("Reset")}</button>}
+              <button className="btn btn-sm btn-primary" onClick={() => setArranging(false)}><Check size={14} />{' '}{tx("Done")}</button>
             </div>
           </div>
         )}
@@ -909,7 +1010,7 @@ export default function Brief() {
         ))}
 
         {openItem && (
-          <ContentModal item={openItem} statuses={statuses} onClose={() => setOpenItem(null)}
+          <ContentModal key={openItem?.id || 'new'} item={openItem} statuses={statuses} onClose={(next) => setOpenItem(next?.id ? next : null)}
             onUpdate={updateContent} onDelete={deleteContent} />
         )}
       </>
@@ -924,12 +1025,43 @@ export default function Brief() {
 
   return (
     <>
+      {/* What YOU are late on, before anything else on the page. Overdue work
+          used to be an admin's wall of chips to drag back onto a calendar;
+          it belongs to whoever is carrying it, with the answers that exist. */}
+      <MyLate onOpen={openByContentId} />
+
+      {/* Somebody has put a time in your day and is waiting to hear whether
+          it works. One tap each, from the page you already open. */}
+      {toAnswer.length > 0 && (
+        <div className="card card-pad ask-tray">
+          <div className="ask-tray-head">
+            <CalendarClock size={16} />
+            <b>{tx('Waiting on your answer')}</b>
+            <span className="count">· {toAnswer.length}</span>
+          </div>
+          {toAnswer.map(({ t, which }) => (
+            <button key={`${t.id}-${which}`} type="button" className="ask-tray-row" onClick={() => openByContentId(t.id)}>
+              <span className="ask-tray-what">
+                {which === 'shoot' ? <Clapperboard size={13} /> : <Scissors size={13} />}
+                <b>{t.title}</b>
+              </span>
+              <span className="ask-tray-when">
+                {which === 'shoot'
+                  ? `${dateLabel(t.recording_date)}${t.recording_time ? ` · ${t.recording_time}${t.recording_end ? `–${t.recording_end}` : ''}` : ''}`
+                  : dateLabel(t.edit_ready_date)}
+              </span>
+              <span className="ask-tray-go">{tx('Answer')}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* The brief: one line that says what today is about */}
       <div className="card card-pad brief-hero">
         <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
         <h2 className="brief-title">
-          {firstName}, today:{' '}
-          {nothingToday ? 'nothing on the schedule — enjoy the quiet.' : (
+          {tx('{name}, today:', { name: firstName })}{' '}
+          {nothingToday ? tx('nothing on the schedule — enjoy the quiet.') : (
             [
               overdueN > 0 && `${overdueN} overdue`,
               lanes.shoot.today.length > 0 && `${lanes.shoot.today.length} to record`,
@@ -938,6 +1070,10 @@ export default function Brief() {
           )}
         </h2>
       </div>
+
+      <Streak />
+      <MyPay />
+      <MyGrade />
 
       <div className="miss-filters">
         <div className="pill-group">
@@ -954,7 +1090,7 @@ export default function Brief() {
         <>
           <CrewCalendar tasks={open} userId={user.id} today={today} byKey={byKey} onOpen={setOpenItem} />
           {openItem && (
-            <ContentModal item={openItem} statuses={statuses} onClose={() => setOpenItem(null)}
+            <ContentModal key={openItem?.id || 'new'} item={openItem} statuses={statuses} onClose={(next) => setOpenItem(next?.id ? next : null)}
               onUpdate={updateContent} onDelete={deleteContent} />
           )}
         </>
@@ -967,10 +1103,10 @@ export default function Brief() {
       </>}
 
       {myView !== 'calendar' && openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onUpdate={updateContent}
           onDelete={deleteContent}
         />

@@ -15,6 +15,7 @@ import { dirname, join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, existsSync, statSync } from 'fs'
 import { DATABASE_URL as CONFIG_DATABASE_URL, GITHUB_DATA } from './config.js'
 import { createGhStore } from './ghstore.js'
+import { scriptKey } from './text.js'
 
 const PG_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
   process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING ||
@@ -506,6 +507,11 @@ export const DEFAULT_PERMS = {
   review_publish: true,   // move Ready → Published on a channel you're on (SMM)
   request_changes: true,  // send a task back to the crew for fixes (Pravki)
   deliver_work: true,     // deliver / re-deliver a stage's file link
+  // Runs the ambassador programme: reads the queue, answers cards, sets terms,
+  // and creates the student accounts. Off by default and deliberately narrow —
+  // it is a job on this board, not a way onto the rest of it. See
+  // server/routes/ambassadors.js and the carve-out in routes/users.js.
+  manage_ambassadors: false,
 }
 export const PERM_KEYS = Object.keys(DEFAULT_PERMS)
 
@@ -548,6 +554,17 @@ export async function initSchema() {
       label   TEXT NOT NULL,
       icon    TEXT NOT NULL DEFAULT 'star',
       head_id INTEGER,
+      -- The one Drive folder this channel's footage and cuts live in. With it
+      -- set, nobody pastes a URL per task: they say WHICH file in the folder
+      -- ("1-3", "reel 14"), which is what they would have said out loud
+      -- anyway, and the board keeps the folder.
+      drive_url TEXT NOT NULL DEFAULT '',
+      -- The most video ads this channel may have going out on one day. Ads
+      -- are bought a month at a time and burn their audience if they land in
+      -- a heap, so the ceiling belongs to the CHANNEL rather than to whoever
+      -- happens to be making them. 0 is what every channel was before this
+      -- existed: no ceiling.
+      daily_ad_cap INTEGER NOT NULL DEFAULT 0,
       sort    INTEGER NOT NULL DEFAULT 0
     );
 
@@ -607,11 +624,35 @@ export async function initSchema() {
       ready_link     TEXT,   -- the editor's finished cut (the "Edit ready" link)
       shot_link      TEXT,   -- operator's raw footage link (Google Drive)
       design_link    TEXT,   -- designer's finished artwork link
+      -- Where the finished piece actually went live. Nothing recorded this:
+      -- the board knew a task had reached Published and not one thing about
+      -- where to go and look at it, which is also why no report could ever
+      -- list what a person had made.
+      post_link      TEXT,
+      -- WHO IS IN IT. Not who filmed it or cut it — whose face carries the
+      -- piece. On a target video that is the whole product, and it is a
+      -- different person from the crew often enough that borrowing one of
+      -- their fields would have lied about both.
+      face_id        INTEGER,
+      -- How much of it people sat through, as a percentage that was SKIPPED.
+      -- Typed in beside the view count, from the same place, by the same
+      -- people. Lower is better, and the pay tiers read it.
+      skip_rate      REAL,
+      skip_rate_at   TEXT,
+      -- The month this piece was PAID in, stamped when an admin closes a
+      -- month. "Paid" is a fact somebody recorded, not something worked out
+      -- from the calendar — a month that has not been closed is not paid, and
+      -- the register says so rather than guessing.
+      paid_month     TEXT,
+      paid_at        TEXT,
+      paid_by        INTEGER,
       reference_text TEXT,   -- style / mood / length / format notes for the crew
       reference_links TEXT   NOT NULL DEFAULT '[]', -- example URLs (reference videos/posts)
       format         TEXT,   -- the shape of the piece: talking head, split screen…
       rubrika        TEXT,   -- the recurring column (rubric) it belongs to
       script         TEXT,   -- the written script / shot plan
+      tz             TEXT,   -- техническое задание: what the EDITOR is told to make. The script is what gets filmed; the ТЗ is what gets cut.
+      script_key     TEXT,   -- fingerprint of the above, so "is this script already on another task" is a lookup rather than a scan
       release_date   TEXT,
       release_time   TEXT,
       description    TEXT    NOT NULL DEFAULT '',
@@ -626,6 +667,25 @@ export async function initSchema() {
       -- that was handed over late never reads as its owner's fault.
       shot_at        TEXT,   -- entered Editing: the shooter's part is done
       edited_at      TEXT,   -- entered Ready: the editor's part is done
+      -- ---- the time the crew agreed to ----
+      -- A shoot day is not a fact until the person holding the camera has
+      -- said they can be there, and an edit deadline is not a deadline until
+      -- the editor has said it fits. Both are booked by the planner and
+      -- ANSWERED by the crew: '' while it is waiting, 'yes' once accepted,
+      -- 'no' with a reason when they cannot. An accepted time is then locked
+      -- — the planner cannot quietly move a slot somebody has already cleared
+      -- their afternoon for; changing it puts the question back and tells
+      -- them.
+      shoot_ack      TEXT    NOT NULL DEFAULT '',
+      shoot_alt      TEXT,                                -- a day they COULD do instead
+      shoot_ack_at   TEXT,
+      shoot_ack_by   INTEGER,
+      shoot_ack_note TEXT,
+      edit_ack       TEXT    NOT NULL DEFAULT '',
+      edit_alt       TEXT,
+      edit_ack_at    TEXT,
+      edit_ack_by    INTEGER,
+      edit_ack_note  TEXT,
       -- When a handover lands late the mover must re-promise the next stage's
       -- date. The original stays untouched, so the pair shows what was planned
       -- and what the delay forced.
@@ -636,6 +696,17 @@ export async function initSchema() {
       pinned         INTEGER NOT NULL DEFAULT 0,
       photo_thumb    TEXT,
       done_at        TEXT,
+      -- Whose miss was it, when the board cannot work it out and a person
+      -- decides instead. Null means "read it from the work" (deadlines.js).
+      miss_blame     TEXT,
+      miss_blame_note TEXT,
+      miss_blame_by  INTEGER,
+      -- What it actually got. NULL is not zero: it means nobody has written a
+      -- number down yet, and a board that cannot tell those apart reports a
+      -- month of unmeasured work as a month of no views.
+      views          INTEGER,
+      views_at       TEXT,
+      views_by       INTEGER,
       created_at     TEXT    NOT NULL
     );
 
@@ -785,9 +856,354 @@ export async function initSchema() {
       unit       TEXT    NOT NULL DEFAULT '',
       notes      TEXT    NOT NULL DEFAULT '',
       sort       INTEGER NOT NULL DEFAULT 0,
+      -- What the board itself can count for this KPI, so 'current' stops
+      -- being a number somebody retypes once a month and starts being the
+      -- work. Empty means the old behaviour: an admin types it.
+      source     TEXT    NOT NULL DEFAULT '',
+      -- Which way the target points. 'atleast' for "twenty cuts"; 'atmost'
+      -- for "no more than two late", where beating the target means a
+      -- SMALLER number and the naive comparison pays exactly the wrong people.
+      direction  TEXT    NOT NULL DEFAULT 'atleast',
+      -- What hitting it is worth. This is the join the board was missing:
+      -- the KPIs were already here, and payroll was worked out somewhere else
+      -- from the same numbers, by hand.
+      reward     REAL    NOT NULL DEFAULT 0,
       updated_by INTEGER,
       created_at TEXT    NOT NULL,
       updated_at TEXT    NOT NULL
+    );
+
+    -- ============================================================
+    -- SPRINTS. A weekly board that shares exactly one thing with the rest
+    -- of this platform: it READS the users table for id, name and avatar.
+    -- It never writes there, never reads content, channels, releases or
+    -- anything else, and nothing outside these tables reads from it.
+    -- Every table is prefixed sprint_ so that isolation is visible rather
+    -- than merely intended.
+    -- ============================================================
+
+    -- One row per week. Monday 00:00 to Saturday 12:00 Tashkent, with the
+    -- meeting at 15:00 that Saturday. Times are stored as ISO instants, the
+    -- same as every other timestamp here — the Tashkent-ness lives in how
+    -- they are worked out, not in how they are written down.
+    /* Who came, and when.
+       Nobody is late by default: a day with no row here says nothing at all,
+       which is the honest reading of "nobody wrote anything down". Only an
+       admin writes rows, and the register only ever says what one of them
+       said. One row per person per day. */
+    CREATE TABLE IF NOT EXISTS attendance (
+      id          ${ID},
+      user_id     INTEGER NOT NULL,
+      day         TEXT    NOT NULL,          -- a Tashkent day, YYYY-MM-DD
+      status      TEXT    NOT NULL,          -- on_time | late | away
+      arrived_at  TEXT,                      -- HH:MM, only meaningful when late
+      note        TEXT    NOT NULL DEFAULT '',
+      marked_by   INTEGER,
+      created_at  TEXT    NOT NULL,
+      updated_at  TEXT    NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sprints (
+      id         ${ID},
+      code       TEXT    NOT NULL,                  -- 'S36', the ISO week
+      start_at   TEXT    NOT NULL,
+      freeze_at  TEXT    NOT NULL,
+      meeting_at TEXT    NOT NULL,
+      status     TEXT    NOT NULL DEFAULT 'active', -- active | closed
+      created_at TEXT    NOT NULL
+    );
+
+    -- Who may close a sprint, edit after the freeze, and promote from the
+    -- backlog. Those three things and nothing else. It ships EMPTY and is
+    -- filled by hand after deploy: the platform Admin flag is deliberately
+    -- not inherited, so an admin who is not in here works under the same
+    -- freeze as everybody else.
+    CREATE TABLE IF NOT EXISTS sprint_owners (
+      user_id INTEGER NOT NULL
+    );
+
+    -- A task exists once, however many weeks it runs for. What week it
+    -- belongs to lives in sprint_task_sprints; what was committed FOR that
+    -- week lives in sprint_checklist_items. A backlog item is a row here
+    -- with status 'idea' and no sprint row at all.
+    --
+    -- There is no not_delivered status. Not delivered is an outcome of a
+    -- task in a WEEK, not a state of the task.
+    CREATE TABLE IF NOT EXISTS sprint_tasks (
+      id                   ${ID},
+      title                TEXT    NOT NULL,
+      description          TEXT    NOT NULL DEFAULT '',
+      status               TEXT    NOT NULL DEFAULT 'idea', -- idea|todo|in_progress|blocked|done
+      is_growth            INTEGER NOT NULL DEFAULT 0,
+      deadline             TEXT,
+      result_type          TEXT,                            -- link|file|text|NULL
+      result_link          TEXT    NOT NULL DEFAULT '',
+      result_text          TEXT    NOT NULL DEFAULT '',
+      result_attachment_id INTEGER,
+      blocker_reason       TEXT    NOT NULL DEFAULT '',
+      blocker_note         TEXT    NOT NULL DEFAULT '',
+      carried_count        INTEGER NOT NULL DEFAULT 0,
+      -- Dropped, not deleted. A week's record that changes after the week is
+      -- over is not a record: deleting a task used to take it out of
+      -- sprint_task_sprints, and /history counts that table live, so a closed
+      -- week quietly went from twelve tasks to eleven. A dropped task leaves
+      -- the board and stays in the count.
+      dropped_at           TEXT,
+      dropped_by           INTEGER,
+      dropped_reason       TEXT    NOT NULL DEFAULT '',
+      -- WHICH week dropped it. A task can run for three weeks before somebody
+      -- gives up on it, and without this the drop was a fact about the task
+      -- rather than about a week: all three read "1 dropped", including the
+      -- two that carried it and worked on it.
+      dropped_sprint_id    INTEGER,
+      created_by           INTEGER,
+      created_at           TEXT    NOT NULL,
+      updated_at           TEXT    NOT NULL
+    );
+
+    -- What was changed after the fact, and by whom. The content side has had
+    -- this since round 36; the sprint board had nothing at all, so a moved
+    -- deadline or an un-ticked result left no trace to read back on Saturday.
+    -- Titles are written down at the moment of the change so the line still
+    -- reads like a sentence if the task is later dropped.
+    CREATE TABLE IF NOT EXISTS sprint_activity (
+      id          ${ID},
+      task_id     INTEGER NOT NULL,
+      task_title  TEXT    NOT NULL DEFAULT '',
+      sprint_id   INTEGER,
+      user_id     INTEGER,
+      user_name   TEXT    NOT NULL DEFAULT '',
+      kind        TEXT    NOT NULL,           -- deadline|status|dropped|restored
+      old_value   TEXT,
+      new_value   TEXT,
+      note        TEXT    NOT NULL DEFAULT '',
+      created_at  TEXT    NOT NULL
+    );
+
+    -- Assignees are read from the platform users table and stored by id.
+    -- Removing somebody from the platform is not this module's business;
+    -- their name simply stops resolving and the task keeps the id.
+    CREATE TABLE IF NOT EXISTS sprint_task_assignees (
+      task_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL
+    );
+
+    -- One row per task per week it appears in. This is what lets a task
+    -- span several weeks, and it is where the verdict for that week lives.
+    CREATE TABLE IF NOT EXISTS sprint_task_sprints (
+      task_id   INTEGER NOT NULL,
+      sprint_id INTEGER NOT NULL,
+      outcome   TEXT                                -- delivered|not_delivered|NULL
+    );
+
+    -- The weekly slice. A task running three weeks has three separate
+    -- groups of items, so opening a sprint shows what was committed for
+    -- THAT week and not the whole history. Nothing here is scored or
+    -- weighted; there are no points anywhere in this module.
+    CREATE TABLE IF NOT EXISTS sprint_checklist_items (
+      id        ${ID},
+      task_id   INTEGER NOT NULL,
+      sprint_id INTEGER NOT NULL,
+      text      TEXT    NOT NULL,
+      done      INTEGER NOT NULL DEFAULT 0,
+      done_at   TEXT,
+      position  INTEGER NOT NULL DEFAULT 0
+    );
+
+    -- Same shape as the platform's own attachments: the bytes live in the
+    -- row as a data URI, because this deployment has no file storage and no
+    -- CDN. Capped at 5 MB before encoding, refused by the route.
+    CREATE TABLE IF NOT EXISTS sprint_attachments (
+      id          ${ID},
+      task_id     INTEGER NOT NULL,
+      name        TEXT    NOT NULL,
+      mime        TEXT    NOT NULL DEFAULT '',
+      size        INTEGER NOT NULL DEFAULT 0,       -- bytes of the original file
+      data        TEXT    NOT NULL,                 -- data:<mime>;base64,…
+      uploaded_by INTEGER,
+      created_at  TEXT    NOT NULL
+    );
+
+    -- ---- the ambassador programme -------------------------------------------
+    -- Students who post about SATashkent on their own accounts. This feature
+    -- owns exactly these three tables and reads nothing else but the users
+    -- table. Ambassador cards are NOT content tasks, never reach a channel board, are
+    -- not counted in any company total, and their payouts are not Finance.
+    -- Delete these three tables and the rest of the dashboard is unchanged.
+    CREATE TABLE IF NOT EXISTS ambassadors (
+      id                   ${ID},
+      user_id              INTEGER NOT NULL,   -- the only key out of this feature
+      university           TEXT    NOT NULL DEFAULT '',
+      telegram             TEXT    NOT NULL DEFAULT '',
+      -- The contract, as the admin uploaded it. Stored beside the row the way
+      -- person_docs does: a data URL, its name and its type.
+      contract_name        TEXT    NOT NULL DEFAULT '',
+      contract_mime        TEXT    NOT NULL DEFAULT '',
+      contract_data        TEXT,
+      contract_size        INTEGER NOT NULL DEFAULT 0,
+      contract_at          TEXT,
+      -- What their terms USUALLY are. These pre-tick the boxes at approval and
+      -- have no other power: once a card is approved it carries its own copy,
+      -- and changing these can never reach back into it.
+      default_we_edit      INTEGER NOT NULL DEFAULT 0,
+      default_posts_own    INTEGER NOT NULL DEFAULT 1,
+      default_collaborator INTEGER NOT NULL DEFAULT 0,
+      -- Three boxes cannot describe every arrangement anybody ever agrees to.
+      -- This is the one that says what was actually agreed, in words.
+      default_terms_other  TEXT    NOT NULL DEFAULT '',
+      status               TEXT    NOT NULL DEFAULT 'active',  -- active|paused|ended
+      created_at           TEXT    NOT NULL,
+      updated_at           TEXT    NOT NULL
+    );
+
+    -- One idea, from the moment it is sent to the moment it is paid.
+    --
+    -- A rejected card is not a new row: version goes up and the state returns
+    -- to waiting, so the whole argument stays on one card. The four terms are
+    -- COPIED here at approval and are read only afterwards — that is the
+    -- promise the ambassador was given, and nothing later may edit it.
+    CREATE TABLE IF NOT EXISTS ambassador_cards (
+      id             ${ID},
+      ambassador_id  INTEGER NOT NULL,
+      format         TEXT    NOT NULL DEFAULT '',
+      script         TEXT    NOT NULL DEFAULT '',
+      reference_url  TEXT    NOT NULL DEFAULT '',
+      planned_date   TEXT,
+      state          TEXT    NOT NULL DEFAULT 'waiting',  -- waiting|can_film|needs_changes|posted|done|paid
+      version        INTEGER NOT NULL DEFAULT 1,
+      we_edit        INTEGER NOT NULL DEFAULT 0,
+      posts_own      INTEGER NOT NULL DEFAULT 0,
+      collaborator   INTEGER NOT NULL DEFAULT 0,
+      terms_other    TEXT    NOT NULL DEFAULT '',  -- whatever the three boxes cannot say
+      posted_at      TEXT,                          -- when they said it was live
+      amount         INTEGER,                             -- typed by a human, every time
+      approved_by    INTEGER,
+      approved_at    TEXT,
+      feedback       TEXT    NOT NULL DEFAULT '',
+      main_video_url TEXT    NOT NULL DEFAULT '',
+      story_clip_url TEXT    NOT NULL DEFAULT '',
+      checked_by     INTEGER,
+      checked_at     TEXT,
+      paid_month     TEXT,                                -- the month it reached done
+      created_at     TEXT    NOT NULL,
+      updated_at     TEXT    NOT NULL
+    );
+
+    -- A month, closed. Paying happens outside this system; this records that
+    -- somebody said it had been done, and who.
+    CREATE TABLE IF NOT EXISTS ambassador_payouts (
+      id            ${ID},
+      month         TEXT    NOT NULL,
+      ambassador_id INTEGER NOT NULL,
+      total         INTEGER NOT NULL DEFAULT 0,
+      marked_by     INTEGER,
+      marked_at     TEXT    NOT NULL
+    );
+
+    -- Translations and plain-language versions, kept.
+    --
+    -- The same brief is opened by the shooter, the editor and whoever is
+    -- checking on them, and it does not change between openings. Translating
+    -- it once is the difference between a feature that costs money every time
+    -- somebody reads a task and one that costs money once. The key is a hash
+    -- of the job and the exact text, so an edited brief simply misses and is
+    -- done again.
+    CREATE TABLE IF NOT EXISTS ai_cache (
+      k          TEXT PRIMARY KEY,   -- sha256(kind|target|text)
+      kind       TEXT NOT NULL,      -- 't' to translate, 's:<lang>' to simplify
+      target     TEXT NOT NULL,
+      out        TEXT NOT NULL,
+      provider   TEXT NOT NULL,      -- who produced it, shown to the reader
+      created_at TEXT NOT NULL
+    );
+
+    -- What people are paid, and on what.
+    --
+    -- The rates are DATA, not code: they differ per person, they change, and
+    -- baking a wage into a git repository turns a pay rise into a deploy. One
+    -- row with a NULL user_id is the default card everybody starts from; a row
+    -- with a user_id overrides it for that person. Everything is per period:
+    -- the base per month, the rest per piece delivered. The arithmetic lives
+    -- in server/routes/reports.js.
+    CREATE TABLE IF NOT EXISTS pay_rules (
+      id            ${ID},
+      user_id       INTEGER,                       -- NULL = the default card
+      currency      TEXT    NOT NULL DEFAULT 'UZS',
+      base          REAL    NOT NULL DEFAULT 0,    -- paid whatever the count
+      per_shoot     REAL    NOT NULL DEFAULT 0,
+      per_edit      REAL    NOT NULL DEFAULT 0,
+      per_design    REAL    NOT NULL DEFAULT 0,
+      per_publish   REAL    NOT NULL DEFAULT 0,
+      per_review    REAL    NOT NULL DEFAULT 0,
+      quota         REAL    NOT NULL DEFAULT 0,    -- pieces expected in the period
+      quota_bonus   REAL    NOT NULL DEFAULT 0,    -- paid whole when the quota is met
+      ontime_bonus  REAL    NOT NULL DEFAULT 0,    -- paid whole, or not at all
+      ontime_target REAL    NOT NULL DEFAULT 90,   -- the per cent that earns it
+      late_penalty  REAL    NOT NULL DEFAULT 0,    -- per piece delivered late
+      per_1k_views  REAL    NOT NULL DEFAULT 0,    -- paid per thousand views the maker's pieces got
+      views_target  REAL    NOT NULL DEFAULT 0,    -- views expected in the period
+      views_bonus   REAL    NOT NULL DEFAULT 0,    -- paid whole when the views target is met
+      updated_by    INTEGER,
+      created_at    TEXT    NOT NULL,
+      updated_at    TEXT    NOT NULL
+    );
+
+    -- Raising a hand. The crew could always deliver late; they had no way to
+    -- say so in advance, so the first anybody knew was the deadline passing.
+    -- A flag is the cheap early word: "I cannot take this" or "this will be
+    -- late", with the reason, sitting on the task where the plan is made
+    -- instead of in a voice note somebody has to remember.
+    CREATE TABLE IF NOT EXISTS task_flags (
+      id          ${ID},
+      content_id  INTEGER NOT NULL,
+      kind        TEXT    NOT NULL DEFAULT 'at_risk',   -- at_risk | cant_take
+      reason      TEXT    NOT NULL DEFAULT '',
+      raised_by   INTEGER,
+      raised_name TEXT    NOT NULL DEFAULT '',
+      created_at  TEXT    NOT NULL,
+      cleared_at  TEXT,
+      cleared_by  INTEGER,
+      cleared_name TEXT   NOT NULL DEFAULT ''
+    );
+
+    -- Voice notes. A Pravki that takes four minutes to type takes fifteen
+    -- seconds to say, and half of what a reviewer means is in the tone. The
+    -- BYTES live here rather than on the comment, so no list, poll or task
+    -- payload ever drags a minute of audio along — the clip is fetched by the
+    -- press that plays it, exactly like a document.
+    CREATE TABLE IF NOT EXISTS voice_notes (
+      id         ${ID},
+      content_id INTEGER NOT NULL,
+      user_id    INTEGER,
+      author     TEXT    NOT NULL DEFAULT '',
+      mime       TEXT    NOT NULL DEFAULT 'audio/webm',
+      secs       INTEGER NOT NULL DEFAULT 0,
+      size       INTEGER NOT NULL DEFAULT 0,
+      data       TEXT    NOT NULL,            -- data:<mime>;base64,…
+      created_at TEXT    NOT NULL
+    );
+
+    -- Moving a promised day. A deadline that has a date is a promise, and a
+    -- promise the person who made it can quietly move is not one — so only an
+    -- admin moves a date that is already set. Everyone else ASKS, in writing,
+    -- and the ask is the record: which day, to which day, and why. An admin
+    -- answers it; the date moves on their yes, not before, and the whole
+    -- exchange stays on the task so the reason is never just remembered.
+    CREATE TABLE IF NOT EXISTS date_requests (
+      id           ${ID},
+      content_id   INTEGER NOT NULL,
+      field        TEXT    NOT NULL,          -- recording_date | edit_ready_date | design_ready_date | release_date
+      from_date    TEXT,                      -- the promised day, as it stood when asked
+      to_date      TEXT,                      -- the day being asked for (null = clear it)
+      reason       TEXT    NOT NULL DEFAULT '',
+      state        TEXT    NOT NULL DEFAULT 'open',  -- open | approved | declined | stale
+      asked_by     INTEGER,
+      asked_name   TEXT    NOT NULL DEFAULT '',
+      created_at   TEXT    NOT NULL,
+      decided_by   INTEGER,
+      decided_name TEXT    NOT NULL DEFAULT '',
+      decided_at   TEXT,
+      decided_note TEXT    NOT NULL DEFAULT ''
     );
 
     -- Pravki (revisions): when the SMM reviews a Ready task and asks for
@@ -801,6 +1217,10 @@ export async function initSchema() {
       requested_name TEXT    NOT NULL DEFAULT '',
       target         TEXT    NOT NULL DEFAULT 'editor', -- operator | editor | designer
       note           TEXT    NOT NULL DEFAULT '',
+      -- A Pravki note is usually about a FRAME, so it can carry the screenshot
+      -- that shows it, pasted straight from the clipboard.
+      photo          TEXT,
+      photo_thumb    TEXT,
       created_at     TEXT    NOT NULL,
       resolved_at    TEXT
     );
@@ -881,6 +1301,34 @@ export async function initSchema() {
       created_at TEXT    NOT NULL
     );
 
+    -- What the board is actually used for. Two questions an admin kept asking
+    -- and had no way to answer: is this person on the platform at all, and
+    -- which parts of it does anybody touch? Both are counted per DAY and per
+    -- person, never per event — there is no log of who opened what at 14:32,
+    -- because a board that keeps one is a board people stop being honest on.
+    --
+    -- Time is measured as seconds with the tab OPEN AND VISIBLE, sent up in
+    -- heartbeats. A tab left open behind a laptop lid stops counting.
+    CREATE TABLE IF NOT EXISTS usage_day (
+      user_id  INTEGER NOT NULL,
+      day      TEXT    NOT NULL,          -- Tashkent day, YYYY-MM-DD
+      seconds  INTEGER NOT NULL DEFAULT 0,
+      first_at TEXT,
+      last_at  TEXT,
+      PRIMARY KEY (user_id, day)
+    );
+
+    -- One row per person per day per thing-pressed. kind 'tap' is a button,
+    -- kind 'page' is a screen that was opened.
+    CREATE TABLE IF NOT EXISTS usage_tap (
+      user_id INTEGER NOT NULL,
+      day     TEXT    NOT NULL,
+      kind    TEXT    NOT NULL DEFAULT 'tap',
+      action  TEXT    NOT NULL,
+      n       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day, kind, action)
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id           ${ID},
       content_id   INTEGER NOT NULL,
@@ -924,6 +1372,21 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS operator_id INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS editor_id INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS designer_id INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS tz TEXT')
+    await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS shoot_ack TEXT NOT NULL DEFAULT ''")
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shoot_ack_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shoot_ack_by INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shoot_ack_note TEXT')
+    await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack TEXT NOT NULL DEFAULT ''")
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_by INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_ack_note TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame_note TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS miss_blame_by INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS views INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS views_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS views_by INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_ready_date TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS assignees TEXT NOT NULL DEFAULT '[]'")
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_roles TEXT NOT NULL DEFAULT '[]'")
@@ -941,6 +1404,13 @@ export async function initSchema() {
     await exec("ALTER TABLE programs ADD COLUMN IF NOT EXISTS branches TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shot_link TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS design_link TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS post_link TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS face_id INTEGER')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS skip_rate REAL')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS skip_rate_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS paid_month TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS paid_at TEXT')
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS paid_by INTEGER')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS reference_text TEXT')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS reference_links TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS format TEXT')
@@ -955,11 +1425,38 @@ export async function initSchema() {
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edited_at TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_due_revised TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS review_due_revised TEXT')
+    // A Pravki note is usually about a FRAME. The screenshot travels with it
+    // instead of being described in words and then hunted for in a chat.
+    await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_channels TEXT NOT NULL DEFAULT '[]'")
+    await exec("ALTER TABLE channels ADD COLUMN IF NOT EXISTS drive_url TEXT NOT NULL DEFAULT ''")
+    await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_cap INTEGER NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE channels ADD COLUMN IF NOT EXISTS daily_ad_cap INTEGER NOT NULL DEFAULT 0')
+    await exec("ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''")
+    await exec("ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'atleast'")
+    await exec('ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS reward REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota_bonus REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS per_1k_views REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS views_target REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS views_bonus REAL NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_at TEXT')
+    await exec('ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_by INTEGER')
+    await exec("ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_reason TEXT NOT NULL DEFAULT ''")
+    await exec('ALTER TABLE sprint_tasks ADD COLUMN IF NOT EXISTS dropped_sprint_id INTEGER')
+    await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS crew_channels TEXT NOT NULL DEFAULT '[]'")
+    await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS script_key TEXT')
+    await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_id INTEGER')
+    await exec('ALTER TABLE comments ADD COLUMN IF NOT EXISTS voice_secs INTEGER NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS voice_id INTEGER')
+    await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS voice_secs INTEGER NOT NULL DEFAULT 0')
+    await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS photo TEXT')
+    await exec('ALTER TABLE revisions ADD COLUMN IF NOT EXISTS photo_thumb TEXT')
     await exec(`CREATE TABLE IF NOT EXISTS undo_moves (
       content_id INTEGER PRIMARY KEY, user_id INTEGER, before TEXT NOT NULL, created_at TEXT NOT NULL)`)
   }
 
   await migrate()
+  await fingerprintScripts()
   await exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -969,6 +1466,49 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
     CREATE INDEX IF NOT EXISTS idx_comments_content ON comments(content_id);
     CREATE INDEX IF NOT EXISTS idx_activity_content ON activity(content_id, id);
+    -- Everything a task drags in when it is opened: its revisions, its
+    -- documents, its clips, its day-move asks. Each was a table scan.
+    CREATE INDEX IF NOT EXISTS idx_revisions_content ON revisions(content_id);
+    CREATE INDEX IF NOT EXISTS idx_attachments_content ON attachments(content_id);
+    CREATE INDEX IF NOT EXISTS idx_voice_content ON voice_notes(content_id);
+    CREATE INDEX IF NOT EXISTS idx_dreq_content ON date_requests(content_id, state);
+    CREATE INDEX IF NOT EXISTS idx_flags_content ON task_flags(content_id, cleared_at);
+    -- The repeat-script check. Without this it read every script in the
+    -- database — a script runs to 20,000 characters, so a board with a
+    -- thousand tasks on it read megabytes to answer one question on every
+    -- single save. script_key is a fingerprint of the same normalisation the
+    -- check uses, so the question is now one indexed lookup.
+    CREATE INDEX IF NOT EXISTS idx_content_script_key ON content(script_key);
+
+    -- One card per person, and exactly one default (NULL user_id). SQLite and
+    -- Postgres both treat NULLs as distinct in a unique index, so the single
+    -- default row is kept by the route rather than by the index.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_rules_user ON pay_rules(user_id);
+
+    -- Sprints. The unique pairs are the honest ones: a task is in a week
+    -- once and assigned to a person once, and saying so here means a double
+    -- click cannot make it twice.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_owner     ON sprint_owners(user_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_task_week ON sprint_task_sprints(task_id, sprint_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_assignee  ON sprint_task_assignees(task_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_sprint_week_tasks       ON sprint_task_sprints(sprint_id);
+    CREATE INDEX IF NOT EXISTS idx_sprint_check_slice      ON sprint_checklist_items(task_id, sprint_id, position);
+    CREATE INDEX IF NOT EXISTS idx_sprint_att_task         ON sprint_attachments(task_id);
+    /* One ambassador record per account, enforced: two admins setting somebody
+       up at the same moment would otherwise make two, and the cards would
+       split between them. */
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ambassador_user   ON ambassadors(user_id);
+    CREATE INDEX IF NOT EXISTS idx_ambassador_cards_who     ON ambassador_cards(ambassador_id, state);
+    CREATE INDEX IF NOT EXISTS idx_ambassador_cards_month   ON ambassador_cards(paid_month);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ambassador_payout ON ambassador_payouts(month, ambassador_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_day    ON attendance(user_id, day);
+    CREATE INDEX IF NOT EXISTS idx_attendance_when           ON attendance(day);
+    CREATE INDEX IF NOT EXISTS idx_sprints_status          ON sprints(status, start_at);
+    /* One row per week, enforced rather than assumed: the week is looked up by
+       its start, and two requests arriving together on a Monday morning would
+       otherwise both find nothing and both insert. */
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sprint_week          ON sprints(start_at);
+
   `)
 }
 
@@ -976,12 +1516,40 @@ async function hasColumn(table, col) {
   return (await all(`PRAGMA table_info(${table})`)).some((c) => c.name === col)
 }
 
+// Fingerprint the scripts already on the board, once. Without this the repeat
+// check would be blind to every task that existed before it — and doing it in
+// SQL would fold whitespace differently from the JS that writes new keys,
+// which is a subtler way of being blind.
+async function fingerprintScripts() {
+  try {
+    const rows = await all("SELECT id, script FROM content WHERE script_key IS NULL AND script IS NOT NULL AND script <> ''")
+    if (!rows.length) return
+    await batch(rows.map((r) => ['UPDATE content SET script_key = ? WHERE id = ?', scriptKey(r.script), r.id]))
+  } catch { /* a fresh database has no rows to fingerprint */ }
+}
+
 async function migrate() {
   if (IS_PG) return // Postgres databases are created current-shape; the
   //                   legacy upgrades below only ever applied to SQLite files.
   try {
     if (!(await hasColumn('users', 'permissions'))) await exec("ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}'")
+    if (!(await hasColumn('content', 'tz'))) await exec('ALTER TABLE content ADD COLUMN tz TEXT')
+    for (const [col, decl] of [
+      ['shoot_ack', "TEXT NOT NULL DEFAULT ''"], ['shoot_ack_at', 'TEXT'], ['shoot_ack_by', 'INTEGER'], ['shoot_ack_note', 'TEXT'],
+      ['edit_ack', "TEXT NOT NULL DEFAULT ''"], ['edit_ack_at', 'TEXT'], ['edit_ack_by', 'INTEGER'], ['edit_ack_note', 'TEXT'],
+      ['miss_blame', 'TEXT'], ['miss_blame_note', 'TEXT'], ['miss_blame_by', 'INTEGER'],
+      ['views', 'INTEGER'], ['views_at', 'TEXT'], ['views_by', 'INTEGER'],
+    ]) if (!(await hasColumn('content', col))) await exec(`ALTER TABLE content ADD COLUMN ${col} ${decl}`)
     if (!(await hasColumn('trackers', 'content_type'))) await exec('ALTER TABLE trackers ADD COLUMN content_type TEXT')
+    // The ambassador programme grew a terms line the three boxes could not say,
+    // and a moment somebody said their video was live.
+    for (const [tbl, col, decl] of [
+      ['content', 'shoot_alt', 'TEXT'],   // the day they CAN do, offered with a no
+      ['content', 'edit_alt', 'TEXT'],
+      ['ambassadors', 'default_terms_other', "TEXT NOT NULL DEFAULT ''"],
+      ['ambassador_cards', 'terms_other', "TEXT NOT NULL DEFAULT ''"],
+      ['ambassador_cards', 'posted_at', 'TEXT'],
+    ]) if (!(await hasColumn(tbl, col))) await exec(`ALTER TABLE ${tbl} ADD COLUMN ${col} ${decl}`)
     // Older databases stored a single channel per task — rebuild to the new shape.
     if (await hasColumn('content', 'channel')) {
       await exec(`
@@ -1013,6 +1581,40 @@ async function migrate() {
         DROP TABLE content_legacy;
       `)
     }
+    if (!(await hasColumn('users', 'admin_channels'))) await exec("ALTER TABLE users ADD COLUMN admin_channels TEXT NOT NULL DEFAULT '[]'")
+    if (!(await hasColumn('channels', 'drive_url'))) await exec("ALTER TABLE channels ADD COLUMN drive_url TEXT NOT NULL DEFAULT ''")
+    if (!(await hasColumn('users', 'daily_cap'))) await exec('ALTER TABLE users ADD COLUMN daily_cap INTEGER NOT NULL DEFAULT 0')
+    if (!(await hasColumn('users', 'crew_channels'))) await exec("ALTER TABLE users ADD COLUMN crew_channels TEXT NOT NULL DEFAULT '[]'")
+    // pay_rules arrived in round 73 without a quota; the table is created by
+    // CREATE TABLE IF NOT EXISTS, which will not add a column to one that is
+    // already there, so an existing board needs these two spelled out.
+    if (!(await hasColumn('channels', 'daily_ad_cap'))) await exec('ALTER TABLE channels ADD COLUMN daily_ad_cap INTEGER NOT NULL DEFAULT 0')
+    if (!(await hasColumn('person_kpis', 'source'))) await exec("ALTER TABLE person_kpis ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+    if (!(await hasColumn('person_kpis', 'direction'))) await exec("ALTER TABLE person_kpis ADD COLUMN direction TEXT NOT NULL DEFAULT 'atleast'")
+    if (!(await hasColumn('person_kpis', 'reward'))) await exec('ALTER TABLE person_kpis ADD COLUMN reward REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'quota'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'quota_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota_bonus REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'per_1k_views'))) await exec('ALTER TABLE pay_rules ADD COLUMN per_1k_views REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'views_target'))) await exec('ALTER TABLE pay_rules ADD COLUMN views_target REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'views_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN views_bonus REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('sprint_tasks', 'dropped_at'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_at TEXT')
+    if (!(await hasColumn('sprint_tasks', 'dropped_by'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_by INTEGER')
+    if (!(await hasColumn('sprint_tasks', 'dropped_reason'))) await exec("ALTER TABLE sprint_tasks ADD COLUMN dropped_reason TEXT NOT NULL DEFAULT ''")
+    if (!(await hasColumn('sprint_tasks', 'dropped_sprint_id'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_sprint_id INTEGER')
+    if (!(await hasColumn('content', 'post_link'))) await exec('ALTER TABLE content ADD COLUMN post_link TEXT')
+    if (!(await hasColumn('content', 'face_id'))) await exec('ALTER TABLE content ADD COLUMN face_id INTEGER')
+    if (!(await hasColumn('content', 'skip_rate'))) await exec('ALTER TABLE content ADD COLUMN skip_rate REAL')
+    if (!(await hasColumn('content', 'skip_rate_at'))) await exec('ALTER TABLE content ADD COLUMN skip_rate_at TEXT')
+    if (!(await hasColumn('content', 'paid_month'))) await exec('ALTER TABLE content ADD COLUMN paid_month TEXT')
+    if (!(await hasColumn('content', 'paid_at'))) await exec('ALTER TABLE content ADD COLUMN paid_at TEXT')
+    if (!(await hasColumn('content', 'paid_by'))) await exec('ALTER TABLE content ADD COLUMN paid_by INTEGER')
+    if (!(await hasColumn('content', 'script_key'))) await exec('ALTER TABLE content ADD COLUMN script_key TEXT')
+    if (!(await hasColumn('comments', 'voice_id'))) await exec('ALTER TABLE comments ADD COLUMN voice_id INTEGER')
+    if (!(await hasColumn('comments', 'voice_secs'))) await exec('ALTER TABLE comments ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
+    if (!(await hasColumn('revisions', 'voice_id'))) await exec('ALTER TABLE revisions ADD COLUMN voice_id INTEGER')
+    if (!(await hasColumn('revisions', 'voice_secs'))) await exec('ALTER TABLE revisions ADD COLUMN voice_secs INTEGER NOT NULL DEFAULT 0')
+    if (!(await hasColumn('revisions', 'photo'))) await exec('ALTER TABLE revisions ADD COLUMN photo TEXT')
+    if (!(await hasColumn('revisions', 'photo_thumb'))) await exec('ALTER TABLE revisions ADD COLUMN photo_thumb TEXT')
     if (!(await hasColumn('content', 'todo_sort'))) await exec('ALTER TABLE content ADD COLUMN todo_sort INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'pinned'))) await exec('ALTER TABLE content ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('content', 'photo_thumb'))) await exec('ALTER TABLE content ADD COLUMN photo_thumb TEXT')
@@ -1100,8 +1702,11 @@ export function defaultMayLeave(actor, label) {
   const l = String(label || '').toLowerCase()
   if (/^deleted$/.test(l)) return actor === 'member'
   if (actor === 'member') return true
-  if (actor === 'operator') return /idea|to shoot|shot/.test(l)
-  if (actor === 'editor' || actor === 'designer') return /idea|to shoot|shot|editing/.test(l)
+  // "shot" was the stage folded into Editing in round 82. The operator's part
+  // ends when the footage is handed over, which the milestone tick now does,
+  // so To shoot is the last stage they may leave.
+  if (actor === 'operator') return /idea|to shoot/.test(l)
+  if (actor === 'editor' || actor === 'designer') return /idea|to shoot|editing/.test(l)
   return false
 }
 export async function getStageRules() {
@@ -1127,15 +1732,107 @@ export async function mayLeaveStage(actor, statusId) {
 // types; Format and Rubrika also carry admin-managed option lists. Stored
 // in meta 'task_fields'; getTaskFields always answers the EFFECTIVE config
 // (stored overrides merged over these defaults).
-export const TASK_FIELD_KEYS = ['format', 'rubrika', 'script', 'reference', 'description']
-const ALL_TYPES = ['post', 'reel', 'story', 'video', 'other']
+export const TASK_FIELD_KEYS = ['format', 'rubrika', 'script', 'tz', 'reference', 'description']
+const ALL_TYPES = ['post', 'reel', 'story', 'video', 'target', 'other']
 export const DEFAULT_TASK_FIELDS = {
   format:      { state: 'optional', types: ['reel', 'video'], options: ['Talking head', 'Split screen', 'Voiceover', 'Interview', 'Vlog', 'Skit'] },
   rubrika:     { state: 'optional', types: [...ALL_TYPES], options: [] },
   script:      { state: 'optional', types: ['reel', 'video'] },
+  // ТЗ is what the editor is told to make of the footage — a different thing
+  // from the script the operator films by, and the one most boards want to
+  // insist on, so it is switchable like the rest.
+  tz:          { state: 'optional', types: ['reel', 'video'] },
   reference:   { state: 'optional', types: [...ALL_TYPES] },
   description: { state: 'optional', types: [...ALL_TYPES] },
 }
+// ---- which pages this board shows ------------------------------------------
+// Round 82 removed eight destinations because there were too many; the answer
+// to "too many" should not be a permanent decision taken once by whoever built
+// the thing. So the switchable ones are switchable: an admin turns a page off
+// and it leaves the sidebar, the phone's More sheet and its own route for
+// everybody, and comes back the same way.
+//
+// This is TIDYING, not permission. The data behind a hidden page is still
+// served — a hidden Statistics page does not make anybody's misses secret —
+// and the pages that are the job itself (My Day, the channel boards) cannot be
+// switched off at all, because a board with no way into the work is not a
+// tidier board, it is a broken one.
+export const PAGE_KEYS = ['overview', 'releases', 'recordings', 'missed', 'design', 'docs', 'sprints', 'projects', 'crew', 'team']
+const DEFAULT_PAGES = Object.fromEntries(PAGE_KEYS.map((k) => [k, true]))
+
+export async function getPageRules() {
+  let stored = {}
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'page_rules'"))?.value || '{}')
+    if (!stored || typeof stored !== 'object') stored = {}
+  } catch { stored = {} }
+  const out = { ...DEFAULT_PAGES }
+  for (const k of PAGE_KEYS) if (typeof stored[k] === 'boolean') out[k] = stored[k]
+  return out
+}
+
+// ---- what a reel earns, by how much of it people watched ------------------
+// A tier is a band of SKIP RATE and what a piece in that band pays the person
+// who filmed it and the person who cut it. Lower skip is better, so A is the
+// tightest band and the bands are read in order.
+//
+// It lives in meta beside the other board-wide rules rather than in a table:
+// it is one short list an admin edits as a whole, and every read wants all of
+// it. Empty means nobody is paid by tier — which is what everyone was before
+// this existed, so no board changed when it appeared.
+export const DEFAULT_SKIP_TIERS = []
+export async function getSkipTiers() {
+  let stored = []
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'skip_tiers'"))?.value || '[]')
+    if (!Array.isArray(stored)) stored = []
+  } catch { stored = [] }
+  return stored
+    .map((t) => ({
+      name: String(t?.name ?? '').trim().slice(0, 12),
+      min: Number(t?.min) || 0,
+      max: Number(t?.max) || 0,
+      per_film: Number(t?.per_film) || 0,
+      per_edit: Number(t?.per_edit) || 0,
+    }))
+    .filter((t) => t.name && t.max >= t.min)
+    .slice(0, 12)
+}
+// Which tier a piece falls in. A piece nobody has measured falls in NO tier —
+// it is not "the worst one", it is not counted, the same way an uncounted view
+// adds nothing rather than adding zero.
+export function tierFor(tiers, skip) {
+  if (skip === null || skip === undefined || Number.isNaN(Number(skip))) return null
+  const v = Number(skip)
+  return tiers.find((t) => v >= t.min && v <= t.max) || null
+}
+
+// ---- how many pieces earns which grade ------------------------------------
+// "A+ is twenty-four reels a month, A is twenty." The admin sets the ladder;
+// everybody sees which rung they are on and what the next one costs. Same
+// shape and same reasoning as the tiers above.
+export async function getMakerGrades() {
+  let stored = []
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'maker_grades'"))?.value || '[]')
+    if (!Array.isArray(stored)) stored = []
+  } catch { stored = [] }
+  return stored
+    .map((g) => ({ name: String(g?.name ?? '').trim().slice(0, 12), pieces: Math.max(0, Math.round(Number(g?.pieces) || 0)) }))
+    .filter((g) => g.name && g.pieces > 0)
+    .sort((a, b) => b.pieces - a.pieces)
+    .slice(0, 12)
+}
+// The rung somebody is standing on, and the one above it. Nothing delivered is
+// not a grade — it is the bottom of the ladder, and saying "F" at somebody who
+// has just joined is not what this is for.
+export function gradeFor(grades, count) {
+  const n = Number(count) || 0
+  const at = grades.find((g) => n >= g.pieces) || null
+  const next = [...grades].reverse().find((g) => g.pieces > n) || null
+  return { grade: at?.name || null, at: at?.pieces ?? null, next: next?.name || null, next_at: next?.pieces ?? null, count: n }
+}
+
 export async function getTaskFields() {
   let stored = {}
   try {
@@ -1164,6 +1861,99 @@ export async function getTaskFields() {
 // a text-only post stops demanding a designer nobody ever planned to assign.
 // Stored in meta 'crew_needs'; missing keys fall back to these defaults,
 // which reproduce the pre-tuning behavior exactly.
+// Everything a task carries that is meaningless without it. Deleting a task
+// used to take only its attachments, which left the heaviest rows in the
+// database — a voice note and a Pravki screenshot are base64 blobs — alive
+// with nothing left to reach them by. Named in ONE place because a task can
+// be deleted directly or swept up when its last channel goes, and the two
+// paths drifting apart is how the leak started.
+//
+// `activity` is the deliberate exception: it writes down names and titles at
+// the moment of the change so the log still reads like a sentence afterwards.
+export const TASK_CHILD_TABLES = [
+  'attachments', 'voice_notes', 'comments', 'revisions', 'date_requests', 'undo_moves', 'task_flags',
+  'notifications',   // a bell line pointing at a task nobody can open is a dead end
+]
+export const taskChildDeletes = (id) =>
+  TASK_CHILD_TABLES.map((t) => [`DELETE FROM ${t} WHERE content_id = ?`, id])
+
+// Sprint tasks are never deleted — round 85 made dropping the only way off a
+// board, because a week whose numbers change after the week is over is not a
+// record. The cascade that used to take a sprint task's week rows, checklists,
+// assignees and files with it went with the delete that called it.
+
+// The sprint board needs a week to stand on, and one only: the week we are
+// in. No users, no owners, no sample tasks — sprint_owners ships empty on
+// purpose and is filled by hand after deploy.
+//
+// Idempotent by the week's own start, so a restart on Tuesday does not open
+// a second sprint, and a board that was closed on Saturday does not have its
+// history reopened by a boot on Sunday.
+// The first sprint owner.
+//
+// The table ships empty by design and was meant to be filled in by hand after
+// the first deploy, which is fine for one row and no way to run a team. This
+// puts the first one in so the module is usable the moment it lands; every
+// change after that is made in Admin, where an admin can add and remove
+// owners without touching the database.
+//
+// It runs once ever, and "once" starts when the person is actually found. A
+// flag burned on a board where they do not exist yet would mean they never
+// become an owner however long they are on the team afterwards. Written the
+// moment they are made one, so an admin taking it away later sticks, and a
+// restart does not put them back.
+const FIRST_SPRINT_OWNER = 'Asadbek Urakov'
+export async function ensureFirstSprintOwner() {
+  if (await get("SELECT value FROM meta WHERE key = 'sprint_owner_seeded'")) return
+  const name = FIRST_SPRINT_OWNER.trim().toLowerCase()
+  const first = name.split(/\s+/)[0]
+  const who = await get(
+    `SELECT id FROM users
+      WHERE lower(name) = ? OR lower(username) = ? OR lower(username) = ?
+      ORDER BY CASE WHEN lower(name) = ? THEN 0 ELSE 1 END LIMIT 1`,
+    name, name.replace(/\s+/g, ''), first, name)
+  if (!who) return
+  try { await run('INSERT INTO sprint_owners (user_id) VALUES (?)', who.id) } catch { /* already one */ }
+  await run("INSERT INTO meta (key, value) VALUES ('sprint_owner_seeded', ?)", new Date().toISOString())
+}
+
+// Keys an admin typed into the panel.
+//
+// They live in meta beside the other deployment facts. They are never sent to
+// a browser: the panel is told a key exists and where it came from, never what
+// it is. ai.js keeps them in memory because secret() is called on every
+// request; this is what fills that memory, at boot and after each save.
+export async function saveAiKey(envName, value) {
+  const key = `ai_key_${envName}`
+  if (value) await run('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value)
+  else await run('DELETE FROM meta WHERE key = ?', key)
+}
+export async function loadAiKeys() {
+  const rows = await all("SELECT key, value FROM meta WHERE key LIKE 'ai_key_%'")
+  const map = {}
+  for (const r of rows) if (r.value) map[r.key.slice('ai_key_'.length)] = r.value
+  const { useTypedKeys } = await import('./ai.js')
+  useTypedKeys(map)
+  return Object.keys(map)
+}
+
+export async function ensureCurrentSprint() {
+  const { weekOf } = await import('./sprintweek.js')
+  const week = weekOf()
+  const already = await get('SELECT id FROM sprints WHERE start_at = ?', week.start_at)
+  if (already) return already.id
+  try {
+    const info = await run(
+      'INSERT INTO sprints (code, start_at, freeze_at, meeting_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      week.code, week.start_at, week.freeze_at, week.meeting_at, 'active', new Date().toISOString())
+    return info.lastInsertRowid
+  } catch {
+    // Somebody else inserted this week between the check and the write. The
+    // unique index caught it; the row we wanted exists either way.
+    return (await get('SELECT id FROM sprints WHERE start_at = ?', week.start_at))?.id ?? null
+  }
+}
+
 export const CREW_NEED_KEYS = ['operator', 'editor', 'designer']
 export const DEFAULT_CREW_NEEDS = {
   operator: ['reel', 'video'],
@@ -1185,45 +1975,9 @@ export async function getCrewNeeds() {
   return out
 }
 
-// Record today's value for a metric (upsert), so comparisons have data.
-export async function snapshotTracker(trackerId) {
-  const row = await get('SELECT current FROM trackers WHERE id = ?', trackerId)
-  if (!row) return
-  await run(`
-    INSERT INTO metric_history (tracker_id, date, value) VALUES (?, ?, ?)
-    ON CONFLICT(tracker_id, date) DO UPDATE SET value = excluded.value
-  `, trackerId, dayISO(0), row.current)
-}
-
-// Task types that can bind to a channel's plan metric.
-export const CONTENT_TYPES = ['post', 'reel', 'story', 'video', 'other']
-export const TYPE_PLAN_LABELS = { post: 'Posts', reel: 'Reels', story: 'Stories', video: 'Videos' }
-
-// The plan metric for (channel, type) — optionally created on first use, so a
-// new task always has a plan to count toward.
-export async function planTracker(channel, type, createIfMissing = false) {
-  if (!TYPE_PLAN_LABELS[type]) return null
-  let t = await get('SELECT * FROM trackers WHERE department = ? AND content_type = ? ORDER BY sort, id', channel, type)
-  if (!t && createIfMissing) {
-    const maxSort = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM trackers WHERE department = ?', channel)).m
-    const info = await run(`
-      INSERT INTO trackers (department, label, current, target, unit, period, content_type, sort, updated_at)
-      VALUES (?, ?, 0, 0, ?, 'monthly', ?, ?, ?)
-    `, channel, TYPE_PLAN_LABELS[type], TYPE_PLAN_LABELS[type].toLowerCase(), type, maxSort + 1, new Date().toISOString())
-    t = await get('SELECT * FROM trackers WHERE id = ?', info.lastInsertRowid)
-  }
-  return t
-}
-
-// Move a channel plan: creating a task raises the plan (target +1), completing
-// it fills it (current +1); deleting / un-completing walks both back.
-export async function bumpPlan(channel, type, { target = 0, current = 0 }, createIfMissing = false) {
-  const t = await planTracker(channel, type, createIfMissing)
-  if (!t) return
-  await run('UPDATE trackers SET target = ?, current = ?, updated_at = ? WHERE id = ?',
-    Math.max(0, t.target + target), Math.max(0, t.current + current), new Date().toISOString(), t.id)
-  await snapshotTracker(t.id)
-}
+// Task types a piece can be. 'target' is paid promotion — a creative made
+// for an ad set rather than for the feed.
+export const CONTENT_TYPES = ['post', 'reel', 'story', 'video', 'target', 'other']
 
 const now = () => new Date().toISOString()
 
@@ -1242,14 +1996,17 @@ export async function seedIfEmpty() {
     ['youtube', 'YouTube', 'youtube'],
   ]
 
-  // ---- pipeline statuses (mirrors the team's ClickUp board) ----
-  // Deleted is the graveyard: a planned/shot piece that was killed. It stays
-  // on the record (the planner's and operator's work happened) but stops
-  // counting for the editor and leaves the channel plan.
+  // ---- pipeline statuses ----
+  // Five working stages and a graveyard. There used to be a sixth, Shot,
+  // between the shoot and the edit — a column whose only job was to be left,
+  // because footage that is shot is footage the editor can start on.
+  //
+  // Deleted is the graveyard: a planned or filmed piece that was killed. It
+  // stays on the record (the planner's and operator's work happened) but
+  // stops counting for the editor.
   const statusList = [
     ['Idea', '#8b8388', 0],
     ['To shoot', '#fab219', 0],
-    ['Shot', '#ec835a', 0],
     ['Editing', '#b5324a', 0],
     ['Ready', '#2a78d6', 0],
     ['Published', '#0ca30c', 1],
@@ -1506,20 +2263,73 @@ async function seedTemplatesOnce() {
 // not cached: the next request starts a fresh one instead of replaying the
 // same rejection forever.
 let initPromise
+// ---- folding the Shot stage away -------------------------------------------
+// The pipeline carried six working stages, and one of them existed only to be
+// left: a piece landed on Shot the moment the operator ticked "filmed", and
+// then waited for somebody to notice it and drag it to Editing. Footage that
+// is shot IS footage the editor can start on, so the tick hands it straight
+// over now and the column goes.
+//
+// A board that is already running cannot simply lose a column with work in
+// it. Everything standing on Shot moves to the stage that follows it — the
+// piece keeps its place in the pipeline, it just stops waiting in a room with
+// no door. Runs once, on both engines, and does nothing at all on a board
+// where an admin has since made their own stage called Shot again: the marker
+// is written whether or not there was anything to fold.
+async function foldShotStage() {
+  if (await get("SELECT 1 AS x FROM meta WHERE key = 'fold_shot_stage'")) return
+  const stages = await all('SELECT id, label, sort FROM statuses ORDER BY sort, id')
+  const shot = stages.find((s) => /^shot$/i.test(String(s.label || '').trim()))
+  if (shot) {
+    // Where the work goes: the next stage along, which on the shipped
+    // pipeline is Editing. Never the graveyard, and never nowhere.
+    const after = stages.filter((s) => (s.sort > shot.sort || (s.sort === shot.sort && s.id > shot.id))
+      && !/^deleted$/i.test(String(s.label || '')))
+    const target = after.find((s) => /^editing$|^edit$/i.test(String(s.label || ''))) || after[0]
+    if (target) {
+      await run('UPDATE content SET status_id = ? WHERE status_id = ?', target.id, shot.id)
+      // The admin's stage rules are keyed by status id in a meta blob; the
+      // entry for a stage that no longer exists is an answer to a question
+      // nobody can ask, so it goes with it.
+      try {
+        const raw = await get("SELECT value FROM meta WHERE key = 'stage_rules'")
+        const rules = JSON.parse(raw?.value || '{}')
+        let touched = false
+        for (const actor of Object.keys(rules || {})) {
+          if (rules[actor] && rules[actor][String(shot.id)] !== undefined) {
+            delete rules[actor][String(shot.id)]
+            touched = true
+          }
+        }
+        if (touched) {
+          await run("INSERT INTO meta (key, value) VALUES ('stage_rules', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            JSON.stringify(rules))
+        }
+      } catch { /* no rules stored, or unreadable — the stage still goes */ }
+      await run('DELETE FROM statuses WHERE id = ?', shot.id)
+    }
+  }
+  await run("INSERT INTO meta (key, value) VALUES ('fold_shot_stage', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+}
+
 export function initDb() {
   initPromise ||= (async () => {
     await initSchema()
+    await ensureCurrentSprint()
     await seedIfEmpty()
     await seedCampaignsIfEmpty()
     await migrateCampaignsToProjects()
+    await loadAiKeys()
+    await ensureFirstSprintOwner()
     await ensureAdminAccess()
     await importJulyIgPlan()
     await seedTemplatesOnce()
+    await foldShotStage()
     // The Target team's dashboard leads with launch programs — once, and only
     // if the admin hasn't customized that channel's layout yet.
     if (!(await get("SELECT 1 AS x FROM meta WHERE key = 'target_programs_default'"))) {
       await run("UPDATE channels SET dashboard = ? WHERE key = 'target' AND dashboard IS NULL",
-        JSON.stringify(['programs', 'metrics', 'growth', 'content']))
+        JSON.stringify(['programs', 'content']))
       await run("INSERT INTO meta (key, value) VALUES ('target_programs_default', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     }
     // Instagram Main outranks Instagram Uzb in the sidebar — once; after that
@@ -1577,7 +2387,9 @@ export function publicUser(row) {
   // Member defaults are for members. Crew roles (editor/operator/designer or
   // any mix) carry no granular rights at all — their powers come from being
   // on a task's crew.
-  const crew = ['editor', 'operator', 'designer', 'crew'].includes(row.role)
+  // An ambassador is not staff. They are a student with a login to one page,
+  // and DEFAULT_PERMS would have handed them the rights of a member.
+  const crew = ['editor', 'operator', 'designer', 'crew', 'ambassador'].includes(row.role)
   return {
     id: row.id,
     name: row.name,
@@ -1587,6 +2399,16 @@ export function publicUser(row) {
     role: row.role,
     crew_roles: crewRolesOf(row),
     departments: JSON.parse(row.departments || '[]'),
+    // Which channels this admin runs. EMPTY means all of them, which is what
+    // every admin was before this existed — so nobody's reach changed by the
+    // column appearing.
+    admin_channels: (() => { try { return JSON.parse(row.admin_channels || '[]') } catch { return [] } })(),
+    // How many pieces this person can be given for one day. 0 = no ceiling,
+    // which is what everyone was before this existed.
+    daily_cap: row.daily_cap || 0,
+    // The channels this crew member works on. EMPTY means all of them — again,
+    // what everyone was — so nobody's reach narrowed when the column appeared.
+    crew_channels: (() => { try { return JSON.parse(row.crew_channels || '[]') } catch { return [] } })(),
     permissions: crew ? {} : { ...DEFAULT_PERMS, ...perms },
     color: row.color,
     avatar: row.avatar || null,

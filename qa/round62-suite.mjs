@@ -46,7 +46,7 @@ const zarina = (await api('/users', 'POST', {
   name: `${tag} Zarina`, username: `${tag}zar`, password: 'probe123', role: 'member', departments: ['instagram_main'],
 }, T)).data
 const mk = (over) => api('/content', 'POST', {
-  channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), assignee_ids: [], ...over,
+  channels: ['instagram_main'], type: 'video', status_id: sid(/^editing$/i), assignee_ids: [], ...over,
 }, T).then((r) => r.data)
 
 // One the admin owns, one he only edits (a different seat, still his work),
@@ -59,6 +59,18 @@ ok('fixtures exist', [ownd, cuts, hers].every((t) => t?.id))
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
 const page = await ctx.newPage()
+
+// The person filter is a searchable picker rather than a <select>: a select's
+// type-ahead jumps to the first match and forgets the letter, and this one
+// narrows the list instead. Driven the way a person drives it.
+const ppPick = async (root, name) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 const errs = []
 page.on('pageerror', (e) => errs.push(e.message))
 const signIn = async (pg, u, pw) => {
@@ -93,12 +105,38 @@ const openPage = async (pg, path) => {
 const mine = async (pg = page) => (await pg.locator('.rel-ev, .late-chip').allTextContents())
   .filter((t) => t.includes(tag))
 // The grid's own pointer drag: press the pill, slide to the target day, drop.
+//
+// It USED to aim eight pixels above the bottom of the target cell, read once
+// before the press. That is fine on an empty calendar and wrong on a full
+// one: with a month's work in the grid the cells are tall, the rows reflow
+// while the pointer is moving, and the coordinate read a moment ago is now
+// over the day next door. The suite ran on a board sixty other suites had
+// already filled, dropped one cell off, and reported that the app had failed
+// to move a task.
+//
+// So it aims at the CENTRE, re-reads the box after the grid has settled, and
+// — the part that actually makes it honest — asks the page what is under the
+// cursor before letting go. The app's drop logic reads the same way
+// (elementFromPoint → closest('[data-drop]')), so this is the browser
+// confirming the pointer is where the test believes it is, not the test
+// being told what it wants to hear.
 const dragTo = async (pill, iso, pg = page) => {
+  const target = pg.locator(`[data-drop="${iso}"]`)
+  await target.scrollIntoViewIfNeeded()
+  await pg.waitForTimeout(250)
   const from = await pill.boundingBox()
-  const cell = await pg.locator(`[data-drop="${iso}"]`).boundingBox()
   await pg.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
   await pg.mouse.down()
-  await pg.mouse.move(cell.x + cell.width / 2, cell.y + cell.height - 8, { steps: 12 })
+  for (let tries = 0; tries < 3; tries++) {
+    const cell = await target.boundingBox()
+    if (!cell) break
+    const x = cell.x + cell.width / 2
+    const y = cell.y + cell.height / 2
+    await pg.mouse.move(x, y, { steps: 12 })
+    const under = await pg.evaluate(([px, py]) =>
+      document.elementFromPoint(px, py)?.closest?.('[data-drop]')?.getAttribute('data-drop') || null, [x, y])
+    if (under === iso) break
+  }
   await pg.mouse.up()
   await pg.waitForTimeout(1400)
 }
@@ -126,7 +164,7 @@ ok('clicking it again puts everyone back',
   (await mine()).length === 3 && await page.locator('.cf-mine.active').count() === 0)
 
 // It is the same person filter underneath, and the page must say so both ways.
-await page.locator('.cf-bar .cf-sel').first().selectOption(String(admin.id))
+await ppPick(page.locator('.cf-bar .cf-person .pp-field'), admin.name)
 await page.waitForTimeout(500)
 ok('picking yourself from the menu lights the switch — it is one filter, not two',
   await page.locator('.cf-mine.active').count() === 1)
@@ -223,8 +261,11 @@ await page.keyboard.press('Control+k')
 await page.waitForSelector('.qf-input', { timeout: 10000 })
 await page.keyboard.type('releas')
 await page.waitForTimeout(600)
+// Count the PAGE row, not every row saying "release": Quick-find searches
+// task titles too, and the shared stack carries fixtures from other suites
+// with the word in their names. Matching those is the feature working.
 ok('Ctrl-K finds Releases by name',
-  (await page.locator('.qf-row').filter({ hasText: 'Releases' }).count()) === 1)
+  (await page.locator('.qf-row').filter({ has: page.locator('.qf-kind') }).filter({ hasText: 'Releases' }).count()) === 1)
 await page.keyboard.press('Escape')
 await page.waitForTimeout(400)
 await page.keyboard.press('Control+k')
@@ -245,10 +286,19 @@ const mErrs = []
 mp.on('pageerror', (e) => mErrs.push(e.message))
 await signIn(mp, 'admin', 'admin123')
 await openPage(mp, '/releases')
+// A phone opens the calendar on the WEEK — round 77, because seven columns of
+// titles on a 390px screen are seven columns of nothing readable. This
+// fixture's work is spread across the month, so the month is what has to be
+// on screen before counting it. The switch itself is what is under test.
+await mp.locator('.cal-scale .pill', { hasText: /month/i }).click()
+await mp.waitForTimeout(800)
+const phoneAll = (await mine(mp)).length
 await mp.locator('.cf-mine').click()
 await mp.waitForTimeout(700)
+const phoneMine = (await mine(mp)).length
 ok('the phone gets the switch, and it works there',
-  (await mp.locator('.cf-mine.active').count()) === 1 && (await mine(mp)).length === 2)
+  (await mp.locator('.cf-mine.active').count()) === 1 && phoneMine === 2,
+  `all=${phoneAll} mine=${phoneMine}`)
 ok('…without pushing the page sideways',
   !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)))
 ok('…with nothing thrown', mErrs.length === 0, mErrs.join(' | '))

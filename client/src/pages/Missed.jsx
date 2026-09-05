@@ -2,12 +2,19 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, CalendarRange, ChevronDown, Scissors, Send, PenLine, Trash2, Palette, BarChart3 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
+import { offerFilter } from '../lib/clutter.js'
 import { useChannels } from '../lib/channels.jsx'
 import { todayISO, addDaysISO, dateLabel, typeInfo, tashkentDay, isDeletedLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
+import { Dots } from '../components/Dots.jsx'
 import ContentModal from '../components/ContentModal.jsx'
+import StatsMonth from '../components/StatsMonth.jsx'
+import Fold from '../components/Fold.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone } from '../lib/finish.js'
+import { rewardIfFinished } from '../lib/reward.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Missed deadlines — two clocks per task, each unforgiving:
 //   release    — the channel's deadline (release_date, resolved by done)
@@ -48,115 +55,12 @@ const RANGES = [
   { key: '1d', label: 'Last day', days: 1 },
   { key: '7d', label: 'Last 7 days', days: 7 },
   { key: '30d', label: 'Last 30 days', days: 30 },
-  { key: 'custom', label: 'Custom…', days: null },
+  { key: 'custom', label: tx('Custom…'), days: null },
 ]
 
-/* Where the time goes: the whole point of the exercise, in one block.
-   The three phases carry their own clocks, so a week lost between the shoot
-   and the cut can finally be told apart from a week lost after it. "Excused"
-   is counted separately and never against the person — it is the handover
-   that arrived too late for anyone to have met the date. */
-const PHASE_TIP = {
-  shoot: 'From the shooting date to the moment the footage was handed to an editor',
-  edit: 'From that handover to the moment the cut was handed to review',
-  review: 'From that handover to publication',
-}
-function PipelineBlame() {
-  const [rep, setRep] = useState(null)
-  const [all, setAll] = useState(null)   // every warning on the team, admin-only
-  const [open, setOpen] = useState(null) // which person is expanded
-  useEffect(() => {
-    let alive = true
-    api.get('/warnings/report').then((d) => { if (alive) setRep(d) }).catch(() => {})
-    api.get('/warnings').then((d) => { if (alive) setAll(d.warnings || []) }).catch(() => {})
-    return () => { alive = false }
-  }, [])
-  if (!rep || !rep.phases?.some((p) => p.judged > 0)) return null
-
-  const worstDays = Math.max(1, ...rep.phases.map((p) => p.days_lost))
-  const guilty = rep.people.filter((p) => p.late > 0)
-  const forPerson = (id) => (all || []).filter((w) => w.owner_id === id)
-  return (
-    <>
-      <div className="section-head" style={{ marginTop: 6 }}>
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <BarChart3 size={16} /> Where the time goes
-        </h2>
-      </div>
-      <div className="card card-pad">
-        <div className="blame-phases">
-          {rep.phases.map((p) => (
-            <div className="blame-phase" key={p.phase} data-tip={PHASE_TIP[p.phase]}>
-              <div className="blame-head">
-                <span className="blame-name">{p.label}</span>
-                <span className="blame-days">{p.days_lost}d lost</span>
-              </div>
-              <div className="blame-bar">
-                <span style={{ width: `${Math.round((p.days_lost / worstDays) * 100)}%` }} />
-              </div>
-              <div className="blame-meta">
-                {p.late} late · {p.on_time} on time
-                {p.excused > 0 && <> · {p.excused} excused</>}
-                {p.judged > 0 && <> · {Math.round((p.on_time / p.judged) * 100)}% met</>}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {rep.worst?.days_lost > 0 && (
-          <p className="blame-verdict">
-            Most time is lost in <b>{rep.worst.label}</b> — {rep.worst.days_lost} day
-            {rep.worst.days_lost === 1 ? '' : 's'} across {rep.worst.late} missed deadline
-            {rep.worst.late === 1 ? '' : 's'}.
-          </p>
-        )}
-
-        {/* Every person's record, and — one click down — exactly which tasks
-            make it up. An accusation nobody can check is not worth making. */}
-        {guilty.length > 0 && (
-          <div className="blame-people">
-            {guilty.map((p) => {
-              const mine = forPerson(p.user_id)
-              const isOpen = open === p.user_id
-              return (
-                <div key={p.user_id}>
-                  <button type="button" className="blame-person"
-                    onClick={() => setOpen(isOpen ? null : p.user_id)}>
-                    <span className="blame-who">{p.name || `#${p.user_id}`}</span>
-                    <span className="blame-split">
-                      {Object.entries(p.phases).filter(([, v]) => v.late > 0)
-                        .map(([k, v]) => `${k} ×${v.late}`).join(' · ')}
-                      {mine.length > 0 && <span className="blame-caret">{isOpen ? '▾' : '▸'}</span>}
-                    </span>
-                    <span className="blame-days">{p.days_lost}d</span>
-                  </button>
-                  {isOpen && (
-                    <div className="blame-tasks">
-                      {mine.length === 0 && <div className="muted">No open items to show.</div>}
-                      {mine.map((w) => (
-                        <div className="blame-task" key={`${w.content_id}-${w.phase}`}>
-                          <span className="blame-task-title">{w.title}</span>
-                          <span className="muted">
-                            {w.phase_label} · due {w.due}
-                            {w.revised && <> (re-promised from {w.promised})</>}
-                            {w.delivered_day ? <> · delivered {w.delivered_day}</> : <> · not delivered</>}
-                            {w.shared_with?.length > 0 && <> · shared</>}
-                          </span>
-                          <span className="blame-days">{w.days_late}d</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
-
+/* "Where the time goes" used to be drawn here, from /warnings/report, over
+   all time. The month block above answers the same question with a window, a
+   pie and the per-person receipts underneath, so the second telling went. */
 /* Module-level row — poll ticks must not remount it. */
 function MissRow({ entry, today, byKey, usersById, isAdmin, onOpen, onMenu }) {
   const { t, kind } = entry
@@ -180,10 +84,10 @@ function MissRow({ entry, today, byKey, usersById, isAdmin, onOpen, onMenu }) {
       </span>
       <span className="ov-chips">
         {kind === 'edit'
-          ? <span className="chip miss-kind-edit"><Scissors size={11} /> edit deadline</span>
+          ? <span className="chip miss-kind-edit"><Scissors size={11} />{' '}{tx("edit deadline")}</span>
           : kind === 'design'
-            ? <span className="chip miss-kind-edit"><Palette size={11} /> design deadline</span>
-            : <span className="chip miss-kind-rel"><Send size={11} /> release</span>}
+            ? <span className="chip miss-kind-edit"><Palette size={11} />{' '}{tx("design deadline")}</span>
+            : <span className="chip miss-kind-rel"><Send size={11} />{' '}{tx("release")}</span>}
         <span className={`chip ct-${t.type}`}>{typeInfo(t.type).label}</span>
         {t.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
         {isAdmin && who.map((n) => <span key={n} className="chip chip-danger">{n}</span>)}
@@ -216,8 +120,8 @@ export default function Missed() {
   const [person, setPerson] = useState(remembered.person || 0) // 0 = everyone (admin only)
   const [openPerson, setOpenPerson] = useState(0) // report row expanded to its tasks
   const [project, setProject] = useState(remembered.project || 0) // 0 = all projects
-  // The numbers dashboard has its own window: this week by default.
-  const [statRange, setStatRange] = useState(remembered.statRange || 'tweek')
+  // The numbers dashboard has its own window: this month by default.
+  const [statRange, setStatRange] = useState(remembered.statRange || 'tmonth')
   const [statFrom, setStatFrom] = useState(remembered.statFrom || '')
   const [statTo, setStatTo] = useState(remembered.statTo || '')
   // Published-by-channel rides the same window as the numbers above it —
@@ -287,14 +191,14 @@ export default function Missed() {
   // their real span. Done and missed look at the past side of the window,
   // upcoming at the future side — so "this week" shows both at once.
   const STAT_RANGES = [
-    { key: 'today', label: 'Today' },
+    { key: 'today', label: tx('Today') },
     { key: 'tweek', label: 'This week' },
     { key: 'lweek', label: 'Last week' },
-    { key: 'tmonth', label: 'This month' },
-    { key: 'lmonth', label: 'Last month' },
-    { key: '6mo', label: '6 months' },
+    { key: 'tmonth', label: tx('This month') },
+    { key: 'lmonth', label: tx('Last month') },
+    { key: '6mo', label: tx('6 months') },
     { key: 'tyear', label: 'This year' },
-    { key: 'custom', label: 'Custom…' },
+    { key: 'custom', label: tx('Custom…') },
   ]
   const stats = useMemo(() => {
     const mondayOf = (iso) => addDaysISO(iso, -((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7))
@@ -320,7 +224,7 @@ export default function Missed() {
       tyear: [`${today.slice(0, 4)}-01-01`, `${today.slice(0, 4)}-12-31`],
       custom: [statFrom || null, statTo || null],
     }
-    const [lo, hi] = WINDOWS[statRange] || WINDOWS.tweek
+    const [lo, hi] = WINDOWS[statRange] || WINDOWS.tmonth
     const pastHi = hi && hi > today ? today : hi
     const futLo = lo && lo < today ? today : lo
     const inWin = (d, a, b) => d && (!a || d >= a) && (!b || d <= b)
@@ -365,7 +269,7 @@ export default function Missed() {
       tyear: [`${today.slice(0, 4)}-01-01`, `${today.slice(0, 4)}-12-31`],
       custom: [statFrom || null, statTo || null],
     }
-    const [lo, hi] = WINDOWS[statRange] || WINDOWS.tweek
+    const [lo, hi] = WINDOWS[statRange] || WINDOWS.tmonth
     const inWin = (d) => d && (!lo || d >= lo) && (!hi || d <= hi)
     const rows = {}
     let total = 0
@@ -461,6 +365,7 @@ export default function Missed() {
 
   const updateContent = async (item, payload) => {
     const u = await api.patch(`/content/${item.id}`, payload)
+    rewardIfFinished(item, u)
     setContent((prev) => prev.map((x) => (x.id === item.id ? u : x)))
   }
   const deleteContent = async (item) => {
@@ -472,7 +377,7 @@ export default function Missed() {
   const { openMenu } = useContextMenu()
   const rowMenu = (e, item) => openMenu(e, [
     { label: 'Open', icon: PenLine, onClick: () => setOpenItem(item) },
-    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: CheckCircle2, onClick: () => updateContent(item, { done: !item.done_at }).then(() => toast('Saved — synced')).catch((err) => alert(err.message)) },
+    { label: item.done_at ? 'Mark as not done' : 'Mark as done', icon: CheckCircle2, onClick: () => markDone(item, updateContent, setOpenItem) },
     { sep: true },
     { label: 'Delete', icon: Trash2, danger: true, onClick: () => { if (confirm(`Delete “${item.title}”?`)) deleteContent(item).catch((err) => alert(err.message)) } },
   ])
@@ -485,23 +390,26 @@ export default function Missed() {
   return (
     <>
       <div className="card card-pad brief-hero">
-        <div className="brief-hello"><BarChart3 size={17} /> Statistics</div>
+        <div className="brief-hello"><BarChart3 size={17} />{' '}{tx("Statistics")}</div>
         <h2 className="brief-title">
-          {isAdmin ? 'The whole team: ' : ''}
+          {isAdmin ? `${tx('The whole team:')} ` : ''}
           {missed.length === 0
-            ? 'nothing missed — clean record.'
+            ? tx('nothing missed — clean record.')
             : `${open.length} still not done · ${late.length} finished late`}
         </h2>
         <div className="stat-sub" style={{ marginTop: 4 }}>
-          Done, upcoming and missed — across every task {isAdmin ? 'of the team' : 'assigned to you'},
-          each judged by its own clock: release, edit-ready, design-ready.
+          {tx('Done, upcoming and missed — across every task')}{' '}{isAdmin ? 'of the team' : 'assigned to you'},{' '}
+          {tx('each judged by its own clock: release, edit-ready, design-ready.')}
         </div>
       </div>
+
+      {/* What the month says, before what the month contains. */}
+      <StatsMonth />
 
       {/* ---- the numbers: one window, four honest counts ---- */}
       <div className="card card-pad stats-card">
         <div className="docs-sec-head">
-          <h2><BarChart3 size={17} /> The numbers</h2>
+          <h2><BarChart3 size={17} />{' '}{tx("The numbers")}</h2>
           <div className="docs-up">
             <div className="pill-group">
               {STAT_RANGES.map((r) => (
@@ -522,34 +430,34 @@ export default function Missed() {
         {(isAdmin || projectChoices.length > 0) && (
           <div className="stats-filters">
             {isAdmin && (
-              <select className="select" value={person} data-tip="Only this person's work"
+              <select className="select" value={person} data-tip={tx("Only this person's work")}
                 onChange={(e) => setPerson(Number(e.target.value))}>
-                <option value={0}>Everyone</option>
+                <option value={0}>{tx("Everyone")}</option>
                 {[...users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
             )}
             {projectChoices.length > 0 && (
-              <select className="select" value={project} data-tip="Only tasks tied to this project's campaigns"
+              <select className="select" value={project} data-tip={tx("Only tasks tied to this project's campaigns")}
                 onChange={(e) => setProject(Number(e.target.value))}>
-                <option value={0}>All projects</option>
+                <option value={0}>{tx("All projects")}</option>
                 {projectChoices.map((pr) => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
               </select>
             )}
           </div>
         )}
         <div className="miss-stats">
-          <div className="miss-stat stat-done"><b>{stats.done}</b><span>done</span></div>
-          <div className="miss-stat stat-up"><b>{stats.upcoming}</b><span>upcoming</span></div>
-          <div className="miss-stat stat-missed"><b style={stats.missedN ? { color: '#A32D2D' } : undefined}>{stats.missedN}</b><span>missed</span></div>
-          <div className="miss-stat"><b>{stats.openNow}</b><span>open now</span></div>
+          <div className="miss-stat stat-done"><b>{stats.done}</b><span>{tx("done")}</span></div>
+          <div className="miss-stat stat-up"><b>{stats.upcoming}</b><span>{tx("upcoming")}</span></div>
+          <div className="miss-stat stat-missed"><b style={stats.missedN ? { color: '#A32D2D' } : undefined}>{stats.missedN}</b><span>{tx("missed")}</span></div>
+          <div className="miss-stat"><b>{stats.openNow}</b><span>{tx("open now")}</span></div>
         </div>
 
         {/* Published, by channel — same window as the tiles above; only the
             content type is its own little filter. */}
         <div className="pub-head">
-          <h3><Send size={14} /> Published by channel</h3>
+          <h3><Send size={14} />{' '}{tx("Published by channel")}</h3>
           <div className="pub-types">
             {PUB_TYPES.map((t) => (
               <button key={t.key} className={'pill' + (pubType === t.key ? ' active' : '')} onClick={() => setPubType(t.key)}>
@@ -559,7 +467,7 @@ export default function Missed() {
           </div>
         </div>
         {published.total === 0 ? (
-          <div className="tt-none" style={{ padding: '4px 0 0' }}>Nothing published in this window.</div>
+          <div className="tt-none" style={{ padding: '4px 0 0' }}>{tx("Nothing published in this window.")}</div>
         ) : (
           <div className="pub-list">
             {published.list.map((r) => (
@@ -576,15 +484,12 @@ export default function Missed() {
         )}
       </div>
 
-      {isAdmin && <PipelineBlame />}
-
-      <div className="section-head" style={{ marginTop: 6 }}>
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} /> Missed deadlines</h2>
-      </div>
+      <Fold id="miss-register" title={tx("Missed deadlines")} count={missed.length}
+        icon={<AlertTriangle size={16} />}>
 
       {/* Period: a day, a week, a month, or any dates you pick */}
       <div className="miss-filters">
-        <span className="miss-f-label"><CalendarRange size={14} /> Period</span>
+        <span className="miss-f-label"><CalendarRange size={14} />{' '}{tx("Period")}</span>
         <div className="pill-group">
           {RANGES.map((r) => (
             <button key={r.key} className={'pill' + (range === r.key ? ' active' : '')} onClick={() => setRange(r.key)}>
@@ -604,12 +509,15 @@ export default function Missed() {
       {/* Where and who — live counts on every pill; every channel is listed */}
       {(allChans.length > 1 || chan !== 'all') && (
         <div className="miss-filters">
-          <span className="miss-f-label">Channel</span>
+          <span className="miss-f-label">{tx("Channel")}</span>
           <div className="pill-group">
             <button className={'pill' + (chan === 'all' ? ' active' : '')} onClick={() => setChan('all')}>
               All <b className="pill-n">{inRange.filter((e) => !person || e.who.includes(person)).length}</b>
             </button>
-            {allChans.map((c) => (
+            {/* A channel that missed nothing is good news, not a filter. The
+                admin still sees the zero — it is their board — but nobody
+                else is offered a button that empties the page. */}
+            {allChans.filter((c) => offerFilter(user, chanCounts[c], chan === c)).map((c) => (
               <button key={c} className={'pill' + (chan === c ? ' active' : '') + (chanCounts[c] ? '' : ' pill-zero')}
                 onClick={() => setChan(chan === c ? 'all' : c)}>
                 {byKey[c]?.label || c} <b className="pill-n">{chanCounts[c] || 0}</b>
@@ -620,9 +528,9 @@ export default function Missed() {
       )}
       {isAdmin && (activePeople.length > 0 || person !== 0) && (
         <div className="miss-filters">
-          <span className="miss-f-label">Person</span>
+          <span className="miss-f-label">{tx("Person")}</span>
           <div className="pill-group">
-            <button className={'pill' + (person === 0 ? ' active' : '')} onClick={() => setPerson(0)}>Everyone</button>
+            <button className={'pill' + (person === 0 ? ' active' : '')} onClick={() => setPerson(0)}>{tx("Everyone")}</button>
             {activePeople.map((id) => {
               const u = usersById[id]
               if (!u) return null
@@ -644,10 +552,10 @@ export default function Missed() {
       <div className="miss-stats">
         <div className="miss-stat">
           <b>{missed.length}</b>
-          <span>missed in this period</span>
+          <span>{tx("missed in this period")}</span>
         </div>
         {worst && worst.n > 0 && (
-          <button className="miss-stat miss-stat-btn" data-tip="See exactly which ones, below"
+          <button className="miss-stat miss-stat-btn" data-tip={tx("See exactly which ones, below")}
             onClick={() => setOpenPerson(openPerson === worst.id ? 0 : worst.id)}>
             <b>{worst.name}</b>
             <span>most misses · {worst.n}</span>
@@ -659,7 +567,7 @@ export default function Missed() {
       {isAdmin && activePeople.length > 0 && (
         <div className="card card-pad miss-report">
           <div className="pc-check-head" style={{ marginBottom: 8 }}>
-            <h3>Misses by person</h3>
+            <h3>{tx("Misses by person")}</h3>
             <span className="stat-sub">
               {range === 'custom'
                 ? `${from || 'start'} → ${to || 'today'}`
@@ -684,8 +592,7 @@ export default function Missed() {
                   </span>
                   <b className="miss-person-n">{s.n}</b>
                   <span className="miss-person-split">
-                    <span className="mp-open">{s.open} open</span>
-                    <span className="mp-late">{s.late} late</span>
+                    <Dots late={s.late} open={s.open} />
                   </span>
                   <ChevronDown size={14} className={'miss-person-chev' + (opened ? ' open' : '')} />
                 </button>
@@ -711,41 +618,39 @@ export default function Missed() {
         </div>
       )}
 
-      <div className="section-head">
-        <AlertTriangle size={17} style={{ color: '#A32D2D' }} />
-        <h2 style={{ color: '#A32D2D' }}>Still not done</h2>
-        <span className="count">· {open.length}</span>
-      </div>
-      {open.length === 0 ? (
-        <div className="card card-pad empty">Nothing overdue and undone. Keep it that way.</div>
-      ) : (
-        <div className="card card-pad brief-list">
-          {open.map((e) => (
-            <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
-          ))}
-        </div>
-      )}
+      </Fold>
 
-      <div className="section-head">
-        <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
-        <h2>Finished, but late</h2>
-        <span className="count">· {late.length}</span>
-      </div>
-      {late.length === 0 ? (
-        <div className="card card-pad empty">No late finishes on record.</div>
-      ) : (
-        <div className="card card-pad brief-list">
-          {late.map((e) => (
-            <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
-          ))}
-        </div>
-      )}
+      <Fold id="miss-open" title={tx("Still not done")} count={open.length} tone="#A32D2D"
+        icon={<AlertTriangle size={17} style={{ color: '#A32D2D' }} />}>
+        {open.length === 0 ? (
+          <div className="card card-pad empty">{tx("Nothing overdue and undone. Keep it that way.")}</div>
+        ) : (
+          <div className="card card-pad brief-list">
+            {open.map((e) => (
+              <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
+            ))}
+          </div>
+        )}
+      </Fold>
+
+      <Fold id="miss-late" title={tx("Finished, but late")} count={late.length}
+        icon={<CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />}>
+        {late.length === 0 ? (
+          <div className="card card-pad empty">{tx("No late finishes on record.")}</div>
+        ) : (
+          <div className="card card-pad brief-list">
+            {late.map((e) => (
+              <MissRow key={`${e.t.id}-${e.kind}`} entry={e} today={today} byKey={byKey} usersById={usersById} isAdmin={isAdmin} onOpen={setOpenItem} onMenu={rowMenu} />
+            ))}
+          </div>
+        )}
+      </Fold>
 
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onUpdate={updateContent}
           onDelete={deleteContent}
         />

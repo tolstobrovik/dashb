@@ -56,8 +56,43 @@
   --tint-neutral:  #f0eeef;
   --tint-warn:     #fff3dd;
 
+  /* ---- the constraint layer ------------------------------------------
+     Ruthless minimalism as rules a stylesheet can enforce, rather than a
+     note somebody has to remember in review. Four of them:
+
+       one accent   the brand crimson is the ONLY accent, and it belongs to
+                    the single primary action on a screen. Red belongs to
+                    failure and lateness; nothing else may borrow it.
+       flat status  a badge SAYS something, a button DOES something. They
+                    must not look alike, so a badge has no border, no hover
+                    and no pointer.
+       air          distinct logical groups are separated by --gap-group,
+                    one and a half times what they used to be, so the data
+                    has room to read as groups rather than as a wall.
+       no lines     containers are told apart by a shift in background, not
+                    by borders and drop shadows.
+  */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --gap-field:   12px;  /* rows inside one group */
+  --gap-group:   36px;  /* between distinct logical groups — 1.5× the old 24 */
+  --gap-section: 54px;  /* between the major regions of a page */
+
   --sidebar-w: 256px;
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* The display face: the wordmark and the page headings.
+     The brand face is Nekst, but the file supplied is a Fontspring DEMO —
+     evaluation only, no web embedding, and 95 glyphs with no Cyrillic at all.
+     Golos Text is the nearest licensed (OFL) alternative and, unlike the
+     Space Grotesk that stood here before it, its Cyrillic is native rather
+     than absent: the board now speaks Russian, and a display face with no
+     Cyrillic drops out of the brand mid-heading.
+     To move to real Nekst, buy the licence, drop the .otf in client/public/
+     and add it at the front of this stack behind an @font-face. */
+  --font-display: 'Golos Text', 'Onest', var(--font);
   color-scheme: light;
 }
 
@@ -185,7 +220,11 @@ button { font-family: inherit; }
 
 .logo-lockup { display: flex; align-items: center; gap: 12px; padding: 6px 8px 20px; }
 .logo-text { display: flex; flex-direction: column; line-height: 1.15; }
-.logo-word { font-weight: 800; letter-spacing: 1.5px; font-size: 15px; }
+/* The wordmark is set in the display face, not the UI one, and NOT in caps:
+   the name is SATashkent — SAT, as in the exam, then Tashkent. Letter-spaced
+   all-caps turned it into "SATASHKENT", which is a different word. */
+.logo-word { font-family: var(--font-display); font-weight: 700; letter-spacing: 0; font-size: 17px; }
+.logo-sat { font-weight: 700; letter-spacing: .5px; }
 .logo-sub { font-size: 10.5px; letter-spacing: 0.4px; color: rgba(236, 231, 225, 0.88); }
 
 .nav-label {
@@ -253,6 +292,60 @@ button { font-family: inherit; }
   place-items: center;
 }
 .side-logout:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+
+/* The language picker in the sidebar foot. The row used to space its two
+   buttons with one `margin-left: auto`; with a third the autos would fight
+   and spread them apart, so only the first one pushes. */
+.side-user .lang-wrap { margin-left: auto; position: relative; display: flex; }
+.side-user .lang-wrap ~ .side-logout { margin-left: 0; }
+.lang-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  min-width: 152px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+.lang-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: inherit;
+  cursor: pointer;
+}
+.lang-opt:hover { background: var(--surface-2); }
+.lang-opt.on { background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
+.lang-code {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--tint-neutral);
+  color: var(--muted);
+}
+.lang-opt.on .lang-code { background: var(--brand-500); color: #fff; }
+/* On the sign-in card the menu has nothing above it to open into, so it
+   drops down instead of up. */
+.login-lang { display: flex; justify-content: center; margin-top: 16px; }
+.login-lang .lang-menu { bottom: auto; top: calc(100% + 8px); }
 
 /* ---------- main ---------- */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -354,6 +447,10 @@ button { font-family: inherit; }
 .select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b8388' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 34px; }
 
 /* badges & pills */
+/* Demoted on purpose. A status word — "Reel", "Editing" — wearing the brand
+   accent competes with the one action on the screen that should be wearing
+   it, and reads as something you can press. It says what this is; it does
+   nothing. Flat and muted, with no hover and no pointer. */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -362,8 +459,9 @@ button { font-family: inherit; }
   font-weight: 600;
   padding: 3px 9px;
   border-radius: 999px;
-  background: var(--brand-50);
-  color: var(--brand-600);
+  background: var(--tint-neutral);
+  color: var(--ink-2);
+  cursor: default;
   white-space: nowrap;
 }
 .badge-muted { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--hairline); }
@@ -591,15 +689,105 @@ table.tbl tr:hover td { background: var(--surface-2); }
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
-  width: 100%; max-width: 460px;
-  max-height: 90vh; overflow-y: auto;
+  /* Never wider than the screen it opens on. It used to be a flat 460px, so
+     on a phone the head clipped and the footer laid its first three buttons
+     out at a negative x — off the edge, unreachable, with no scroll to
+     recover them. */
+  width: 100%; max-width: min(460px, calc(100vw - 32px));
+  /* And min-width 0, or that max-width is a suggestion. A flex item's default
+     min-width is its CONTENT's, which wins over max-width — so one child too
+     wide for the phone (the strip of view names, once it grew icons) made the
+     whole sheet wider than the screen and put Save off the right edge. */
+  min-width: 0;
+  max-height: 90vh;
+  display: flex; flex-direction: column;
   animation: pop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes pop { from { transform: translateY(8px) scale(0.98); opacity: 0; } }
-.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--hairline); }
-.modal-head h3 { font-size: 16px; font-weight: 700; }
-.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--hairline); }
+/* The title and the buttons stay put while the middle scrolls, so on a long
+   form you can always see what you are editing and always reach Save. */
+.modal-head {
+  display: flex; align-items: center; gap: 12px; justify-content: space-between;
+  padding: 18px 20px; border-bottom: 1px solid var(--hairline);
+  position: sticky; top: 0; z-index: 3; background: var(--surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.modal-head h3 {
+  font-size: 16px; font-weight: 700;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.modal-head .icon-btn { flex: none; }
+.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+
+/* ---------- the modal footer, one shape in all twenty-three of them ----------
+   Two zones: on the left what this window can do to the thing it is showing,
+   on the right what it does with your changes. The zones are parted by a real
+   element rather than margin-left:auto, because on a phone that element turns
+   into a line break — Cancel and Save get a row of their own instead of
+   shoving everything else off the screen. */
+.modal-foot {
+  display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: flex-end; gap: 10px;
+  padding: 16px 20px; border-top: 1px solid var(--hairline);
+  position: sticky; bottom: 0; z-index: 3; background: var(--surface);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.modal-foot > .foot-gap { flex: 1 1 0; min-width: 0; }
+/* The tools on the left are secondary — they should read as available, not
+   compete with Save. Tighter than a full button, which is also what keeps the
+   whole row on one line and off the form. */
+/* Descendant, not child: the task sheet's tools live inside a `display:
+   contents` wrapper so a phone can fold them behind one button, and a
+   contents box still counts as a level in the DOM even though it draws no
+   box. Written with `>` these rules stopped matching and the desk's footer
+   went back to full-size buttons on two rows — the exact thing round 77
+   fixed. */
+.modal-foot .btn-ghost, .modal-foot .btn-danger,
+.modal-foot .crew-peek .select { padding: 7px 11px; font-size: 13px; }
+/* 170px was a select sized to whatever the longest crew name happened to be,
+   and it is the one item in this row whose width nobody controls. With every
+   tool showing at once — a task that has crew on it and a day still ahead —
+   the row ran past 760px and the footer wrapped to two lines, taking 41px off
+   the form. The full options are still readable in the open list. */
+.modal-foot .crew-peek .select { max-width: 110px; }
+
+/* ---------- on a phone a window stops pretending to be a window ----------
+   It comes up off the bottom edge as a sheet: full width, title pinned at the
+   top, buttons pinned at the bottom where a thumb already is, and the form
+   scrolling between them. Nothing is ever off-screen, so nothing has to be
+   hunted for. */
+@media (max-width: 640px) {
+  .modal-backdrop { padding: 0; place-items: end stretch; }
+  /* .modal.modal-wide, not .modal-wide: the wide rule is defined further down
+     the file and would otherwise win the tie and keep the sheet 32px short of
+     the screen. */
+  .modal, .modal.modal-wide {
+    max-width: 100%; width: 100%;
+    max-height: 94vh;
+    border-radius: 18px 18px 0 0;
+    animation: sheet-up 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes sheet-up { from { transform: translateY(18px); opacity: 0.5; } }
+  /* The grab bar every phone sheet has. It says "this came up, it can go back
+     down" without a word of explanation. */
+  .modal-head {
+    padding: 16px 16px 12px; border-radius: 18px 18px 0 0;
+  }
+  .modal-head::before {
+    content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 999px; background: var(--hairline-strong);
+  }
+  .modal-body { padding: 16px; gap: 16px; }
+  .modal-foot {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    gap: 8px; border-radius: 0;
+  }
+  /* The gap becomes the line break, and every button takes a fair share of
+     its row rather than being squeezed to nothing by the one beside it. */
+  .modal-foot > .foot-gap { flex-basis: 100%; height: 0; margin: 0; }
+  .modal-foot > .btn { flex: 1 1 30%; justify-content: center; }
+  .modal-foot > .btn-icon { flex: 0 0 auto; }
+}
 .icon-btn { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: grid; place-items: center; }
 .icon-btn:hover { background: var(--surface-2); color: var(--ink); }
 
@@ -639,7 +827,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
   padding: 34px 30px 28px;
 }
 .login-logo { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 24px; }
-.login-word { font-weight: 800; letter-spacing: 1.6px; color: var(--brand-600); font-size: 17px; }
+.login-word { font-family: var(--font-display); font-weight: 700; letter-spacing: 0; color: var(--brand-600); font-size: 22px; }
 .login-tag { font-size: 11px; color: var(--muted); letter-spacing: 0.4px; margin-top: -6px; }
 .login-card h2 { font-size: 20px; font-weight: 800; text-align: center; }
 .login-card .lc-sub { color: var(--muted); text-align: center; margin: 5px 0 22px; font-size: 13.5px; }
@@ -945,7 +1133,12 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .rel-ev.dim { opacity: 0.4; }
 
 /* ---- Task editor v2 (cleaner UX) ---- */
-.modal-wide { max-width: 560px; }
+/* The task window is where the whole job happens, and it was 560px wide with
+   a footer parked over it — 632px of form on a 900px screen, so you scrolled
+   past Platforms to reach the crew. Wider is the cheapest fix there is: the
+   form breathes, and the footer stops wrapping onto a second line it was
+   stealing another 50px for. */
+.modal-wide { max-width: min(760px, calc(100vw - 32px)); }
 .cm-title {
   width: 100%; border: none; background: transparent; font-family: inherit;
   font-size: 19px; font-weight: 700; color: var(--ink); padding: 2px 0 10px;
@@ -990,7 +1183,10 @@ table.tbl tr:hover td { background: var(--surface-2); }
   .drow-label { flex: 1 0 100%; }
   .drow .input { flex: 1 1 110px; min-width: 0; width: auto; }
   .drow-quick { flex: 1 0 100%; }
-  .cm-row { grid-template-columns: 74px 1fr; }
+  /* A 74px label column left the chips and inputs beside it about 200px to
+     live in, so a row of six stage chips became five lines. The label takes
+     its own line and the control gets the whole width. */
+  .cm-row { grid-template-columns: 1fr; align-items: start; gap: 6px; }
 }
 
 /* ---- Pinned metrics (several per channel) ---- */
@@ -1058,18 +1254,21 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .chip.ct-reel  { background: #2a78d6; color: #fff; }
 .chip.ct-story { background: #f2a413; color: #26222b; }
 .chip.ct-video { background: #7c5cd6; color: #fff; }
+.chip.ct-target { background: #0e8a6d; color: #fff; }
 .chip.ct-other { background: #6d6a70; color: #fff; }
 
 .rel-ev.ct-post  { background: #a32234; color: #fff; border-left-color: #711523; }
 .rel-ev.ct-reel  { background: #2a78d6; color: #fff; border-left-color: #1d5fb3; }
 .rel-ev.ct-story { background: #f2a413; color: #26222b; border-left-color: #c07f04; }
 .rel-ev.ct-video { background: #7c5cd6; color: #fff; border-left-color: #5b3fa8; }
+.rel-ev.ct-target { background: #0e8a6d; color: #fff; border-left-color: #0a6650; }
 .rel-ev.ct-other { background: #6d6a70; color: #fff; border-left-color: #4e4b52; }
 
 .agenda-row.ct-post  { border-left-color: var(--brand-500); }
 .agenda-row.ct-reel  { border-left-color: #2a78d6; }
 .agenda-row.ct-story { border-left-color: var(--warning); }
 .agenda-row.ct-video { border-left-color: #7c5cd6; }
+.agenda-row.ct-target { border-left-color: #0e8a6d; }
 .agenda-row.ct-other { border-left-color: var(--hairline-strong); }
 
 /* type picker in the task editor */
@@ -1085,6 +1284,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .tchip.on.ct-reel  { background: #2a78d6; border-color: #1d5fb3; color: #fff; }
 .tchip.on.ct-story { background: #f2a413; border-color: #c07f04; color: #26222b; }
 .tchip.on.ct-video { background: #7c5cd6; border-color: #5b3fa8; color: #fff; }
+.tchip.on.ct-target { background: #0e8a6d; border-color: #0a6650; color: #fff; }
 .tchip.on.ct-other { background: #6d6a70; border-color: #4e4b52; color: #fff; }
 
 /* smaller platform chips in the editor */
@@ -1242,7 +1442,12 @@ table.tbl tr:hover td { background: var(--surface-2); }
 /* Touch screens have no hover, and the hidden bubble still widens the page's
    scroll area on narrow layouts — drop tooltips there entirely. */
 @media (hover: none), (max-width: 720px) {
-  [data-tip]::after { display: none; }
+  /* All three, not just the base rule: [data-tip]:hover::after outranks
+     [data-tip]::after on specificity, so the bubble kept rendering on touch
+     and one of them on Team was wide enough to push the whole page sideways. */
+  [data-tip]::after,
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after { display: none; }
 }
 
 /* The complete-checkbox greys out when the task isn't yours to complete. */
@@ -1470,6 +1675,8 @@ table.tbl tr:hover td { background: var(--surface-2); }
 /* Video crew fields in the task editor */
 .crew-row { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; }
 .crew-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 160px; }
+/* Whose face carries the piece. Shaped like a crew seat, counted as none. */
+.face-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 160px; }
 .crew-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
 
 /* ---- Customizable channel dashboards ---- */
@@ -2013,7 +2220,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .assignee-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--hairline); color: var(--ink); font-weight: 700; }
 .chip-x { border: none; background: transparent; cursor: pointer; font-size: 14px; line-height: 1; color: var(--muted); padding: 0 2px; }
 .chip-x:hover { color: var(--critical); }
-.assignee-add { max-width: 170px; font-size: 13px; }
+.assignee-add, .reviewer-add { max-width: 170px; font-size: 13px; }
 
 /* Statistics — the numbers card */
 .stats-card .miss-stats { margin-top: 12px; }
@@ -2087,6 +2294,59 @@ button.cb-toggle:hover { color: var(--ink); }
 .ready-link-input { display: flex; gap: 8px; align-items: center; }
 .ready-link-input .input { flex: 1; }
 .ready-link-input .btn { flex-shrink: 0; }
+
+/* Recording / Edit ready / Design ready were three identical Drive boxes in a
+   row and people pasted the finished cut into Recording. Each is now a card
+   with a SOLID coloured header — the colour of its own pipeline stage — a
+   numbered step, and the name of whoever owes it. Two boxes that used to
+   differ by four words of grey caption now differ by everything. */
+.ready-link-field { border: 1px solid var(--hairline-strong); border-radius: 11px; overflow: hidden; padding: 0; background: var(--surface); }
+.dlv-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 11px; color: #fff; margin: 0; }
+.dlv-shot .dlv-head { background: #ec835a; }
+.dlv-edit .dlv-head { background: #b5324a; }
+.dlv-design .dlv-head { background: #7a4fd6; }
+.dlv-shot { border-color: #ec835a; }
+.dlv-edit { border-color: #b5324a; }
+.dlv-design { border-color: #7a4fd6; }
+.dlv-step { width: 21px; height: 21px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; background: rgba(255, 255, 255, .25); font-size: 11px; font-weight: 800; }
+.dlv-badge { display: inline-flex; align-items: center; flex-shrink: 0; color: #fff; }
+.dlv-name { font-size: 13px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: #fff; }
+.dlv-sub { flex: 1; min-width: 130px; color: rgba(255, 255, 255, .85); font-size: 11.5px; text-transform: none; letter-spacing: 0; }
+.dlv-who { font-size: 11px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, .25); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.dlv-mine .dlv-who { background: #fff; color: #26222b; }
+.ready-link-field .ready-link-input { padding: 10px 11px; }
+.crew-do .ready-link-field + .ready-link-field { margin-top: 12px; }
+.pravki-shot { margin-top: 8px; }
+.rev-shot { display: block; margin-top: 6px; width: fit-content; }
+.rev-shot img { max-height: 120px; max-width: 100%; border-radius: 8px; border: 1px solid var(--hairline); display: block; }
+
+/* A promised day, and the ask that moves it. */
+.drow-locked .input[type="date"] { opacity: .95; border-style: dashed; cursor: not-allowed; }
+.drow-promised { font-size: 11px; color: var(--ink-soft); }
+.drow-ask { grid-column: 1 / -1; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: -2px 0 2px; }
+.drow-ask .qbtn-ask { white-space: nowrap; }
+.qbtn-ask { border-color: var(--brand-500); color: var(--brand-500); font-weight: 700; }
+.ask-move { border: 1px solid var(--brand-500); border-radius: 12px; padding: 11px 13px; margin: 10px 0; background: var(--surface); }
+.ask-head { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 13px; margin-bottom: 8px; }
+.ask-row { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; flex-wrap: wrap; }
+.ask-was { font-size: 12.5px; color: var(--ink-soft); }
+.ask-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.ask-actions .stat-sub { flex: 1; min-width: 180px; }
+.ask-list { display: flex; flex-direction: column; gap: 9px; }
+.ask-item { display: flex; flex-direction: column; gap: 3px; border-left: 3px solid var(--hairline-strong); padding: 2px 0 2px 10px; }
+.ask-open { border-left-color: #f2a413; }
+.ask-approved { border-left-color: #0ca30c; }
+.ask-declined { border-left-color: #A32D2D; }
+.ask-stale { border-left-color: var(--hairline-strong); }
+.ask-line { font-size: 12.5px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.ask-state { font-size: 10.5px; font-weight: 700; }
+.ask-chip-open { background: #f2a413; color: #26222b; }
+.ask-chip-approved { background: #0ca30c; color: #fff; }
+.ask-chip-declined { background: #A32D2D; color: #fff; }
+.ask-why { font-size: 12.5px; color: var(--ink); line-height: 1.4; }
+.ask-meta { font-size: 11px; color: var(--ink-soft); }
+.ask-decide { display: flex; gap: 7px; margin-top: 5px; }
 
 /* crew day board: the "still haunting" emergency section + all-clear line */
 .cb-sec.cb-emergency { border: 1px solid #e6b3b3; background: #fbeeee; border-radius: 12px; padding: 6px 10px 4px; margin-top: 6px; }
@@ -2538,8 +2798,7 @@ button.cb-toggle:hover { color: var(--ink); }
 [data-theme="dark"] .fl-design { background: #2a1c35; color: #d3aeea; border-color: #3d2a4c; }
 [data-theme="dark"] .fl-design:hover { background: #33223f; }
 /* the editable delivery fields get room to breathe */
-.crew-do .ready-link-field + .ready-link-field { margin-top: 14px; }
-.ready-link-field .crew-label { margin-bottom: 5px; }
+.ready-link-field .crew-label { margin-bottom: 0; }
 /* the reminders list in Admin → Telegram */
 .rem-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
 .rem-row:last-child { border-bottom: none; }
@@ -2564,6 +2823,10 @@ button.cb-toggle:hover { color: var(--ink); }
   width: auto; min-width: 104px; background-position: right 8px center;
   border-radius: 8px;
 }
+/* The person filter is a searchable picker, sized to sit in the same row as
+   the two selects beside it. */
+.cf-person .pp-field { height: 30px; min-width: 104px; padding: 0 8px; font-size: 12.5px; font-weight: 600; border-radius: 8px; }
+@media (max-width: 640px) { .cf-person { flex: 1 1 92px; min-width: 0; } .cf-person .pp-field { min-width: 0; } }
 .cf-count { font-size: 12px; color: var(--brand-600); font-weight: 650; margin-left: 2px; }
 .cf-clear {
   display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
@@ -2851,3 +3114,2184 @@ button.blame-person:hover { background: var(--surface-2); }
   .sch-head .spacer { display: none; }
   .sch-late { margin-left: 0; margin-right: 0; }
 }
+
+/* ---- Round 65: the one crew hat a shoot cannot go without ---- */
+/* "optional" is set beside every other hat, so "required" has to read as a
+   different word rather than a differently-worded one. The field itself is
+   outlined only while it is still empty — a demand, not a permanent alarm. */
+.crew-req {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--bad, #c0392b);
+}
+.crew-missing .select { border-color: var(--bad, #c0392b); }
+
+/* ============ Round 66: the project list, read at a glance ============ */
+/* One card per project instead of a seven-column table. The question people
+   arrive with is "which of these needs me, and who is on it" — that answer
+   fits on two lines, and a row of seven cells does not give it any faster. */
+.proj-list { display: flex; flex-direction: column; gap: 8px; }
+.proj-card {
+  display: flex; flex-direction: column; gap: 7px; width: 100%;
+  padding: 13px 15px; text-align: left; font-family: inherit; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-left: 3px solid var(--hairline-strong);
+  border-radius: var(--radius-sm); transition: border-color 0.12s, background 0.12s;
+}
+.proj-card:hover { background: var(--surface-2); border-color: var(--brand-300); }
+/* The state is carried by the card's own edge, so the eye finds the row that
+   needs attention before it reads a single word. */
+.proj-card.health-red { border-left-color: #A32D2D; }
+.proj-card.health-amber { border-left-color: #BA7517; }
+.proj-card.health-green { border-left-color: #1D9E75; }
+.proj-card.health-done { border-left-color: var(--hairline-strong); }
+.proj-card.health-idle { border-left-color: var(--hairline-strong); }
+.proj-card.health-done .proj-name { color: var(--ink-2); }
+
+.proj-main { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.proj-name { font-size: 14.5px; font-weight: 800; color: var(--ink); }
+
+/* The state in words, with the reason beside it rather than under a hover —
+   the reason IS the column; a colour alone just asks a second question. */
+.pc-health { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.pc-health-why { font-size: 12px; color: var(--muted); }
+.pc-badge-done, .pc-badge-idle { background: var(--surface-2) !important; color: var(--muted) !important; }
+
+.proj-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
+.proj-who { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.proj-dot { color: var(--hairline-strong); }
+.proj-due.late { color: var(--bad, #c0392b); font-weight: 700; }
+.proj-camps { color: var(--muted); }
+
+.proj-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.proj-bar-track { flex: 1; max-width: 260px; height: 6px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+/* A filled bar reads as filled: the old one drew a pale fill on a pale track,
+   so a finished project looked untouched next to the words "100%". */
+.proj-bar-fill { display: block; height: 100%; border-radius: 4px; background: var(--brand-500); }
+.health-done .proj-bar-fill { background: #1D9E75; }
+
+@media (max-width: 640px) {
+  .proj-bar-track { max-width: none; }
+  .proj-meta { gap: 5px; }
+}
+
+/* The field a refusal is ABOUT. A red banner at the top of a long form says
+   something is wrong without saying where — the answer is usually three
+   screens down. The named field is ringed and scrolled to, so the sentence
+   and the box it is about are on screen together. */
+.field-bad { outline: 2px solid #A32D2D; outline-offset: 3px; border-radius: 8px; animation: field-bad-in .5s ease; }
+.field-bad .input, .field-bad .select, .field-bad textarea { border-color: #A32D2D; }
+@keyframes field-bad-in { from { outline-color: transparent; } to { outline-color: #A32D2D; } }
+@media (prefers-reduced-motion: reduce) { .field-bad { animation: none; } }
+
+/* ---- voice notes ---------------------------------------------------------
+   A clip in a thread should read as a clip at a glance: a round press, a
+   shape that says "a recording", and how long it runs. */
+.vn-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--hairline-strong); background: var(--surface);
+  color: var(--ink-2); border-radius: 999px; padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.vn-btn:hover:not(:disabled) { border-color: var(--brand-500); color: var(--brand-500); }
+.vn-rec { border-color: #A32D2D; color: #A32D2D; position: relative; }
+.vn-pulse { width: 7px; height: 7px; border-radius: 999px; background: #A32D2D; animation: vn-pulse 1s ease-in-out infinite; }
+@keyframes vn-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .vn-pulse { animation: none; } }
+.vn-ready { display: inline-flex; align-items: center; gap: 6px; }
+.vn-audio { height: 32px; max-width: 220px; }
+.vn-denied { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.vn-play { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: 999px; padding: 4px 11px 4px 5px; margin: 4px 0 0; width: fit-content; max-width: 100%; }
+.vn-mine { background: color-mix(in srgb, var(--brand-500) 12%, var(--surface-2)); }
+.vn-play-btn { width: 26px; height: 26px; border-radius: 999px; border: 0; background: var(--brand-500); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
+.vn-play-btn:disabled { opacity: .6; cursor: default; }
+.vn-wave { display: inline-flex; align-items: center; gap: 2px; height: 16px; }
+.vn-wave i { width: 2px; border-radius: 2px; background: var(--muted); display: block; }
+.vn-secs { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.pravki-voice { display: flex; align-items: center; gap: 9px; margin-top: 8px; flex-wrap: wrap; }
+.pravki-voice .stat-sub { flex: 1; min-width: 160px; }
+/* A name that reaches somebody looks like one. */
+.cmt-at { color: var(--brand-500); font-weight: 700; }
+
+/* The two kinds of bell line that actually need you, marked so they can be
+   found without reading every row: somebody named you, or somebody is waiting
+   on your yes. */
+.nr-mention .notif-ico { color: var(--brand-500); }
+.nr-date_request .notif-ico { color: #f2a413; }
+.nr-pravki .notif-ico { color: #A32D2D; }
+.nr-comment .notif-ico { color: var(--muted); }
+.notif-row.nr-mention:not(.seen), .notif-row.nr-date_request:not(.seen) { font-weight: 600; }
+
+/* Deadlines waiting on an admin's yes, answerable without leaving Overview. */
+.ov-asks { border-left: 3px solid #f2a413; display: flex; flex-direction: column; gap: 10px; }
+.ov-asks-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink); }
+.ov-asks-head svg { color: #f2a413; }
+.ov-ask { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 9px; border-top: 1px solid var(--hairline); }
+.ov-ask:first-of-type { border-top: 0; padding-top: 0; }
+.ov-ask-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; color: inherit; }
+.ov-ask-title { font-size: 13.5px; font-weight: 700; }
+.ov-ask-move { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.ov-ask-why { font-size: 12.5px; color: var(--ink); }
+.ov-ask-do { display: flex; gap: 7px; flex-shrink: 0; }
+
+/* A hand up: somebody on the piece saying early that it is in trouble. */
+.cm-flags .flag-block { display: flex; flex-direction: column; gap: 9px; }
+.flag-item { display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  border-left: 3px solid #f2a413; padding: 3px 0 3px 10px; }
+.flag-cant_take { border-left-color: #A32D2D; }
+.flag-line { font-size: 13px; }
+.flag-why { font-size: 12.5px; color: var(--ink); }
+.flag-form { display: flex; flex-direction: column; gap: 8px; }
+.crew-peek { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft); }
+.crew-peek .select { padding: 6px 9px; font-size: 12.5px; }
+.pravki-same { font-size: 12px; color: #A32D2D; padding: 4px 0 0; }
+/* Standing in someone else's seat should look temporary. */
+.modal.as-crew { outline: 2px solid var(--brand-500); outline-offset: -2px; }
+.as-crew-note { display: flex; align-items: center; gap: 7px; background: var(--brand-500); color: #fff;
+  font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: 9px; margin-bottom: 12px; }
+.ov-hands { border-left-color: #A32D2D; }
+.ov-hands .ov-asks-head svg { color: #A32D2D; }
+.ov-hands .ov-ask { background: none; border: 0; border-top: 1px solid var(--hairline); padding: 9px 0 0;
+  cursor: pointer; font-family: inherit; color: inherit; text-align: left; width: 100%; }
+.ov-hands .ov-ask:first-of-type { border-top: 0; padding-top: 0; }
+
+/* ---- your own late work, on your own page --------------------------------
+   Overdue work used to be an admin's wall of chips. It belongs to whoever is
+   carrying it, with the three answers that actually exist. */
+/* ---------- pay ---------- */
+/* Money is read, not scanned: tabular numerals so columns line up, and the
+   good/bad pair reserved for on-time and late so a number never carries a
+   colour on its own. */
+.pay-good { color: var(--good-ink); font-weight: 600; }
+.pay-bad  { color: var(--critical); font-weight: 600; }
+.pay-tbl td, .pay-tbl th { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pay-tbl td .stat-sub { white-space: normal; }
+.pay-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 14px; border-left: 3px solid var(--warning); }
+.pay-plan { margin-bottom: 16px; border-left: 3px solid var(--brand-500); }
+.pay-plan-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.pay-plan-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.pay-plan-row .input, .pay-plan-row .select { max-width: 180px; }
+.pay-plan-do { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.rp-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
+.rp-type { max-width: 200px; }
+.rp-late {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--critical);
+}
+
+/* ---------- the reward moment ---------- */
+/* A card, not a dialog: it cannot be clicked, it cannot be dismissed, and it
+   leaves by itself. Sits above everything including modals, because the thing
+   being celebrated is usually finished from inside one. */
+.reward-pop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 10000;
+}
+.reward-card {
+  text-align: center;
+  padding: 22px 34px 20px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--shadow-lg);
+  animation: reward-in 340ms cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.reward-pop.out .reward-card { animation: reward-out 240ms ease forwards; }
+.reward-big { font-size: 44px; line-height: 1; }
+.reward-say {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 22px;
+  margin-top: 8px;
+  color: var(--ink);
+}
+.reward-lines {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.reward-lines span {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--brand-50);
+  color: var(--brand-700);
+}
+@keyframes reward-in {
+  from { opacity: 0; transform: scale(.82) translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes reward-out {
+  to { opacity: 0; transform: scale(.96) translateY(-6px); }
+}
+/* Somebody who asked their system for less motion gets the card without the
+   bounce — the words are the point, the spring is decoration. */
+@media (prefers-reduced-motion: reduce) {
+  .reward-card, .reward-pop.out .reward-card { animation: none; }
+}
+
+/* The standing, always on view: what you have done, not what you owe. */
+.streak-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-left: 3px solid var(--warning);
+}
+.streak-flame { font-size: 20px; line-height: 1; }
+.streak-main { display: flex; flex-direction: column; line-height: 1.25; }
+.streak-main b { font-size: 15px; }
+.streak-facts { margin-left: auto; display: flex; gap: 18px; text-align: right; }
+.streak-facts div { display: flex; flex-direction: column; line-height: 1.2; }
+.streak-facts b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.streak-facts span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.streak-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--track-soft);
+  overflow: hidden;
+  margin-top: 5px;
+  width: 128px;
+}
+.streak-bar i { display: block; height: 100%; background: var(--brand-500); border-radius: 999px; }
+
+/* ---------- sprints ---------- */
+.sp-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.sp-head h2 { font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+.sp-range { color: var(--muted); font-size: 13.5px; }
+.sp-count {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--tint-neutral); color: var(--ink-2);
+}
+.sp-count.soon { background: var(--tint-warn); color: var(--warn-ink); }
+.sp-count.out  { background: var(--danger-bg); color: var(--critical); }
+
+.sp-locked {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  border-left: 3px solid var(--critical);
+}
+.sp-locked-owner { border-left-color: var(--warning); }
+
+/* The person strip. Wraps to as many lines as the team needs — it is derived
+   from who holds a task, so it is however long the week made it. */
+.sp-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.sp-strip-empty { margin-bottom: 16px; }
+.sp-person {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px 7px 8px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--hairline);
+}
+.sp-person-meta { display: flex; flex-direction: column; line-height: 1.2; }
+.sp-person-meta b { font-size: 13px; }
+.sp-person-meta .stat-sub { font-size: 11px; font-variant-numeric: tabular-nums; }
+.sp-blocked {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--critical); color: #fff;
+  font-size: 11px; font-weight: 700; display: grid; place-items: center;
+}
+
+.sp-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .sp-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .sp-board { grid-template-columns: 1fr; } }
+.sp-col { background: var(--surface-2); border-radius: var(--radius); padding: 10px; min-height: 120px; }
+.sp-col.over { outline: 2px dashed var(--brand-400); outline-offset: -4px; }
+.sp-col-head { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; font-size: 13px; }
+.sp-col-body { display: flex; flex-direction: column; gap: 8px; }
+
+.sp-card {
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm); padding: 10px 12px; cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.sp-card:hover { border-color: var(--hairline-strong); }
+.sp-card.dim { opacity: 0.4; }
+.sp-card-title { font-size: 13.5px; font-weight: 600; line-height: 1.35; display: flex; align-items: baseline; gap: 6px; }
+.sp-card-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.sp-faces { display: flex; gap: -4px; }
+.sp-faces > * + * { margin-left: -6px; }
+.sp-checks, .sp-deadline, .sp-carried {
+  font-size: 11px; padding: 2px 7px; border-radius: 999px;
+  background: var(--tint-neutral); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.sp-carried { background: var(--brand-50); color: var(--brand-700); }
+.sp-growth {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--good);
+  display: inline-block; flex: none;
+}
+/* The FIRST line of a written result, and only the first: a card is a
+   glance, and three lines of prose on it buries the four cards under it. */
+.sp-result {
+  margin-top: 6px; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sp-table td:last-child { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-table td.sp-promote-cell:last-child { max-width: none; overflow: visible; }
+/* Four short columns crushed into a phone turn every title into four lines and
+   push the button past the edge. The platform's answer to a table too wide for
+   the screen is to scroll it inside its own card, so this one keeps its
+   natural width and does the same. */
+.sp-backlog { min-width: 620px; }
+@media (max-width: 640px) {
+  /* …except that scrolling a four-column table on a phone shows you the idea
+     or the button, never both. Below this width the row stops being a row: the
+     idea, then who wrote it and when, then the one thing you can do with it. */
+  .sp-backlog, .sp-backlog tbody, .sp-backlog td { display: block; }
+  .sp-backlog { min-width: 0; }
+  .sp-backlog thead { display: none; }
+  .sp-backlog tbody tr {
+    display: grid; grid-template-columns: 1fr auto; gap: 3px 10px;
+    padding: 12px; border-bottom: 1px solid var(--hairline);
+  }
+  .sp-backlog tbody tr:last-child { border-bottom: none; }
+  .sp-backlog tbody tr:hover { background: var(--surface-2); }
+  table.sp-backlog td { padding: 0; border: none; }
+  .sp-backlog tbody tr:hover td { background: transparent; }
+  .sp-backlog .sp-idea-cell { grid-column: 1 / -1; font-size: 14px; }
+  .sp-backlog .sp-added-cell { text-align: right; align-self: center; white-space: nowrap; }
+  .sp-backlog .sp-promote-cell { grid-column: 1 / -1; margin-top: 8px; }
+  .sp-backlog .sp-promote-cell .btn { width: 100%; justify-content: center; }
+  .sp-backlog td.empty { grid-column: 1 / -1; }
+}
+
+.sp-add { display: flex; align-items: center; gap: 6px; padding: 2px; }
+.sp-add .input { border: none; background: transparent; padding: 6px 4px; font-size: 13px; }
+.sp-add .input:focus { outline: none; }
+
+.sp-filters { margin-bottom: 12px; }
+.sp-filters .select { max-width: 220px; }
+.sp-table td { font-size: 13px; }
+.sp-sort {
+  background: none; border: none; padding: 0; font: inherit; color: inherit;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+}
+.sp-sort svg { opacity: 0.35; }
+.sp-sort svg.on { opacity: 1; color: var(--brand-500); }
+
+.sp-growth-row { display: flex; flex-direction: row; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+.sp-deadline-field { display: flex; flex-direction: column; gap: 4px; }
+.sp-deadline-field .input { max-width: 180px; }
+.sp-checklist { display: flex; flex-direction: column; gap: 4px; }
+.sp-item { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 13.5px; }
+.sp-item .sp-grip { color: var(--muted); cursor: grab; display: flex; }
+.sp-item .icon-btn { margin-left: auto; }
+
+/* ---------- the module's two screens ---------- */
+/* A quiet underline rather than another pill group: the header already has
+   Board/List on the right, and two pill groups on one row read as one
+   confusing control. */
+.sp-tabs {
+  display: flex; gap: 4px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.sp-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px 9px; font-size: 13.5px; font-weight: 600;
+  color: var(--ink-soft); text-decoration: none;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.sp-tab:hover { color: var(--ink); }
+.sp-tab.active { color: var(--brand-600); border-bottom-color: var(--brand-500); }
+
+/* ---------- the backlog ---------- */
+/* Writing an idea down has to cost nothing, so the field sits above the list
+   already focused-looking and takes one line and one key. */
+.sp-idea-add {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  padding: 4px 12px; background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+.sp-idea-add > svg { color: var(--muted); flex: none; }
+.sp-idea-add .input { border: none; background: transparent; padding: 9px 0; font-size: 14px; }
+.sp-idea-add .input:focus { outline: none; }
+.sp-idea-add:focus-within { border-color: var(--brand-500); }
+.sp-added-by { display: inline-flex; align-items: center; gap: 7px; }
+.sp-promote-cell { text-align: right; white-space: nowrap; }
+.sp-promote-cell .btn svg { margin-left: 2px; }
+.sp-table tr:hover .sp-promote-cell .btn { border-color: var(--brand-400); color: var(--brand-600); }
+.sp-table td.empty { display: table-cell; text-align: center; }
+.sp-table td.empty svg { vertical-align: -3px; margin-right: 4px; color: var(--muted); }
+
+/* ---------- reading somebody else's brief ---------- */
+/* The answer sits UNDER the original in its own panel, tinted so nobody can
+   mistake it for the thing the author wrote. */
+.txh { margin-top: 8px; }
+.txh-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.txh-err { font-size: 12px; color: var(--critical); }
+.txh-spin { animation: txh-turn 900ms linear infinite; }
+@keyframes txh-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .txh-spin { animation-duration: 2.4s; } }
+.txh-out {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--brand-400);
+}
+.txh-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.txh-head b { font-size: 13px; }
+.txh-head .icon-btn { margin-left: auto; }
+.txh-body {
+  white-space: pre-wrap;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.txh-out .cm-hint { margin-top: 8px; }
+
+.my-pay { margin-bottom: 14px; padding: 0; overflow: hidden; }
+.my-pay-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.my-pay-head:hover { background: var(--surface-2); }
+.my-pay-sum { display: flex; flex-direction: column; line-height: 1.25; }
+.my-pay-sum b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.my-pay-facts { margin-left: auto; display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); }
+.my-pay-facts b { font-variant-numeric: tabular-nums; }
+.my-pay-caret { transition: transform 0.15s ease; flex: none; color: var(--muted); }
+.my-pay-caret.open { transform: rotate(180deg); }
+.my-pay-lines { padding: 4px 18px 16px; border-top: 1px solid var(--hairline); }
+.my-pay-line {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px 0;
+  font-size: 13.5px;
+}
+.my-pay-line b { font-variant-numeric: tabular-nums; }
+.my-pay-line + .my-pay-line { border-top: 1px solid var(--hairline); }
+.my-pay-total { border-top: 2px solid var(--hairline-strong) !important; font-weight: 600; }
+.kpi-cur.kpi-met { color: var(--good-ink); }
+.kpi-cur.kpi-missed { color: var(--ink-2); }
+.kpi-auto, .kpi-pay {
+  display: block;
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: .02em;
+  color: var(--muted);
+}
+.kpi-pay.on { color: var(--good-ink); font-weight: 600; }
+
+.my-pay-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding-top: 12px; }
+.my-pay-items { margin-top: 10px; }
+.my-pay-items summary { cursor: pointer; }
+.my-pay-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 12.5px;
+  border-top: 1px solid var(--hairline);
+}
+.my-pay-lines .cm-hint { margin-top: 10px; }
+
+.my-late { border-left: 3px solid #A32D2D; display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.my-late-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.my-late-head svg { color: #A32D2D; flex-shrink: 0; }
+.my-late-row { display: flex; align-items: center; gap: 11px; flex-wrap: wrap;
+  padding-top: 9px; border-top: 1px solid var(--hairline); }
+.my-late-row:first-of-type { border-top: 0; padding-top: 0; }
+.my-late-when { font-size: 11.5px; font-weight: 800; color: #A32D2D; background: color-mix(in srgb, #A32D2D 12%, transparent);
+  border-radius: 999px; padding: 3px 9px; white-space: nowrap; flex-shrink: 0; }
+.my-late-main { flex: 1; min-width: 190px; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; color: inherit; }
+.my-late-title { font-size: 13.5px; font-weight: 700; }
+.my-late-what { font-size: 12px; color: var(--ink-soft); }
+.my-late-do { display: flex; gap: 6px; flex-wrap: wrap; }
+.my-late-form { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px;
+  border-left: 2px solid var(--hairline-strong); padding: 8px 0 4px 11px; }
+.late-more { font-weight: 700; }
+.late-hint { font-size: 11.5px; color: var(--ink-soft); padding: 7px 2px 0; line-height: 1.45; }
+
+/* ---- the two things you do once ---------------------------------------- */
+.setup-strip { display: flex; flex-direction: column; gap: 9px; margin-bottom: 14px; }
+.setup-card { display: flex; align-items: center; gap: 11px; padding: 10px 13px; border-radius: 12px;
+  border: 1px solid var(--hairline-strong); background: var(--surface); }
+.setup-tg { border-color: #2a78d6; background: color-mix(in srgb, #2a78d6 8%, var(--surface)); }
+.setup-tg > svg { color: #2a78d6; flex-shrink: 0; }
+.setup-install > svg { color: var(--brand-500); flex-shrink: 0; }
+.setup-txt { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.setup-sub { font-size: 12px; color: var(--ink-soft); line-height: 1.45; }
+
+/* ============================================================
+   Touch: nothing smaller than a fingertip
+   ============================================================
+   Measured across the app at 390px before this existed: nineteen delete
+   buttons 22px square on To-Do, the complete tick at 24, the menu button at
+   34, the sidebar's four at 26–28, the colour swatches at 30. A finger pad is
+   about 9mm — roughly 44 CSS pixels — so every control that DOES something
+   grows to meet one on a device with no mouse.
+
+   The ones that only SAY something are deliberately left alone. The channel
+   and type chips on a task row are captions, not buttons; making a caption
+   44px tall would push the next task off the screen to no purpose. */
+@media (hover: none) {
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 40px; }
+  .icon-btn { min-width: 40px; min-height: 40px; }
+  .input, .select, textarea.input { min-height: 44px; }
+  /* A person picker stands where a <select> used to, and a thumb has to
+     hit it the same way. It carries a fixed height on the filter row to
+     line up with the two selects beside it on a desk; min-height clamps
+     that back up here. */
+  .pp-field { min-height: 44px; }
+  select.select { padding-top: 10px; padding-bottom: 10px; }
+  .pill, .tab, .seg-btn, .stage-chip, .checkbox-chip, .extra-btn,
+  .qbtn, .rev-chip, .wd-chip, .sp-tab { min-height: 40px; }
+  /* The tick is the one control that should NOT grow to 44: a row of them
+     down the page reads as a column of buttons rather than a checklist. It
+     keeps the size it looks right at and wears an invisible 44px hit area
+     instead, so the thumb target is full size and the row is not. */
+  .todo-check, .mini-check { width: 30px; height: 30px; position: relative; }
+  .todo-check::before, .mini-check::before {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+  }
+  .cf-mine, .hire-gap { min-height: 40px; }
+  .pw-eye { min-width: 40px; min-height: 40px; }
+  /* An icon with no words beside it is as wide as its padding — about 31px in
+     the Admin tables. Give every button a floor on both axes. */
+  .btn { min-width: 40px; justify-content: center; }
+  .hamburger { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
+  .side-logout, .side-edit-btn { min-height: 40px; min-width: 40px; }
+  .swatch { width: 40px; height: 40px; }
+  /* Rows that hold those bigger controls need room for them rather than
+     cropping them. */
+  .todo-row, .drow, .hire-gap { align-items: center; }
+  /* A task row is the densest thing in the app, so it gets its own budget.
+     The drag handle goes — HTML5 drag-to-reorder does nothing under a finger
+     anyway — and the row actions settle at 36px, which a thumb can still hit
+     and which leaves the title two lines instead of four. They also stop
+     being half-faded: there is no hover to bring them back. */
+  .todo-grip { display: none; }
+  .todo-actions { opacity: 1; gap: 4px; }
+  .todo-actions .icon-btn { min-width: 36px; min-height: 36px; }
+  .todo-main { min-height: 40px; justify-content: center; }
+  /* The person rows on Missed open to show which tasks — a wide target that
+     was only 34px tall. */
+  .blame-person { min-height: 44px; }
+}
+
+/* ============================================================
+   Control bars — one line on a desk, two on a phone
+   ============================================================
+   The pattern the whole app already uses without a name: what you are
+   filtering on the left, how you are looking at it on the right, parted by a
+   spacer. Naming it lets the spacer become a line break on a phone — the
+   filters keep one line and scroll sideways, the view controls get a row of
+   their own — instead of the filters wrapping into six rows of pills before
+   the first task. Same idea as the modal footer, same reason. */
+/* No wrapping on a desk. A wrapping flex line breaks BEFORE it shrinks, so
+   the channel strip pushed the view controls onto a second row and every task
+   on the page down with them. Held to one line, the strip is the thing that
+   gives, and it scrolls inside itself instead. */
+.bar { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.bar > .bar-gap { flex: 1 1 0; min-width: 0; }
+/* One line, always. It used to claim its full content width and push the view
+   controls onto a second row — which pushed every task on the page down with
+   them. It takes what is left after those controls and scrolls inside itself
+   if the channels do not fit, which on any real screen they do. */
+.seg-strip {
+  display: flex; align-items: center; gap: 8px;
+  flex: 0 1 auto; min-width: 0; flex-wrap: nowrap;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.seg-strip::-webkit-scrollbar { display: none; }
+.seg-strip > * { flex: none; }
+
+/* The quick-add line on To-Do. Real classes rather than inline flex bases,
+   because an inline style cannot be answered by a media query — which is why
+   this form used to squeeze "Instagram Flagship" down to "Instagram Flagsl". */
+.qa-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.qa-title { flex: 2 1 200px; }
+.qa-type { flex: 0 1 110px; }
+.qa-chan { flex: 1 1 140px; }
+.qa-who { flex: 1 1 130px; }
+.qa-date { flex: 0 1 150px; }
+
+@media (max-width: 640px) {
+  .bar { flex-wrap: wrap; }
+  .bar > .bar-gap { flex-basis: 100%; height: 0; margin: 0; }
+  .seg-strip { flex: 1 1 100%; margin-inline: -2px; padding: 2px; }
+  /* Every field takes the width, and the button takes the last line whole:
+     a half-width Add next to a half-width date is two small targets where
+     one big one would do. */
+  .qa-title, .qa-type, .qa-chan, .qa-who, .qa-date { flex: 1 1 100%; }
+  .qa-go { flex: 1 1 100%; }
+  /* Folded until you touch the line you type in. The list starts a screen
+     higher, and everything is still one tap away. */
+  .qa-form:not(.qa-open) .qa-more,
+  .qa-form:not(.qa-open) > .qa-more { display: none; }
+  .qa-form:not(.qa-open) { margin-bottom: 10px; }
+}
+
+/* ============================================================
+   The calendar on a phone
+   ============================================================
+   A month of seven columns needs 660px. On a 390px screen it hung off the
+   right edge of its card, so Friday, Saturday and Sunday lived behind a
+   sideways swipe nobody had been told about. It fits now by saying less: each
+   day shows its number and a dot per piece of work, keeping the status
+   colours. Tapping a day opens that day, which has the room to name things.
+   The week view stops being seven columns and becomes seven rows, which is
+   what a week looks like on a phone anyway. */
+@media (max-width: 640px) {
+  .cal-head, .cal-grid { min-width: 0; }
+  .cal-head { flex-wrap: wrap; row-gap: 10px; }
+  .cal-head h3 { min-width: 0; flex: 1 1 auto; text-align: left; }
+  .cal-grid { gap: 3px; }
+  .cal-day { min-height: 56px; padding: 3px; }
+  .cal-daynum { width: 20px; height: 18px; font-size: 11px; }
+  .cal-events { flex-direction: row; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+  .cal-day .cal-ev, .cal-day .rel-ev {
+    width: 8px; height: 8px; min-width: 8px; padding: 0; border-radius: 50%;
+    border-left: none; overflow: hidden; text-indent: -999px; white-space: nowrap;
+  }
+  .cal-day .cal-ev svg, .cal-day .rel-ev svg { display: none; }
+  .cal-wd { font-size: 9px; letter-spacing: 0; padding: 2px 0; text-align: center; }
+  /* Seven rows, not seven columns — and a row is only as tall as what is on
+     it. The 340px floor exists so seven columns line up side by side; stacked,
+     it turned a week of six tasks into 1,600px of scrolling past empty boxes. */
+  .cal-grid.wk-grid { grid-template-columns: 1fr; gap: 6px; }
+  .wk-col { min-height: 0; }
+  .wk-cards { flex: none; }
+  .wk-cards:empty { padding: 0; }
+}
+/* The four columns as buttons inside the task window. Dragging a card is a
+   mouse trick — under a finger the board was read-only, with no way to finish
+   anything — so the move lives here too, and goes through the same two
+   questions the drag does. */
+.sp-stage { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- looking at a screenshot ---------- */
+/* Any photo on the board opens full size. It used to be a thumbnail and
+   nothing else — clicking one did nothing at all. */
+.zoomable { cursor: zoom-in; }
+.zoom-back {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(10, 7, 9, 0.82);
+  display: grid; place-items: center; padding: 24px;
+  animation: fade 0.14s ease;
+}
+.zoom-img {
+  max-width: min(1400px, 96vw); max-height: 92vh;
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
+  cursor: zoom-out; object-fit: contain;
+}
+.zoom-close {
+  position: absolute; top: 16px; right: 18px;
+  width: 42px; height: 42px; border-radius: 50%;
+  border: none; background: rgba(255, 255, 255, 0.12); color: #fff;
+  display: grid; place-items: center; cursor: pointer;
+}
+.zoom-close:hover { background: rgba(255, 255, 255, 0.22); }
+.late-count { margin-left: 6px; background: var(--danger-bg); color: var(--critical); border-radius: 999px; padding: 1px 7px; font-size: 11px; }
+.late-more { font-weight: 700; color: var(--ink-2); background: var(--surface-2); border: 1px dashed var(--hairline-strong); cursor: pointer; font-family: inherit; }
+
+/* A tray chip is 260px wide by default, which on a 390px phone hangs 35px off
+   the right edge once the quick buttons are on it. It gives way there instead;
+   the title already ellipses, so a narrower chip loses nothing but width. */
+@media (max-width: 640px) {
+  .cal-tray-chip { max-width: 100%; min-width: 0; }
+  .cal-tray-chip .ev-txt { min-width: 0; }
+  .cal-tray-items { width: 100%; }
+}
+@media (hover: none) {
+  .late-more { min-height: 40px; }
+}
+
+/* ---------- how sprints work ---------- */
+.sp-help {
+  margin-left: auto; align-self: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid var(--hairline-strong); background: var(--surface);
+  color: var(--muted); cursor: pointer; display: grid; place-items: center;
+}
+.sp-help:hover { border-color: var(--brand-300); color: var(--brand-600); background: var(--brand-50); }
+.sp-guide { display: flex; flex-direction: column; gap: 20px; }
+.sp-guide section { display: flex; flex-direction: column; gap: 5px; }
+.sp-guide h4 {
+  font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--brand-600); margin-bottom: 2px;
+}
+.sp-guide p { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.sp-guide ul { margin: 2px 0 2px 18px; display: flex; flex-direction: column; gap: 3px; }
+.sp-guide li { font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.sp-head .icon-btn { flex: none; }
+.sp-past { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.sp-weeks { max-width: 300px; font-size: 12.5px; }
+
+/* A new task is an idea: a name and a couple of sentences. The rest of the
+   form is still there, one press away, for whoever already knows it. */
+.cm-sec-later { display: none !important; }
+.cm-idea-note {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 13px; margin: 2px 0 4px;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.cm-idea-note .stat-sub { flex: 1 1 220px; line-height: 1.45; }
+
+/* Where this month puts you on the ladder the admin set. */
+.my-grade { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.my-grade-now { display: flex; flex-direction: column; gap: 1px; }
+.my-grade-now b { font-size: 18px; line-height: 1.1; }
+.my-grade-bar { flex: 1 1 120px; height: 7px; background: var(--track); border-radius: 99px; overflow: hidden; }
+.my-grade-fill { display: block; height: 100%; background: var(--brand-500); border-radius: 99px; }
+.my-grade-next { flex: none; }
+
+.work-sheet td { vertical-align: top; }
+.paid-yes { color: var(--good-ink); }
+
+/* A short ladder an admin edits as a whole: the pay tiers and the grades. */
+.ladder-tbl .pc-mini { max-width: 110px; }
+.ladder-cell { display: inline-flex; align-items: center; gap: 5px; }
+.ladder-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--hairline); }
+
+/* The skip rate sits beside the view count and reads as a percentage. */
+.skip-input { display: inline-flex; align-items: center; gap: 6px; }
+.skip-input .skip-input-box { width: 110px; }
+.skip-input b { color: var(--muted); font-weight: 600; }
+
+/* ---------- picking a person by typing their name ---------- */
+.pp { position: relative; }
+.pp-field {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 8px 11px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: inherit; font: inherit; cursor: pointer; text-align: left;
+}
+.pp-field:disabled { opacity: 0.55; cursor: default; }
+.pp-field.open { border-color: var(--brand-500); }
+.pp-field > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-empty { color: var(--muted); }
+.pp-caret { margin-left: auto; flex: none; color: var(--muted); }
+.pp-pop {
+  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0; min-width: 240px;
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); overflow: hidden;
+}
+.pp-search { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--hairline); }
+.pp-search .input { border: 0; padding: 2px 0; background: none; flex: 1 1 auto; }
+.pp-search .input:focus { outline: none; box-shadow: none; }
+.pp-list { max-height: 260px; overflow-y: auto; padding: 4px; }
+.pp-group { padding: 7px 9px 3px; font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.pp-row {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+  border: 0; border-radius: var(--radius-xs); background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.pp-row:hover:not(:disabled) { background: var(--surface-2); }
+.pp-row.on { background: var(--brand-50, var(--surface-2)); font-weight: 600; }
+.pp-row.off { opacity: 0.45; cursor: default; }
+.pp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-hint { margin-left: auto; font-size: 12px; color: var(--muted); flex: none; }
+.pp-none { color: var(--muted); }
+.pp-none-found { padding: 14px 10px; text-align: center; color: var(--muted); font-size: 13px; }
+@media (hover: none) { .pp-row { padding: 11px 9px; } }
+
+/* ---------- the ambassador programme ---------- */
+/* A student's whole product is this page, so it is wide-margined and quiet:
+   two numbers, one button, and a stack of sentences. */
+.amb-me { display: flex; flex-direction: column; gap: 18px; max-width: 720px; }
+.amb-numbers { display: flex; gap: 14px; }
+.amb-num {
+  flex: 1 1 0; background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--radius); padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.amb-num b { font-size: 26px; line-height: 1.1; }
+.amb-send { align-self: flex-start; }
+/* The one green button on this page. Named rather than borrowed so it cannot
+   drift when the primary button is restyled for something else. */
+.btn-go { border-color: transparent; background: var(--good); color: #fff; }
+.btn-go:hover:not(:disabled) { filter: brightness(1.06); }
+.btn-go:disabled { opacity: 0.5; }
+.amb-cards { display: flex; flex-direction: column; gap: 10px; }
+/* The card says what is happening, and the colour says whose turn it is:
+   green when they can act, red when we have asked them for something. */
+.amb-card { display: flex; flex-direction: column; gap: 7px; border-left: 3px solid transparent; }
+.amb-card-line { font-size: 15px; font-weight: 700; line-height: 1.35; }
+.amb-go { border-left-color: var(--good); }
+.amb-go .amb-card-line { color: var(--good-ink); }
+.amb-stop { border-left-color: var(--critical); }
+.amb-stop .amb-card-line { color: var(--critical); }
+.amb-idle .amb-card-line { color: var(--ink-2); font-weight: 600; }
+.amb-card-idea { line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.amb-card .btn { align-self: flex-start; }
+.amb-feedback {
+  background: var(--danger-bg); border-radius: 10px; padding: 9px 11px;
+  font-size: 13.5px; line-height: 1.5;
+}
+.amb-details { display: flex; flex-wrap: wrap; gap: 22px; }
+.amb-details > div { display: flex; flex-direction: column; gap: 4px; }
+
+/* The admin's render: a queue, one card open at a time. */
+.amb-admin { display: flex; flex-direction: column; gap: 6px; }
+.amb-inbox { display: flex; flex-direction: column; gap: 8px; }
+.amb-row-head {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; background: none; border: 0; cursor: pointer;
+  font: inherit; color: inherit; text-align: left;
+}
+.amb-row.open .amb-row-head { border-bottom: 1px solid var(--hairline); }
+.amb-wait { font-size: 12.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* A day is the promise. Past it, the number says so itself. */
+.amb-wait.late { color: var(--critical); }
+.amb-decide { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.amb-script { white-space: pre-wrap; line-height: 1.55; font-size: 14px; }
+.amb-decide > .btn { align-self: flex-start; }
+.amb-terms { display: flex; flex-wrap: wrap; gap: 8px; }
+.amb-amount .input { max-width: 200px; }
+.amb-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; }
+.amb-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.amb-unset { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.amb-missing { color: var(--critical); }
+.amb-shell .content { padding-bottom: 40px; }
+@media (max-width: 640px) {
+  .amb-numbers { flex-direction: column; }
+  .amb-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+/* ---------- round 85: what was dropped, and what moved ---------- */
+/* Both blocks sit under the board and fold away, so a week where nothing was
+   dropped and nothing was argued about looks exactly as it always did. */
+.sp-dropped-tbl .sp-dropped-title { color: var(--muted); text-decoration: line-through; }
+.sp-dropped-tbl td { vertical-align: top; }
+.sp-dropped-note { margin: 8px 2px 0; }
+.sp-drop-what { font-size: 14.5px; line-height: 1.4; }
+.sp-log { display: flex; flex-direction: column; gap: 9px; }
+.sp-log-row { display: flex; gap: 10px; align-items: baseline; font-size: 13px; line-height: 1.5; }
+.sp-log-when { flex: none; font-variant-numeric: tabular-nums; font-size: 12px; }
+.sp-log-what { min-width: 0; }
+.sp-log-what i { color: var(--ink-2); font-style: normal; font-weight: 600; }
+.sp-log-note { display: block; color: var(--muted); font-size: 12.5px; }
+/* The reason a date cannot be typed, said where the date is — a disabled box
+   with no explanation reads as a bug in the page. */
+.sp-day-locked {
+  display: flex; align-items: center; gap: 6px; line-height: 1.45;
+  margin-top: -4px; color: var(--warning);
+}
+.sp-day-locked svg { flex: none; }
+@media (max-width: 640px) {
+  .sp-log-row { flex-direction: column; gap: 2px; }
+}
+
+/* Last word on touch sizes, so a rule written earlier in the file cannot win
+   the tie simply by being defined further down. */
+@media (hover: none) {
+  .sp-help { width: 40px; height: 40px; }
+}
+
+/* ---------- language help: keys typed in, not set on a server ---------- */
+.ai-note { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.ai-keyset { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--good); font-size: 12.5px; }
+.ai-keycell { min-width: 300px; }
+.ai-keyform { display: flex; align-items: center; gap: 6px; }
+.ai-keyform .input { max-width: 190px; font-size: 12.5px; padding: 7px 10px; }
+
+/* ---------- attendance ---------- */
+.at-who { display: inline-flex; align-items: center; gap: 10px; }
+.at-count {
+  display: inline-grid; place-items: center; min-width: 26px; height: 24px; padding: 0 7px;
+  border-radius: 999px; background: var(--surface-2); font-size: 12.5px; font-weight: 800; color: var(--ink-2);
+}
+.at-count.at-late-count { background: var(--danger-bg); color: var(--critical); }
+
+/* ---------- pay: the arithmetic, shown ---------- */
+.pay-legend { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+.pay-sum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pay-term {
+  display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 800; border: 1.5px solid transparent;
+}
+.pay-op { font-size: 15px; font-weight: 800; color: var(--muted); }
+.pay-term-base  { background: var(--brand-50); color: var(--brand-700); border-color: var(--brand-200, var(--brand-100)); }
+.pay-term-piece { background: var(--surface-2); color: var(--ink-2); border-color: var(--hairline-strong); }
+.pay-term-bonus { background: var(--good-bg, rgba(12,163,12,0.10)); color: var(--good); border-color: var(--good); }
+.pay-term-late  { background: var(--danger-bg); color: var(--critical); border-color: var(--danger-border); }
+.pay-term-total { background: var(--ink); color: var(--surface); }
+.pay-defs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 20px; margin: 0; padding: 0; list-style: none; }
+.pay-defs li { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+/* Where one person's money comes from, in one line under their total. */
+.pay-bar { display: flex; height: 5px; border-radius: 999px; overflow: hidden; margin-top: 5px; background: var(--surface-2); min-width: 70px; }
+.pay-bar-base  { background: var(--brand-400); }
+.pay-bar-piece { background: var(--hairline-strong); }
+.pay-bar-bonus { background: var(--good); }
+
+/* ============================================================
+   The app shell on a phone
+   ============================================================
+   Until now the phone got the desk's furniture: a sidebar that slid in from
+   the left holding thirteen destinations, a title bar with a hamburger, and no
+   way to start a task without first finding the channel that owns it. Every
+   piece of it worked; none of it was a phone.
+
+   What a phone app is: four destinations across the bottom where the thumb
+   already rests, the one thing you came to do raised in the middle of them,
+   everything else behind More — and More comes UP as a sheet, because that is
+   the direction a phone moves things. The bar is fixed, so it is there on
+   every page after every scroll, and it sits inside the safe area so it is
+   never under the home indicator.
+
+   Below 640px only. On anything wider the sidebar is still the sidebar. */
+.mob-tabs { display: none; }
+.mob-sheet { display: none; }
+
+@media (max-width: 640px) {
+  .mob-tabs {
+    display: flex; align-items: stretch;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    background: var(--surface);
+    border-top: 1px solid var(--hairline);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -10px 26px rgba(28, 21, 24, 0.07);
+  }
+  .mob-tab {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 7px 2px 6px; min-height: 54px;
+    background: none; border: none; cursor: pointer; text-decoration: none;
+    color: var(--muted); font-size: 10.5px; font-weight: 600; line-height: 1.1;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* The label is a caption under an icon, not a paragraph: one line, and the
+     channel called "Instagram Flagship" gets an ellipsis rather than a second
+     row that changes the height of the whole bar. */
+  .mob-tab > span:last-child {
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mob-ico { display: grid; place-items: center; height: 22px; }
+  .mob-tab.active { color: var(--brand-600); }
+  .mob-tab:active { background: var(--surface-2); }
+
+  /* The action, raised out of the bar. It is not a route: giving a task is
+     something you do, not somewhere you go, so it never lights up as "where
+     you are". */
+  .mob-new {
+    flex: 0 0 auto; width: 62px;
+    display: grid; place-items: center;
+    background: none; border: none; cursor: pointer; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mob-new i {
+    display: grid; place-items: center;
+    width: 48px; height: 48px; border-radius: 17px;
+    background: linear-gradient(158deg, var(--brand-500), var(--brand-700));
+    color: #fff; transform: translateY(-9px);
+    box-shadow: 0 8px 18px rgba(28, 21, 24, 0.24);
+    transition: transform 0.12s ease;
+  }
+  .mob-new:active i { transform: translateY(-9px) scale(0.93); }
+
+  /* Room under the last row of every page, so the bar covers nothing. */
+  .content { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Both doors to the same room were open at once — the hamburger at the top
+     left and More at the bottom right. An app has one. */
+  .hamburger { display: none; }
+  /* The solo top bar's eight links are all in the tab bar or behind More now.
+     Kept for the desk, where they fit on one line. */
+  .solo-bar .solo-link { display: none; }
+  /* …and with the links gone the title stops being a duplicate of one of
+     them. It was dropped at 720px for that reason and never came back; a
+     phone app names the screen you are on, so it comes back here. */
+  .solo-bar { flex-wrap: nowrap; }
+  .solo-bar h1 {
+    display: block; flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* The spacer was doing the h1's job — taking every free pixel and leaving
+     the title at "My D…". With the title as the flexible one there is
+     nothing for a spacer to do. */
+  .solo-bar .topbar-spacer { display: none; }
+  /* Theme, language, the profile and Sign out are all in the More sheet now,
+     which is where a phone app keeps them. The bar keeps what a bar is for:
+     where you are, search, and what is waiting. */
+  .solo-bar .solo-theme, .solo-bar .solo-avatar,
+  .solo-bar > .icon-btn:last-child { display: none; }
+
+  /* ---- the sidebar, as a sheet ----
+     Same component, same personalization, same channels. It arrives from the
+     bottom edge with a grab bar on it instead of arriving from the left as a
+     full-height column, which is what a phone does with a list of places. */
+  .sidebar {
+    position: fixed; inset: auto 0 0 0;
+    width: auto; height: auto; max-height: 84vh;
+    transform: translateY(101%);
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    border-radius: 20px 20px 0 0;
+    padding: 20px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+    overflow: hidden; overscroll-behavior: contain;
+    z-index: 60;
+  }
+  .sidebar.open { transform: translateY(0); }
+  /* The grab bar has to stay put, so the sheet itself does not scroll — the
+     list of places inside it does, which is what it already did on a desk. */
+  .sidebar > nav { flex: 1 1 auto; min-height: 0; }
+  /* The app's own name is not a destination, and on a phone it was the first
+     110 pixels of a list of them. */
+  .sidebar .logo-lockup { display: none; }
+  .sidebar::before {
+    content: ''; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.4);
+  }
+  .scrim.show { z-index: 55; }
+
+  /* ---- the More sheet for an account with no sidebar ---- */
+  .mob-sheet {
+    display: block; position: fixed; inset: 0; z-index: 60;
+    background: rgba(28, 21, 24, 0.4);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .mob-sheet.open { opacity: 1; pointer-events: auto; }
+  .mob-sheet-card {
+    position: absolute; inset: auto 0 0 0;
+    background: var(--surface); color: var(--ink);
+    border-radius: 20px 20px 0 0;
+    padding: 18px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    max-height: 84vh; overflow-y: auto; overscroll-behavior: contain;
+    transform: translateY(101%);
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .mob-sheet.open .mob-sheet-card { transform: translateY(0); }
+  .mob-sheet-grip {
+    width: 38px; height: 4px; border-radius: 999px; background: var(--hairline-strong);
+    margin: -6px auto 14px;
+  }
+  .mob-sheet-list { display: flex; flex-direction: column; gap: 2px; }
+  .mob-sheet-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 12px; border-radius: var(--radius-xs);
+    color: var(--ink); text-decoration: none; font-size: 15px; font-weight: 600;
+    min-height: 48px;
+  }
+  .mob-sheet-row:active { background: var(--surface-2); }
+  .mob-sheet-row.active { background: var(--brand-50); color: var(--brand-600); }
+  .mob-sheet-foot {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hairline);
+  }
+  .mob-sheet-out {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+    background: none; border: none; cursor: pointer;
+    color: var(--critical); font-size: 14px; font-weight: 600;
+    min-height: 44px; padding: 0 6px;
+  }
+}
+
+/* ============================================================
+   The task sheet, dealt into pages on a phone
+   ============================================================
+   Fourteen fields, and on a 390px screen 2,600 pixels of scrolling. Nobody
+   reads 2,600 pixels: they scroll past the field they needed and save without
+   it. The same rows become five pages with a strip across the top — what the
+   task is, what it is waiting on, how it is set up, when it is due, and the
+   talk.
+
+   The pages are `display: contents`, so on a desk the form is exactly the form
+   it was: one column, every row on it, no wrappers in the layout. Hidden pages
+   keep their DOM, so what you typed on page two is still typed when you come
+   back, and a refusal about a field three pages away can still find it. */
+.cm-sec { display: contents; }
+.modal-sub {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--surface); border-bottom: 1px solid var(--hairline);
+}
+.cm-pages {
+  display: flex; gap: 4px; padding: 8px 10px;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  /* A flex child's default min-width is its CONTENT, so a strip too wide for
+     the phone pushed the whole sheet wider instead of scrolling — and the
+     footer's Save went off the right edge. Adding icons to these tabs is what
+     made the strip wide enough to notice. */
+  min-width: 0;
+}
+.cm-pages::-webkit-scrollbar { display: none; }
+.cm-page-tab {
+  flex: none; padding: 8px 13px; min-height: 38px;
+  background: none; border: none; border-radius: 999px; cursor: pointer;
+  color: var(--muted); font-size: 13px; font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+.cm-page-tab.on { background: var(--brand-50); color: var(--brand-600); }
+/* The strip is sized for a thumb: 38px of tab inside 16px of padding is 54px
+   of the window spent on four short words. A mouse does not need the margin,
+   and those pixels are the form's — the strip exists to give you MORE of the
+   thing you came for, not to take a chunk of it back. Touch keeps its size. */
+@media (hover: hover) {
+  .cm-pages { padding: 4px 10px; }
+  .cm-page-tab { min-height: 30px; padding: 5px 13px; }
+}
+.modal-body.cm-paged > .cm-sec { display: none; }
+.modal-body.cm-paged > .cm-sec.on { display: contents; }
+/* A sheet that resizes itself every time you change page is a sheet that
+   jumps under your thumb. Paged, it takes the height it is going to keep and
+   the short pages simply have room to spare. */
+.modal.modal-tall { height: 94vh; }
+.modal.modal-tall .modal-body { flex: 1 1 auto; }
+
+/* Nothing behind a sheet moves while the sheet is up. A phone rule on
+   purpose: on a desk a modal has never locked the page and there is no
+   thumb to miss the form with, so nothing there needs changing. */
+@media (max-width: 640px) { body.page-held { overflow: hidden; } }
+
+@media (max-width: 640px) {
+  /* The commit row on a phone: Save is the wide one, because it is the one
+     you came here to press. The bases add up to less than the row so the
+     three of them — the tools button, Cancel, Save — stay on one line and
+     grow into it, rather than wrapping and taking a second row of the sheet
+     away from the form. */
+  .modal-foot > .btn-primary { flex: 2 1 40%; }
+}
+
+/* The Pravki picker: same shape as the reference picker, so "attach the frame"
+   looks the same wherever the app asks for a picture. */
+.pravki-pick { align-self: flex-start; }
+
+/* ============================================================
+   Tables become cards on a phone
+   ============================================================
+   Six columns on a 390px screen scrolled sideways: you saw two of them and had
+   to remember what the other four said. Stacked, a row is a card and a cell is
+   a labelled line — the shape every phone app uses for the same data. The
+   labels are copied from the table's own header at runtime (lib/stackTables),
+   so nothing had to be rewritten and a table added tomorrow gets this too. */
+@media (max-width: 640px) {
+  table.tbl { display: block; font-size: 14px; }
+  table.tbl thead { display: none; }
+  table.tbl tbody { display: flex; flex-direction: column; gap: 10px; }
+  table.tbl tr {
+    display: block; background: var(--surface);
+    border: 1px solid var(--hairline); border-radius: 14px; overflow: hidden;
+  }
+  table.tbl tr:hover td { background: none; }
+  table.tbl td, table.tbl tr:last-child td {
+    display: flex; align-items: center; gap: 12px; min-height: 44px;
+    padding: 9px 13px; border-bottom: 1px solid var(--hairline);
+  }
+  table.tbl tr td:last-child { border-bottom: none; }
+  /* The column's name, in front of its value. A cell whose header was blank —
+     the actions column — keeps the full width instead of an empty gutter. */
+  table.tbl td[data-th]:not([data-th=""])::before {
+    content: attr(data-th);
+    flex: 0 0 34%; min-width: 0;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--muted); line-height: 1.25;
+  }
+  /* The first cell names the row. It reads as the card's title rather than as
+     the first of six fields. */
+  table.tbl tbody td:first-child {
+    background: var(--surface-2); font-weight: 700; font-size: 14.5px;
+  }
+  table.tbl tbody td:first-child::before { display: none; }
+  /* A row that spans the table (an empty state) is a caption, not a card. */
+  table.tbl td[colspan] { justify-content: center; text-align: center; }
+  table.tbl td[colspan]::before { display: none; }
+  /* Whatever the cell holds takes the rest of the line and wraps inside it
+     rather than pushing the card sideways. */
+  table.tbl td > * { min-width: 0; }
+  table.tbl td .chip, table.tbl td .pill { white-space: normal; }
+
+  /* ---- tab strips scroll, they do not stack ----
+     Eleven tabs in the Admin panel wrapped onto four rows and pushed the panel
+     itself below the fold. One line that scrolls is what a phone does with a
+     row of tabs. */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs > * { flex: none; }
+
+  /* ---- the warning that follows you ----
+     It is meant to be unmissable, and on a desk one line does that. On a phone
+     the same markup took the first third of every screen in the app, every
+     page, all day. Same words, one line, still red. */
+  .weak-pw {
+    align-items: center; gap: 8px; padding: 10px 12px;
+    font-size: 12.5px; line-height: 1.35;
+  }
+  .weak-pw b { display: block; }
+  .weak-pw > span { min-width: 0; }
+  .weak-pw-go { flex: none; padding: 8px 12px; font-size: 12.5px; }
+}
+
+/* ============================================================
+   Boards swipe on a phone
+   ============================================================
+   Four kanban columns on a 390px screen have two shapes to choose from, and
+   the app had picked the wrong one twice: the content board scrolled sideways
+   at 272px, showing a column and a third of the next, and the sprint board
+   stacked all four, so an empty "Blocked" cost a whole screen of scrolling to
+   pass.
+
+   Both become one column at a time, snapped, with the edge of the next one
+   showing so it is obvious there is more. It is the shape every phone kanban
+   has, and it is the shape a thumb can actually work. */
+@media (max-width: 640px) {
+  .board, .sp-board {
+    display: flex; align-items: flex-start; gap: 10px;
+    overflow-x: auto; scroll-snap-type: x mandatory;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    /* Bleed to the edges of the screen, keeping the first column's inset —
+       a carousel that stops 14px short of the edge looks broken. */
+    margin-inline: -14px; padding-inline: 14px; padding-bottom: 8px;
+  }
+  .board::-webkit-scrollbar, .sp-board::-webkit-scrollbar { display: none; }
+  .board > .board-col, .sp-board > .sp-col {
+    flex: 0 0 calc(100% - 44px); scroll-snap-align: center;
+  }
+  .sp-board { grid-template-columns: none; }
+
+  /* A row of view pills wrapped onto three lines and pushed the thing being
+     viewed below the fold. Same answer as the tabs: one line, scrolled.
+     `flex: 0 1 auto; min-width: 0` is the whole trick and the same one the
+     channel strip needed — without it the group claims its full content
+     width, and instead of scrolling inside itself it pushes the PAGE
+     sideways, which is worse than the wrap it replaced. */
+  .pill-group {
+    /* `display: inline-flex` is shrink-to-fit: the group takes its content
+       width whatever its parent is, so overflow-x had nothing to scroll and
+       the group hung off the page instead. Block-level and capped, it fills
+       the line it is on and scrolls inside itself; `flex: 0 1 auto` with
+       `min-width: 0` lets it shrink when it IS a flex item, as in a section
+       head beside a title. */
+    display: flex; max-width: 100%;
+    flex: 0 1 auto; min-width: 0;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; border-radius: 16px;
+  }
+  .pill-group::-webkit-scrollbar { display: none; }
+  .pill-group > * { flex: none; }
+  /* And the row that HOLDS the group has to be allowed to shrink, or the
+     group never gets a narrow box to scroll inside. A flex item's default
+     `min-width: auto` is its content width, so one of these heads carrying
+     eight pills stayed 585px wide inside a 390px card and took the page with
+     it — the group scrolled internally and the page scrolled sideways
+     anyway. These are the rows that hold one. */
+  .docs-up, .docs-sec-head, .section-head, .pub-head { min-width: 0; }
+  .docs-up { flex: 1 1 auto; }
+}
+
+/* The channel page on a phone leads with the work. On a desk the sections keep
+   the order the channel chose (Customize); on a phone the content board is
+   lifted to the top, because a board three screenfuls down is a board nobody
+   scrolls to on the way to a meeting. */
+@media (max-width: 640px) {
+  .dept-widgets { display: flex; flex-direction: column; }
+  .dept-widgets > [data-w="content"] { order: -1; }
+}
+
+/* ---- the task sheet's secondary actions, on a phone ----
+   Delete, Duplicate, Copy link, See it as and Raise a hand laid three rows of
+   buttons under the form: 290px of a 790px sheet spent on things you are
+   mostly not doing, with Save pushed to the bottom of them. On a desk they
+   stay exactly where they were — the wrapper is `display: contents`, so the
+   footer is the same flex row it always was. */
+.cm-tools { display: contents; }
+@media (max-width: 640px) {
+  .cm-tools.cm-tools-pop {
+    display: none;
+    position: absolute; left: 10px; right: 10px; bottom: calc(100% + 8px);
+    flex-direction: column; gap: 6px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 16px; padding: 8px;
+    box-shadow: var(--shadow-lg);
+  }
+  .cm-tools.cm-tools-pop.open { display: flex; }
+  .cm-tools-pop > * { width: 100%; }
+  .cm-tools-pop .btn { flex: none; justify-content: flex-start; font-size: 14px; padding: 10px 12px; }
+  .cm-tools-pop .crew-peek { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+  .cm-tools-pop .crew-peek .select { flex: 1 1 auto; max-width: none; }
+  .cm-more-btn { flex: 0 0 auto; }
+  .modal-foot > .foot-gap-tight { flex: 1 1 0; flex-basis: 0; height: auto; }
+  .cm-more-btn.on { background: var(--surface-2); color: var(--ink); }
+}
+
+/* Quick find on a phone: the "esc" chip names a key the device has not got.
+   The X does the same job with a thumb. On a desk the chip stays and the X is
+   redundant, so only one of them is ever shown. */
+.qf-x { display: none; }
+@media (hover: none), (max-width: 640px) {
+  .qf-esc { display: none; }
+  .qf-x {
+    display: grid; place-items: center; flex: none;
+    width: 40px; height: 40px; border-radius: 12px;
+    background: none; border: none; cursor: pointer; color: var(--muted);
+  }
+  .qf-x:active { background: var(--surface-2); }
+}
+
+/* A one-line hint with an ellipsis is a graceful trim on a desk, where the
+   line is 900px and the sentence fits. At 390px it cut the sentence in half
+   and the ellipsis did not even show, because the note is a flex row. On a
+   phone it wraps and says the whole thing. */
+@media (max-width: 640px) {
+  .brief-note { white-space: normal; align-items: flex-start; }
+}
+
+/* A card on the whiteboard is dragged, so the browser must not treat the same
+   gesture as a pan of the canvas under it. Without this the finger scrolls the
+   board and the card stays where it was. */
+.board-node { touch-action: none; }
+
+/* ============================================================
+   A booking the crew answer for
+   ============================================================
+   The slot as a card, the way a calendar app shows one: the day large, the
+   hours beside it, and one line saying whether the person holding it has
+   agreed. Three states, three colours — waiting, yes, no — because the whole
+   point is that "booked" and "agreed" are different facts and used to look
+   identical. */
+.bk {
+  border: 1px solid var(--hairline); border-left: 3px solid var(--hairline-strong);
+  border-radius: var(--radius-sm); background: var(--surface);
+  padding: 10px 12px; margin: -2px 0 4px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.bk-wait { border-left-color: var(--warn, #d59a2b); background: var(--surface-2); }
+.bk-yes { border-left-color: var(--ok, #1D9E75); }
+.bk-no { border-left-color: var(--critical); background: var(--danger-bg); }
+.bk-gone { border-left-color: var(--border); opacity: 0.75; }
+.bk-slot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bk-ico { flex: none; color: var(--muted); }
+.bk-yes .bk-ico { color: var(--ok, #1D9E75); }
+.bk-no .bk-ico { color: var(--critical); }
+.bk-when { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.bk-when b { font-size: 15px; letter-spacing: -0.2px; }
+.bk-time { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+.bk-label {
+  margin-left: auto; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--muted);
+}
+.bk-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bk-said { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.bk-said.bk-yes { color: var(--ok, #1D9E75); }
+.bk-said.bk-no { color: var(--critical); }
+.bk-said.bk-wait { color: var(--ink-2); }
+.bk-said.bk-gone { color: var(--muted); font-weight: 600; }
+.bk-why { font-style: italic; font-weight: 500; color: var(--ink-2); }
+.bk-do { margin-left: auto; display: inline-flex; gap: 6px; }
+.bk-form { display: flex; flex-direction: column; gap: 8px; }
+.bk-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bk-actions .stat-sub { margin-right: auto; }
+@media (max-width: 640px) {
+  .bk-label { margin-left: 0; flex-basis: 100%; }
+  .bk-do { margin-left: 0; flex-basis: 100%; }
+  .bk-do .btn { flex: 1 1 0; justify-content: center; }
+}
+
+/* The answer tray on My Day: times somebody has put in your day and is
+   waiting to hear about. It sits above the work because it is not work — it
+   is one tap that lets somebody else finish planning their week. */
+.ask-tray { border-left: 3px solid var(--warn, #d59a2b); display: flex; flex-direction: column; gap: 2px; }
+.ask-tray-head { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 6px; }
+.ask-tray-head svg { color: var(--warn, #d59a2b); }
+.ask-tray-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+  padding: 9px 8px; border-radius: var(--radius-xs); min-height: 44px;
+  border-top: 1px solid var(--hairline);
+}
+.ask-tray-row:first-of-type { border-top: none; }
+.ask-tray-row:hover { background: var(--surface-2); }
+.ask-tray-what { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 14px; }
+.ask-tray-what b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-tray-what svg { flex: none; color: var(--muted); }
+.ask-tray-when { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.ask-tray-go {
+  margin-left: auto; flex: none; font-size: 12.5px; font-weight: 700; color: var(--brand-600);
+  border: 1px solid var(--brand-200, #e3c3c9); border-radius: 999px; padding: 5px 12px;
+}
+@media (max-width: 640px) {
+  .ask-tray-what { flex-basis: 100%; }
+  .ask-tray-go { margin-left: auto; }
+}
+
+/* ---- which build is on screen, and taking a newer one ----
+   "Is the new thing live yet?" was a question nobody could answer by looking:
+   you went hunting for the feature, and not finding it told you nothing about
+   whether you were on the old bundle or looking in the wrong place. */
+.build-stamp {
+  font-size: 10.5px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+  color: currentColor; opacity: 0.45; padding: 6px 8px 0; white-space: nowrap;
+}
+.mob-sheet-foot .build-stamp { flex-basis: 100%; padding: 6px 2px 0; color: var(--muted); opacity: 1; }
+
+/* The tab is running a build the server has already replaced. Auto-update
+   takes it when the tab is next put down, which is the right moment on a desk
+   and the wrong one for somebody holding a phone waiting for a change. */
+.new-build {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--brand-50); color: var(--brand-700, var(--brand-600));
+  border: 1px solid var(--brand-200, #e3c3c9); border-radius: var(--radius-sm);
+  padding: 10px 14px; margin-bottom: 14px; font-size: 13.5px; font-weight: 600;
+}
+.new-build svg { flex: none; }
+.new-build-go {
+  margin-left: auto; flex: none; cursor: pointer;
+  background: var(--brand-600); color: #fff; border: none;
+  border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 700;
+  min-height: 40px;
+}
+.new-build-go:hover { background: var(--brand-700, var(--brand-600)); }
+@media (max-width: 640px) { .new-build-go { margin-left: auto; } }
+
+
+/* ============================================================
+   The register, as a month
+   ============================================================
+   It used to show one day, with a date picker for the other thirty. Every
+   question this register answers is about a RUN of days — who keeps coming in
+   late, who has been away this week — and answering one meant clicking through
+   the month and holding the shape of it in your head. People down the side,
+   days across the top, and the answer is the picture. */
+.at-head { align-items: baseline; }
+.at-sum { font-size: 13px; color: var(--ink-2); }
+.at-sum b { font-size: 15px; }
+.at-dot { margin: 0 7px; color: var(--muted); }
+.at-month { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.at-month b { min-width: 148px; text-align: center; text-transform: capitalize; }
+
+.at-wrap { overflow: hidden; }
+/* The grid is wider than any screen once a month has thirty-one days in it.
+   It scrolls sideways inside its own card, and the names stay put — a column
+   of ticks with the person scrolled off is not a register. */
+.at-grid-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.at-grid { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 13px; }
+.at-grid th, .at-grid td { padding: 0; }
+.at-grid .at-name-col {
+  position: sticky; left: 0; z-index: 2;
+  background: var(--surface); text-align: left; font-weight: 700;
+  padding: 8px 14px; min-width: 190px; border-bottom: 1px solid var(--hairline);
+  box-shadow: 1px 0 0 var(--hairline);
+}
+.at-grid thead .at-name-col {
+  z-index: 3; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.at-who { display: flex; align-items: center; gap: 9px; }
+.at-who-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.at-who-meta b { font-size: 13.5px; white-space: nowrap; }
+.at-grid .at-day-h {
+  width: 30px; min-width: 30px; text-align: center;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  padding: 8px 0; border-bottom: 1px solid var(--hairline);
+}
+.at-day-h.at-wknd, .at-cell.at-wknd { background: var(--surface-2); }
+.at-day-h.at-today, .at-cell.at-today { background: var(--brand-50); }
+.at-day-h.at-today { color: var(--brand-600); }
+.at-grid .at-cell { position: relative; text-align: center; padding: 2px 0; }
+/* The counts stay on screen. They are the answer to the question that brings
+   anybody here — who keeps coming in late — and scrolling thirty-one days to
+   the right to read them is how the last version lost the plot. */
+.at-grid .at-tot-col, .at-grid .at-tot {
+  position: sticky; right: 0; background: var(--surface);
+  box-shadow: -1px 0 0 var(--hairline);
+}
+.at-grid .at-tot-col.at-tot-late, .at-grid .at-tot.at-tot-late { right: 62px; box-shadow: none; }
+.at-grid .at-tot-col {
+  z-index: 2;
+  font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+  padding: 8px 12px; border-bottom: 1px solid var(--hairline); white-space: nowrap;
+  text-align: center; min-width: 62px;
+}
+.at-grid thead .at-tot-col { z-index: 3; overflow: hidden; text-overflow: ellipsis; }
+.at-tot-ico { display: none; vertical-align: -2px; }
+.at-grid .at-tot { text-align: center; padding: 4px 12px; min-width: 62px; }
+.at-grid tbody tr:hover td, .at-grid tbody tr:hover .at-name-col,
+.at-grid tbody tr:hover .at-tot { background: var(--surface-2); }
+
+/* One square per person per day. Empty is a real state and looks like one:
+   an outline, not a colour, because "nobody wrote anything down" is not a
+   verdict. */
+.at-mark {
+  width: 22px; height: 22px; border-radius: 7px; cursor: pointer;
+  display: inline-grid; place-items: center;
+  background: none; border: 1.5px dashed var(--hairline-strong); color: transparent;
+  padding: 0;
+}
+.at-mark:disabled { cursor: default; opacity: 0.5; }
+.at-mark.on { border-style: solid; color: #fff; }
+.at-mark.on.at-ontime { background: var(--ok, #1D9E75); border-color: var(--ok, #1D9E75); }
+.at-mark.on.at-late { background: var(--critical); border-color: var(--critical); }
+.at-mark.on.at-away { background: var(--muted); border-color: var(--muted); }
+.at-mark.open { outline: 2px solid var(--brand-400); outline-offset: 2px; }
+.at-mark:not(:disabled):hover { border-color: var(--brand-400); }
+
+/* Saying what happened, at the square you clicked. */
+.at-scrim { position: fixed; inset: 0; z-index: 30; }
+/* Fixed, not absolute: the month scrolls sideways inside its own box, and a
+   box that scrolls clips whatever hangs out of it — which cut the bottom off
+   this and took the arrival time and Clear with it. Placed from the square's
+   own position in JS, so it cannot be clipped by anything. */
+.at-pick {
+  position: fixed; z-index: 31; width: 190px;
+  background: var(--surface); border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
+  padding: 8px; display: flex; flex-direction: column; gap: 3px; text-align: left;
+}
+.at-pick-day { font-size: 11px; color: var(--muted); font-weight: 700; padding: 0 4px 4px; }
+.at-pick-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: none; cursor: pointer; border-radius: var(--radius-xs);
+  padding: 8px 9px; font-size: 13px; font-weight: 600; color: var(--ink); min-height: 38px;
+}
+.at-pick-opt:hover { background: var(--surface-2); }
+.at-pick-opt.at-ontime svg { color: var(--ok, #1D9E75); }
+.at-pick-opt.at-late svg { color: var(--critical); }
+.at-pick-opt.at-away svg { color: var(--muted); }
+.at-pick-clear { color: var(--muted); border-top: 1px solid var(--hairline); border-radius: 0; margin-top: 3px; }
+.at-pick-time {
+  display: flex; align-items: center; gap: 8px; padding: 4px;
+  font-size: 11.5px; color: var(--muted); font-weight: 700;
+}
+.at-pick-time .input { padding: 5px 7px; font-size: 12.5px; }
+
+.at-legend {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 14px; border-top: 1px solid var(--hairline);
+  font-size: 12px; color: var(--muted);
+}
+.at-leg { display: inline-flex; align-items: center; gap: 6px; }
+.at-leg .at-mark { width: 16px; height: 16px; border-radius: 5px; cursor: default; }
+
+/* On a phone the pinned columns were eating 314px of a 390px screen — names
+   at their full width plus two totals headed with a Russian word apiece —
+   which left room for roughly ONE day of the month. A register you cannot
+   read across days is the thing this replaced. So on a phone the name loses
+   its @handle and ellipsises, and the totals become their own icons with the
+   words left to the legend directly below: about seven days at a time, and
+   the month scrolls between two columns that still hold their ground. */
+@media (max-width: 640px) {
+  .at-who-at, .at-who-meta .stat-sub { display: none; }
+  .at-who-meta b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+  .at-who { gap: 7px; }
+  .at-grid .at-name-col { min-width: 0; width: 108px; max-width: 108px; padding: 6px 7px; }
+  .at-grid thead .at-name-col { font-size: 10px; letter-spacing: 0; }
+  .at-tot-word { display: none; }
+  .at-tot-ico { display: inline-block; }
+  .at-grid .at-tot-col, .at-grid .at-tot { min-width: 36px; width: 36px; padding: 6px 3px; }
+  .at-grid .at-tot-col.at-tot-late, .at-grid .at-tot.at-tot-late { right: 36px; }
+  /* Six days at a time with a square a thumb can still hit, and the month
+     scrolls between two columns that hold their ground. */
+  .at-grid .at-day-h { width: 30px; min-width: 30px; }
+  .at-mark { width: 24px; height: 24px; }
+  .at-count { min-width: 22px; height: 21px; padding: 0 5px; font-size: 12px; }
+  .at-month b { min-width: 110px; font-size: 13px; }
+}
+
+/* A phone gets the picker as a sheet across the bottom rather than a popover
+   pinned to a 26px square somewhere in a sideways scroll. */
+@media (max-width: 640px) {
+  .at-pick {
+    left: 10px; right: 10px; top: auto; width: auto; padding: 10px;
+    /* clear of the tab bar: its 54px plus the phone's own bottom inset */
+    bottom: calc(54px + env(safe-area-inset-bottom, 0px) + 10px);
+  }
+  .at-pick-day { font-size: 12.5px; color: var(--ink-2); padding-bottom: 6px; }
+  .at-pick-opt { min-height: 46px; font-size: 14.5px; }
+  .at-pick-time { font-size: 12.5px; padding: 6px 4px; }
+  .at-scrim { background: rgba(0, 0, 0, 0.28); }
+}
+
+
+
+/* ---------- picking a time out of somebody else's week ---------- */
+/* A calendar, not a form: the week across, the day down, and every button on
+   it is a time that actually exists. Grey is somebody else's already. */
+.sp { display: flex; flex-direction: column; gap: 10px; }
+.sp-empty { flex-direction: row; align-items: center; gap: 8px; padding: 10px 12px;
+  border: 1px dashed var(--hairline-strong); border-radius: var(--radius-sm); color: var(--muted); }
+.sp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.sp-len { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
+.sp-len .pill-group { flex: 0 1 auto; min-width: 0; }
+.sp-nav { display: inline-flex; gap: 2px; flex: none; }
+.sp-note { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted);
+  background: var(--surface-2); border-radius: var(--radius-xs); padding: 8px 10px; }
+.sp-note svg { flex: none; color: var(--warn, #d59a2b); }
+.sp-load { display: grid; place-items: center; padding: 24px; color: var(--muted); }
+
+.sp-week { max-height: 340px; overflow-y: auto; display: grid; grid-template-columns: repeat(7, minmax(62px, 1fr)); gap: 5px; overflow-x: auto; }
+.sp-day { display: flex; flex-direction: column; gap: 5px; min-width: 0;
+  background: var(--surface-2); border-radius: var(--radius-sm); padding: 7px 6px; }
+.sp-day.sp-off { opacity: 0.55; }
+.sp-day.sp-today { outline: 1.5px solid var(--brand-400); outline-offset: -1.5px; }
+.sp-day-h { display: flex; flex-direction: column; line-height: 1.2; padding: 0 2px 2px; }
+.sp-day-h b { font-size: 11.5px; }
+.sp-day-h .stat-sub { font-size: 10.5px; }
+.sp-busy { display: flex; flex-direction: column; gap: 3px; }
+.sp-taken { font-size: 10.5px; color: var(--muted); background: var(--surface);
+  border-radius: var(--radius-xs); padding: 2px 5px; text-decoration: line-through; }
+.sp-slots { display: flex; flex-direction: column; gap: 4px; }
+.sp-none { font-size: 11px; padding: 2px; }
+.sp-slot {
+  border: 1px solid var(--hairline-strong); background: var(--surface); color: var(--ink);
+  border-radius: var(--radius-xs); padding: 5px 2px; font-size: 11.5px; font-weight: 700;
+  cursor: pointer; min-height: 30px;
+}
+.sp-slot:hover { border-color: var(--brand-400); color: var(--brand-600); }
+.sp-slot.on { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+.cm-slot-wrap { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.cm-slot-toggle { align-self: flex-start; }
+
+@media (max-width: 640px) {
+  /* One column at a time, snapping — the same shape the kanban uses. */
+  .sp-week { grid-auto-flow: column; grid-auto-columns: 43%; grid-template-columns: none;
+    scroll-snap-type: x mandatory; }
+  .sp-day { scroll-snap-align: start; }
+  .sp-slot { min-height: 38px; font-size: 13px; }
+}
+
+/* ---------- the designer's board ---------- */
+.dz-filters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.dz-filters .pill-group { max-width: 100%; flex: 0 1 auto; min-width: 0; }
+.dz-lane { margin-bottom: 12px; overflow: hidden; }
+.dz-lane-head {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: 12px 14px; color: var(--ink);
+}
+.dz-lane-head:hover { background: var(--surface-2); }
+.dz-lane-head b { font-size: 14px; }
+.dz-hint { font-size: 12px; }
+.dz-caret { transition: transform 0.15s ease; color: var(--muted); flex: none; }
+.dz-caret.open { transform: rotate(180deg); }
+.dz-rows { display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
+.dz-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 132px 132px auto;
+  align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--hairline);
+}
+.dz-row:last-child { border-bottom: none; }
+.dz-row:hover { background: var(--surface-2); }
+.dz-row.dz-late { box-shadow: inset 3px 0 0 var(--critical); }
+.dz-main { display: flex; align-items: center; gap: 8px; min-width: 0; background: none; border: none;
+  cursor: pointer; text-align: left; color: var(--ink); padding: 0; }
+.dz-title { font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-chans { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.dz-due, .dz-who { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.dz-links { display: inline-flex; gap: 6px; justify-content: flex-end; }
+.btn-ok { border-color: var(--ok, #1D9E75); color: var(--ok, #1D9E75); }
+
+@media (max-width: 860px) {
+  .dz-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .dz-links { justify-content: flex-start; }
+  .dz-due, .dz-who { font-size: 12px; }
+  /* The title is how the task is opened; stacked, it is the row's whole width
+     and has to be tall enough to hit. */
+  .dz-main { min-height: 40px; width: 100%; }
+}
+@media (pointer: coarse) { .dz-main { min-height: 44px; } }
+
+/* ---------- documents: the filter row and the preview ---------- */
+.docs-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 0 14px 10px; min-width: 0; }
+.docs-filters .pill-group { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.docs-search { display: inline-flex; align-items: center; gap: 6px; }
+.docs-search .input { width: 190px; }
+.doc-preview { display: flex; flex-direction: column; min-height: 340px; }
+.doc-frame { width: 100%; flex: 1; min-height: 60vh; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: #fff; }
+.doc-frame-text { background: var(--surface); }
+.doc-img { max-width: 100%; max-height: 70vh; object-fit: contain; align-self: center; }
+.doc-noprev { display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center; padding: 44px 20px; color: var(--muted); }
+.doc-noprev b { color: var(--ink); font-size: 14px; }
+
+/* ---------- statistics: the answer first, the working underneath ---------- */
+.st-chans { margin-bottom: 12px; max-width: 100%; flex: 0 1 auto; min-width: 0; }
+.st-say { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
+  border-left: 3px solid var(--brand-500); }
+.st-line { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; line-height: 1.45; }
+.st-line svg { flex: none; margin-top: 2px; }
+.st-line.st-good svg { color: var(--ok, #1D9E75); }
+.st-line.st-warn svg { color: var(--warn, #d59a2b); }
+.st-line.st-bad svg { color: var(--critical); }
+.st-line.st-bad span { font-weight: 600; }
+.st-line.st-flat svg { color: var(--muted); }
+
+.st-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.st-tile { padding: 12px 14px; display: flex; flex-direction: column; gap: 5px; }
+.st-tile .st-k { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.st-tile b { font-size: 26px; line-height: 1.05; font-weight: 800; }
+.st-sides { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-2); }
+.st-sides span { display: inline-flex; align-items: center; gap: 6px; }
+.st-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; flex: none; background: var(--muted); }
+.st-dot.st-prod { background: #b5324a; }
+.st-dot.st-make { background: #2a78d6; }
+.stat-bar { display: block; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.stat-bar-fill { display: block; height: 100%; background: var(--brand-500); border-radius: 999px; }
+.stat-bar-fill.sb-good { background: var(--ok, #1D9E75); }
+.stat-bar-fill.sb-warn { background: var(--warn, #d59a2b); }
+.stat-bar-fill.sb-bad { background: var(--critical); }
+
+.st-sec { margin-bottom: 10px; overflow: hidden; }
+.st-sec-head { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 11px 14px;
+  background: none; border: none; cursor: pointer; color: var(--ink); font-size: 14px;   min-height: 40px;
+}
+.st-sec-head:hover { background: var(--surface-2); }
+@media (pointer: coarse) { .st-sec-head { min-height: 44px; } }
+.st-sec-body { border-top: 1px solid var(--hairline); padding: 12px 14px; overflow-x: auto; }
+.st-pie-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.pie { flex: none; }
+.pie-n { font-size: 19px; font-weight: 800; fill: var(--ink); }
+.pie-l { font-size: 10px; fill: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.st-legend { display: flex; flex-direction: column; gap: 9px; flex: 1 1 240px; min-width: 0; }
+.st-leg-row { display: grid; grid-template-columns: 10px 15px minmax(0, 1fr) auto auto 90px; align-items: center; gap: 8px; font-size: 13px; }
+.st-leg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-tbl th, .st-tbl td { white-space: nowrap; }
+.st-tbl td:first-child, .st-tbl th:first-child { white-space: normal; }
+
+.st-misses { display: flex; flex-direction: column; gap: 2px; }
+.st-miss { display: grid; grid-template-columns: 92px minmax(0, 1fr) 48px 140px; align-items: center; gap: 10px;
+  padding: 7px 2px; border-bottom: 1px solid var(--hairline); }
+.st-miss:last-child { border-bottom: none; }
+.st-miss-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.st-miss-main b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-miss-main .stat-sub { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-miss-days { font-weight: 800; color: var(--critical); text-align: right; font-size: 13px; }
+.st-miss-who { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-prod { background: var(--danger-bg); color: #b5324a; }
+.chip-make { background: rgba(42, 120, 214, 0.12); color: #2a78d6; }
+
+@media (max-width: 860px) {
+  .st-miss { grid-template-columns: 84px minmax(0, 1fr) 44px; }
+  .st-miss-who { display: none; }
+  .st-leg-row { grid-template-columns: 10px 15px minmax(0, 1fr) auto auto; }
+  .st-leg-row .stat-bar { display: none; }
+}
+
+/* Still missing — the stage checker in the open, on the task itself. Amber,
+   not red: these are holes to fill, not failures. It rides inside the stage
+   row rather than taking one of its own; a phone has no spare rows. */
+.stage-wrap { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cm-gaps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gap-key { font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted); }
+.chip-gap {
+  background: var(--tint-warn);
+  color: var(--warn-ink);
+  border: 1px solid var(--warning);
+  font-weight: 700;
+}
+
+/* A folding section head. The whole title is the hit target — a caret alone is
+   a 15px target, which a thumb misses. */
+.fold-head { gap: 8px; }
+.fold-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: inherit; cursor: pointer; text-align: left;
+  min-height: 40px;
+}
+@media (pointer: coarse) { .fold-btn { min-height: 44px; } }
+.fold-btn h2 { margin: 0; }
+.fold-caret { color: var(--muted); transition: transform 0.15s ease; flex: none; }
+.fold-caret.open { transform: rotate(180deg); }
+.fold-btn:hover .fold-caret { color: var(--ink); }
+
+/* Your own list takes its own line, above the items already on it. */
+.pers-add { display: flex; gap: 8px; align-items: center; padding: 4px 0 10px; }
+.pers-add .input { flex: 1; min-width: 0; }
+
+/* A Word document, converted to HTML and drawn in the sheet. Deliberately
+   plain — this is a preview of what the file says, not a rendition of how
+   Word chose to lay it out. */
+.doc-word {
+  padding: 18px 22px; overflow: auto; max-height: 100%;
+  line-height: 1.55; color: var(--ink); background: var(--surface);
+}
+.doc-word h1, .doc-word h2, .doc-word h3 { margin: 18px 0 8px; line-height: 1.25; }
+.doc-word h1 { font-size: 22px; }
+.doc-word h2 { font-size: 18px; }
+.doc-word h3 { font-size: 15px; }
+.doc-word p { margin: 0 0 10px; }
+.doc-word ul, .doc-word ol { margin: 0 0 10px; padding-left: 22px; }
+.doc-word li { margin: 2px 0; }
+.doc-word table { border-collapse: collapse; margin: 10px 0; max-width: 100%; }
+.doc-word td, .doc-word th { border: 1px solid var(--hairline-strong); padding: 5px 8px; }
+.doc-word img { max-width: 100%; height: auto; }
+.doc-word a { color: var(--brand-500); }
+
+/* An on/off switch that says which it is. A bare track is a guess about which
+   way means on; the word next to it is not. */
+.switch {
+  display: inline-flex; align-items: center; gap: 9px; min-height: 40px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; font-weight: 700; font-size: 12.5px; color: var(--muted);
+}
+.switch i {
+  width: 38px; height: 22px; border-radius: 999px; flex: none;
+  background: var(--hairline-strong); position: relative; transition: background 0.15s ease;
+}
+.switch i::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; transition: transform 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.switch.on { color: var(--brand-500); }
+.switch.on i { background: var(--brand-500); }
+.switch.on i::after { transform: translateX(16px); }
+.pages-tbl td { vertical-align: middle; }
+
+/* Views on the task. A number, and a sentence about what an empty box means —
+   because "0" and "nobody has counted" are different answers and the board
+   pays people on the difference. */
+.views-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.views-input { width: 140px; }
+.views-read { font-size: 15px; font-weight: 800; }
+
+/* ---------- views: what the work actually got ---------- */
+.vw-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.vw-tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+  border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-2); }
+.vw-tile b { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.vw-tile span { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.vw-warn { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px;
+  color: var(--warn-ink); background: var(--tint-warn); border: 1px solid var(--warning);
+  border-radius: var(--radius-xs); padding: 7px 10px; }
+.vw-warn svg { flex: none; }
+.vw-split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 16px; }
+@media (max-width: 860px) { .vw-split { grid-template-columns: 1fr; gap: 14px; } }
+.vw-col h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.vw-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; min-width: 0; }
+.vw-name { font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 7px;
+  min-width: 120px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vw-title { flex: 1; max-width: none; }
+.vw-bar { flex: 1; min-width: 40px; height: 7px; border-radius: 999px; background: var(--hairline); overflow: hidden; }
+.vw-bar > span { display: block; height: 100%; background: var(--brand-500); border-radius: 999px; }
+.vw-row b { font-variant-numeric: tabular-nums; min-width: 68px; text-align: right; }
+
+/* ---- Admin → Usage: is the board being used, and for what ---- */
+.usage-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.usage-tbl td, .usage-tbl th { vertical-align: middle; }
+.usage-tbl tbody tr { cursor: pointer; }
+.usage-tbl tbody tr:hover { background: var(--surface-2); }
+.usage-tbl tbody tr.on { background: var(--brand-50, var(--surface-2)); }
+.usage-quiet { opacity: 0.55; }
+.usage-who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.usage-who > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-bar { display: inline-block; width: 84px; height: 7px; margin-right: 8px; background: var(--track); border-radius: 99px; overflow: hidden; vertical-align: middle; }
+.usage-bar i { display: block; height: 100%; background: var(--brand-500); border-radius: 99px; }
+.usage-num { font-variant-numeric: tabular-nums; }
+.usage-act { display: flex; align-items: center; gap: 8px; padding: 5px 2px; }
+.usage-act-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) { .usage-grid { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* ============================================================
+   THE CONSTRAINT LAYER — utilities the rules above are made of.
+   Kept small on purpose: a utility set that can express anything
+   enforces nothing.
+   ============================================================ */
+
+/* Air. `u-group` is the one that matters — it is what "let the data breathe"
+   means in practice, and it is 1.5× the spacing the pages used before. */
+.u-stack  { display: flex; flex-direction: column; gap: var(--gap-field); }
+.u-group  { display: flex; flex-direction: column; gap: var(--gap-group); }
+.u-region { display: flex; flex-direction: column; gap: var(--gap-section); }
+
+/* A container is a shift in background, not a box drawn around one. */
+.u-quiet {
+  background: var(--surface-2);
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--radius);
+  padding: var(--space-5);
+}
+.u-plain { background: none; border: 0; box-shadow: none; padding: 0; }
+
+/* A status word SAYS something. It is not a button and must not read as one:
+   no border, no hover, no pointer, no shadow — flat and muted. `.badge` above
+   is the app's own, older class; this is the utility the new rules are made
+   of, under the same `u-` prefix as the rest of them. */
+.u-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--tint-neutral); color: var(--ink-2);
+  border: 0; box-shadow: none; cursor: default;
+  font-size: 11.5px; font-weight: 600; line-height: 1.7;
+  white-space: nowrap;
+}
+.u-badge:hover { background: var(--tint-neutral); color: var(--ink-2); }
+/* The one place red is allowed outside a system failure: work that is late. */
+.u-badge-late { background: var(--danger-bg); color: var(--critical); }
+.u-badge-quiet { background: none; color: var(--muted); padding-left: 0; }
+
+/* The single primary action on a screen. Anything else is secondary, and
+   secondary is quiet. */
+.u-primary { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+
+/* Actions that only appear when the row is under the pointer: a permanent
+   action must not sit permanently under a thumb in a list. */
+.u-onhover { opacity: 0; transition: opacity 120ms ease; }
+.u-row:hover .u-onhover,
+.u-row:focus-within .u-onhover { opacity: 1; }
+@media (hover: none) { .u-onhover { opacity: 1; } }
+
+/* A person who has left is still on the work they did: their name stays on the
+   record, greyed, and cannot be chosen again. */
+.pp-archived { color: var(--muted); filter: grayscale(1); }
+.pp-more { padding: 7px 10px; font-size: 11.5px; color: var(--muted); }
+
+/* Leaving a sheet that is holding unsaved words. Sits inside the sheet rather
+   than over the whole screen: the thing at risk is this form, not the app. */
+.cm-leave { position: absolute; inset: 0; display: grid; place-items: center; z-index: 5;
+  background: color-mix(in srgb, var(--surface) 72%, transparent); }
+.cm-leave-box { display: flex; flex-direction: column; gap: var(--space-3); max-width: 360px;
+  box-shadow: var(--shadow); background: var(--surface); }
+.cm-leave-acts { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
+
+/* ---- the sidebar's hubs (round 88) ---------------------------------------
+   The nav was one column of every door an account could open — eleven of them
+   for an admin, read top to bottom every time you wanted one. They are sorted
+   into four now, and a hub you never use folds away. The heading is the
+   control: no separate chevron to hunt for, the whole row is the hit area.
+   A hub holding the page you are on cannot be folded, so you can never lose
+   sight of where you are. */
+.nav-hub-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  color: rgba(236, 231, 225, 0.62);
+  padding: 14px 12px 6px;
+  text-align: left;
+  transition: color 0.12s ease;
+}
+.nav-hub-head:hover { color: rgba(236, 231, 225, 0.95); }
+.nav-hub-chev {
+  flex: none;
+  opacity: 0.65;
+  transform: rotate(0deg);
+  transition: transform 0.14s ease;
+}
+.nav-hub.open .nav-hub-chev { transform: rotate(90deg); }
+/* What is behind a folded hub, so folding one is not the same as forgetting
+   what is in it. */
+.nav-hub-n {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0;
+  font-weight: 600;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+.nav-hub-body { display: flex; flex-direction: column; gap: 2px; }
+/* A hub heading is a control, so on a screen without a pointer it has to be
+   big enough to hit. 36px is a comfortable reading height and an
+   uncomfortable target. */
+@media (hover: none) {
+  .nav-hub-head { min-height: 44px; padding-top: 16px; padding-bottom: 10px; }
+}
+
+/* A card whose change is still in the air. Only for the changes that can come
+   back refused — a stage, a tick. A seat is drawn the moment you pick it and
+   never wears this, because there is nothing to wait for. Deliberately faint:
+   this is a whisper that something is happening, not a spinner that takes the
+   page hostage. */
+.tcard-busy { opacity: 0.55; pointer-events: none; transition: opacity 0.12s ease; }
+
+/* Signing a student up sits at the head of the list it adds to. */
+.amb-add-row { display: flex; justify-content: flex-end; margin-bottom: var(--space-3, 12px); }
+
+/* ---- the ambassador programme, round 90 ---------------------------------
+   The half of the flow that was never built: saying a video is live, checking
+   it, and reading back what somebody has actually done. */
+
+/* What was agreed in words, when the three boxes could not say it. It is the
+   thing they have to DO, so it reads as an instruction, not as a note. */
+.amb-term-note {
+  border-left: 3px solid var(--brand-500);
+  padding: 6px 10px;
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--brand-500) 7%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+.amb-links { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.amb-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--muted); text-decoration: none; margin-top: 4px;
+}
+.amb-link:hover { color: var(--brand-600); text-decoration: underline; }
+.amb-contract { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.amb-contract .btn { cursor: pointer; }
+
+/* One person's whole record. A row per card, its state first because that is
+   what somebody is scanning for. */
+.amb-history { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.amb-hist-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 8px; background: var(--surface-2, rgba(127,127,127,0.06));
+}
+.amb-hist-state { font-weight: 700; font-size: 13px; white-space: nowrap; }
+.amb-hist-what { font-size: 12.5px; color: var(--muted); min-width: 0; }
+.amb-hist-row .spacer { flex: 1 1 0; min-width: 0; }
+.amb-hist-row.amb-go .amb-hist-state { color: var(--good-ink, #0ca30c); }
+.amb-hist-row.amb-stop .amb-hist-state { color: var(--critical); }
+.amb-hist-row.amb-done .amb-hist-state { color: var(--muted); }
+/* Finished work is not an alarm and not a call to action — it is a record. */
+.amb-card.amb-done { opacity: 0.82; }
+
+/* What the programme costs, and what is still owed. Money is the one number
+   here that is a call to action, so it is the only one that gets a colour. */
+.amb-money { margin-bottom: var(--space-4, 16px); }
+.amb-num-owed b { color: var(--brand-600); }
+.amb-owed-cell { color: var(--brand-600); font-variant-numeric: tabular-nums; }
+.amb-pay-amount { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.amb-pay-total {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 10px 12px; margin-top: 4px;
+  border-top: 1px solid var(--hairline);
+  font-variant-numeric: tabular-nums;
+}
+.amb-pay-total .spacer { flex: 1 1 0; }
+.amb-pay-total b { font-size: 15px; }
+
+/* ---- counts as dots, not as sentences (round 91) ------------------------
+   "3 open · 2 overdue" was three short sentences where three marks would do.
+   The digit stays; the noun becomes a colour and a tooltip. Zero is not
+   drawn at all — a row that owes nothing should look like one. */
+.dots { display: inline-flex; align-items: center; gap: 10px; }
+.dot {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--ink-2); cursor: default;
+}
+.dot-mark { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.dot-late .dot-mark { background: var(--critical); }
+.dot-late { color: var(--critical); }
+.dot-open .dot-mark { background: var(--brand-500); }
+.dot-wait .dot-mark { background: #BA7517; }
+.dot-done .dot-mark { background: var(--good-ink, #0ca30c); }
+.dot-done { color: var(--muted); }
+
+/* The three or four doors somebody actually uses, lifted out of their hubs.
+   No heading over them: they are not a category, they are this person's day. */
+.nav-pins { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.08); }
+.side-pin { opacity: 0.4; }
+.side-pin:hover { opacity: 0.9; }
+.side-pin.on { opacity: 1; color: var(--brand-300, #e88); }
+
+/* ---- looking at a link without leaving the page (round 91) ---------------
+   Fixed, not absolute: these hang off rows inside scrolling panels and modals,
+   and an absolutely-positioned popover inherits every clip its ancestors have. */
+.hp-pop {
+  position: fixed; z-index: 90;
+  display: flex; flex-direction: column;
+  border-radius: 10px; overflow: hidden;
+  background: var(--surface); box-shadow: var(--shadow-lg, 0 12px 40px rgba(0,0,0,0.3));
+  pointer-events: none;            /* it is for looking at, never for catching the cursor */
+  animation: hp-in 120ms ease-out;
+}
+@keyframes hp-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.hp-img { display: block; width: 100%; max-height: 240px; object-fit: cover; background: rgba(127,127,127,0.12); }
+.hp-frame { display: block; width: 100%; height: 240px; border: 0; background: #fff; }
+.hp-meta { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0; }
+.hp-note { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--brand-600); }
+.hp-url { font-size: 11.5px; color: var(--muted); word-break: break-all; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* A finger cannot hover, so there is nothing to show and nothing to get in the way. */
+@media (hover: none) { .hp-pop { display: none; } }
+
+/* ---- money you can cover, and a number you can aim at (round 91) --------- */
+.my-pay { position: relative; }
+.my-pay-eye {
+  position: absolute; top: 14px; right: 14px;
+  background: none; border: 0; cursor: pointer; padding: 6px;
+  color: var(--muted); border-radius: 8px; line-height: 0;
+}
+.my-pay-eye:hover { color: var(--ink); background: rgba(127,127,127,0.12); }
+.pay-hidden { letter-spacing: 2px; color: var(--muted); }
+
+.pay-goal { display: flex; flex-direction: column; gap: 10px; padding: 14px 0 4px;
+  border-top: 1px solid var(--hairline); margin-top: 12px; }
+.pay-goal-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pay-goal-ask .input { width: 160px; font-variant-numeric: tabular-nums; }
+.pay-goal-gap { display: flex; align-items: baseline; gap: 10px; }
+.pay-goal-gap b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.pay-goal-hit { font-weight: 700; color: var(--good-ink, #0ca30c); }
+/* Their own mix reads as the answer; the single-kind ways read as alternatives. */
+.pay-goal-mix { display: flex; gap: 8px; flex-wrap: wrap; }
+.pay-goal-part {
+  padding: 6px 11px; border-radius: 999px; font-size: 13px;
+  background: color-mix(in srgb, var(--brand-500) 12%, transparent); color: var(--ink);
+}
+.pay-goal-part b { font-variant-numeric: tabular-nums; }
+.pay-goal-ways { display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; font-size: 12.5px; }
+.pay-goal-way b { font-variant-numeric: tabular-nums; }
+
+/* The views nobody has been in yet, behind one control instead of laid out as
+   empty tabs. Quieter than a tab on purpose — it is a way in, not a place. */
+.cm-page-more {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; min-height: 30px;
+  background: none; border: 1px dashed var(--hairline); border-radius: 999px;
+  cursor: pointer; color: var(--muted); font-size: 12.5px; font-weight: 600;
+}
+.cm-page-more:hover { color: var(--ink); border-color: var(--muted); }
+@media (hover: none) { .cm-page-more { min-height: 38px; } }
+
+/* Type and stage: a short fixed list is a dropdown, not a wall of chips. The
+   stage keeps its colour, as the dot that names it rather than as a filled
+   pill the width of the sheet. */
+.cm-pick { min-width: 170px; max-width: 240px; }
+.cm-stage-pick { display: inline-flex; align-items: center; gap: 8px; }
+.cm-stage-pick .status-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+/* Saying no in three steps: what is in the way, a day you could do instead,
+   or hand it back entirely. */
+.bk-alt-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.bk-alt-ask .input { width: auto; }
+.bk-hand { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+/* The offer is the useful half of a refusal, so it reads louder than the reason. */
+.bk-alt { margin-left: 8px; color: var(--good-ink, #0ca30c); font-size: 12.5px; }
+
+/* ---- a calendar that keeps its shape (round 91) --------------------------
+   A month whose rows are all different heights is a month you cannot scan,
+   and the height was set by whichever day happened to be busiest. Each day
+   draws a fixed few and then says how many more it holds. */
+.cal-more {
+  display: block; width: 100%; text-align: left;
+  padding: 2px 6px; margin-top: 1px;
+  font-size: 10.5px; font-weight: 700; color: var(--muted);
+  pointer-events: none;   /* the day underneath is the target */
+}
+.cal-day:hover .cal-more, .wk-col:hover .cal-more { color: var(--brand-600); }
+/* The day opens over the month instead of replacing it. */
+.planner-sheet { display: flex; flex-direction: column; gap: 10px; }
+@media (hover: hover) { .planner-back { display: none; } }
+
+/* Each view wears the sign of what it holds. Marks are quicker to tell apart
+   than four words of the same length, and on a phone the strip is mostly
+   marks — so the icon carries and the word confirms. */
+.cm-page-tab { display: inline-flex; align-items: center; gap: 6px; }
+.cm-tab-ico { opacity: 0.7; flex: none; }
+.cm-page-tab.on .cm-tab-ico { opacity: 1; }

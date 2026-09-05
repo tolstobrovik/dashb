@@ -16,11 +16,45 @@ const req = async (p, m = 'GET', b, t = T) => {
 for (const c of (await req('/content')).data.filter((c) => /x22:/.test(c.title))) await req(`/content/${c.id}`, 'DELETE')
 const statuses = (await req('/statuses')).data
 const sid = (l) => statuses.find((s) => s.label.toLowerCase() === l).id
-const rq = (await req('/content', 'POST', { title: 'x22: awaiting review', channels: ['instagram_main'], type: 'reel', status_id: sid('ready') })).data
+// A piece waiting at Ready has been through the stages, so it wears what the
+// stages ask for: somebody filmed it, somebody cut it, and it has both dates.
+// A bare row parked at Ready is refused on save — correctly — and the queue
+// this suite is about would never see one.
+const users = (await req('/users')).data
+const crewFor = (role) => (users.find((u) => (u.crew_roles || []).includes(role)) || users.find((u) => u.role !== 'admin')).id
+const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date())
+const rq = (await req('/content', 'POST', {
+  title: 'x22: awaiting review', channels: ['instagram_main'], type: 'reel', status_id: sid('ready'),
+  operator_id: crewFor('operator'), editor_id: crewFor('editor'),
+  recording_date: day, release_date: day,
+})).data
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 // ---- 1) jas (SMM): review queue + one-tap publish ----
 const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
 await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'jas'); await p.fill('input[name="password"]', 'j1234')
@@ -30,6 +64,18 @@ ok('the review queue greets the SMM', (await p.locator('.section-head', { hasTex
 const row = p.locator('.rq-row', { hasText: 'x22: awaiting review' })
 ok('the Ready task on her channel is in it', (await row.count()) === 1)
 await p.screenshot({ path: 'r22-review.png' })
+// Publishing is the claim that it went out, and the board will not take that
+// claim without the address. The queue has nowhere to paste one, so the
+// refusal opens the task on the box it is asking for.
+await row.locator('.rq-pub').click()
+await p.waitForTimeout(900)
+ok('publishing with no link opens the task on the link box',
+  !(await req('/content')).data.find((x) => x.id === rq.id).done_at
+  && (await p.locator('.modal [data-field="post_link"] input').count()) === 1)
+await p.fill('.modal [data-field="post_link"] input', 'https://instagram.com/p/x22')
+await p.locator('.modal').getByRole('button', { name: 'Save changes' }).click()
+await p.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
+await p.waitForTimeout(600)
 await row.locator('.rq-pub').click()
 await p.waitForTimeout(900)
 const pub = (await req('/content')).data.find((x) => x.id === rq.id)

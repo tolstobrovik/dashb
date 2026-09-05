@@ -1,3 +1,4 @@
+import { tr as tx } from './i18n.jsx'
 // Tiny toast bus. Pages call toast('Task added') AFTER the server confirmed
 // a write (i.e. after the awaited api call resolved) — so a toast always
 // means "synced", never "hopefully".
@@ -17,5 +18,5 @@ export const toast = (text, kind = 'ok', action = null) => { push?.(text, kind, 
 // A 401 is not reported: the session is already over and auth.jsx drops to the
 // sign-in page, where "could not refresh" would only be confusing.
 export const loadFailed = (e) => {
-  if (e?.status !== 401) toast('Could not refresh — this is the last data that reached you', 'err')
+  if (e?.status !== 401) toast(tx('Could not refresh — this is the last data that reached you'), 'err')
 }

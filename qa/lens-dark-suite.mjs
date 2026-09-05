@@ -81,7 +81,7 @@ await page.waitForSelector('.gantt-bar', { timeout: 10000 })
 await page.waitForTimeout(400)
 await page.screenshot({ path: 'dark-target.png', fullPage: true })
 await page.goto(BASE + '/overview')
-await page.waitForSelector('.ov-camps, .grid', { timeout: 10000 })
+await page.waitForSelector('.ov-grid', { timeout: 10000 })
 await page.waitForTimeout(500)
 await page.screenshot({ path: 'dark-overview.png', fullPage: true })
 // sidebar quick toggle flips back to light

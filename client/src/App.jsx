@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './lib/auth.jsx'
+import { usePages } from './lib/pages.jsx'
 import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
 
@@ -11,26 +12,47 @@ const Overview = lazy(() => import('./pages/Overview.jsx'))
 const Projects = lazy(() => import('./pages/Projects.jsx'))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail.jsx'))
 const CampaignDetail = lazy(() => import('./pages/CampaignDetail.jsx'))
-const Todo = lazy(() => import('./pages/Todo.jsx'))
 const Brief = lazy(() => import('./pages/Brief.jsx'))
 const Missed = lazy(() => import('./pages/Missed.jsx'))
-const MissedTasks = lazy(() => import('./pages/MissedTasks.jsx'))
 const Schedule = lazy(() => import('./pages/Schedule.jsx'))
-const Unassigned = lazy(() => import('./pages/Unassigned.jsx'))
 const Crew = lazy(() => import('./pages/Crew.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
 const Docs = lazy(() => import('./pages/Docs.jsx'))
+const Design = lazy(() => import('./pages/Design.jsx'))
+const Sprints = lazy(() => import('./pages/Sprints.jsx'))
+const SprintBacklog = lazy(() => import('./pages/SprintBacklog.jsx'))
 const Admin = lazy(() => import('./pages/Admin.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
+const Ambassadors = lazy(() => import('./pages/Ambassadors.jsx'))
 
 const Loading = () => <div className="app-loading"><span className="spinner" /></div>
 
-function Protected({ children, adminOnly = false }) {
+function Protected({ children, adminOnly = false, page = null, ambassador = false }) {
   const { user, loading } = useAuth()
+  const { shows } = usePages()
   const location = useLocation()
   if (loading) return <Loading />
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />
+  // An ambassador has one address. The server refuses everything else outright
+  // — this only stops the browser drawing a page it is about to be refused the
+  // data for, and sends them back to the page that is theirs.
+  //
+  // The check has to let their OWN address through, because the shell they
+  // reach it in is wrapped in this same guard: bouncing every path to
+  // /ambassador bounced /ambassador too, and the page never drew at all.
+  if (user.role === 'ambassador' && !ambassador && location.pathname !== '/ambassador')
+    return <Navigate to="/ambassador" replace />
+  // The programme's page is for the students AND for whoever runs it — which
+  // is a job, not a rank: an admin has it by being one, and a member has it
+  // when an admin gives it to them. Anybody else lands back on their own work.
+  const runsProgramme = user.role === 'admin' || !!(user.permissions && user.permissions.manage_ambassadors)
+  if (ambassador && user.role !== 'ambassador' && !runsProgramme) return <Navigate to="/" replace />
   if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />
+  // A page the admin switched off has no address either. Its own door is gone
+  // from the sidebar, so what this catches is a bookmark, a pasted link and a
+  // browser's back button — all of which would otherwise land on a page the
+  // team has been told they do not have.
+  if (page && !shows(page)) return <Navigate to="/" replace />
   return children
 }
 
@@ -38,6 +60,7 @@ function Protected({ children, adminOnly = false }) {
 // what to record and edit today comes before any metrics.
 function HomeRedirect() {
   const { user } = useAuth()
+  if (user?.role === 'ambassador') return <Navigate to="/ambassador" replace />
   if (user?.role === 'admin') return <Navigate to="/overview" replace />
   return <Navigate to="/brief" replace />
 }
@@ -59,33 +82,23 @@ export default function App() {
           <Route
             path="/overview"
             element={
-              <Protected adminOnly>
+              <Protected adminOnly page="overview">
                 <Overview />
               </Protected>
             }
           />
-          <Route path="/projects" element={<Projects />} />
+          <Route path="/projects" element={<Protected page="projects"><Projects /></Protected>} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/campaigns/:id" element={<CampaignDetail />} />
           <Route path="/dept/:key" element={<Department />} />
           <Route path="/brief" element={<Brief />} />
-          <Route path="/todo" element={<Todo />} />
-          <Route path="/releases" element={<Schedule mode="release" />} />
-          <Route path="/recordings" element={<Schedule mode="recording" />} />
-          <Route path="/missed" element={<Missed />} />
-          <Route path="/missed-tasks" element={<MissedTasks />} />
-          <Route
-            path="/unassigned"
-            element={
-              <Protected adminOnly>
-                <Unassigned />
-              </Protected>
-            }
-          />
+          <Route path="/releases" element={<Protected page="releases"><Schedule mode="release" /></Protected>} />
+          <Route path="/recordings" element={<Protected page="recordings"><Schedule mode="recording" /></Protected>} />
+          <Route path="/missed" element={<Protected page="missed"><Missed /></Protected>} />
           <Route
             path="/crew"
             element={
-              <Protected adminOnly>
+              <Protected adminOnly page="crew">
                 <Crew />
               </Protected>
             }
@@ -93,13 +106,19 @@ export default function App() {
           <Route
             path="/team"
             element={
-              <Protected adminOnly>
+              <Protected adminOnly page="team">
                 <Team />
               </Protected>
             }
           />
-          <Route path="/docs" element={<Docs />} />
+          {/* The designer's own board — every piece waiting on artwork, with
+              its Drive folder, its brief and somewhere to hand the file back. */}
+          <Route path="/design" element={<Protected page="design"><Design /></Protected>} />
+          <Route path="/docs" element={<Protected page="docs"><Docs /></Protected>} />
+          <Route path="/sprints" element={<Protected page="sprints"><Sprints /></Protected>} />
+          <Route path="/sprints/backlog" element={<Protected page="sprints"><SprintBacklog /></Protected>} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/ambassador" element={<Protected ambassador><Ambassadors /></Protected>} />
           <Route
             path="/admin"
             element={

@@ -69,7 +69,7 @@ await c.waitForSelector('.modal', { timeout: 8000 })
 await c.locator('.modal .do-tick', { hasText: 'Mark as shot' }).click()
 await c.waitForTimeout(900)
 const statuses = (await req('/statuses')).data
-const shotId = statuses.find((s) => /^shot$/i.test(s.label)).id
+const shotId = statuses.find((s) => /^editing$/i.test(s.label)).id
 const after = (await req('/content')).data.find((x) => x.id === t1.id)
 ok('one tap marked it Shot — no Save click', after.status_id === shotId, `status=${after.status_id}`)
 ok('the modal stayed open for link drops', (await c.locator('.modal').count()) === 1)

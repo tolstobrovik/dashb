@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Send, Clapperboard, AlertCircle, CalendarDays, Download } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
+import { rewardIfFinished } from '../lib/reward.js'
 import { toast, loadFailed } from '../lib/toast.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -9,7 +10,11 @@ import { can, todayISO, dateLabel, typeInfo, isDeletedLabel } from '../lib/const
 import ContentModal from '../components/ContentModal.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
-import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
+import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn, assigneesOf } from '../components/ContentFilters.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
+
+// How many overdue chips the strip shows before it stops being a strip.
+const LATE_SHOWN = 8
 
 // Everything that comes OUT, and everything that gets SHOT — across every
 // channel at once. The channel pages answer "what is happening on Instagram
@@ -28,17 +33,17 @@ import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../comp
 
 const MODES = {
   release: {
-    label: 'Releases', icon: Send, dateField: 'release_date', timeField: 'release_time',
-    lead: 'everything going out, every channel',
-    empty: 'Nothing is scheduled to go out yet.',
+    label: tx('Releases'), icon: Send, dateField: 'release_date', timeField: 'release_time',
+    lead: tx('everything going out, every channel'),
+    empty: tx('Nothing is scheduled to go out yet.'),
     file: 'releases',
     // A post is written, not filmed — but everything gets released.
     applies: () => true,
   },
   recording: {
-    label: 'Recordings', icon: Clapperboard, dateField: 'recording_date', timeField: 'recording_time',
-    lead: 'every shoot on the books, every channel',
-    empty: 'No shoots are booked yet.',
+    label: tx('Recordings'), icon: Clapperboard, dateField: 'recording_date', timeField: 'recording_time',
+    lead: tx('every shoot on the books, every channel'),
+    empty: tx('No shoots are booked yet.'),
     file: 'recordings',
     applies: (t) => t.type !== 'post',
   },
@@ -49,7 +54,7 @@ const MODES = {
 // leading BOM is what makes Excel read a Cyrillic title as Cyrillic instead of
 // mojibake, and the file name stays ASCII because Chromium silently drops a
 // non-ASCII one from <a download>.
-const CSV_HEAD = ['Date', 'Time', 'Title', 'Type', 'Channels', 'Stage', 'Operator', 'Editor', 'Designer', 'Assignees']
+const CSV_HEAD = ['Date', 'Time', 'Title', 'Type', 'Channels', 'Stage', tx('Operator'), tx('Editor'), tx('Designer'), 'Assignees']
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
 const csvOf = (rows) => '\uFEFF' + [CSV_HEAD, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n')
 const saveText = (name, text, type) => {
@@ -155,12 +160,27 @@ export default function Schedule({ mode }) {
   // into Recordings, and every shoot into Releases. The channel pages keep the
   // unscheduled tray, where it is scoped to one channel and means something.
   const dated = useMemo(() => shown.filter((t) => t[M.dateField]), [shown, M])
+  // The strip shows the nearest handful. It used to show every overdue piece
+  // the board had ever accumulated — fifty chips going back a month, which is
+  // not a strip, it is a backlog, and dragging them back one at a time was the
+  // wrong person doing the wrong job. The rest are on their owners' My Day.
+  const [allLate, setAllLate] = useState(false)
+  // Only Releases carries the strip. A shoot day that has passed is not a
+  // decision waiting to be made — the day happened or it did not, and the
+  // piece has moved on down the pipeline either way; the strip on Recordings
+  // was a list of dates in the past asking to be dragged into the future.
+  // What actually matters about a late shoot — that the work behind it is
+  // running late — is on the owner's My Day and in the statistics.
   const late = useMemo(
-    () => dated.filter((t) => !t.done_at && t[M.dateField] < today).sort(byWhen),
+    () => (M.dateField === 'recording_date' ? [] : dated.filter((t) => {
+      if (t.done_at || t[M.dateField] >= today) return false
+      return true
+    }).sort(byWhen)),
     [dated, today, byWhen, M])
 
   const updateContent = async (item, payload) => {
     const c = await api.patch(`/content/${item.id}`, payload)
+    rewardIfFinished(item, c)
     setItems((prev) => prev.map((x) => (x.id === item.id ? c : x)))
   }
   const deleteContent = async (item) => {
@@ -215,7 +235,7 @@ export default function Schedule({ mode }) {
   }, [dated, late, span, byWhen, M])
 
   const exportCsv = () => {
-    if (exportRows.length === 0) { toast('Nothing to export yet', 'err'); return }
+    if (exportRows.length === 0) { toast(tx('Nothing to export yet'), 'err'); return }
     saveText(`${M.file}-${today}.csv`, csvOf(exportRows.map((t) => [
       t[M.dateField], t[M.timeField] || '', t.title, typeInfo(t.type).label,
       (t.channels || []).map((c) => byKey[c]?.label || c).join(' / '),
@@ -223,7 +243,7 @@ export default function Schedule({ mode }) {
       teamById[t.operator_id]?.name || '',
       teamById[t.editor_id]?.name || '',
       teamById[t.designer_id]?.name || '',
-      (t.assignee_ids || []).map((id) => teamById[id]?.name || `#${id}`).join(' / '),
+      assigneesOf(t).map((id) => teamById[id]?.name || `#${id}`).join(' / '),
     ])), 'text/csv;charset=utf-8')
     toast(`${exportRows.length} ${exportRows.length === 1 ? 'row' : 'rows'} saved as a spreadsheet`)
   }
@@ -247,11 +267,11 @@ export default function Schedule({ mode }) {
         <span className="stat-sub" style={{ fontWeight: 500 }}>{M.lead}</span>
         <span className="spacer" />
         <select className="select cf-sel" value={channel} onChange={(e) => setParam('channel', e.target.value)}
-          data-tip="One channel only">
-          <option value="">All channels</option>
+          data-tip={tx("One channel only")}>
+          <option value="">{tx("All channels")}</option>
           {channelList.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
-        <button className="btn btn-sm sch-export" onClick={exportCsv} data-tip="Download exactly what is shown">
+        <button className="btn btn-sm sch-export" onClick={exportCsv} data-tip={tx("Download exactly what is shown")}>
           <Download size={13} /> CSV
         </button>
       </div>
@@ -270,9 +290,14 @@ export default function Schedule({ mode }) {
         <div className="cal-tray sch-late">
           <span className="cal-tray-label">
             <AlertCircle size={12} /> Late<b> · {late.length}</b>
+            {late.length > LATE_SHOWN && (
+              <button type="button" className="qbtn" onClick={() => setAllLate((v) => !v)}>
+                {allLate ? 'show fewer' : `show all ${late.length}`}
+              </button>
+            )}
           </span>
           <div className="cal-tray-items">
-            {late.map((t) => {
+            {(allLate ? late : late.slice(0, LATE_SHOWN)).map((t) => {
               const st = statusesById[t.status_id]
               return (
                 <div
@@ -286,14 +311,21 @@ export default function Schedule({ mode }) {
                   <span className="ev-txt">{t.title}</span>
                   {canMove && (
                     <span className="tray-quick">
-                      <button type="button" className="qbtn" data-tip="Move to today"
-                        onClick={(e) => { e.stopPropagation(); setDay(t, M.dateField, today, false) }}>Today</button>
+                      <button type="button" className="qbtn" data-tip={tx("Move to today")}
+                        onClick={(e) => { e.stopPropagation(); setDay(t, M.dateField, today, false) }}>{tx("Today")}</button>
                     </span>
                   )}
                 </div>
               )
             })}
+            {!allLate && late.length > LATE_SHOWN && (
+              <button type="button" className="cal-tray-chip late-more" onClick={() => setAllLate(true)}>
+                …and {late.length - LATE_SHOWN} more
+              </button>
+            )}
           </div>
+          {/* The strip said, in two sentences, what the strip itself already
+              shows. The data stands on its own. */}
         </div>
       )}
 
@@ -327,7 +359,7 @@ export default function Schedule({ mode }) {
       )}
 
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem === 'new' ? null : openItem}
           defaults={newDefaults || undefined}
           statuses={statuses}

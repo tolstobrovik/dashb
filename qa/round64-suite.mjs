@@ -72,7 +72,11 @@ const day = (off) => {
 }
 
 const chKey = (await req('/channels')).data[0]?.key
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// Fixtures park on Shot, not To shoot: since round 66 the shooting stage is a
+// BOOKING and demands a crew, three days and a brief. Shot is what this suite
+// actually wants — real work past the Idea stage — without pretending to book
+// a shoot these tests are not about.
+const shotId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
 const mkUser = async (name, username) => (await req('/users', 'POST', {
   name, username, password: 'probe123', role: 'member', departments: [chKey],
 })).data
@@ -87,7 +91,7 @@ for (const [u, chat] of [[behind, 641], [clear, 642], [buried, 643]]) {
 }
 
 const mk = (over) => req('/content', 'POST', {
-  channels: [chKey], type: 'video', status_id: shootId, ...over,
+  channels: [chKey], type: 'video', status_id: shotId, ...over,
 }).then((r) => r.data)
 
 // ---- what each person is carrying ----
@@ -101,7 +105,9 @@ await mk({ title: 'x64 cut due yesterday', editor_id: behind.id, edit_ready_date
 // this marks it done the way a person does, rather than posting the column.
 const finalId = (await req('/statuses')).data.find((s) => s.is_final)?.id
 const doneOne = await mk({ title: 'x64 done but overdue', assignee_ids: [behind.id], release_date: day(-4) })
-await req(`/content/${doneOne.id}`, 'PATCH', { status_id: finalId })
+// Reaching the final stage now records WHERE it went — publishing without
+// saying where is refused, so the fixture publishes the way a person does.
+await req(`/content/${doneOne.id}`, 'PATCH', { status_id: finalId, post_link: 'https://instagram.com/p/x64done' })
 ok('the fixture really is finished', !!(await req(`/content/${doneOne.id}`)).data.done_at,
   String((await req(`/content/${doneOne.id}`)).data.done_at))
 const deadStatus = (await req('/statuses')).data.find((s) => /^deleted$/i.test(s.label))

@@ -34,6 +34,14 @@ const FIELDS = {
   },
 }
 
+// Does a phase have an upstream on THIS task? The shoot never does — it starts
+// with the task itself. The edit and the review do, but only on filmed work: a
+// written post has no shoot and no cut to wait for, so its release date answers
+// for itself exactly the way a shoot day does. Getting this wrong is how a post
+// published three days late used to count as on time — there was no `edited_at`
+// on it, so the review phase excused itself and the miss vanished.
+const HAS_UPSTREAM = (task, f) => !!f.started && (task.type === 'reel' || task.type === 'video')
+
 // The people answering for a phase. A shared phase answers as a group.
 export function ownersOfPhase(task, key) {
   const f = FIELDS[key]
@@ -47,6 +55,53 @@ export function ownersOfPhase(task, key) {
 }
 
 export const PHASE_LABEL = { shoot: 'Shooting', edit: 'Editing', review: 'Review & publish' }
+
+// ---- whose miss was it -----------------------------------------------------
+// "It was late" is a fact nobody argues with and nobody can act on. The two
+// answers that change what happens next are PRODUCTION was late (the shoot did
+// not happen, the cut did not come back) and THE MAKER was late (there was
+// nothing to film from, or the finished piece sat unposted).
+//
+// The board can tell these apart most of the time, from what it already holds:
+//
+//   shoot late, and the task carries no script, no ТЗ and no reference
+//        → the maker's. Nobody can film a brief that was never written.
+//   shoot late, briefed              → production's
+//   edit late                        → production's, whether the footage came
+//                                      late or not: an editor handed footage
+//                                      late is excused as an INDIVIDUAL (see
+//                                      phaseState) but the delay is still the
+//                                      production side's
+//   review late                      → the maker's. The piece was finished and
+//                                      handed over; publishing it is their job
+//
+// Where it genuinely cannot tell — a script that arrived late but is sitting
+// there now, an agreement made in a corridor — an admin says so on the task
+// and their answer wins. That is what `miss_blame` is: not a second opinion,
+// the deciding one.
+export const SIDES = {
+  production: { key: 'production', label: 'Production' },
+  make: { key: 'make', label: 'Content' },
+}
+const BRIEFED = (t) => !!(String(t.script || '').trim() || String(t.tz || '').trim()
+  || String(t.reference_text || '').trim() || String(t.reference_links || '[]').length > 4)
+
+// The side a phase's lateness belongs to, and why. `decided` marks an answer a
+// person gave rather than one the board worked out.
+export function blameOfPhase(task, key) {
+  if (task.miss_blame === 'production' || task.miss_blame === 'make') {
+    return { side: task.miss_blame, why: task.miss_blame_note || 'an admin decided this one', decided: true }
+  }
+  if (key === 'review') {
+    return task.done_at
+      ? { side: 'make', why: 'the piece was finished and went out late', decided: false }
+      : { side: 'make', why: 'the release day passed with nothing posted', decided: false }
+  }
+  if (key === 'edit') return { side: 'production', why: 'the cut did not come back in time', decided: false }
+  // the shoot
+  if (!BRIEFED(task)) return { side: 'make', why: 'there was no brief to film from', decided: false }
+  return { side: 'production', why: 'the shoot did not happen on its day', decided: false }
+}
 
 // ---- which stage is which gate ------------------------------------------
 // Stages are the admin's data, not constants, so they are matched by label the
@@ -100,6 +155,40 @@ export function holderOf(task, resolved) {
   return { phase, owner_ids: ownersOfPhase(task, phase) }
 }
 
+// ---- has this phase been passed? -------------------------------------------
+// The question that decides whether a piece is late, and the one every part of
+// this board was answering slightly differently — with the result that work
+// visibly finished went on being called late for weeks.
+//
+// A timestamp alone does not answer it. shot_at is stamped when the work is
+// handed to the EDITOR, so a card sitting on Shot — filmed, nothing handed
+// over yet — has none; and rows that predate the stamping have none at all,
+// however long ago the shoot happened. So the STAGE answers as well: a card
+// that has reached Editing has finished its shoot whatever its timestamps say.
+//
+// Either signal is enough. They can only disagree by one being missing.
+const PHASE_DONE_AT = { shoot: 'edit', edit: 'review', design: 'review', review: null }
+// The shoot is the one phase whose end is not a gate. Gates mark handovers —
+// "edit" is the moment footage reaches the editor — but filming is finished
+// the moment the card reaches SHOT, which can sit there for days before
+// anybody hands anything over. Asking the gate instead was why a filmed piece
+// went on being an overdue shoot.
+const SHOT_STAGE = /^shot$|^filmed$/i
+export function phasePassed(task, key, resolved) {
+  const f = FIELDS[key]
+  if (f && task[f.delivered]) return true
+  if (!resolved) return false
+  const at = resolved.ordered.findIndex((s) => s.id === task.status_id)
+  if (at < 0) return false
+  if (key === 'shoot') {
+    const shot = resolved.ordered.findIndex((s) => SHOT_STAGE.test(String(s.label || '')))
+    if (shot >= 0) return at >= shot
+  }
+  const gateKey = PHASE_DONE_AT[key]
+  const gate = gateKey ? resolved.gates[gateKey] : null
+  return !!gate && at >= gate.index
+}
+
 // ---- the state of one phase ---------------------------------------------
 // ok       delivered on or before the promised day
 // late     delivered after it, or still undelivered with the day gone
@@ -110,7 +199,7 @@ export function holderOf(task, resolved) {
 // none     no date was ever promised, so there is nothing to answer for
 const dayDiff = (a, b) => Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400000)
 
-export function phaseState(task, key, today = dayISO()) {
+export function phaseState(task, key, today = dayISO(), resolved = null) {
   const f = FIELDS[key]
   const promised = task[f.promised] || null
   const revised = f.revised ? task[f.revised] || null : null
@@ -120,8 +209,10 @@ export function phaseState(task, key, today = dayISO()) {
   const delivered = deliveredIso ? tashkentDay(deliveredIso) : null
 
   const owner_ids = ownersOfPhase(task, key)
+  const blame = blameOfPhase(task, key)
   const base = {
     phase: key, label: PHASE_LABEL[key], role: f.role,
+    side: blame.side, blame_why: blame.why, blame_decided: blame.decided,
     owner_id: owner_ids[0] || null,
     owner_ids,
     promised, revised, due,
@@ -131,25 +222,35 @@ export function phaseState(task, key, today = dayISO()) {
   }
 
   if (!due) return { ...base, state: 'none' }
-  if (f.started && !started) return { ...base, state: delivered ? 'ok' : 'waiting' }
+  // Nothing reached this owner. Work still in flight cannot be charged to them
+  // — but a piece that went out anyway crossed the line on a day everybody can
+  // read, so it is judged on that day like any other.
+  if (HAS_UPSTREAM(task, f) && !started && !delivered) return { ...base, state: 'waiting' }
 
   let state
   if (delivered) state = delivered <= due ? 'ok' : 'late'
+  // No timestamp, but the card has moved past this phase — the work happened,
+  // it simply happened before anything wrote it down. Calling that late is how
+  // finished pieces stayed on people's overdue lists for weeks.
+  else if (phasePassed(task, key, resolved)) state = 'ok'
   else state = today > due ? 'late' : 'pending'
 
   // The upstream excuse: the work landed here after this phase's own date had
   // already gone, and no replacement date was agreed. Only a phase with an
   // upstream can be excused — the shoot answers for itself.
-  if (state === 'late' && started && !revised && tashkentDay(started) > due)
+  if (state === 'late' && HAS_UPSTREAM(task, f) && started && !revised && tashkentDay(started) > due)
     state = 'excused'
 
-  const days_late = state === 'late' ? Math.max(0, dayDiff(delivered || today, due)) : 0
+  // Excused work still ran late — the person is not charged for it, but the
+  // calendar does not care whose fault it was, and the report needs the days
+  // to attribute them to whoever handed over late.
+  const days_late = state === 'late' || state === 'excused' ? Math.max(0, dayDiff(delivered || today, due)) : 0
   return { ...base, state, days_late }
 }
 
 // All three phases of one task.
-export function phasesOf(task, today = dayISO()) {
-  return PHASES.map((k) => phaseState(task, k, today))
+export function phasesOf(task, today = dayISO(), resolved = null) {
+  return PHASES.map((k) => phaseState(task, k, today, resolved))
 }
 
 // The warnings a task produces: late phases that have somebody to answer for.
@@ -157,8 +258,8 @@ export function phasesOf(task, today = dayISO()) {
 // to own is late for both of them. A late phase nobody owns is still returned
 // (owner_id null) so admins can see unowned slippage, but it never lands in a
 // person's account.
-export function warningsOf(task, today = dayISO()) {
-  return phasesOf(task, today)
+export function warningsOf(task, today = dayISO(), resolved = null) {
+  return phasesOf(task, today, resolved)
     .filter((p) => p.state === 'late')
     .flatMap((p) => {
       const owners = p.owner_ids.length ? p.owner_ids : [null]

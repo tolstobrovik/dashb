@@ -63,7 +63,14 @@ const mk = (title, extra) => req('/content', 'POST', { title, channels: [chKey],
 const t1 = await mk('f51: sardor reel', { type: 'reel', assignee_ids: [sardor.id], status_id: idea })
 // 2 — Anvar FILMS this one and is nobody's assignee (an empty assignee_ids
 // is what stops the creator being written in as the owner by default)
-const t2 = await mk('f51: anvar shoots', { type: 'video', assignee_ids: [], operator_id: anvar.id, status_id: shoot, release_date: day(2), recording_date: day(1) })
+// Booking a shoot carries a crew, three days and a brief since round 66, and
+// this card really does belong on the shooting stage — the board's stage
+// filter is what the suite is about — so it books the shoot for real.
+const t2 = await mk('f51: anvar shoots', {
+  type: 'video', assignee_ids: [], operator_id: anvar.id, status_id: shoot,
+  release_date: day(2), recording_date: day(1), edit_ready_date: day(2),
+  reference_links: ['https://example.com/reference'],
+})
 // 3 — Dilnoza CUTS this one; a video in editing, dated
 const t3 = await mk('f51: dilnoza cuts', { type: 'video', assignee_ids: [], editor_id: dilnoza.id, status_id: edit, release_date: day(3), recording_date: day(1) })
 // 4 — a post with nobody on it at all
@@ -87,48 +94,72 @@ await page.waitForFunction(() => !location.pathname.startsWith("/login"), null, 
 await page.goto(`${BASE}/dept/${chKey}`)
 await page.waitForSelector('.cf-bar', { timeout: 20000 })
 
+// Type and stage are still <select>s; the person filter became a searchable
+// picker in round 86, so it is driven the way a person drives it — open, type,
+// press the row — and the two selects left in the row start at nought.
 const sel = (i) => page.locator('.cf-sel').nth(i)
+const person = () => page.locator('.cf-bar .cf-person .pp-field')
+const pickPerson = async (name) => {
+  await person().click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(300)
+}
+const personNames = async () => {
+  await person().click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+  const names = await page.locator('.pp-pop .pp-row').allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
 const cards = () => page.locator('.tcard').count()
 const countText = () => page.locator('.cf-count').textContent().catch(() => '')
 const titles = async () => (await page.locator('.tcard-title').allTextContents()).filter((t) => t.startsWith('f51'))
 
 ok('the filter row sits above the workspace', await page.locator('.cf-bar').count() === 1)
-ok('it offers person, type and stage', await page.locator('.cf-sel').count() === 3)
+// The person filter became a searchable picker in round 86 — a select's
+// type-ahead jumps, and this one narrows. Type and stage stay selects.
+ok('it offers person, type and stage',
+  (await page.locator('.cf-bar .cf-person .pp-field').count()) === 1 && (await page.locator('.cf-sel').count()) === 2)
 ok('nothing is hidden until something is chosen', await page.locator('.cf-count').count() === 0)
 const all = await cards()
 ok('the board starts with everything', all >= 5, `${all} cards`)
 
 // ---- person: the four seats all count ----
-const personOpts = await sel(0).locator('option').allTextContents()
+const personOpts = await personNames()
+// A picker row wears the person's avatar, so its text reads "FAF51 Anvar".
 ok('the person menu lists only people on this channel’s work',
-  personOpts.includes('F51 Anvar') && personOpts.includes('F51 Dilnoza') && personOpts.includes('F51 Sardor'),
+  ['F51 Anvar', 'F51 Dilnoza', 'F51 Sardor'].every((n) => personOpts.some((o) => o.includes(n))),
   personOpts.join(' | '))
 
-await sel(0).selectOption(String(sardor.id))
+await pickPerson(sardor.name)
 await page.waitForTimeout(250)
 let list = await titles()
 ok('an assignee’s two tasks, and only those', list.length === 2
   && list.includes('f51: sardor reel') && list.includes('f51: sardor post'), list.join(' / '))
 ok('…and it says what it is hiding', /showing 2 of \d+/.test(await countText()), await countText())
 
-await sel(0).selectOption(String(anvar.id))
+await pickPerson(anvar.name)
 await page.waitForTimeout(250)
 list = await titles()
 ok('the OPERATOR is found by his camera, not an assignment',
   list.length === 1 && list[0] === 'f51: anvar shoots', list.join(' / '))
 
-await sel(0).selectOption(String(dilnoza.id))
+await pickPerson(dilnoza.name)
 await page.waitForTimeout(250)
 list = await titles()
 ok('the EDITOR is found by her cut', list.length === 1 && list[0] === 'f51: dilnoza cuts', list.join(' / '))
 
-await sel(0).selectOption('none')
+await pickPerson('Nobody yet')
 await page.waitForTimeout(250)
 list = await titles()
 ok('“Nobody yet” finds the work no one owns', list.length === 1 && list[0] === 'f51: orphan post', list.join(' / '))
 
 // ---- the choice holds across every view ----
-await sel(0).selectOption(String(sardor.id))
+await pickPerson(sardor.name)
 await page.waitForTimeout(200)
 await page.locator('.pill', { hasText: 'Releases' }).click()
 await page.waitForTimeout(500)
@@ -141,7 +172,7 @@ ok('and the recording calendar', /showing 2 of/.test(await countText()), await c
 
 // a day's agenda obeys it as well: Anvar's shoot day holds one task, and
 // under Sardor's filter that day must come up empty rather than lie.
-await sel(0).selectOption(String(anvar.id))
+await pickPerson(anvar.name)
 await page.waitForTimeout(300)
 const dayCell = page.locator(`.cal-day[data-drop="${day(1)}"]`).first()
 if (await dayCell.count()) {
@@ -165,25 +196,26 @@ if (await dayCell.count()) {
 // ---- remembered per channel ----
 await page.reload()
 await page.waitForSelector('.cf-bar', { timeout: 20000 })
-ok('the filter is still set after a reload', await sel(0).inputValue() === String(anvar.id))
+ok('the filter is still set after a reload', (await person().textContent()).includes(anvar.name))
 
 // ---- type and stage, together ----
 await page.locator('.cf-clear').click()
 await page.waitForTimeout(250)
-ok('Clear puts everything back', await sel(0).inputValue() === '' && await page.locator('.cf-count').count() === 0)
+ok('Clear puts everything back',
+  (await person().textContent()).includes('Anyone') && await page.locator('.cf-count').count() === 0)
 
-await sel(1).selectOption('video')
+await sel(0).selectOption('video')
 await page.waitForTimeout(250)
 list = await titles()
 ok('by type: the two videos', list.length === 2
   && list.includes('f51: anvar shoots') && list.includes('f51: dilnoza cuts'), list.join(' / '))
 
-await sel(2).selectOption(String(edit))
+await sel(1).selectOption(String(edit))
 await page.waitForTimeout(250)
 list = await titles()
 ok('type AND stage narrow together', list.length === 1 && list[0] === 'f51: dilnoza cuts', list.join(' / '))
 
-await sel(1).selectOption('')
+await sel(0).selectOption('')
 await page.waitForTimeout(250)
 list = await titles()
 ok('dropping the type leaves the stage standing', list.length === 2
@@ -204,7 +236,7 @@ await mp.click('button[type="submit"]')
 await mp.waitForFunction(() => !location.pathname.startsWith("/login"), null, { timeout: 25000 })
 await mp.goto(`${BASE}/dept/${chKey}`)
 await mp.waitForSelector('.cf-bar', { timeout: 20000 })
-await mp.locator('.cf-sel').nth(1).selectOption('video')
+await mp.locator('.cf-sel').nth(0).selectOption('video')
 await mp.waitForTimeout(300)
 const box = await mp.locator('.cf-bar').boundingBox()
 ok('the phone shows the whole row inside the screen', box && box.width <= 390 && box.width > 300, box && `${Math.round(box.width)}px`)

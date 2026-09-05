@@ -1,5 +1,7 @@
 // Seed a realistic dataset on the audit server so every page has content.
-const BASE = 'http://localhost:4090/api'
+// The audit server, 4090 by default — but overridable, because this script
+// hardcoding a port once re-seeded a gate that was running on it.
+const BASE = (process.env.SEED_BASE || 'http://localhost:4090') + '/api'
 const login = async (u, p) => (await (await fetch(BASE + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) })).json()).token
 const T = await login('admin', 'admin123')
 const req = async (p, m = 'GET', b, t = T) => {
@@ -26,7 +28,7 @@ const vid = await mk({ title: 'Alumni interview: from Tashkent to MIT', channels
 await mk({ title: 'Telegram digest — weekly college prep tips', channels: ['telegram_uzb'], type: 'post', assignee_id: azi.id, release_date: add(1) })
 const doneA = await mk({ title: 'IELTS webinar recap post', channels: ['instagram_main'], type: 'post', assignee_id: jas.id, release_date: add(-1) })
 const doneB = await mk({ title: 'Campus vlog #12', channels: ['youtube'], type: 'video', assignee_id: mir.id, operator_id: mir.id, editor_id: jas.id, release_date: add(-2) })
-for (const d of [doneA, doneB]) await req(`/content/${d.id}`, 'PATCH', { done: true })
+for (const d of [doneA, doneB]) await req(`/content/${d.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 await req(`/content/${c1.id}`, 'PATCH', { pinned: true })
 
 // --- projects & campaigns (3 projects exist from migration) ---
@@ -47,8 +49,5 @@ await req('/personal', 'POST', { title: 'Prepare board slides for Friday' })
 await req('/personal', 'POST', { title: 'Review Q3 ad budget' })
 await req('/personal', 'POST', { title: 'Call the print shop about banners', user_id: jas.id })
 
-// --- metrics: update a few tracker values ---
-const trackers = await req('/trackers')
-for (const [i, t] of trackers.slice(0, 4).entries()) await req(`/trackers/${t.id}`, 'PATCH', { value: 1200 * (i + 1) + 34 })
 
 console.log('seeded:', { jas: jas.id, mir: mir.id, azi: azi.id, live: live.id, blocked: blocked.id, kaz: kaz.id })

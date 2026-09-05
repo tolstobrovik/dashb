@@ -22,13 +22,24 @@ const sid = (l) => statuses.find((s) => s.label.toLowerCase() === l).id
 // ---- stage rules: defaults, tightening, admin bypass, reset ----
 const op = (await req('/users', 'POST', { name: 'Otash Operator', username: 'r21op', password: 'o1234', role: 'operator' })).data
 const tOp = await login('r21op', 'o1234')
-const t1 = (await req('/content', 'POST', { title: 'r21: chain video', channels: ['youtube'], type: 'video', operator_id: op.id, status_id: sid('to shoot') })).data
+// Booking a shoot is a promise since round 66 — a crew, three days and a brief
+// — and this round really does need the card to sit on the shooting stage, so
+// it makes the promise properly rather than dodging to another stage.
+const t1 = (await req('/content', 'POST', {
+  title: 'r21: chain video', channels: ['youtube'], type: 'video', operator_id: op.id, status_id: sid('to shoot'),
+  recording_date: '2031-03-03', edit_ready_date: '2031-03-05', release_date: '2031-03-07',
+  reference_links: ['https://example.com/reference'],
+})).data
 ok('default: operator ticks shot from To shoot', (await req(`/content/${t1.id}`, 'PATCH', { milestone: 'shot' }, tOp)).status === 200)
 await req(`/content/${t1.id}`, 'PATCH', { status_id: sid('to shoot') })
 const rules = (await req('/statuses/rules')).data
+// Shot folded into Editing in round 82 — the editor's stage is Editing now,
+// and the operator's part ends when the footage is handed over, so To shoot is
+// the last stage they may leave.
 ok('effective rules answer the natural chain',
   rules.operator[sid('to shoot')] === true && rules.operator[sid('ready')] === false &&
-  rules.editor[sid('shot')] === true && rules.member[sid('editing')] === true)
+  rules.operator[sid('editing')] === false &&
+  rules.editor[sid('editing')] === true && rules.member[sid('editing')] === true)
 const tightened = { ...rules, operator: { ...rules.operator, [sid('to shoot')]: false, [sid('idea')]: false } }
 await req('/statuses/rules', 'POST', tightened)
 const denied = await req(`/content/${t1.id}`, 'PATCH', { milestone: 'shot' }, tOp)
@@ -79,7 +90,11 @@ ok('dropping it on today schedules the shoot', after.recording_date === fmtT, `g
 ok('the chip left the tray', (await p.locator('.cal-tray-chip', { hasText: 'r21: dateless clip' }).count()) === 0)
 await p.locator('.pill', { hasText: 'Releases' }).click()
 await p.waitForTimeout(700)
-ok('the Releases tab has its own tray (undated releases)', (await p.locator('.cal-tray-chip', { hasText: 'r21: chain video' }).count()) === 1)
+// The dateless clip, not the chain video: booking a shoot carries a release
+// day with it since round 66, so the booked card is no longer undated. The
+// clip has just been given a SHOOT day by the drag above and still owes a
+// release — which is exactly what this tray is for.
+ok('the Releases tab has its own tray (undated releases)', (await p.locator('.cal-tray-chip', { hasText: 'r21: dateless clip' }).count()) === 1)
 
 // ---- the Admin rules table ----
 await p.goto(BASE + '/admin'); await p.waitForTimeout(800)

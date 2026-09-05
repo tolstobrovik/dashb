@@ -4,25 +4,31 @@ import {
   Lock, Plus, Pencil, Trash2, Gauge, CalendarRange, AlertCircle, Pin, PinOff, GripVertical, Minus,
   KanbanSquare, Send, Clapperboard, LineChart, Maximize2, Minimize2,
   SlidersHorizontal, Settings, Megaphone, CalendarClock, CheckCircle2, ArrowUp, ArrowDown, Rocket,
+  PenLine, Check, CopyPlus, UserRound, UsersRound,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone, askForTheLink } from '../lib/finish.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
 import { useFullscreen } from '../lib/useFullscreen.js'
-import Meter from '../components/Meter.jsx'
 import Modal from '../components/Modal.jsx'
+import Fold from '../components/Fold.jsx'
 import ContentBoard from '../components/ContentBoard.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
 import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import StageGate from '../components/StageGate.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
-import CompareCard from '../components/CompareCard.jsx'
 import Avatar from '../components/Avatar.jsx'
+import { useContextMenu } from '../components/ContextMenu.jsx'
 import { CampaignRow } from '../components/ProjectBits.jsx'
 import ProgramsGantt, { PLATFORMS } from '../components/ProgramsGantt.jsx'
+import { rewardIfFinished } from '../lib/reward.js'
+import { useTaskSync } from '../lib/useTaskSync.js'
+import { getPicks, byPicks, bumpPick } from '../lib/picks.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // The Target team's lens: what platform's work to look at. Tasks and
 // campaigns classify themselves by their co-channels (a task also tagged
@@ -39,7 +45,6 @@ const inLens = (lens, channels) => {
   return lens === 'instagram' ? ig : tg
 }
 
-const BLANK_METRIC = { label: '', current: 0, target: 100, unit: '', period: 'monthly', content_type: '' }
 const FILL_MODES = [
   { key: '', label: 'Manually (+/−)' },
   { key: 'post', label: 'From Post tasks' },
@@ -52,15 +57,13 @@ const FILL_MODES = [
 // Keys mirror server/routes/channels.js DASH_WIDGETS.
 const DASH_WIDGETS = [
   { key: 'programs', label: 'Programs (Gantt)', hint: 'Launches on a timeline — running, halted, finished' },
-  { key: 'metrics', label: 'Metrics & plans', hint: 'Headline numbers and plan meters' },
-  { key: 'growth', label: 'Growth', hint: 'Then-vs-now comparison table' },
   { key: 'campaigns', label: 'Campaigns', hint: 'Campaigns running on this channel' },
-  { key: 'timetable', label: 'Timetable', hint: 'The next 7 days, day by day' },
+  { key: 'timetable', label: tx('Timetable'), hint: 'The next 7 days, day by day' },
   { key: 'upcoming', label: 'Upcoming board', hint: 'Everything dated, closest first' },
   { key: 'done', label: 'Done board', hint: 'Recently completed work' },
   { key: 'content', label: 'Content workspace', hint: 'Kanban board and calendars' },
 ]
-const DEFAULT_DASH = ['metrics', 'growth', 'content']
+const DEFAULT_DASH = ['content']
 
 function parseDash(raw) {
   try {
@@ -76,7 +79,7 @@ function parseDash(raw) {
 /* ---- The optional boards (module-level so poll ticks don't remount them) ---- */
 
 function DeptCampaigns({ camps, byKey, navigate }) {
-  if (camps.length === 0) return <div className="card card-pad empty">No campaigns touch this channel yet.</div>
+  if (camps.length === 0) return <div className="card card-pad empty">{tx("No campaigns touch this channel yet.")}</div>
   return (
     <div className="pc-camp-list">
       {camps.map((c) => <CampaignRow key={c.id} c={c} byKey={byKey} onOpen={(x) => navigate(`/campaigns/${x.id}`)} />)}
@@ -146,22 +149,19 @@ export default function Department() {
   const dept = byKey[key]
   const hasAccess = user.role === 'admin' || user.departments.includes(key)
 
-  const editValues = can(user, 'edit_metrics')
-  const manageMetrics = can(user, 'manage_metrics')
   const manageLayout = can(user, 'manage_layout')
   const manageContent = can(user, 'manage_content')
   const moveTasks = can(user, 'move_tasks')
 
-  const [trackers, setTrackers] = useState([])
-  const [history, setHistory] = useState([])
   const [content, setContent] = useState([])
   const [statuses, setStatuses] = useState([])
   const [loading, setLoading] = useState(true)
 
-  const [metric, setMetric] = useState(null)
   const [err, setErr] = useState('')
   const [dragIdx, setDragIdx] = useState(null)
   // board | release | recording — the last view is remembered per browser.
+  // The board is the working view; the calendar is the planning one, and the
+  // month is what the rest of the product now opens on. A choice is remembered.
   const [view, setViewState] = useState(() => localStorage.getItem('satashkent_dept_view') || 'board')
   const setView = (v) => { setViewState(v); localStorage.setItem('satashkent_dept_view', v) }
   const [selectedDate, setSelectedDate] = useState(null)
@@ -178,7 +178,6 @@ export default function Department() {
     // and let the fresh data replace it when the network answers.
     const cached = cache.get(`dept:${key}`)
     if (cached) {
-      setTrackers(cached.trackers); setHistory(cached.history)
       setContent(cached.content); setStatuses(cached.statuses)
       setLoading(false)
     } else {
@@ -186,18 +185,16 @@ export default function Department() {
     }
     setSelectedDate(null)
     Promise.all([
-      api.get(`/trackers?department=${key}`),
-      api.get(`/trackers/history?department=${key}`),
       // This is the one page with a kanban board, and a board card wears its
       // thumbnail — so this is the one page that asks for them.
       api.get(`/content?department=${key}&thumbs=1`),
       api.get('/statuses'),
     ])
-      .then(([tr, hist, ct, st]) => {
-        setTrackers(tr); setHistory(hist); setContent(ct); setStatuses(st)
+      .then(([ct, st]) => {
+        setContent(ct); setStatuses(st)
         // Thumbnails stay out of the cache to keep localStorage light.
         cache.set(`dept:${key}`, {
-          trackers: tr, history: hist, statuses: st,
+          statuses: st,
           content: ct.map(({ photo_thumb: _t, ...rest }) => rest),
         })
       })
@@ -212,7 +209,6 @@ export default function Department() {
     const refresh = () => {
       if (document.hidden || openItem || dragIdx !== null) return
       api.poll(`/content?department=${key}&thumbs=1`).then((f) => { if (f) setContent(f) }).catch(() => {})
-      api.poll(`/trackers?department=${key}`).then((f) => { if (f) setTrackers(f) }).catch(() => {})
     }
     const id = setInterval(refresh, 10000)
     window.addEventListener('focus', refresh)
@@ -290,83 +286,79 @@ export default function Department() {
     () => campaigns.filter((c) => (c.channels || []).includes(key) && c.status !== 'done'
       && (!hasLens || inLens(lens, c.channels || []))),
     [campaigns, key, hasLens, lens])
-  const pinned = trackers.filter((t) => t.is_primary)
-  const gridMetrics = trackers.filter((t) => !t.is_primary)
-
-  // ---- metrics ----
-  const step = async (t, delta) => {
-    try {
-      const u = await api.patch(`/trackers/${t.id}`, { current: Math.max(0, t.current + delta) })
-      setTrackers((prev) => prev.map((x) => (x.id === t.id ? u : x)))
-      api.get(`/trackers/history?department=${key}`).then(setHistory).catch(() => {})
-    } catch (e) { alert(e.message) }
-  }
-  const setPin = async (t, on) => {
-    try {
-      const u = await api.patch(`/trackers/${t.id}`, { is_primary: on ? 1 : 0 })
-      setTrackers((prev) => prev.map((x) => (x.id === t.id ? u : x)))
-    } catch (e) { alert(e.message) }
-  }
-  const onDragOver = (overIdx) => {
-    if (dragIdx === null || dragIdx === overIdx) return
-    const grid = trackers.filter((t) => !t.is_primary)
-    const [moved] = grid.splice(dragIdx, 1)
-    grid.splice(overIdx, 0, moved)
-    setTrackers([...trackers.filter((t) => t.is_primary), ...grid])
-    setDragIdx(overIdx)
-  }
-  const persistOrder = async () => {
-    setDragIdx(null)
-    try { await api.post('/trackers/reorder', { department: key, ids: trackers.map((t) => t.id) }) } catch { /* ignore */ }
-  }
-  const openMetric = (t) => {
-    setMetric(t
-      ? { id: t.id, label: t.label, current: t.current, target: t.target, unit: t.unit, period: t.period, content_type: t.content_type || '' }
-      : { ...BLANK_METRIC })
-    setErr('')
-  }
-  const saveMetric = async () => {
-    setErr('')
-    try {
-      if (metric.id) {
-        const body = manageMetrics
-          ? { label: metric.label.trim(), current: Number(metric.current), target: Number(metric.target), unit: metric.unit, period: metric.period, content_type: metric.content_type || null }
-          : { current: Number(metric.current) }
-        const u = await api.patch(`/trackers/${metric.id}`, body)
-        setTrackers((prev) => prev.map((x) => (x.id === metric.id ? u : x)))
-      } else {
-        if (!metric.label.trim()) return
-        const u = await api.post('/trackers', { department: key, label: metric.label.trim(), current: Number(metric.current), target: Number(metric.target), unit: metric.unit, period: metric.period, content_type: metric.content_type || null })
-        setTrackers((prev) => [...prev, u])
-      }
-      setMetric(null)
-    } catch (e) { setErr(e.message) }
-  }
-  const delMetric = async () => {
-    try { await api.del(`/trackers/${metric.id}`); setTrackers((prev) => prev.filter((x) => x.id !== metric.id)); setMetric(null) }
-    catch (e) { setErr(e.message) }
-  }
-
   // ---- content ----
-  const refreshTrackers = () => {
-    api.get(`/trackers?department=${key}`).then(setTrackers).catch(() => {})
-    api.get(`/trackers/history?department=${key}`).then(setHistory).catch(() => {})
-  }
   const createContent = async (payload) => {
     const c = await api.post('/content', payload)
     setContent((prev) => [c, ...prev].filter((x) => x.channels.includes(key)))
-    refreshTrackers() // a new task raises this channel's plan
   }
-  const updateContent = async (item, payload) => {
-    const c = await api.patch(`/content/${item.id}`, payload)
-    setContent((prev) => prev.map((x) => (x.id === item.id ? c : x)).filter((x) => x.channels.includes(key)))
-    refreshTrackers() // completing / moving a task changes the plan numbers
-  }
+  // Picking somebody to shoot a video is not a question the server has an
+  // opinion about, so the name appears at once and the request follows. A
+  // stage or a tick can be refused — those still wait for the answer. See
+  // lib/useTaskSync.js for where that line is drawn.
+  const { update: updateContent, isBusy } = useTaskSync(setContent, {
+    belongs: (x) => x.channels.includes(key),
+    after: rewardIfFinished,
+  })
   const deleteContent = async (item) => {
     await api.del(`/content/${item.id}`)
     setContent((prev) => prev.filter((x) => x.id !== item.id))
-    refreshTrackers() // deleting a task lowers the plan again
   }
+  // Right-click a card: the four things people did to a row on the To-Do page
+  // before it was removed, on the board that replaced it. Everything here is
+  // already permission-checked by the server; the menu only offers what this
+  // account can actually do so nothing on it answers 403.
+  // The five people this account hands work to most often, learned from what
+  // they actually do (lib/picks.js). Five because a right-click menu is a
+  // shortcut, not a directory — everybody else is one press further on, in
+  // the sheet.
+  const giveTo = useMemo(() => {
+    const picks = getPicks()
+    return [...team].sort(byPicks(picks, (a, b) => a.name.localeCompare(b.name))).slice(0, 5)
+  }, [team])
+  const { openMenu } = useContextMenu()
+  const cardMenu = (e, item) => openMenu(e, [
+    { label: tx('Open'), icon: PenLine, onClick: () => setOpenItem(item) },
+    manageContent && {
+      label: item.done_at ? tx('Mark as not done') : tx('Mark as done'), icon: Check,
+      onClick: () => markDone(item, updateContent, setOpenItem),
+    },
+    manageContent && !item.done_at && {
+      label: item.pinned ? tx('Unpin') : tx('Pin to the top'), icon: Pin,
+      onClick: () => updateContent(item, { pinned: !item.pinned }).catch((err) => alert(err.message)),
+    },
+    // Handing a piece to somebody was a four-step job: open the sheet, find
+    // the right view, pick a name, save. It is the single commonest thing
+    // done to a card, so it is one press here — and it lands instantly,
+    // because a seat is not something the server argues with.
+    ...(manageContent && giveTo.length ? [{ sep: true }, ...giveTo.map((u) => ({
+      label: `${tx('Give to')} ${u.name}`, icon: UserRound,
+      hint: item.assignee_id === u.id ? tx('already theirs') : undefined,
+      disabled: item.assignee_id === u.id,
+      onClick: () => {
+        bumpPick(u.id)
+        updateContent(item, { assignee_ids: [u.id] })
+          .then(() => toast(`${tx('Given to')} ${u.name.split(' ')[0]}`))
+          .catch((err) => toast(err.message, 'err'))
+      },
+    })), {
+      label: tx('Somebody else…'), icon: UsersRound, onClick: () => setOpenItem(item),
+    }] : []),
+    manageContent && {
+      label: tx('Duplicate'), icon: CopyPlus,
+      onClick: () => api.post(`/content/${item.id}/duplicate`)
+        .then((copy) => { setContent((prev) => [copy, ...prev].filter((x) => x.channels.includes(key))); toast(tx('Duplicated')) })
+        .catch((err) => alert(err.message)),
+    },
+    manageContent && { sep: true },
+    manageContent && {
+      label: tx('Delete'), icon: Trash2, danger: true,
+      onClick: () => {
+        if (!confirm(`${tx('Delete')} “${item.title}”?`)) return
+        deleteContent(item).then(() => toast(tx('Task deleted'))).catch((err) => alert(err.message))
+      },
+    },
+  ])
+
   // Taking a move back: the server keeps the previous shape of the task for
   // ten seconds and walks the plan numbers back with it, so an accidental drag
   // costs nothing. After that the move is on the record and stays there.
@@ -374,8 +366,7 @@ export default function Department() {
     try {
       const c = await api.post(`/content/${id}/undo`)
       setContent((prev) => prev.map((x) => (x.id === c.id ? c : x)).filter((x) => x.channels.includes(key)))
-      refreshTrackers()
-      toast('Move taken back')
+      toast(tx('Move taken back'))
     } catch (e) { toast(e.message, 'err') }
   }
   const movedToast = (saved, statusId) =>
@@ -394,15 +385,34 @@ export default function Department() {
       movedToast(item, statusId)
     } catch (e) {
       if (e.data?.gate && e.data?.missing) setGate({ item, statusId })
-      else alert(e.message)
+      else askForTheLink(e, item, setOpenItem)
     }
   }
+  // The task modal changes stages too — its chips at the top of the panel —
+  // and that route used to hand work on without ever asking who was taking it.
+  // A question the board asks and the panel does not is not a question anyone
+  // has to answer. Anything that carries a stage change now goes past the same
+  // handover window; everything else saves straight through.
+  const updateFromModal = async (item, payload) => {
+    const next = payload.status_id
+    if (!item || next === undefined || next === item.status_id) return updateContent(item, payload)
+    const { status_id, ...rest } = payload
+    if (Object.keys(rest).length) await updateContent(item, rest)   // the edits land either way
+    const fresh = { ...item, ...rest }
+    try {
+      const { gates } = await api.get(`/content/${item.id}/handover?to=${next}`)
+      if (gates?.length) { setGate({ item: fresh, statusId: next, gates }); return }
+    } catch { /* fall through and just move it */ }
+    await updateContent(fresh, { status_id: next })
+    movedToast(fresh, next)
+  }
+
   const moveDate = (item, field, iso) => updateContent(item, { [field]: iso }).catch((e) => alert(e.message))
   // The board's foot inputs: a title lands straight in that column.
   const quickAdd = async (title, statusId) => {
     const c = await api.post('/content', { title, status_id: statusId, channels: [key] })
     setContent((prev) => [c, ...prev])
-    toast('Added — synced')
+    toast(tx('Added — synced'))
   }
 
   // ---- customizable dashboard + channel settings ----
@@ -457,18 +467,18 @@ export default function Department() {
   }
 
   if (channels.length === 0 || loading) return <div className="app-loading"><span className="spinner" /></div>
-  if (!dept) return <div className="empty">Unknown channel.</div>
+  if (!dept) return <div className="empty">{tx("Unknown channel.")}</div>
   if (!hasAccess)
     return (
       <div className="card card-pad empty">
         <Lock size={30} />
-        <div style={{ fontWeight: 600, color: 'var(--ink-2)' }}>You don&apos;t have access to this channel.</div>
+        <div style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{tx("You don't have access to this channel.")}</div>
       </div>
     )
 
   const VIEWS = [
-    { key: 'board', label: 'Board', icon: KanbanSquare },
-    { key: 'release', label: 'Releases', icon: Send },
+    { key: 'board', label: tx('Board'), icon: KanbanSquare },
+    { key: 'release', label: tx('Releases'), icon: Send },
     { key: 'recording', label: 'Recording', icon: Clapperboard },
   ]
 
@@ -488,178 +498,61 @@ export default function Department() {
       <div className={'fs-wrap' + (fsProg ? ' on' : '')}>
         <div className="section-head">
           <Rocket size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Programs</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>every launch on the timeline</span>
+          <h2>{tx("Programs")}</h2>
+          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("every launch on the timeline")}</span>
           <span className="spacer" />
           <button className="icon-btn" onClick={() => setFsProg(!fsProg)}
-            data-tip={fsProg ? 'Exit full screen (Esc)' : 'Full screen — the timeline fills the display'} data-tip-left="" aria-label="Full screen">
+            data-tip={fsProg ? 'Exit full screen (Esc)' : 'Full screen — the timeline fills the display'} data-tip-left="" aria-label={tx("Full screen")}>
             {fsProg ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
         </div>
         <ProgramsGantt channel={key} canManage={isAdmin || manageContent} isAdmin={isAdmin} lens={hasLens ? lens : 'all'} big={fsProg} />
       </div>
     )
-    if (k === 'metrics') return renderMetrics()
-    if (k === 'growth') return (
-      <>
-        <div className="section-head">
-          <LineChart size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Growth</h2>
-        </div>
-        <CompareCard trackers={trackers} history={history} />
-      </>
-    )
+    // Which of these matter depends on who is looking, so each one folds and
+    // remembers. The channel's LAYOUT is the admin's call for everybody; the
+    // fold is this account's call for itself.
     if (k === 'campaigns') return (
-      <>
-        <div className="section-head">
-          <Megaphone size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Campaigns</h2>
-          <span className="count">· {deptCampaigns.length}</span>
-        </div>
+      <Fold id={`dept-${key}-campaigns`} title={tx("Campaigns")} count={deptCampaigns.length}
+        icon={<Megaphone size={17} style={{ color: 'var(--brand-500)' }} />}>
         <DeptCampaigns camps={deptCampaigns} byKey={byKey} navigate={navigate} />
-      </>
+      </Fold>
     )
     if (k === 'timetable') return (
       <>
-        <div className="section-head">
-          <Send size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Releasing</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>the next 7 days</span>
-        </div>
-        <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="release" />
-        <div className="section-head" style={{ marginTop: 14 }}>
-          <Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Shooting</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>the next 7 days</span>
-        </div>
-        <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="recording" />
+        <Fold id={`dept-${key}-releasing`} title={tx("Releasing")}
+          icon={<Send size={17} style={{ color: 'var(--brand-500)' }} />}
+          extra={<span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>}>
+          <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="release" />
+        </Fold>
+        <Fold id={`dept-${key}-shooting`} title={tx("Shooting")}
+          icon={<Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />}
+          extra={<span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>}>
+          <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="recording" />
+        </Fold>
       </>
     )
     if (k === 'upcoming') return (
-      <>
-        <div className="section-head">
-          <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>Upcoming</h2>
-          <span className="count">· {upcomingRows.length}</span>
-        </div>
+      <Fold id={`dept-${key}-upcoming`} title={tx("Upcoming")} count={upcomingRows.length}
+        icon={<CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />}>
         <DeptTaskList rows={upcomingRows} empty="Nothing dated yet." onOpen={setOpenItem} />
-      </>
+      </Fold>
     )
     if (k === 'done') return (
-      <>
-        <div className="section-head">
-          <CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />
-          <h2>Done</h2>
-          <span className="count">· {doneRows.length}</span>
-        </div>
+      <Fold id={`dept-${key}-done`} title={tx("Done")} count={doneRows.length}
+        icon={<CheckCircle2 size={17} style={{ color: 'var(--good-ink, #0ca30c)' }} />}>
         <DeptTaskList rows={doneRows} empty="Nothing completed yet." onOpen={setOpenItem} done />
-      </>
+      </Fold>
     )
     if (k === 'content') return renderContent()
     return null
   }
 
-  const renderMetrics = () => (
-    <>
-      {/* Pinned metrics — the channel's headline numbers */}
-      {pinned.length > 0 && (
-        <div className="pinned-grid">
-          {pinned.map((t) => {
-            const pct = Math.min(100, Math.round((t.current / Math.max(1, t.target)) * 100))
-            return (
-              <div className="card hero-metric card-pad" key={t.id}>
-                <div className="hm-top">
-                  <span className="hm-label"><Pin size={13} /> {t.label}</span>
-                  <span className="spacer" />
-                  {(editValues || manageMetrics) && (
-                    <button className="icon-btn hm-unpin" data-tip={manageMetrics ? 'Edit this metric' : 'Update the value'} onClick={() => openMetric(t)} aria-label="Edit">
-                      <Pencil size={15} />
-                    </button>
-                  )}
-                  {manageLayout && (
-                    <button className="icon-btn hm-unpin" data-tip="Unpin from the headline row" data-tip-left="" onClick={() => setPin(t, false)} aria-label="Unpin">
-                      <PinOff size={15} />
-                    </button>
-                  )}
-                </div>
-                <div className="hm-value">
-                  {t.current.toLocaleString()}
-                  <span className="hm-target"> / {t.target.toLocaleString()}{t.unit ? ` ${t.unit}` : ''}</span>
-                </div>
-                <div className="meter-track" style={{ height: 12 }}>
-                  <div className="meter-fill" style={{ width: `${pct}%`, background: pct >= 100 ? 'var(--good)' : 'var(--brand-500)' }} />
-                </div>
-                <div className="hm-foot">
-                  <span className={`hm-pct${pct >= 100 ? ' done' : ''}`}>{pct}% of {t.content_type ? 'plan' : 'target'}</span>
-                  {t.content_type ? (
-                    <span className="hm-auto" data-tip="Counts itself: creating a task raises the plan, completing one fills it">auto · from tasks</span>
-                  ) : editValues && (
-                    <div className="meter-adjust">
-                      <button className="step-btn" onClick={() => step(t, -1)} disabled={t.current <= 0} data-tip="Decrease by 1" aria-label="Decrease"><Minus size={15} /></button>
-                      <button className="step-btn" onClick={() => step(t, 1)} data-tip="Increase by 1" aria-label="Increase"><Plus size={15} /></button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-          {/* Right under the headline number — the way to add the next one */}
-          {manageMetrics && (
-            <button className="add-metric-tile" onClick={() => openMetric(null)} data-tip="Create another metric for this channel">
-              <Plus size={16} /> Add another metric
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Metrics grid */}
-      <div className="section-head">
-        <Gauge size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Metrics</h2>
-        <span className="icon-btn" data-tip="Plans count completed tasks · other numbers use +/−" aria-label="How metrics fill" style={{ cursor: 'help' }}><AlertCircle size={13} /></span>
-        <span className="spacer" />
-        {manageMetrics && <button className="btn btn-primary btn-sm" onClick={() => openMetric(null)}><Plus size={15} /> Add metric</button>}
-      </div>
-      {gridMetrics.length === 0 ? (
-        <div className="card card-pad empty">{pinned.length > 0 ? 'All metrics are pinned above.' : 'No metrics yet.'}</div>
-      ) : (
-        <div className="grid grid-auto">
-          {gridMetrics.map((t, i) => (
-            <div
-              className={`card card-pad metric-card${dragIdx === i ? ' dragging' : ''}`}
-              key={t.id}
-              draggable={manageLayout}
-              onDragStart={() => manageLayout && setDragIdx(i)}
-              onDragOver={(e) => { if (manageLayout) { e.preventDefault(); onDragOver(i) } }}
-              onDragEnd={persistOrder}
-            >
-              {(manageLayout || manageMetrics || editValues) && (
-                <div className="metric-top">
-                  {manageLayout && <span className="drag-handle" data-tip="Drag to reorder"><GripVertical size={15} /></span>}
-                  <span className="spacer" />
-                  {manageLayout && (
-                    <button className="icon-btn" data-tip="Pin as a headline metric" onClick={() => setPin(t, true)} aria-label="Pin"><Pin size={14} /></button>
-                  )}
-                  {(editValues || manageMetrics) && (
-                    <button className="icon-btn" data-tip={manageMetrics ? 'Edit this metric' : 'Update the value'} data-tip-left="" onClick={() => openMetric(t)} aria-label="Edit"><Pencil size={14} /></button>
-                  )}
-                </div>
-              )}
-              <Meter label={t.label} current={t.current} target={t.target} unit={t.unit} period={t.period}
-                auto={!!t.content_type} canEdit={editValues && !t.content_type} onStep={(d) => step(t, d)} />
-            </div>
-          ))}
-        </div>
-      )}
-
-    </>
-  )
-
   const renderContent = () => (
     <div className={'fs-wrap' + (fs ? ' on' : '')}>
       <div className="section-head">
         <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Content</h2>
+        <h2>{tx("Content")}</h2>
         <span className="spacer" />
         <div className="pill-group">
           {VIEWS.map((v) => {
@@ -673,7 +566,7 @@ export default function Department() {
           })}
         </div>
         <button className="icon-btn" onClick={() => setFs(!fs)}
-          data-tip={fs ? 'Exit full screen (Esc)' : 'Full screen — board & calendars fill the display'} aria-label="Full screen">
+          data-tip={fs ? 'Exit full screen (Esc)' : 'Full screen — board & calendars fill the display'} aria-label={tx("Full screen")}>
           {fs ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
         {manageContent && (
@@ -689,21 +582,30 @@ export default function Department() {
         statuses={statuses} teamById={teamById}
       />
 
-      {selectedDate ? (
-        <DayAgenda
-          date={selectedDate}
-          items={wsLive}
-          statusesById={statusesById}
-          canEdit={manageContent}
-          onOpen={setOpenItem}
-          onAdd={(iso) => {
-            setNewDefaults({ channels: [key], [view === 'recording' ? 'recording_date' : 'release_date']: iso })
-            setOpenItem('new')
-          }}
-          onBack={() => setSelectedDate(null)}
-        />
-      ) : view === 'board' ? (
+      {/* A day opens OVER the month rather than replacing it. Reading one day
+          is a glance — what is on today, in order — and losing the month you
+          were looking at to take that glance means finding your way back to it
+          afterwards. */}
+      {selectedDate && (
+        <Modal title="" onClose={() => setSelectedDate(null)} wide>
+          <DayAgenda
+            date={selectedDate}
+            items={wsLive}
+            statusesById={statusesById}
+            canEdit={manageContent}
+            onOpen={(it) => { setSelectedDate(null); setOpenItem(it) }}
+            onAdd={(iso) => {
+              setSelectedDate(null)
+              setNewDefaults({ channels: [key], [view === 'recording' ? 'recording_date' : 'release_date']: iso })
+              setOpenItem('new')
+            }}
+            onBack={() => setSelectedDate(null)}
+          />
+        </Modal>
+      )}
+      {view === 'board' ? (
         <ContentBoard items={wsContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} myStages={myStages}
+          onMenu={cardMenu} isBusy={isBusy}
           onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />
       ) : (
         <ContentCalendar
@@ -736,18 +638,18 @@ export default function Department() {
             <span className="dept-head-label">Head of {dept.label}</span>
           </>
         ) : isAdmin ? (
-          <button className="no-owner-badge no-owner-btn" data-tip="Nobody owns this channel — click to assign a head"
+          <button className="no-owner-badge no-owner-btn" data-tip={tx("Nobody owns this channel — click to assign a head")}
             onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }}>
-            no owner — assign one
+            {tx('no owner — assign one')}
           </button>
-        ) : (
-          <span className="no-owner-badge">no owner yet</span>
-        )}
+        ) : null /* An alarm about something you cannot fix is noise. Whoever
+           can assign a head sees the badge, and it is the button that does it;
+           everybody else sees a channel, which is what they came for. */}
         <span className="spacer" />
         {hasLens && (
           <div className="pill-group" style={{ marginRight: 4 }}>
             <button className={'pill' + (lens === 'all' ? ' active' : '')} onClick={() => setLens('all')}
-              data-tip="Everything on this channel">All</button>
+              data-tip={tx("Everything on this channel")}>{tx("All")}</button>
             {PLATFORMS.filter((pl) => pl.key !== 'both').map((pl) => (
               <button key={pl.key} className={'pill' + (lens === pl.key ? ' active' : '')} onClick={() => setLens(pl.key)}
                 data-tip={`Only ${pl.label} work — programs, tasks and campaigns`}>
@@ -757,29 +659,35 @@ export default function Department() {
           </div>
         )}
         {canCustomize && (
-          <button className="btn btn-sm" onClick={openDash} data-tip="Choose which sections this page shows, and their order">
-            <SlidersHorizontal size={14} /> Customize
+          <button className="btn btn-sm" onClick={openDash} data-tip={tx("Choose which sections this page shows, and their order")}>
+            <SlidersHorizontal size={14} />{' '}{tx('Customize')}
           </button>
         )}
         {isAdmin && (
-          <button className="icon-btn" data-tip="Channel settings — rename, head, delete" data-tip-left=""
-            onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }} aria-label="Channel settings">
+          <button className="icon-btn" data-tip={tx("Channel settings — rename, head, delete")} data-tip-left=""
+            onClick={() => { setChanErr(''); setChanEdit({ label: dept.label, head_id: dept.head_id || '' }) }} aria-label={tx("Channel settings")}>
             <Settings size={16} />
           </button>
         )}
       </div>
 
-      {/* The dashboard, exactly the sections this channel chose */}
-      {widgetOrder.map((k) => <div key={k}>{renderWidget(k)}</div>)}
+      {/* The dashboard, exactly the sections this channel chose. Each section
+          is named on its wrapper so a phone can put the work first: on a desk
+          the growth numbers sit beside the board, on a 390px screen they sat
+          three screenfuls above it, and the board is what the channel is
+          opened for. */}
+      <div className="dept-widgets">
+        {widgetOrder.map((k) => <div key={k} data-w={k}>{renderWidget(k)}</div>)}
+      </div>
 
       {/* Customize modal — toggle sections, reorder with arrows */}
       {dash && (
         <Modal
-          title="Customize this dashboard"
+          title={tx("Customize this dashboard")}
           onClose={() => setDash(null)}
           footer={<>
-            <button className="btn" onClick={() => setDash(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={saveDash}>Save layout</button>
+            <button className="btn" onClick={() => setDash(null)}>{tx("Cancel")}</button>
+            <button className="btn btn-primary" onClick={saveDash}>{tx("Save layout")}</button>
           </>}
         >
           {dashErr && <div className="form-error"><AlertCircle size={16} /> {dashErr}</div>}
@@ -799,8 +707,8 @@ export default function Department() {
                   </span>
                 </label>
                 <span className="spacer" />
-                <button className="icon-btn" disabled={i === 0} onClick={() => moveDashRow(i, -1)} data-tip="Move up" aria-label="Move up"><ArrowUp size={14} /></button>
-                <button className="icon-btn" disabled={i === dash.length - 1} onClick={() => moveDashRow(i, 1)} data-tip="Move down" data-tip-left="" aria-label="Move down"><ArrowDown size={14} /></button>
+                <button className="icon-btn" disabled={i === 0} onClick={() => moveDashRow(i, -1)} data-tip={tx("Move up")} aria-label={tx("Move up")}><ArrowUp size={14} /></button>
+                <button className="icon-btn" disabled={i === dash.length - 1} onClick={() => moveDashRow(i, 1)} data-tip={tx("Move down")} data-tip-left="" aria-label={tx("Move down")}><ArrowDown size={14} /></button>
               </div>
             )
           })}
@@ -810,21 +718,21 @@ export default function Department() {
       {/* Channel settings — rename, reassign the head, or delete the channel */}
       {chanEdit && (
         <Modal
-          title="Channel settings"
+          title={tx("Channel settings")}
           onClose={() => setChanEdit(null)}
           footer={<>
-            <button className="btn btn-danger" onClick={deleteChannel}><Trash2 size={15} /> Delete channel</button>
-            <div style={{ flex: 1 }} />
-            <button className="btn" onClick={() => setChanEdit(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={saveChannel}>Save</button>
+            <button className="btn btn-danger" onClick={deleteChannel}><Trash2 size={15} />{' '}{tx("Delete channel")}</button>
+            <span className="foot-gap" />
+            <button className="btn" onClick={() => setChanEdit(null)}>{tx("Cancel")}</button>
+            <button className="btn btn-primary" onClick={saveChannel}>{tx("Save")}</button>
           </>}
         >
           {chanErr && <div className="form-error"><AlertCircle size={16} /> {chanErr}</div>}
-          <div className="field"><label>Name</label>
+          <div className="field"><label>{tx("Name")}</label>
             <input className="input" autoFocus value={chanEdit.label}
               onChange={(e) => setChanEdit({ ...chanEdit, label: e.target.value })} />
           </div>
-          <div className="field"><label>Head of the channel</label>
+          <div className="field"><label>{tx("Head of the channel")}</label>
             <select className="select" value={chanEdit.head_id}
               onChange={(e) => setChanEdit({ ...chanEdit, head_id: e.target.value === '' ? '' : Number(e.target.value) })}>
               <option value="">— nobody —</option>
@@ -835,57 +743,16 @@ export default function Department() {
         </Modal>
       )}
 
-      {/* Metric modal */}
-      {metric && (
-        <Modal
-          title={metric.id ? (manageMetrics ? 'Edit metric' : 'Update value') : 'Add metric'}
-          onClose={() => setMetric(null)}
-          footer={<>
-            {metric.id && manageMetrics && <button className="btn btn-danger" onClick={delMetric}><Trash2 size={15} /> Delete</button>}
-            <div style={{ flex: 1 }} />
-            <button className="btn" onClick={() => setMetric(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={saveMetric}>{metric.id ? 'Save' : 'Add'}</button>
-          </>}
-        >
-          {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
-          {manageMetrics ? (
-            <>
-              <div className="field"><label>Name</label><input className="input" autoFocus value={metric.label} onChange={(e) => setMetric({ ...metric, label: e.target.value })} placeholder="e.g. Reels" /></div>
-              <div className="field"><label>How it fills</label>
-                <select className="select" value={metric.content_type} onChange={(e) => setMetric({ ...metric, content_type: e.target.value })}>
-                  {FILL_MODES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-                </select>
-                {metric.content_type && <span className="field-hint">New tasks raise the plan; completed tasks fill it.</span>}
-              </div>
-              <div className="grid grid-3" style={{ gap: 12 }}>
-                <div className="field"><label>Current</label>
-                  <input className="input" type="number" min="0" disabled={!!metric.content_type && user.role !== 'admin'}
-                    value={metric.current} onChange={(e) => setMetric({ ...metric, current: e.target.value })} />
-                </div>
-                <div className="field"><label>{metric.content_type ? 'Plan' : 'Target'}</label><input className="input" type="number" min="1" value={metric.target} onChange={(e) => setMetric({ ...metric, target: e.target.value })} /></div>
-                <div className="field"><label>Unit</label><input className="input" value={metric.unit} onChange={(e) => setMetric({ ...metric, unit: e.target.value })} placeholder="reels" /></div>
-              </div>
-              <div className="field"><label>Period</label>
-                <select className="select" value={metric.period} onChange={(e) => setMetric({ ...metric, period: e.target.value })}>
-                  {CADENCES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-                </select>
-              </div>
-            </>
-          ) : (
-            <div className="field"><label>{metric.label} — current value</label><input className="input" type="number" min="0" autoFocus value={metric.current} onChange={(e) => setMetric({ ...metric, current: e.target.value })} /></div>
-          )}
-        </Modal>
-      )}
 
       {/* Content modal */}
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem === 'new' ? null : openItem}
           statuses={statuses}
           defaults={newDefaults}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onCreate={createContent}
-          onUpdate={updateContent}
+          onUpdate={updateFromModal}
           onDelete={deleteContent}
         />
       )}
@@ -902,7 +769,6 @@ export default function Department() {
             const to = gate.statusId
             setGate(null)
             setContent((prev) => prev.map((x) => (x.id === saved.id ? saved : x)).filter((x) => x.channels.includes(key)))
-            refreshTrackers()
             movedToast(saved, to)
           }}
         />

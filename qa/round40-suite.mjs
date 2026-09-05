@@ -59,17 +59,26 @@ const link = (await req('/telegram/link', 'POST', {}, MT)).data
 await hook({ message: { chat: { id: 900 }, text: `/start ${link.code}` } })
 
 // ---- links immediately: NO set-webhook has happened on this stack ----
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
-const editId = (await req('/statuses')).data.find((s) => /editing/i.test(s.label)).id
+// Fixtures park on Shot, not To shoot: since round 66 the shooting stage is a
+// BOOKING and demands a crew, three days and a brief. Shot is the same thing
+// this suite actually wants — real work, past the Idea stage — without
+// pretending to book a shoot these tests are not about.
+const shotId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
+// Shot folded into Editing in round 82, so the second stage has to come from
+// what is left. It cannot be Ready — arriving there is a review handoff with
+// its own ✅ message, not the plain 🔔 bell these three lines are about — and
+// To shoot is the booking the comment above steers clear of. That leaves
+// Idea: the piece gets sent back to the drawing board, then picked up again.
+const editId = (await req('/statuses')).data.find((s) => /^idea$/i.test(s.label)).id
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
 const task = (await req('/content', 'POST', {
   title: 'x40: rich video', channels: [chKey], type: 'video',
-  assignee_ids: [member.id], status_id: shootId, release_date: tomorrow,
+  assignee_ids: [member.id], status_id: shotId, release_date: tomorrow,
 })).data
 await reset()
 await req(`/content/${task.id}`, 'PATCH', { status_id: editId })
 let m = (await sentList()).find((s) => String(s.chat_id) === '900' && /🔔/.test(s.text || ''))
-ok('the very first bell already carries the link', !!m && m.text.includes(`http://localhost:4098/todo?task=${task.id}`), m?.text)
+ok('the very first bell already carries the link', !!m && m.text.includes(`http://localhost:4098/brief?task=${task.id}`), m?.text)
 ok('…names who moved it', !!m && /by Admin/.test(m.text))
 const humanDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 ok('…and the release day, human-sized', !!m && m.text.includes(`release ${humanDate(tomorrow)}`))
@@ -80,14 +89,14 @@ await req(`/content/${task.id}/comments`, 'POST', { text: 'интро перес
 m = (await sentList()).find((s) => String(s.chat_id) === '900' && /💬/.test(s.text || ''))
 ok('a comment names the speaker and the task', !!m && /💬 Admin wrote on .*«x40: rich video»/.test(m.text))
 ok('…quotes the words on their own line', !!m && /\n“интро переснимаем завтра”/.test(m.text))
-ok('…and links the task', !!m && m.text.includes(`/todo?task=${task.id}`))
+ok('…and links the task', !!m && m.text.includes(`/brief?task=${task.id}`))
 
 // ---- once activated, the remembered origin wins over the request host ----
 await req('/telegram/set-webhook', 'POST', { url: 'https://team.example.org/api/telegram/webhook' })
 await reset()
-await req(`/content/${task.id}`, 'PATCH', { status_id: shootId })
+await req(`/content/${task.id}`, 'PATCH', { status_id: shotId })
 m = (await sentList()).find((s) => String(s.chat_id) === '900' && /🔔/.test(s.text || ''))
-ok('after Activate the public origin takes over', !!m && m.text.includes(`https://team.example.org/todo?task=${task.id}`)
+ok('after Activate the public origin takes over', !!m && m.text.includes(`https://team.example.org/brief?task=${task.id}`)
   && !m.text.includes('localhost:4098'))
 
 // ---- the nightly digest links every line ----
@@ -95,7 +104,7 @@ await reset()
 const cron = await (await fetch(BASE + '/api/cron/daily')).json()
 m = (await sentList()).find((s) => String(s.chat_id) === '900' && /deadlines/i.test(s.text || ''))
 ok('the digest still fires', cron.reminded === 1 && !!m)
-ok('…and each line carries its own link', !!m && m.text.includes(`https://team.example.org/todo?task=${task.id}`))
+ok('…and each line carries its own link', !!m && m.text.includes(`https://team.example.org/brief?task=${task.id}`))
 
 stop()
 await new Promise((r) => setTimeout(r, 300))

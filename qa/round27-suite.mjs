@@ -30,7 +30,15 @@ const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
 // The one-time-duty probe member exists BEFORE the browser opens — the UI
 // caches /users per session, so a mid-flow creation never reaches the modal.
-await req('/users', 'POST', { name: 'Plain X27 Member', username: 'x27plain', password: 'p1234', role: 'member' })
+// They also stand in for "somebody the rules are for". Round 80 made the
+// admin a superuser — never asked for a field, never stopped at a gate — so a
+// required-field check made as the admin now proves nothing. The rule is for
+// the people doing the work, and this is one of them.
+const plain = (await req('/users', 'POST', {
+  name: 'Plain X27 Member', username: 'x27plain', password: 'p1234', role: 'member',
+  departments: ['youtube', 'instagram_main'], permissions: { manage_content: true, move_tasks: true },
+})).data
+const TP = await login('x27plain', 'p1234')
 
 // ---- 1) the API contract: defaults, admin writes, the required gate ----
 const eff = (await req('/fields')).data
@@ -42,8 +50,21 @@ await req('/fields', 'POST', {
   script: { state: 'required', types: ['video'] },
   rubrika: { state: 'optional', types: ['post', 'reel', 'story', 'video', 'other'], options: ['SU events', 'Book Hype'] },
 })
-const noScript = await req('/content', 'POST', { title: 'x27: scriptless video', channels: ['youtube'], type: 'video' })
-ok('a required Script blocks creating the video', noScript.status === 400 && /Script/.test(noScript.data.error))
+// A demanded field stands where the work is MADE, not over a thought: an idea
+// is a name and a couple of sentences, and being asked for a script to write
+// one down is how ideas stop being written down. The demand lands on the move
+// out of the idea stage instead — the rule is not weaker, it is in the right
+// place.
+const stages = (await req('/statuses')).data
+const ideaId = stages.find((s) => /idea/i.test(s.label)).id
+const shootId = stages.find((s) => /to shoot/i.test(s.label)).id
+const jotted = await req('/content', 'POST',
+  { title: 'x27: scriptless video', channels: ['youtube'], type: 'video', status_id: ideaId }, TP)
+ok('a scriptless video can still be jotted down as an idea', jotted.status === 201,
+  `${jotted.status} ${jotted.data.error || ''}`)
+const noScript = await req(`/content/${jotted.data.id}`, 'PATCH', { status_id: shootId }, TP)
+ok('a required Script blocks it leaving the idea stage', noScript.status === 400 && /Script/.test(noScript.data.error),
+  `${noScript.status} ${noScript.data.error || ''}`)
 const withAll = await req('/content', 'POST', {
   title: 'x27: proper video', channels: ['youtube'], type: 'video',
   script: 'INT. CAMPUS — DAY. The dean waves.', format: 'Talking head', rubrika: 'SU events',
@@ -52,53 +73,139 @@ const withAll = await req('/content', 'POST', {
 ok('with the script it lands, brief stored', withAll.status === 201
   && withAll.data.script?.includes('dean') && withAll.data.format === 'Talking head' && withAll.data.rubrika === 'SU events')
 ok('a member can hold the editor hat', withAll.data.editor_id === jas.id)
-ok('…and clearing the required script is refused',
-  (await req(`/content/${withAll.data.id}`, 'PATCH', { script: '' })).status === 400)
+// Clearing is refused where there is work in flight to protect — so the piece
+// is put on the board first. An idea owes nothing, including a script it
+// happens to be carrying.
+ok('an idea may drop a script it was carrying',
+  (await req(`/content/${withAll.data.id}`, 'PATCH', { script: '' }, TP)).status === 200)
+await req(`/content/${withAll.data.id}`, 'PATCH', { script: 'INT. CAMPUS — DAY. The dean waves.' })
+await req(`/content/${withAll.data.id}`, 'PATCH', { status_id: shootId })
+ok('…and clearing the required script is refused once it is being made',
+  (await req(`/content/${withAll.data.id}`, 'PATCH', { script: '' }, TP)).status === 400)
+// …and the admin who wrote the rule is not held to it.
+ok('…though the admin who set the rule is not held to it',
+  (await req(`/content/${withAll.data.id}`, 'PATCH', { script: '' })).status === 200)
+await req(`/content/${withAll.data.id}`, 'PATCH', { script: 'INT. CAMPUS — DAY. The dean waves.' })
 ok('a reel is not gated — the rule is scoped to videos',
   (await req('/content', 'POST', { title: 'x27: free reel', channels: ['instagram_main'], type: 'reel' })).status === 201)
 
 // ---- 2) the modal: brief fields, the required star, the client gate ----
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1500, height: 950 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
+
+// The crew seats are searchable pickers now, not <select> elements. Read a
+// group the way the screen shows it: open the picker, collect the rows that
+// follow the group's label.
+// A new task is born as an idea — a name and a couple of sentences — with the
+// rest of the form behind one button. A suite filling the whole thing in is a
+// person who already knows the rest, so it presses what they would press.
+const fullForm = async () => {
+  const note = p.locator('.cm-idea-note button')
+  if (await note.count()) { await note.click(); await p.waitForTimeout(250) }
+}
+const ppNames = async (root, group) => {
+  await root.click()
+  await p.waitForSelector('.pp-pop', { timeout: 8000 })
+  const names = await p.locator(`.pp-pop .pp-group:text-is("${group}") ~ .pp-row`).allTextContents()
+  await p.keyboard.press('Escape')
+  await p.waitForTimeout(150)
+  return names
+}
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
+// Signed in as the member, not the admin: the client gate below is the same
+// rule the server keeps, and since round 80 neither applies to an admin.
 await p.goto(BASE + '/login')
-await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
-await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 15000 })
-await p.goto(BASE + '/dept/youtube'); await p.waitForTimeout(1000)
+await p.fill('input[name="username"]', 'x27plain'); await p.fill('input[name="password"]', 'p1234')
+await p.click('button[type="submit"]')
+await p.waitForFunction(() => !location.pathname.startsWith('/login'), null, { timeout: 15000 })
+await p.goto(BASE + '/dept/youtube'); await p.waitForTimeout(1400)
 await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
-await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(400)
+await fullForm()
+await p.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' }); await p.waitForTimeout(400)
 ok('the Brief row rides the video type', (await p.locator('.modal .cm-key', { hasText: 'Brief' }).count()) === 1)
 ok('Rubrika became a dropdown once options exist',
   (await p.locator('.modal .brief-field', { hasText: 'Rubrika' }).locator('option', { hasText: 'Book Hype' }).count()) === 1)
+// `.cm-script` is the shape of a long textarea, and since round 78 the ТЗ
+// wears it too — they are both tall boxes. What identifies a field here is
+// its row's data-field, which is what the refusals aim at as well.
 ok('the demanded Script is open with its star',
-  (await p.locator('.modal .cm-script').count()) === 1 && (await p.locator('.modal .req-star').count()) >= 1)
+  (await p.locator('.modal [data-field="script"] textarea').count()) === 1 && (await p.locator('.modal .req-star').count()) >= 1)
 await p.fill('.modal .cm-title', 'x27: ui video')
-await p.locator('.modal .btn-primary', { hasText: 'Create task' }).click(); await p.waitForTimeout(500)
-ok('the client refuses to save without the script',
-  (await p.locator('.modal').count()) === 1 && /Script/.test(await p.locator('.modal').textContent()))
-await p.fill('.modal .cm-script', 'Opening shot: the gates.')
+await p.locator('.modal [data-field="rubrika"] select, .modal [data-field="rubrika"] input').first()
+  .selectOption({ label: 'SU events' }).catch(() => {})
+// The star says the admin demands it; the stage says when. Opening the whole
+// form does not turn a thought into work, so the idea is written down — and
+// the form and the server agree about that, which is the thing worth checking:
+// a form that refused here would be a wall with nothing behind it.
+await p.fill('.modal [data-field="script"] textarea', 'Opening shot: the gates.')
 await p.locator('.modal .btn-primary', { hasText: 'Create task' }).click(); await p.waitForTimeout(800)
-ok('with the script written it saves', (await p.locator('.modal').count()) === 0)
+ok('the form saves the idea', (await p.locator('.modal').count()) === 0)
 const made = (await req('/content')).data.find((c) => c.title === 'x27: ui video')
 ok('…and the script reached the record', !!made && made.script === 'Opening shot: the gates.')
+// …and one written WITHOUT the demanded script is let through too, by the form
+// and by the server alike.
+await p.locator('button', { hasText: 'New task' }).first().click()
+await p.waitForSelector('.modal', { timeout: 6000 })
+await fullForm()
+await p.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' }); await p.waitForTimeout(400)
+await p.fill('.modal .cm-title', 'x27: bare idea')
+await p.locator('.modal .btn-primary', { hasText: 'Create task' }).click(); await p.waitForTimeout(800)
+ok('a bare idea is not stopped by the form', (await p.locator('.modal').count()) === 0)
+ok('…and it is on the board', !!(await req('/content')).data.find((c) => c.title === 'x27: bare idea'))
 
 // ---- 3) the crew picker offers everyone ----
 await p.locator('button', { hasText: 'New task' }).first().click()
 await p.waitForSelector('.modal', { timeout: 6000 })
-await p.locator('.modal .tchip', { hasText: 'Video' }).click(); await p.waitForTimeout(600)
-const opSel = p.locator('.modal .crew-field', { hasText: 'Operator' }).locator('select')
+await fullForm()
+await p.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' }); await p.waitForTimeout(600)
+await cmTab(p, 'Execution')
+const opSel = p.locator('.modal .crew-field', { hasText: 'Operator' }).locator('.pp-field')
+const opAnyone = await ppNames(opSel, 'Everyone else — one-time duty')
 ok('the operator list carries the one-time group',
-  (await opSel.locator('optgroup[label*="Everyone"] option', { hasText: 'Plain X27' }).count()) === 1)
+  opAnyone.filter((n) => n.includes('Plain X27')).length === 1, opAnyone.join(' | '))
 await p.keyboard.press('Escape')
 
 // ---- 4) the admin card edits the form live ----
-await p.goto(BASE + '/admin'); await p.waitForTimeout(800)
-await p.locator('button', { hasText: 'Pipeline' }).first().click(); await p.waitForTimeout(800)
-ok('the task-form card renders all five fields', (await p.locator('.fields-tbl tbody tr').count()) === 5)
-const scriptRow = p.locator('.fields-tbl tr', { hasText: 'the words and shots' })
+// A fresh window, because the one above is signed in as the member who is
+// held to the rules, and the panel that WRITES them is the admin's.
+const ap = await (await browser.newContext({ viewport: { width: 1500, height: 950 } })).newPage()
+ap.on('pageerror', (e) => { fails++; console.log('ADMIN PAGE ERROR', e.message) })
+await ap.goto(BASE + '/login')
+await ap.fill('input[name="username"]', 'admin'); await ap.fill('input[name="password"]', 'admin123')
+await ap.click('button[type="submit"]'); await ap.waitForURL(/overview/, { timeout: 15000 })
+await ap.goto(BASE + '/admin'); await ap.waitForTimeout(1200)
+// The task form moved from Pipeline to Settings, and ТЗ joined the fields the
+// admin governs — six now, not five.
+await ap.locator('button', { hasText: 'Settings' }).first().click(); await ap.waitForTimeout(900)
+ok('the task-form card renders every field', (await ap.locator('.fields-tbl tbody tr').count()) === 6,
+  String(await ap.locator('.fields-tbl tbody tr').count()))
+const scriptRow = ap.locator('.fields-tbl tr', { hasText: 'the words and shots' })
 ok('the stored rule shows: script required', (await scriptRow.locator('.pill.active', { hasText: 'required' }).count()) === 1)
-await scriptRow.locator('.pill', { hasText: 'optional' }).click(); await p.waitForTimeout(600)
+await scriptRow.locator('.pill', { hasText: 'optional' }).click(); await ap.waitForTimeout(600)
 ok('one tap relaxes it back to optional', (await req('/fields')).data.script.state === 'optional')
 await p.close()
 await browser.close()

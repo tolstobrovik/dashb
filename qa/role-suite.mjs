@@ -41,12 +41,16 @@ ok('editor sees the whole team for names', (await req('/users', 'GET', null, ET)
 ok('editor cannot set a raw stage', (await req(`/content/${vid.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)
 // milestone verified on a throwaway so vid stays pristine (unstamped) for the UI below
 const mp = (await req('/content', 'POST', { title: 'Edit: milestone probe', channels: ['youtube'], type: 'video', editor_id: ed.id, status_id: sid('shot') })).data
-ok('editor ticks "edited" → the cut lands on Ready', (await req(`/content/${mp.id}`, 'PATCH', { milestone: 'edited' }, ET)).data.status_id === sid('ready'))
+// The cut rides along with the tick since round 69: saying a stage is
+// finished is a claim, and for a stage that produces a file the claim is
+// checkable, so it is checked.
+ok('editor ticks "edited" → the cut lands on Ready', (await req(`/content/${mp.id}`, 'PATCH', { milestone: 'edited', ready_link: 'https://drive.google.com/role-cut' }, ET)).data.status_id === sid('ready'))
+ok('…and the tick without the cut is refused', (await req(`/content/${(await req('/content', 'POST', { title: 'Edit: no cut', channels: ['youtube'], type: 'video', editor_id: ed.id, status_id: sid('shot') })).data.id}`, 'PATCH', { milestone: 'edited' }, ET)).status === 400)
 await req(`/content/${mp.id}`, 'DELETE')
 ok('editor cannot touch a foreign task', (await req(`/content/${foreign.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)
 ok('editor cannot rewrite details', (await req(`/content/${vid.id}`, 'PATCH', { title: 'renamed' }, ET)).status === 403)
 ok('editor cannot create team tasks', (await req('/content', 'POST', { title: 'sneak', channels: ['youtube'], type: 'post' }, ET)).status === 403)
-ok('editor cannot complete — that is not their reach', (await req(`/content/${vid.id}`, 'PATCH', { done: true }, ET)).status === 403)
+ok('editor cannot complete — that is not their reach', (await req(`/content/${vid.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, ET)).status === 403)
 ok('editor drops a Google-Drive ready link', (await req(`/content/${vid.id}`, 'PATCH', { ready_link: 'https://drive.google.com/x' }, ET)).status === 200)
 
 // a department member sees crew users for the chips
@@ -67,14 +71,50 @@ ok('editor lands on the brief', page.url().includes('/brief'), page.url())
 await page.waitForSelector('.brief-title', { timeout: 10000 })
 await page.waitForTimeout(600)
 ok('their video sits in the edit lane (still-haunting, open by default)', (await page.locator('.cb-col').first().textContent()).includes('Edit: campus film'))
+// Scoping, checked HERE rather than after the milestone tick below: the tick
+// moves the piece to Ready, which correctly takes it out of the editor's
+// lane, so a scoping check after it would be reading an empty board. (This
+// used to read the To-Do page, which listed every one of their tasks
+// whatever stage it was on; that page went in round 82.)
+const mineTxt = await page.locator('.content').textContent()
+ok('their day holds their video, not foreign work',
+  mineTxt.includes('Edit: campus film') && !mineTxt.includes('Foreign post'))
+ok('no channel tabs for crew', !mineTxt.includes('Telegram Main') && !mineTxt.includes('Instagram'))
 const header = await page.locator('header').textContent()
-ok('crew chrome: My Day + To-Do, nothing else', header.includes('My Day') && header.includes('To-Do') && !header.includes('Projects'))
+// The crew's top bar carries the pages that are theirs and nothing that is
+// not. It named To-Do, which went in round 82; My Day is still the one they
+// live on, and Projects is still not for them.
+ok('crew chrome: their own pages, nothing else',
+  header.includes('My Day') && header.includes('Statistics') && !header.includes('Projects'), header.replace(/\s+/g, ' ').slice(0, 120))
+
+// The task sheet is views now — Brief, Execution, Logistics, Talk — so a
+// control is reached the way a person reaches it: open the view holding it
+// first. The same view is "Execution" to whoever runs the piece and "Your
+// part" to whoever does the work on it. Idempotent, and silent on a sheet
+// short enough to show whole.
+const cmTab = async (pg, name) => {
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
 
 // move the stage through the modal
 await page.locator('.cb-row', { hasText: 'Edit: campus film' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
-const readyChip = page.locator('.modal .stage-chip', { hasText: 'Ready' })
-ok('the stage is read-only for the editor', !(await readyChip.isEnabled()))
+// Round 91 made the stage one dropdown instead of a row of chips; whether the
+// crew may move it is the same question, asked of the control that now holds it.
+const stagePick = page.locator('.modal .cm-stage-pick select')
+ok('the stage is read-only for the editor', await stagePick.isDisabled())
+await cmTab(page, 'Execution')
 ok('the editor sees a "Mark as edited" tick', (await page.locator('.modal .do-tick', { hasText: 'edited' }).count()) === 1)
 await page.locator('.modal .do-tick', { hasText: 'edited' }).click()
 await page.getByRole('button', { name: 'Save changes' }).click()
@@ -83,12 +123,7 @@ await page.waitForTimeout(400)
 ok('the tick moved it to Ready', (await req(`/content/${vid.id}`)).data.status_id === sid('ready'))
 await page.screenshot({ path: 'role-editor.png', fullPage: true })
 
-// To-Do for crew: only their items, no channel tabs, no team quick-add
-await page.goto(BASE + '/todo')
-await page.waitForTimeout(800)
-const todoTxt = await page.locator('.content').textContent()
-ok('to-do holds their video, not foreign work', todoTxt.includes('Edit: campus film') && !todoTxt.includes('Foreign post'))
-ok('no channel tabs for crew', !(todoTxt.includes('Telegram Main')) && !(todoTxt.includes('Instagram')))
+
 
 // admin table shows the new badges
 const actx = await browser.newContext({ viewport: { width: 1440, height: 950 } })

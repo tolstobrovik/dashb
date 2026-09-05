@@ -1,7 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- The COMPACT cut of the crest. A browser tab renders this at 16px; the
+       full crest's 6-unit maze and five-bar rosette turn to grey mush well
+       before that, so the tab gets the same shield and the same maze drawn
+       half again as thick, with the rosette dropped. The full crest lives in
+       client/src/components/Logo.jsx and is used from 44px up. -->
   <rect width="100" height="100" rx="22" fill="#a32234" />
-  <path d="M30 25 h40 v27 c0 15 -11 23 -20 27 c-9 -4 -20 -12 -20 -27 z"
-        fill="none" stroke="#ece7e1" stroke-width="5" stroke-linejoin="round" />
-  <path d="M38 40 h24 M38 51 h15" stroke="#ece7e1" stroke-width="4.5" stroke-linecap="round" />
-  <path d="M50 34 v30" stroke="#ece7e1" stroke-width="4.5" stroke-linecap="round" />
+  <g transform="translate(50 50) scale(0.68) translate(-50 -56)">
+    <path d="M11 13 Q11 6.5 17.5 6.5 H82.5 Q89 6.5 89 13 V55 C89 86 71 105 50 105 C29 105 11 86 11 55 Z"
+          fill="none" stroke="#ece7e1" stroke-width="10" stroke-linejoin="round" />
+    <g fill="none" stroke="#ece7e1" stroke-width="9.5" stroke-linecap="butt" stroke-linejoin="miter">
+      <path d="M20 33 H43" />
+      <path d="M57 33 H80" />
+      <path d="M74 40 V52 H57 V68" />
+      <path d="M20 50 H40 V63 H29 V88" />
+    </g>
+  </g>
 </svg>

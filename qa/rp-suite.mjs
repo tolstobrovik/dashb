@@ -19,7 +19,7 @@ const mk = async (title, ch, type, extra = {}) => (await req('/content', 'POST',
 const d1 = await mk('IG done 1', 'instagram_main', 'post', { assignee_id: jas.id })
 const d2 = await mk('IG done 2', 'instagram_main', 'reel', { assignee_id: jas.id })
 const d3 = await mk('YT done', 'youtube', 'video', { assignee_id: mir.id })
-for (const t of [d1, d2, d3]) await req(`/content/${t.id}`, 'PATCH', { done: true })
+for (const t of [d1, d2, d3]) await req(`/content/${t.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
 await mk('IG open', 'instagram_main', 'post', { release_date: today })
 await mk('IG overdue', 'instagram_main', 'post', { release_date: '2026-07-10' })
 
@@ -36,6 +36,33 @@ ok('channel total equals the sum over people (one truth)', personSum === rep.byC
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") + button, .pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 await page.goto(BASE + '/login')
 await page.fill('input[type="text"]', 'admin')
@@ -43,15 +70,23 @@ await page.fill('input[type="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 await page.goto(BASE + '/admin')
-await page.getByRole('button', { name: 'Channels' }).click()
+// Scoped to the page, not the whole document: round 88's sidebar has a
+// "Channels" hub whose heading is a button too, so a bare name matches two
+// controls. (The hub says which it is in its accessible name; this says
+// which one the suite means.)
+await page.getByRole('main').getByRole('button', { name: 'Channels' }).click()
 await page.waitForSelector('.chan-stats', { timeout: 10000 })
 
 const igRow = page.locator('.chan-row', { hasText: 'Instagram Main' })
-// The done-count arrives with the reports fetch; wait for it before reading.
-await igRow.locator('.chan-stat', { hasText: 'done' }).waitFor({ timeout: 10000 })
-const igTxt = await igRow.textContent()
-ok('channel row shows done this month', igTxt.includes('2 done'), igTxt.slice(0, 120))
-ok('channel row shows open + overdue', igTxt.match(/2 open.*1 overdue/s) !== null, igTxt.slice(0, 120))
+// Round 91 turned these counts into dots: the digit stays, the noun becomes a
+// colour. The done count still arrives with the reports fetch, so wait for it
+// before reading, and read each dot by the tone that says what it means.
+await igRow.locator('.dot-done').waitFor({ timeout: 10000 })
+const dotN = async (tone) => (await igRow.locator(`.dot-${tone}`).textContent().catch(() => '')).trim()
+ok('channel row counts what is done this month', (await dotN('done')) === '2', await igRow.textContent())
+ok('…what is open, and what is late',
+  (await dotN('open')) === '2' && (await dotN('late')) === '1',
+  `open=${await dotN('open')} late=${await dotN('late')}`)
 
 await igRow.getByRole('button', { name: 'Report →' }).click()
 await page.waitForSelector('.rp-big', { timeout: 8000 })
@@ -65,17 +100,43 @@ ok('clickable colored channel chips', await page.locator('.rp-chan').count() ===
 ok('person cards show big totals', await page.locator('.rp-person-total b').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize) >= 30))
 await page.screenshot({ path: 'reports-new.png' })
 
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-const vidRow = page.locator('.todo-row', { hasText: 'Крю видео' })
-ok('crew chips on the to-do row', (await vidRow.textContent()).includes('Jasmina'))
-await vidRow.locator('.todo-main').click()
+// The fixture is on YouTube, and a channel board shows its own channel — the
+// To-Do page this replaced listed every channel at once, and its rows had an
+// inner .todo-main to click; a board card is the target itself.
+await page.goto(BASE + '/dept/youtube')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+// The task sheet is views now. The type chips are in the Brief, which is
+// where a sheet opens, so changing the type needs nothing — but the crew is
+// in Execution, and PICKING somebody there means going to that view first.
+// (Counting them does not: a hidden element still answers count().)
+const cmTab = async (pg, name) => {
+  // Round 91 hides a view nobody has been in, behind one "Add details"
+  // control — so reaching one is two presses when it is empty and one when it
+  // is not, exactly as it is for a person.
+  const more = pg.locator('.cm-page-more')
+  for (const pass of [0, 1]) {
+    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+      const tab = pg.locator('.cm-page-tab', { hasText: n })
+      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+    }
+    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
+    else return
+  }
+}
+
+const vidRow = page.locator('.tcard', { hasText: 'Крю видео' }).first()
+ok('crew chips on the board card', (await vidRow.textContent()).includes('Jasmina'))
+await vidRow.click()
 await page.waitForSelector('.modal', { timeout: 8000 })
-ok('crew selects visible for video type', await page.locator('.modal .crew-field').count() === 3)
-await page.locator('.modal .tchip', { hasText: 'Post' }).click()
-ok('a post swaps the crew for one designer hat', await page.locator('.modal .crew-field').count() === 1)
-await page.locator('.modal .tchip', { hasText: 'Video' }).click()
-await page.locator('.modal .crew-field select').nth(1).selectOption({ label: 'Eldor Cutter' })
+// Round 78 took the designer hat off the picker: this board runs
+// idea → shoot → edit, so every type carries the same two hats now instead
+// of a video carrying three and a post carrying one.
+ok('crew selects visible for video type', await page.locator('.modal .crew-field').count() === 2)
+await page.locator('.modal select.cm-pick').first().selectOption({ label: 'Post' })
+ok('a post carries the same two hats', await page.locator('.modal .crew-field').count() === 2)
+await page.locator('.modal select.cm-pick').first().selectOption({ label: 'Video' })
+await cmTab(page, 'Execution')
+await ppPick(page.locator('.modal .crew-field .pp-field').nth(1), 'Eldor Cutter')
 await page.getByRole('button', { name: 'Save changes' }).click()
 await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 const final = (await req(`/content/${vid.data.id}`)).data

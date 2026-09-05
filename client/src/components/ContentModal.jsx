@@ -1,17 +1,30 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Scissors,
   AlignLeft, CheckSquare, UserRound, Palette, Link2, ExternalLink, BookOpen, RotateCcw, History,
-  FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2,
+  ClipboardList, FileText, Layers, Hash, CopyPlus, MessageSquare, Paperclip, Download, FileType2, CalendarClock, Hand, Eye, MoreHorizontal, SkipForward, Sparkles,
 } from 'lucide-react'
 import Modal from './Modal.jsx'
+import PersonPicker from './PersonPicker.jsx'
+import HoverPreview from './HoverPreview.jsx'
 import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor } from '../lib/constants.js'
+import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHref } from '../lib/text.js'
+import { useT, tr as tx, locale } from '../lib/i18n.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
+import { useIsPhone } from '../lib/usePhone.js'
+import Booking from './Booking.jsx'
+import SlotPicker from './SlotPicker.jsx'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
+import { gapsOf, stageRankOf } from '../lib/gaps.js'
 import { toast } from '../lib/toast.js'
+import { useDirtyState, cascadeDates, LABELS } from '../lib/formState.js'
 import { activityLine } from '../lib/activity.js'
+import { rewardFinish } from '../lib/reward.js'
+import TextHelp from './TextHelp.jsx'
+import { VoiceRecorder, VoicePlayer, canRecord } from './VoiceNote.jsx'
+import Zoom from './Zoom.jsx'
 
 // Documents a task can carry. The cap is deliberate and low: every byte is
 // stored, synced and paid for on the team's storage, so a 4 MB brief is a
@@ -35,14 +48,51 @@ const docKind = (name) => {
   return 'txt'
 }
 
+// Which deadlines are promises. Once one of these holds a day, only an admin
+// moves it — everyone else asks, in writing. Naming them here keeps the form's
+// warning and the server's refusal talking about the same four fields.
+// The names of the four promised days, as they read inside a sentence
+// ("Ask an admin to move the shoot day"). Looked up through tx at the call
+// site so they follow the language like everything else.
+const PROMISED = {
+  recording_date: 'the shoot day', edit_ready_date: 'the day the cut is due',
+  design_ready_date: 'the day the artwork is due', release_date: 'the release day',
+}
+const promisedDay = (field) => tx(PROMISED[field] || field)
+
 // Defined at module level — an inline component would remount its date/time
 // inputs on every keystroke elsewhere in the modal and drop their focus.
-function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, disabled }) {
+function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, disabled, locked, onAskMove, confirmSet, bad }) {
+  // A day that is already promised is read-only here: the picker would let
+  // somebody change it and only find out on save that they could not, having
+  // already lost the day they were looking at.
+  const promised = locked && !!form[dateKey]
+  const setDate = (v) => {
+    // Promising a day is the moment worth pausing on — afterwards it takes an
+    // admin to undo. So the form says so once, plainly, before it happens
+    // rather than after.
+    if (v && !form[dateKey] && PROMISED[dateKey] && !confirmSet(dateKey, v)) return
+    // The three dates are a chain: shoot, then cut, then out. Pushing the
+    // shoot past the cut leaves the cut due before the footage exists — a
+    // promise nobody can keep, made without anybody noticing. The days after
+    // it move with it, keeping the gaps the plan had, and the sheet says so.
+    // Pulling a day EARLIER moves nothing: dragging somebody's deadline
+    // towards them is not a correction.
+    const { form: next, moved } = cascadeDates(form, dateKey, v)
+    setForm(next)
+    if (moved.length) {
+      toast(tx('{what} moved with it — {days}', {
+        what: moved.map((m) => tx(LABELS[m.key])).join(tx(' and ')),
+        days: moved.map((m) => m.to).join(', '),
+      }))
+    }
+  }
   return (
-    <div className="drow">
+    <div className={'drow' + (promised ? ' drow-locked' : '') + (bad ? ' field-bad' : '')} data-field={dateKey}>
       <span className="drow-label"><Icon size={14} /> {label}</span>
-      <input className="input" type="date" disabled={disabled} value={form[dateKey]}
-        onChange={(e) => setForm({ ...form, [dateKey]: e.target.value })} />
+      <input className="input" type="date" disabled={disabled || promised} value={form[dateKey]}
+        data-tip={promised ? 'This day is promised — ask an admin to move it' : undefined}
+        onChange={(e) => setDate(e.target.value)} />
       {timeKey && <input className="input" type="time" disabled={disabled} value={form[timeKey]}
         data-tip={endKey ? 'From' : undefined}
         onChange={(e) => setForm({ ...form, [timeKey]: e.target.value })} />}
@@ -53,14 +103,27 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
             onChange={(e) => setForm({ ...form, [endKey]: e.target.value })} />
         </>
       )}
-      {!disabled && (
+      {!disabled && !promised && (
         <span className="drow-quick">
-          <button type="button" className="qbtn" onClick={() => setForm({ ...form, [dateKey]: todayISO() })}>Today</button>
-          <button type="button" className="qbtn" onClick={() => setForm({ ...form, [dateKey]: addDaysISO(todayISO(), 1) })}>Tomorrow</button>
+          <button type="button" className="qbtn" onClick={() => setDate(todayISO())}>{tx("Today")}</button>
+          <button type="button" className="qbtn" onClick={() => setDate(addDaysISO(todayISO(), 1))}>{tx("Tomorrow")}</button>
           {form[dateKey] && (
-            <button type="button" className="qbtn" data-tip="Clear this date" aria-label="Clear date"
+            <button type="button" className="qbtn" data-tip={tx("Clear this date")} aria-label={tx("Clear date")}
               onClick={() => setForm({ ...form, [dateKey]: '', ...(timeKey ? { [timeKey]: '' } : {}), ...(endKey ? { [endKey]: '' } : {}) })}>✕</button>
           )}
+        </span>
+      )}
+      {promised && (
+        // Its own line across the row: the grid's last column is a narrow
+        // slot for quick buttons, and a sentence wrapped into it a word at a
+        // time is how "Ask to move" became four lines tall.
+        <span className="drow-ask">
+          {onAskMove && (
+            <button type="button" className="qbtn qbtn-ask" onClick={() => onAskMove(dateKey)}>{tx("Ask to move")}</button>
+          )}
+          <span className="drow-promised">
+            This day is promised — only an admin moves it{onAskMove ? ', and only on a reason.' : '.'}
+          </span>
         </span>
       )}
     </div>
@@ -69,12 +132,144 @@ function DateRow({ icon: Icon, label, dateKey, timeKey, endKey, form, setForm, d
 
 // Task editor — used from the board, both calendars, the to-do list and the
 // admin panel. Deliberately small: title → stage → type → platforms → dates.
+// The five pages the sheet becomes on a phone, in the order the form already
+// has them. Labels are English keys translated at render, so the strip follows
+// the language switch like everything else.
+// Three views and the thread. The old sheet was one column of fourteen rows
+// and 2,600 pixels of scrolling, which nobody reads: people scroll past the
+// field they needed and save without it. The rows are dealt into the three
+// questions somebody actually opens a task to answer —
+//
+//   Brief      what is this, and what does it say
+//   Execution  who is on it, and what have they handed over
+//   Logistics  when is it due, and where did it go
+//
+// — with the talk kept as its own place, because a conversation is not
+// logistics. Nothing is deleted and nothing is reordered; the rows move as
+// they are, so every rule, refusal and permission that stood over them still
+// does.
+// Has a person been in this view, or is it just showing its empty boxes?
+//
+// Any filled input, any chip that is on, any link, or any text that is not a
+// label. Deliberately generous: showing a tab that turns out to be empty is a
+// small cost, and hiding one that holds somebody's work is a large one.
+function hasSomethingIn(el) {
+  if (!el) return false
+  // Two things are on every piece whether anybody has touched it or not: the
+  // channel it runs on, and the line saying when it was created. Counting
+  // them made "has somebody been here" true for every piece ever made, which
+  // is how a rule about hiding empty views ended up hiding none of them.
+  // They carry data-quiet, and so does anything else that is furniture.
+  const quiet = (n) => !!n.closest('[data-quiet]')
+  for (const f of el.querySelectorAll('input, textarea')) {
+    if (quiet(f)) continue
+    if (f.type === 'checkbox' || f.type === 'radio') { if (f.checked) return true; continue }
+    if (f.type === 'file') continue
+    if (String(f.value || '').trim()) return true
+  }
+  // Selects are not asked: one always holds a value, so a view containing a
+  // dropdown would always read as filled.
+  for (const n of el.querySelectorAll('.chip:not(.chip-muted), .checkbox-chip.on, .pill.active, a[href], .assignee-chip, .cmt-row:not(.hist-row)')) {
+    if (!quiet(n)) return true
+  }
+  // Somebody in a seat. The picker marks the EMPTY case, not the filled one —
+  // a chosen person is an avatar and a name with no class of their own — so
+  // the question is asked the other way round.
+  for (const f of el.querySelectorAll('.pp-field')) {
+    if (!quiet(f) && !f.querySelector('.pp-empty')) return true
+  }
+  return false
+}
+
+// Each view wears the sign of what it holds: the brief is a page of writing,
+// execution is the people doing it, logistics is a calendar, the talk is a
+// conversation. Four words read the same length at a glance; four marks do
+// not, and on a phone the strip is mostly marks.
+const SECTIONS = [
+  { key: 'brief', label: 'Brief', icon: FileText },
+  { key: 'review', label: 'Execution', icon: UserRound },
+  { key: 'setup', label: 'Execution', mergeInto: 'review' },
+  { key: 'when', label: 'Logistics', icon: CalendarClock },
+  { key: 'more', label: 'Talk', icon: MessageSquare },
+]
+// Two code sections wear one tab: the crew and the handovers are the same
+// question asked twice, and a person opening a task to see who is on it
+// should not have to guess which of two pages it is on.
+const TABS = SECTIONS.filter((x) => !x.mergeInto)
+const tabOf = (key) => SECTIONS.find((x) => x.key === key)?.mergeInto || key
+
 export default function ContentModal({ item, statuses, defaults = {}, onClose, onCreate, onUpdate, onDelete }) {
   const { user } = useAuth()
   const { visible, byKey, reload } = useChannels()
+  const { t } = useT()
   const creating = !item
   const [err, setErr] = useState('')
+  // Which field the refusal is ABOUT. A red banner at the top of a long form
+  // tells you something is wrong; it does not tell you where, and the answer
+  // is usually three screens down. Naming the field lets the form ring it and
+  // scroll to it, so "«Script» needs a real answer" lands next to the script.
+  // A one-tap "done" that was refused for the missing published link opens the
+  // task on that box, ringed — the refusal and the answer in the same place.
+  const [badField, setBadField] = useState(item?.needs_post_link ? 'post_link' : '')
+  const refuse = (field, message) => { setBadField(field); setErr(message) }
+  // ---- one form on a desk, five pages on a phone ----
+  // This sheet holds fourteen fields and, on a 390px screen, 2,600 pixels of
+  // scrolling. Nobody reads 2,600 pixels; they scroll past the field they
+  // needed and save without it. The same rows are dealt into five pages here
+  // — what the task is, what it is waiting on, how it is set up, when it is
+  // due, and the talk — with a strip across the top to move between them.
+  //
+  // Nothing is removed and nothing is reordered. The pages are `display:
+  // contents` on a desk, so the desktop form is exactly the form it was, and
+  // a page that renders nothing (a new task has no history to show) never
+  // appears in the strip at all.
+  const phone = useIsPhone()
+  const bodyRef = useRef(null)
+  const [sec, setSec] = useState('brief')
+  const [pages, setPages] = useState(SECTIONS)
+  // The views nobody has been in are behind one control rather than laid out
+  // as empty tabs. Creating a piece opens them, because a new piece has
+  // nothing in ANY of them and hiding them all would leave a sheet with one
+  // tab and no way to reach the rest.
+  const [showAll, setShowAll] = useState(false)
+  // Creating? Everything is empty by definition, so everything is offered.
+  const shownPages = (showAll || creating) ? TABS : pages
+  const hiddenCount = (showAll || creating) ? 0 : TABS.length - pages.length
+  // Measured, not predicted: a page is worth a tab when it actually put
+  // something in the DOM. The rows are hidden with CSS rather than unmounted,
+  // so what you typed on page two is still there when you come back to it,
+  // and counting children works whichever page is showing.
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    // Measured, not predicted, and measured per TAB: a tab is worth showing
+    // when any of the sections behind it actually put something in the DOM.
+    // A view is worth a tab when it holds something SOMEBODY PUT THERE, not
+    // when it managed to render its empty boxes — which Execution and
+    // Logistics always do, so "hide the empty ones" hid nothing at all. A
+    // section counts as live when a box in it has a value, a chip is on, a
+    // link is in it, or there is prose: the things that mean a person has
+    // been here.
+    const filled = new Set(SECTIONS
+      .filter((x) => hasSomethingIn(el.querySelector(`[data-sec="${x.key}"]`)))
+      .map((x) => tabOf(x.key)))
+    const live = TABS.filter((x) => x.key === 'brief' || filled.has(x.key))
+    setPages((prev) => (prev.map((x) => x.key).join() === live.map((x) => x.key).join() ? prev : live))
+  })
+  useEffect(() => {
+    if (shownPages.length && !shownPages.some((x) => x.key === sec)) setSec(shownPages[0].key)
+  }, [shownPages, sec])
+  const secCls = (k) => 'cm-sec' + (tabOf(k) === sec ? ' on' : '') + (ideaOnly && k !== 'brief' ? ' cm-sec-later' : '')
+  const [tools, setTools] = useState(false)
+  // What the booking cards read. The FORM holds what is being typed; a
+  // booking is about what is actually saved, and answering one sends back the
+  // fresh row rather than making the whole sheet reload.
+  const [booked, setBooked] = useState(() => item || null)
+  // The operator's week, folded away until asked for.
+  const [slotsOpen, setSlotsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+
+
   const [subText, setSubText] = useState('')
   const [form, setForm] = useState(() => ({
     title: item?.title || '',
@@ -96,6 +291,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     operator_id: item?.operator_id ?? null,
     editor_id: item?.editor_id ?? null,
     designer_id: item?.designer_id ?? null,
+    tz: item?.tz ?? '',
+    // '' means nobody has counted yet; '0' means it was counted and got none.
+    views: item?.views === null || item?.views === undefined ? '' : String(item.views),
     reviewer_ids: (() => {
       try {
         const l = Array.isArray(item?.reviewers) ? item.reviewers : JSON.parse(item?.reviewers || '[]')
@@ -103,8 +301,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       } catch { return item?.reviewer_id ? [item.reviewer_id] : [] }
     })(),
     ready_link: item?.ready_link || '',
+    post_link: item?.post_link || '',
+    face_id: item?.face_id ?? null,
+    skip_rate: item?.skip_rate === null || item?.skip_rate === undefined ? '' : String(item.skip_rate),
     shot_link: item?.shot_link || '',
     design_link: item?.design_link || '',
+    // What the person typed into the "which file?" box. Kept apart from the
+    // stored link so switching a channel's folder on or off never silently
+    // rewrites a delivery that already exists.
+    ready_file: '', shot_file: '', design_file: '',
     reference_text: item?.reference_text || '',
     reference_links: item?.reference_links?.length ? [...item.reference_links] : [],
     format: item?.format || '',
@@ -118,6 +323,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         : (defaults.assignee_id ? [defaults.assignee_id] : [user.id]),
     } : {}),
   }))
+
+  // Three views mean a view you have left is still holding what you wrote in
+  // it — which is the point, and also the way a sheet gets closed on top of
+  // unsaved words the person cannot see. So closing a dirty sheet asks first.
+  // Switching views never asks: they are one form.
+  const { dirty, settle } = useDirtyState(form, true)
+  const [leaving, setLeaving] = useState(false)
+  const tryClose = () => { if (dirty && !busy) setLeaving(true); else onClose() }
   // Team list: the admin's assignee picker + the video crew pickers.
   // (cached — every modal open reuses one fetch for a while)
   const [team, setTeam] = useState([])
@@ -150,14 +363,42 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const [activity, setActivity] = useState(() => item?.activity || [])
   const [allLog, setAllLog] = useState(false)
   const cmtWhen = (ts) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(ts))
+  // A named person is lit up, and lit up ONLY when the name is a real one —
+  // matched against the roster the same way the server matches it, so what
+  // the thread shows in bold is exactly who the bell woke. "@2pm" stays text.
+  const withMentions = (text) => {
+    if (!text.includes('@') || team.length === 0) return text
+    const labels = [...new Set(team.flatMap((u) => {
+      const full = String(u.name || '').trim()
+      return full ? [full, full.split(/\s+/)[0]] : []
+    }))].filter((l) => l.length >= 2).sort((a, b) => b.length - a.length)
+    const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp(`@(?:${labels.map(esc).join('|')})(?![\\p{L}\\p{N}])`, 'giu')
+    const out = []
+    let last = 0
+    for (const m of text.matchAll(re)) {
+      if (m.index > last) out.push(text.slice(last, m.index))
+      out.push(<b key={m.index} className="cmt-at">{m[0]}</b>)
+      last = m.index + m[0].length
+    }
+    if (last < text.length) out.push(text.slice(last))
+    return out
+  }
+  // A line, a clip, or both. A voice note IS the message when there is one.
+  const [cmtClip, setCmtClip] = useState(null)
+  const [clipNonce, setClipNonce] = useState(0)   // remounts the recorder to clear it
   const sendComment = async () => {
     const text = cmtDraft.trim()
-    if (!text || cmtBusy) return
+    if ((!text && !cmtClip) || cmtBusy) return
     setCmtBusy(true)
     try {
-      const c = await api.post(`/content/${item.id}/comments`, { text })
+      const c = await api.post(`/content/${item.id}/comments`, {
+        text, ...(cmtClip ? { voice: cmtClip.data, voice_secs: cmtClip.secs } : {}),
+      })
       setComments((prev) => [...prev, c])
       setCmtDraft('')
+      setCmtClip(null)
+      setClipNonce((n) => n + 1)
     } catch (e) { setErr(e.message) } finally { setCmtBusy(false) }
   }
   // The task's paperwork — a ТЗ in Word, a reference deck as PDF. Only names
@@ -174,6 +415,8 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       setActivity(full.activity || [])
       setPhases(full.phases || [])
       setDocs(full.documents || [])
+      setDateReqs(full.date_requests || [])
+      setFlags(full.flags || [])
       setForm((f) => ({ ...f, photo: full.photo, photo_thumb: full.photo_thumb }))
       setInitialPhoto(full.photo)
     }).catch(() => {})
@@ -197,7 +440,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       })
       const doc = await api.post(`/content/${item.id}/files`, { name: file.name, data })
       setDocs((prev) => [...prev, doc])
-      toast('Document attached — synced')
+      toast(tx('Document attached — synced'))
     } catch (e2) { setErr(e2.message) } finally { setDocBusy(false) }
   }
   // Asking to open one gets a short-lived link back; the browser then fetches
@@ -223,17 +466,52 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       setDocs((prev) => prev.filter((d) => d.id !== doc.id))
     } catch (e2) { setErr(e2.message) }
   }
-  // Extras stay hidden until asked for — the common case is a quick add.
+  // The brief is the point of the form, not an extra: Reference and
+  // Description are open from the start, so the boxes the crew actually work
+  // from are in front of whoever is filling the task in rather than folded
+  // behind a row of buttons at the very bottom. Chrome that is only useful
+  // once there is something in it (checklist, documents, the other people's
+  // delivery links) still waits to be asked for.
+  // A NEW task is an idea: a name and a couple of sentences about it. That is
+  // all anybody has when they think of something, and asking for a shoot day,
+  // three crew seats and a script at that moment is how a board stops being
+  // written in. Everything else waits until the task is actually going to be
+  // made — the shooting gate asks for it then, when the answers exist.
+  //
+  // The rest is one press away for anybody who already knows it. Nothing is
+  // removed; it is only not demanded on the way in.
+  const [fillNow, setFillNow] = useState(false)
+  // Which stage counts as "still only an idea" — the admin's stage list, read
+  // the way every other stage rule reads it, not a constant.
+  const liveStages = useMemo(() => statuses.filter((st) => !/^deleted$/i.test(String(st.label || '').trim())), [statuses])
+  const ideaStage = statuses.find((st) => /^idea$|^ideas$|g'oya|идея/i.test(String(st.label || ''))) || liveStages[0]
+  // Where the task actually IS — a thought jotted down, or work being made.
+  // The same reading the cards use for what they say is missing, and the same
+  // one the server applies (`isIdeaStage` in routes/content.js): a form that
+  // refuses what the server would accept is a wall with nothing behind it.
+  const stageRank = useMemo(() => stageRankOf(statuses), [statuses])
+  const atIdea = form.status_id === null || form.status_id === undefined
+    || stageRank(form.status_id) === 'idea'
+  const ideaOnly = creating && !fillNow && atIdea
+
   const [show, setShow] = useState(() => ({
-    description: !!item?.description,
+    description: true,
     photo: !!item?.photo || !!item?.has_photo,
     checklist: (item?.checklist?.length || 0) > 0,
-    reference: false, // empty reference/delivery chrome hides until asked for
+    reference: true,
     delivery: false,
     script: false,
+    // ТЗ has always been on the form when you can edit it; the admin's switch
+    // decides whether it exists, not whether it hides behind a button.
+    tz: true,
     docs: (item?.documents?.length || 0) > 0,
   }))
 
+  // Admins and SMMs run the board from the full form; the crew get a compact
+  // one. Which meant nobody planning the work could see what the person doing
+  // it actually sees — including where their delivery box is. `asCrew` puts
+  // an admin in that seat for a moment, on any hat the task carries.
+  const [asCrew, setAsCrew] = useState(null)   // null | operator | editor | designer
   const canEdit = can(user, 'manage_content')
   const canMove = can(user, 'move_tasks')
   const isMine = item?.assignee_id === user.id
@@ -245,9 +523,27 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Detail fields (title, type, platforms, dates, description, photo) need
   // manage_content; the stage needs move_tasks; the assignee may always tick
   // their own checklist. The UI locks exactly what the server would reject.
-  const detailsLocked = !creating && !canEdit
+  const detailsLocked = !creating && (!canEdit || !!asCrew)
+  // What the person whose seat this is could actually change about the brief.
+  const briefEditable = canEdit && !asCrew
   const checklistLocked = detailsLocked && !isMine
   const readOnly = detailsLocked && !isMine && !canMove && !isCrew
+
+  // The hats this task actually carries, for the "see it as…" switch. Only
+  // hats somebody holds: previewing an empty seat shows nothing worth seeing.
+  const crewHats = creating ? [] : [
+    { key: 'operator', label: 'the operator', id: item?.operator_id },
+    { key: 'editor', label: 'the editor', id: item?.editor_id },
+    { key: 'designer', label: 'the designer', id: item?.designer_id },
+  ].filter((h) => h.id).map((h) => ({ ...h, name: team.find((u) => u.id === h.id)?.name || '' }))
+
+  // The shared Drive folder, if this task's channels agree on one. Two
+  // channels with two different folders have no single answer, so the box
+  // goes back to asking for the whole address.
+  const sharedFolder = (() => {
+    const set = [...new Set(form.channels.map((k) => (byKey[k]?.drive_url || '').trim()).filter(Boolean))]
+    return set.length === 1 ? set[0] : ''
+  })()
 
   const plan = typeInfo(form.type).plan
   // A post is designed, not filmed: one designer hat instead of operator+editor.
@@ -255,15 +551,53 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Does a brief field apply to this task's type — and is it demanded?
   const fOn = (k) => { const r = fieldRules?.[k]; return !!r && r.state !== 'off' && r.types.includes(form.type) }
   const fReq = (k) => { const r = fieldRules?.[k]; return !!r && r.state === 'required' && r.types.includes(form.type) }
+  // Does this type of task need somebody holding the camera? The admin's crew
+  // rule (Admin → Pipeline) decides, and /fields serves it beside the brief
+  // rules — so a text post is never asked, and a type added there starts being
+  // asked with nothing further to wire up.
+  const isFilmedType = !!fieldRules?.crew?.operator?.includes(form.type)
+  // WHERE the task sits decides what it owes. Before the shooting stage it is
+  // an idea — a title and a maybe — and owes nobody a crew, a date or a brief.
+  // From the shooting stage on it is a BOOKED shoot and owes all three; one
+  // stage further, with footage in hand, it owes an editor as well.
+  // What this piece still owes at the stage it is on — the same reading the
+  // server's walls use to refuse a move, shown BEFORE the move is attempted so
+  // nobody drags a card into a wall to find out what it wanted.
+  const gaps = useMemo(() => {
+    const probe = {
+      ...form,
+      // Only an admin picks who a task is for; everybody else is creating it
+      // for themselves, so a brand-new task must not open by telling its
+      // author it needs an owner.
+      assignees: form.assignee_ids
+        ?? (item?.assignees?.length ? item.assignees : item?.assignee_id ? [item.assignee_id] : creating ? [user.id] : []),
+      ready_at: item?.ready_at || null,
+    }
+    const g = gapsOf(probe, fieldRules?.crew, stageRank)
+    return [...g.people, ...g.dates]
+  }, [form, item, fieldRules, stageRank, creating, user.id])
+
+  const shootAt = liveStages.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))
+  const stageAt = liveStages.findIndex((s) => s.id === form.status_id)
+  // Each demand stands at the stage it is about and lands on a save that puts
+  // the card THERE. A card parked further along is not making either promise —
+  // it is a record of work that happened elsewhere, and a shoot day in its
+  // future would be a day that has been and gone.
+  const needsOperator = isFilmedType && shootAt >= 0 && stageAt === shootAt
+  const needsEditor = isFilmedType && shootAt >= 0 && stageAt === shootAt + 1
   // Crew accounts work to the shoot and maker deadlines — the release date is
   // the channel's business and is not shown to them at all. They also can't
   // move the stage freely: they see it, and mark their one milestone.
-  const crewViewer = !['admin', 'member'].includes(user.role)
-  const myHats = {
-    operator: !creating && item?.operator_id === user.id,
-    editor: !creating && item?.editor_id === user.id,
-    designer: !creating && item?.designer_id === user.id,
-  }
+  const crewViewer = !['admin', 'member'].includes(user.role) || !!asCrew
+  const myHats = asCrew
+    // Standing in their shoes: the hat being previewed is "mine", the others
+    // are not — which is exactly the shape the real holder sees.
+    ? { operator: asCrew === 'operator', editor: asCrew === 'editor', designer: asCrew === 'designer' }
+    : {
+      operator: !creating && item?.operator_id === user.id,
+      editor: !creating && item?.editor_id === user.id,
+      designer: !creating && item?.designer_id === user.id,
+    }
   // Where the task stands, so a tick shows already-done: the Shot stage and the
   // Ready stage (by sort order in the pipeline).
   const curSort = statuses.find((s) => s.id === form.status_id)?.sort ?? -1
@@ -278,11 +612,32 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // open (links can still be dropped in) and the footer Save keeps working.
   const tickMilestone = async (kind) => {
     if (busy || milestone === kind) return
+    // The two stages that produce a FILE have to produce it. Asked here so
+    // the person is standing next to the box they need to fill, rather than
+    // being refused after the fact. The shoot is exempt on purpose: footage
+    // goes over on a hard drive as often as not.
+    const NEEDS = { edited: ['ready_link', 'the cut', 'ready_file'], designed: ['design_link', 'the artwork', 'design_file'] }
+    const need = NEEDS[kind]
+    if (need && !form[need[0]] && !form[need[2]] && docs.length === 0) {
+      setShow((sh) => ({ ...sh, delivery: true }))
+      refuse(need[0], `Paste ${need[1]} before marking it done — a stage that says finished with nothing attached is one the reviewer has to chase`)
+      return
+    }
     setBusy(true); setErr('')
     try {
-      await onUpdate(item, { milestone: kind })
+      // The link rides along with the tick, so one press does both.
+      await onUpdate(item, {
+        milestone: kind,
+        ...(need && form[need[2]] ? { [need[2]]: form[need[2]] }
+          : need && form[need[0]] ? { [need[0]]: form[need[0]] } : {}),
+      })
       setMilestone(kind)
-      toast(kind === 'shot' ? 'Marked as shot — synced' : kind === 'edited' ? 'Marked as edited — synced' : 'Marked as designed — synced')
+      // The crew's own finish line. An editor may never see the piece
+      // published — that happens days later, on somebody else's screen — so
+      // celebrating only the publish celebrates only the planner. Handing
+      // over the cut IS the achievement, for the person who cut it.
+      rewardFinish()
+      toast(kind === 'shot' ? tx('Marked as shot — synced') : kind === 'edited' ? tx('Marked as edited — synced') : tx('Marked as designed — synced'))
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
@@ -305,38 +660,218 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // a link they could see was there. The type only decides which EMPTY
   // fields are worth offering.
   const DELIVERY = [
-    { col: 'shot_link', label: 'Recording', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, kind: 'shot', mine: myHats.operator, present: !!item?.operator_id, offer: !isDesign },
-    { col: 'ready_link', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, kind: 'edit', mine: myHats.editor, present: !!item?.editor_id, offer: !isDesign },
-    { col: 'design_link', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, kind: 'design', mine: myHats.designer, present: !!item?.designer_id, offer: true },
+    { col: 'shot_link', file: 'shot_file', label: 'Recording', sub: 'the operator’s raw material — the editor’s source', icon: Clapperboard, kind: 'shot', mine: myHats.operator, present: !!item?.operator_id, offer: true },
+    { col: 'ready_link', file: 'ready_file', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, kind: 'edit', mine: myHats.editor, present: !!item?.editor_id, offer: true },
+    { col: 'design_link', file: 'design_file', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, kind: 'design', mine: myHats.designer, present: !!item?.designer_id, offer: true },
   ]
   const deliveryFields = DELIVERY.filter((f) => (form[f.col] ? true : (crewViewer
     ? (f.offer && (f.mine || f.present))
     : (f.offer && canEdit && show.delivery))))
+
+  // Which page the sheet opens on, decided once. A crew member opens this to
+  // tick their milestone and drop their link, and both live on the second
+  // page — landing on the first one put the one control they came for behind
+  // a tab they had no reason to press. Everybody else opens on the brief,
+  // which is what the task IS. Only the first paint chooses; after that the
+  // strip is theirs.
+  const chosePage = useRef(false)
+  const wantsWork = crewViewer || deliveryFields.length > 0
+  useEffect(() => {
+    if (chosePage.current || !phone || pages.length < 2) return
+    chosePage.current = true
+    if (wantsWork && pages.some((x) => x.key === 'review')) setSec('review')
+  }, [phone, pages, wantsWork])
   // The files themselves, one press away for anyone who can open the task.
-  const deliveryLinks = DELIVERY.filter((f) => form[f.col] && /^https?:\/\//i.test(form[f.col]))
+  // A delivery made through a channel's shared folder is stored as the folder,
+  // a separator and the file the person named — "…/folders/ABC · 1-3". It is
+  // one fact and reads as one, but pasted whole into an href it 404s, so the
+  // address is taken from it rather than assumed to BE it.
+  // How full everybody's day already is, for the three pickers. The cap
+  // refuses an over-assignment at save time, which is correct and, on its
+  // own, rude: a content head picks a name out of nine and is then told that
+  // person's Tuesday was full. They could not have known — it was a list of
+  // names. So the same arithmetic is fetched up front and shown ON the names.
+  const [dayLoad, setDayLoad] = useState({})
+  const loadDays = `${form.recording_date || ''}|${form.edit_ready_date || ''}|${form.design_ready_date || ''}`
+  useEffect(() => {
+    const want = [
+      ['operator_id', form.recording_date],
+      ['editor_id', form.edit_ready_date],
+      ['designer_id', form.design_ready_date],
+    ].filter(([, d]) => d)
+    if (!want.length) { setDayLoad({}); return }
+    let alive = true
+    Promise.all(want.map(([hat, day]) =>
+      api.get(`/content/load?hat=${hat}&day=${day}`).then((r) => [hat, r]).catch(() => [hat, {}])))
+      .then((pairs) => { if (alive) setDayLoad(Object.fromEntries(pairs)) })
+    return () => { alive = false }
+  }, [loadDays]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const deliveryLinks = DELIVERY.map((f) => ({ ...f, href: deliveryHref(form[f.col]), note: splitDelivery(form[f.col]).note }))
+    .filter((f) => f.href)
   const hasRef = !!(form.reference_text || form.reference_links.length > 0 || form.photo || form.photo_thumb)
 
   // ---- Review / Pravki (SMM & admin, when a task is waiting at Ready) ----
   const readyStatus = statuses.find((s) => /^ready$/i.test(s.label))
   const finalStatusObj = statuses.find((s) => s.is_final)
   const atReady = !!item && !!readyStatus && item.status_id === readyStatus.id
+  // ---- what it got ----
+  // Only worth asking once the piece is out: views on something unpublished is
+  // a box that can only be answered wrongly. Whoever it is FOR may write the
+  // number, and so may an admin — the maker is the one who opens the app and
+  // reads the count off it.
+  const isOut = !!item?.done_at || (!!finalStatusObj && item?.status_id === finalStatusObj.id)
+  // Asked for from Ready onwards, so the link is already there when somebody
+  // goes to move the card to the last stage rather than being a wall they
+  // meet with nothing to paste.
+  // …and a refused one-tap finish opens it wherever the piece stands, since
+  // that is exactly the moment somebody was told to paste one.
+  const nearlyOut = isOut || atReady || !!item?.needs_post_link
+  // Which pay tier this piece's skip rate puts it in, said where the number is
+  // typed. A rate nobody can act on is a number nobody bothers to enter.
+  const tiers = fieldRules?.skip_tiers || []
+  const tierHere = form.skip_rate === '' ? null
+    : tiers.find((t) => Number(form.skip_rate) >= t.min && Number(form.skip_rate) <= t.max) || null
+  const tierNote = tiers.length === 0
+    ? tx('Counts towards the maker’s month.')
+    : tierHere
+      ? tx('Tier {name} — {film} for filming, {edit} for the edit.', {
+        name: tierHere.name,
+        film: Math.round(tierHere.per_film).toLocaleString('en-US').replace(/,/g, ' '),
+        edit: Math.round(tierHere.per_edit).toLocaleString('en-US').replace(/,/g, ' '),
+      })
+      : tx('Outside every tier the admin has set.')
+  const madeIt = !!item && [item.assignee_id, ...(item.assignees || [])].filter(Boolean).includes(user.id)
+  const canCount = !!item && (user.role === 'admin' || madeIt)
+  const showViews = !!item && (isOut || item.views !== null && item.views !== undefined)
   const onChannel = user.role === 'admin' || (item?.channels || []).some((ch) => (user.departments || []).includes(ch))
   const canReview = (user.role === 'admin' || can(user, 'review_publish')) && onChannel && !!finalStatusObj
   const canRequest = (user.role === 'admin' || can(user, 'request_changes')) && onChannel
   const pravkiTargets = [
-    item?.editor_id && { key: 'editor', label: 'Editor' },
+    item?.editor_id && { key: 'editor', label: tx('Editor') },
     item?.operator_id && { key: 'operator', label: 'Operator · re-shoot' },
-    item?.designer_id && { key: 'designer', label: 'Designer' },
+    item?.designer_id && { key: 'designer', label: tx('Designer') },
   ].filter(Boolean)
-  if (pravkiTargets.length === 0) pravkiTargets.push({ key: 'editor', label: 'Editor' })
-  const [pravki, setPravki] = useState(null) // null | { note, target }
+  if (pravkiTargets.length === 0) pravkiTargets.push({ key: 'editor', label: tx('Editor') })
+  // ---- promised days: asking, and answering ----
+  // Every ask ever made on this task, newest first — open ones waiting on an
+  // admin, and answered ones kept as the record of why a day moved.
+  const [dateReqs, setDateReqs] = useState(() => item?.date_requests || [])
+  const [asking, setAsking] = useState(null)  // null | { field, to, reason }
+  const isAdmin = user.role === 'admin'
+  // Promised days are the admin's to move. For everyone else the picker is
+  // read-only and the ask is the way through.
+  const datesLocked = !isAdmin
+  // Only the people who could actually make the ask are offered it. A crew
+  // account has neither right, and a button that answers 403 is worse than no
+  // button — it reads as the app being broken rather than as "not your call".
+  const canAsk = !isAdmin && (can(user, 'manage_content') || can(user, 'move_tasks'))
+  const confirmSet = (field, day) => window.confirm(
+    `${tx('Promise {day} for {date}?', { day: promisedDay(field), date: day })}\n\n`
+    + tx('Everything on the board measures itself against this day, so once it is set only an admin can move it — and only when somebody says why.')
+    + `\n\n${tx('Set it?')}`)
+  const askToMove = (field) => {
+    setErr('')
+    setAsking({ field, to: form[field] || '', reason: '' })
+  }
+  const sendAsk = async () => {
+    if (!asking || busy) return
+    setBusy(true); setErr('')
+    try {
+      const made = await api.post(`/content/${item.id}/date-requests`, {
+        field: asking.field, to_date: asking.to || null, reason: asking.reason.trim(),
+      })
+      setDateReqs((prev) => [made, ...prev])
+      setAsking(null)
+      toast(tx('Asked — the admins have it'))
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const decide = async (reqId, approve) => {
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      const out = await api.post(`/content/date-requests/${reqId}/decide`, { approve })
+      setDateReqs((prev) => prev.map((r) => (r.id === reqId ? out.request : r)))
+      if (approve && out.task) setForm((f) => ({ ...f, [out.request.field]: out.task[out.request.field] || '' }))
+      toast(approve ? 'Moved — everyone on the task hears it' : 'Kept where it was — they hear why')
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  // Take the person to the field the refusal is about. The show-flags are set
+  // in the same breath, so the section is open by the time this runs.
+  useEffect(() => {
+    if (!badField) return
+    const el = document.querySelector(`[data-field="${badField}"]`)
+    if (!el) return
+    // On a phone the field may be on a page that is not showing. Turn to it
+    // first, then scroll — an element inside `display: none` cannot be
+    // scrolled to, and the refusal would have pointed at nothing.
+    const page = tabOf(el.closest('.cm-sec')?.dataset.sec)
+    if (page) setSec(page)
+    const go = () => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const focusable = el.querySelector('input, textarea, select')
+      if (focusable) focusable.focus({ preventScroll: true })
+    }
+    if (page) requestAnimationFrame(go)
+    else go()
+  }, [badField])
+
+  // Raising a hand. The crew could always deliver late; they had no way to say
+  // so in advance, so the first anybody knew was the deadline passing.
+  const [flags, setFlags] = useState(() => item?.flags || [])
+  const [raising, setRaising] = useState(null)  // null | { kind, reason }
+  const openFlags = flags.filter((f) => !f.cleared_at)
+  const onThisTask = !creating && !!item && (
+    [item.operator_id, item.editor_id, item.designer_id, item.assignee_id].includes(user.id) ||
+    (item.assignees || []).includes(user.id))
+  const canRaise = !creating && (onThisTask || canEdit || canMove)
+  const raiseHand = async () => {
+    if (!raising || busy) return
+    setBusy(true); setErr('')
+    try {
+      const made = await api.post(`/content/${item.id}/flags`, { kind: raising.kind, reason: raising.reason.trim() })
+      setFlags((prev) => [made, ...prev])
+      setRaising(null)
+      toast(tx('Said early — the people who plan have it'))
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const lowerHand = async (id) => {
+    setBusy(true); setErr('')
+    try {
+      const out = await api.post(`/content/flags/${id}/clear`, {})
+      setFlags((prev) => prev.map((f) => (f.id === id ? out : f)))
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  const [pravki, setPravki] = useState(null) // null | { note, target, photo, photo_thumb }
+  // The screenshot that shows what is wrong, pasted into the note itself.
+  const pravkiPaste = (e) => {
+    const shot = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'))
+    if (!shot) return
+    e.preventDefault()
+    e.stopPropagation()
+    const file = shot.getAsFile()
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) { setErr('Image is too large — keep it under 15 MB'); return }
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        setPravki((p) => (p ? { ...p, photo: scaleImage(img, 1600, 0.85), photo_thumb: scaleImage(img, 320, 0.75) } : p))
+        setErr('')
+      } catch { setErr('Could not read that image') } finally { URL.revokeObjectURL(url) }
+    }
+    img.onerror = () => { setErr('Could not read that image'); URL.revokeObjectURL(url) }
+    img.src = url
+  }
   // The finished files, ready to open right in the Review row — reviewing
   // means watching the work, not hunting for its link further down the modal.
   const reviewLinks = [
-    { url: form.ready_link, label: '▶ Watch the cut' },
-    { url: form.design_link, label: '🎨 See the design' },
-    { url: form.shot_link, label: '🎬 Raw footage' },
-  ].filter((l) => l.url && /^https?:\/\//i.test(l.url))
+    { value: form.ready_link, label: '▶ Watch the cut' },
+    { value: form.design_link, label: '🎨 See the design' },
+    { value: form.shot_link, label: '🎬 Raw footage' },
+  ].map((l) => ({ ...l, url: deliveryHref(l.value), note: splitDelivery(l.value).note })).filter((l) => l.url)
 
   // Admin's shortcut: a brand-new department without leaving the task.
   // The icon picks itself from the name (Instagram/Telegram/YouTube/Target…).
@@ -382,8 +917,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
     return canvas.toDataURL('image/jpeg', quality)
   }
-  const pickPhoto = (e) => {
-    const file = e.target.files?.[0]
+  const takePhoto = (file, how = 'pasted') => {
     if (!file) return
     if (file.size > 15 * 1024 * 1024) { setErr('Image is too large — keep it under 15 MB'); return }
     const url = URL.createObjectURL(file)
@@ -392,11 +926,60 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       try {
         setForm((f) => ({ ...f, photo: scaleImage(img, 1600, 0.85), photo_thumb: scaleImage(img, 320, 0.75) }))
         setErr('')
+        toast(how === 'pasted' ? 'Screenshot pasted in' : 'Photo attached')
       } catch { setErr('Could not read that image') } finally { URL.revokeObjectURL(url) }
     }
     img.onerror = () => { setErr('Could not read that image'); URL.revokeObjectURL(url) }
     img.src = url
   }
+  const pickPhoto = (e) => takePhoto(e.target.files?.[0], 'picked')
+  // The same frame, picked instead of pasted. A phone has no clipboard you can
+  // put a screenshot on and no Ctrl to press, so on a phone this was the only
+  // way to send back "look at THIS bit" — and it did not exist.
+  const pickPravkiShot = (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) { setErr('Image is too large — keep it under 15 MB'); return }
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        setPravki((pv) => (pv ? { ...pv, photo: scaleImage(img, 1600, 0.85), photo_thumb: scaleImage(img, 320, 0.75) } : pv))
+        setErr('')
+      } catch { setErr('Could not read that image') } finally { URL.revokeObjectURL(url) }
+    }
+    img.onerror = () => { setErr('Could not read that image'); URL.revokeObjectURL(url) }
+    img.src = url
+  }
+  // A reference is almost always a screenshot that is already on the
+  // clipboard — Ctrl+V drops it straight in, so nobody has to save it to disk
+  // first just to pick it back out of a file dialog. Anywhere in the task
+  // (or in a Pravki note) counts, as long as the cursor is not in a field
+  // where a paste means text.
+  const pasteImageFrom = (e) => {
+    const items = [...(e.clipboardData?.items || [])]
+    const shot = items.find((i) => i.kind === 'file' && i.type.startsWith('image/'))
+    if (!shot) return false
+    e.preventDefault()
+    takePhoto(shot.getAsFile())
+    return true
+  }
+  useEffect(() => {
+    if (!canEdit) return undefined
+    const onPaste = (e) => {
+      const el = e.target
+      // A paste into a text box is a paste of text — unless what is on the
+      // clipboard is an image, which no text box can hold anyway.
+      if (!e.clipboardData?.items) return
+      const hasImage = [...e.clipboardData.items].some((i) => i.kind === 'file' && i.type.startsWith('image/'))
+      if (!hasImage) return
+      if (el?.tagName === 'INPUT' && el.type !== 'text') return
+      pasteImageFrom(e)
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [canEdit]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const addCheck = () => {
     if (!subText.trim()) return
@@ -415,31 +998,106 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     if (busy || !form.title.trim()) return // guard against double-submit
     // The admin's required brief fields gate the save — with the section
     // opened so the cursor lands where the answer goes.
-    if (creating || canEdit) {
+    // ---- the admin is not made to fill in a form ----
+    // Every check below stops WORK going out half-briefed, which is right for
+    // the people doing the work and wrong for the person who set the rules.
+    // They are usually correcting the board at speed — a name on a card
+    // somebody phoned in, a date, four pieces dragged out of the wrong stage
+    // — and being asked for a reference photo each time is how a board stops
+    // being kept up to date. The server agrees with this; see `unfettered` in
+    // server/routes/content.js.
+    if ((creating || canEdit) && !isAdmin) {
+      // Booking a shoot is a promise about a day that passes whether or not a
+      // camera, a crew and a brief turn up — so the whole booking is asked at
+      // the stage where the booking happens, and nothing is asked of an idea.
+      if (needsOperator) {
+        const refReady = form.reference_links.length > 0 || !!form.photo || docs.length > 0
+          || !!form.shot_link || hasLink(form.reference_text) || isSentence(form.script)
+        const gap = [
+          [!form.operator_id, 'Pick who is filming this — a shoot nobody is holding is nobody’s job', 'operator_id'],
+          [!form.recording_date, 'Filmed work is booked with all three dates — the shoot day is missing', 'recording_date'],
+          [!form.edit_ready_date, 'Filmed work is booked with all three dates — the day the cut is due is missing', 'edit_ready_date'],
+          [!form.release_date, 'Filmed work is booked with all three dates — the release day is missing', 'release_date'],
+          [!refReady, 'Booking the shoot needs a brief ready — paste a reference link or TZ, or attach the photo it refers to', 'reference'],
+        ].find(([bad]) => bad)
+        if (gap) { setShow((s) => ({ ...s, reference: true, script: true })); refuse(gap[2], gap[1]); return }
+      }
+      if (needsEditor && !form.editor_id) {
+        refuse('editor_id', 'Name who cuts this — footage with no editor waiting is footage nobody is cutting')
+        return
+      }
+      // An idea owes its name and, if the admin asks for one, its description.
+      // The rest of the brief is asked when the piece leaves the idea stage —
+      // demanding a script of a thought is how ideas stop being written down.
+      const asked = atIdea ? ['description'] : ['format', 'rubrika', 'script', 'tz', 'description', 'reference']
       const missing = [
         ['format', 'Format', form.format],
         ['rubrika', 'Rubrika', form.rubrika],
         ['script', 'Script', form.script.trim()],
+        ['tz', 'ТЗ', form.tz.trim()],
         ['description', 'Description', form.description.trim()],
         ['reference', 'Reference', form.reference_text || form.reference_links.length > 0 || form.photo],
-      ].find(([k, , v]) => fReq(k) && !v)
+      ].find(([k, , v]) => asked.includes(k) && fReq(k) && !v)
       if (missing) {
-        setShow((s) => ({ ...s, script: true, reference: true, description: true }))
-        setErr(`«${missing[1]}» is required for this type of task`)
+        setShow((s) => ({ ...s, script: true, tz: true, reference: true, description: true }))
+        refuse(missing[0], `«${missing[1]}» is required for this type of task`)
         return
+      }
+      // Filled is not answered. A demanded field holding "." or "N/A" is
+      // caught here so the message arrives beside the field, rather than as a
+      // refusal after the save has apparently been accepted.
+      const thin = [
+        ['format', 'Format', form.format, hasSubstance],
+        ['rubrika', 'Rubrika', form.rubrika, hasSubstance],
+        ['script', 'Script', form.script.trim(), isSentence],
+        ['tz', 'ТЗ', form.tz.trim(), isSentence],
+        ['description', 'Description', form.description.trim(), hasSubstance],
+      ].find(([k, , v, real]) => asked.includes(k) && fReq(k) && v && !real(v))
+      if (thin) {
+        setShow((s) => ({ ...s, script: true, description: true }))
+        refuse(thin[0], `«${thin[1]}» needs a real answer — “${thin[2]}” is a placeholder, not a brief`)
+        return
+      }
+      // A reference points somewhere. Text on its own has to carry a link;
+      // links, a photo or an attached document already do.
+      // A reference jotted as "like that clip Dilnoza sent" is a note to self,
+      // not a brief anybody films from. It has to point somewhere from the
+      // working stages on, where a crew actually reads it.
+      const refCarried = form.reference_links.length > 0 || !!form.photo
+      if (form.reference_text && !refCarried && !atIdea) {
+        if (!hasSubstance(form.reference_text)) {
+          setShow((s) => ({ ...s, reference: true }))
+          refuse('reference', `«Reference» needs a real answer — “${form.reference_text.trim()}” is a placeholder, not a reference`)
+          return
+        }
+        if (!hasLink(form.reference_text)) {
+          setShow((s) => ({ ...s, reference: true }))
+          refuse('reference', '«Reference» has to point somewhere — paste a link, or attach the photo or document it refers to')
+          return
+        }
       }
     }
     setBusy(true)
     setErr('')
+    setBadField('')
     setConflict(null)
     let payload
     if (creating || canEdit) {
       payload = {
         ...form,
         title: form.title.trim(),
+        // A named file wins over the stored link: it is what was just typed.
+        ...(form.ready_file ? { ready_file: form.ready_file.trim() } : {}),
+        ...(form.shot_file ? { shot_file: form.shot_file.trim() } : {}),
+        ...(form.design_file ? { design_file: form.design_file.trim() } : {}),
         format: form.format || null,
         rubrika: form.rubrika.trim() || null,
         script: form.script.trim() || null,
+        tz: form.tz.trim() || null,
+        // Empty means "nobody has counted yet"; the server keeps null and 0
+        // apart on purpose, so the box does too.
+        ...(showViews && canCount ? { views: form.views.trim() === '' ? null : Number(form.views) } : {}),
+        ...(showViews && canCount ? { skip_rate: form.skip_rate.trim() === '' ? null : Number(form.skip_rate) } : {}),
         recording_date: form.recording_date || null,
         recording_time: form.recording_time || null,
         recording_end: form.recording_end || null,
@@ -449,6 +1107,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         release_time: form.release_time || null,
         ...(force ? { force: true } : {}),
       }
+      // The spread above carries EVERY box the sheet holds, including the ones
+      // this account may not write — and a save that mentions a field you may
+      // not set is refused whole, even when the value is exactly what is
+      // already stored. That refusal landed on the reviewer pasting a
+      // published link: they were told they may not record views they never
+      // typed. What this account cannot write, it does not send.
+      if (!(showViews && canCount)) { delete payload.views; delete payload.skip_rate }
+      if (!canEdit) delete payload.face_id
+      if (!canEdit && !can(user, 'review_publish')) delete payload.post_link
       // Don't re-upload an unchanged photo — it can be hundreds of KB.
       if (!creating && form.photo === initialPhoto) {
         delete payload.photo
@@ -461,9 +1128,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       if (crewViewer) {
         // The crew move their work with a milestone tick and drop their own
         // stage's file link — never a raw stage change, never another's link.
-        if (myHats.operator && (form.shot_link || '') !== (item.shot_link || '')) payload.shot_link = form.shot_link.trim()
-        if (myHats.editor && (form.ready_link || '') !== (item.ready_link || '')) payload.ready_link = form.ready_link.trim()
-        if (myHats.designer && (form.design_link || '') !== (item.design_link || '')) payload.design_link = form.design_link.trim()
+        for (const [hat, col, file] of [
+          [myHats.operator, 'shot_link', 'shot_file'],
+          [myHats.editor, 'ready_link', 'ready_file'],
+          [myHats.designer, 'design_link', 'design_file'],
+        ]) {
+          if (!hat) continue
+          if (form[file]) payload[file] = form[file].trim()
+          else if ((form[col] || '') !== (item[col] || '')) payload[col] = form[col].trim()
+        }
       } else if (canMove && form.status_id !== item.status_id) {
         payload.status_id = form.status_id
       }
@@ -472,63 +1145,73 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     try {
       if (creating) await onCreate(payload)
       else await onUpdate(item, payload)
+      // Reaching the last stage is the moment a piece is FINISHED, however it
+      // was reached — the stage chips, the done tick, or the Publish button.
+      if (!creating && finalStatusObj && payload.status_id === finalStatusObj.id
+          && item.status_id !== finalStatusObj.id) rewardFinish()
       // Learn from the confirmed save: these picks float up next time.
       bumpPick(payload.operator_id, payload.editor_id, payload.designer_id, ...(payload.assignee_ids || []))
       toast(creating ? 'Task added — synced' : 'Task saved — synced')
       onClose()
     } catch (e) {
       if (e.status === 409 && e.data) setConflict(e.data)
-      else setErr(e.message)
+      // A promised day was refused. Rather than leave the person staring at
+      // "only an admin can move it", the ask opens right here with the day
+      // they wanted already in it — the refusal and the way through are the
+      // same gesture.
+      else if (e.status === 403 && e.data?.ask_to_move) {
+        const { field, to } = e.data.ask_to_move
+        setAsking({ field, to: to || '', reason: '' })
+        setErr(`${e.message} The ask is below — say what happened and it goes to them.`)
+      } else setErr(e.message)
     } finally { setBusy(false) }
   }
   const del = async () => {
     if (!confirm('Delete this task?')) return
-    try { await onDelete(item); toast('Task deleted'); onClose() } catch (e) { setErr(e.message) }
+    try { await onDelete(item); toast(tx('Task deleted')); onClose() } catch (e) { setErr(e.message) }
   }
   // One press spawns the recurring piece: brief, crew and platforms ride
   // along; dates, stage and delivery start clean.
+  // The server makes the copy, because the name has to be the next free
+  // "Duplicate N" across every copy that exists and two people pressing this
+  // at the same moment must not both get Duplicate 1.
   const duplicate = async () => {
     if (busy) return
     setBusy(true); setErr('')
     try {
-      await api.post('/content', {
-        title: `${form.title.trim()} (copy)`,
-        channels: form.channels, type: form.type,
-        description: form.description,
-        checklist: form.checklist.map((c) => (typeof c === 'object' ? { ...c, done: false } : c)),
-        reference_text: form.reference_text || null, reference_links: form.reference_links,
-        format: form.format || null, rubrika: form.rubrika.trim() || null, script: form.script.trim() || null,
-        operator_id: form.operator_id, editor_id: form.editor_id, designer_id: form.designer_id,
-        reviewer_ids: form.reviewer_ids,
-        campaign_id: form.campaign_id,
-        ...(user.role === 'admin' && form.assignee_ids ? { assignee_ids: form.assignee_ids } : {}),
-      })
-      toast('Duplicated — brief kept, dates cleared')
-      onClose()
+      const copy = await api.post(`/content/${item.id}/duplicate`)
+      toast(tx('Duplicated as {name}', { name: copy.title }))
+      // Open the copy. It is the thing you asked for; you should be looking
+      // at it rather than at a message saying it exists somewhere.
+      onClose(copy)
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   // A task URL anyone on the team can open — pasteable into any chat.
   const copyLink = () => {
-    const url = `${window.location.origin}/todo?task=${item.id}`
+    const url = `${window.location.origin}/brief?task=${item.id}`
     navigator.clipboard?.writeText(url)
-      .then(() => toast('Link copied — paste it anywhere'))
+      .then(() => toast(tx('Link copied — paste it anywhere')))
       .catch(() => toast(url, 'err'))
   }
   // The reviewer's release: move Ready → Published.
   const publish = async () => {
     if (busy || !finalStatusObj) return
     setBusy(true); setErr('')
-    try { await onUpdate(item, { status_id: finalStatusObj.id }); toast('Published — synced'); onClose() }
-    catch (e) { setErr(e.message) } finally { setBusy(false) }
+    try { await onUpdate(item, { status_id: finalStatusObj.id }); rewardFinish(); toast(tx('Published — synced')); onClose() }
+    catch (e) { if (e?.data?.needs) refuse(e.data.needs, e.message); else setErr(e.message) } finally { setBusy(false) }
   }
   // Request changes (Pravki): one note, sent back to the chosen crew stage.
   const submitPravki = async () => {
     if (busy || !pravki?.note.trim()) return
     setBusy(true); setErr('')
     try {
-      await api.post(`/content/${item.id}/revisions`, { note: pravki.note.trim(), target: pravki.target })
+      await api.post(`/content/${item.id}/revisions`, {
+        note: pravki.note.trim(), target: pravki.target,
+        photo: pravki.photo || null, photo_thumb: pravki.photo_thumb || null,
+        ...(pravki.clip ? { voice: pravki.clip.data, voice_secs: pravki.clip.secs } : {}),
+      })
       await onUpdate(item, {}) // pull the moved-back row into the parent list
-      toast('Sent back to the crew — synced')
+      toast(tx('Sent back to the crew — synced'))
       onClose()
     } catch (e) { setErr(e.message); setBusy(false) }
   }
@@ -536,30 +1219,112 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   return (
     <Modal
       wide
-      title={creating ? 'New task' : 'Task'}
-      onClose={onClose}
+      title={creating ? tx('New task') : tx('Task')}
+      onClose={tryClose}
+      bodyRef={bodyRef}
+      bodyClass={shownPages.length > 1 ? 'cm-paged' : ''}
+      tall={shownPages.length > 1}
+      subhead={shownPages.length > 1 || hiddenCount > 0 ? (
+        <div className="cm-pages" role="tablist">
+          {shownPages.map((x) => (
+            <button key={x.key} type="button" role="tab" aria-selected={sec === x.key}
+              className={'cm-page-tab' + (sec === x.key ? ' on' : '')}
+              onClick={() => { setSec(x.key); bodyRef.current?.scrollTo({ top: 0 }) }}>
+              {/* The same page is "Review" to whoever signs the work off and
+                  "Your part" to whoever does it — it holds the review buttons,
+                  the revision notes, the finished files and the crew's own
+                  tick, and which of those you are here for depends on who you
+                  are. */}
+              {x.icon && <x.icon size={13} className="cm-tab-ico" />}
+              {tx(x.key === 'review' && crewViewer ? 'Your part' : x.label)}
+            </button>
+          ))}
+          {hiddenCount > 0 && (
+            <button type="button" className="cm-page-more" onClick={() => setShowAll(true)}
+              data-tip={tx('The parts nobody has filled in yet')}>
+              <Plus size={13} /> {tx('Add details')}
+            </button>
+          )}
+        </div>
+      ) : null}
       footer={<>
-        {!creating && canEdit && <button className="btn btn-danger" onClick={del}><Trash2 size={15} /> Delete</button>}
+        {/* On a phone these five put three rows of secondary buttons under the
+            form — 290px of a 790px sheet spent on things you are mostly not
+            doing. Behind one button they are still one tap away, and Save gets
+            the room instead. */}
+        {phone && !creating && (
+          <button type="button" className={'btn btn-ghost btn-icon cm-more-btn' + (tools ? ' on' : '')}
+            onClick={() => setTools((v) => !v)} aria-label={tx('More actions')} aria-expanded={tools}>
+            <MoreHorizontal size={18} />
+          </button>
+        )}
+        <div className={'cm-tools' + (phone ? ' cm-tools-pop' : '') + (tools ? ' open' : '')}
+          onClick={() => phone && setTools(false)}>
+        {!creating && canEdit && <button className="btn btn-danger" onClick={del}><Trash2 size={15} />{' '}{tx("Delete")}</button>}
         {!creating && canEdit && !crewViewer && (
-          <button className="btn btn-ghost" onClick={duplicate} disabled={busy}
-            data-tip="A fresh copy: brief, crew and platforms kept — dates and stage cleared">
-            <CopyPlus size={15} /> Duplicate
+          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')} onClick={duplicate} disabled={busy}
+            data-tip={tx("A fresh copy: brief, crew and platforms kept — dates and stage cleared")}
+            aria-label={t('task.duplicate')}>
+            <CopyPlus size={15} />{phone ? <> {t('task.duplicate')}</> : null}
           </button>
         )}
         {!creating && (
-          <button className="btn btn-ghost btn-icon" onClick={copyLink} data-tip="Copy a link to this task" aria-label="Copy link">
-            <Link2 size={15} />
+          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')} onClick={copyLink}
+            data-tip={tx("Copy a link to this task")} aria-label={tx("Copy link")}>
+            {/* In the footer it is an icon among icons and the tooltip names
+                it. In the menu there are no tooltips and no neighbours to
+                explain it, so it says what it is. */}
+            <Link2 size={15} />{phone ? <> {tx('Copy link')}</> : null}
           </button>
         )}
-        <div style={{ flex: 1 }} />
-        <button className="btn" onClick={onClose}>Cancel</button>
+        {/* Standing where the crew stand. The people who plan the work ran the
+            board from a form the people doing it never see — including where
+            their delivery box is and what their tick actually asks for. */}
+        {!creating && ['admin', 'member'].includes(user.role) && crewHats.length > 0 && (
+          asCrew ? (
+            <button className="btn btn-ghost" onClick={() => setAsCrew(null)}>
+              <Eye size={15} /> {tx('Back to the full task')}
+            </button>
+          ) : (
+            <span className="crew-peek">
+              <Eye size={15} />
+              <select className="select" value="" data-tip={tx("See this task the way the person doing it sees it")}
+                onChange={(e) => e.target.value && setAsCrew(e.target.value)}>
+                <option value="">{tx("See it as…")}</option>
+                {crewHats.map((h) => (
+                  <option key={h.key} value={h.key}>{h.label}{h.name ? ` · ${h.name.split(' ')[0]}` : ''}</option>
+                ))}
+              </select>
+            </span>
+          )
+        )}
+        {canRaise && !raising && openFlags.length === 0 && (
+          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')}
+            onClick={() => setRaising({ kind: 'at_risk', reason: '' })}
+            data-tip={tx("Say early that this is in trouble")} aria-label={tx('Raise a hand')}>
+            <Hand size={15} />{phone ? <> {tx('Raise a hand')}</> : null}
+          </button>
+        )}
+        </div>
+        {/* The gap is a line break on a phone so a row of tools cannot shove
+            Save off the screen. With the tools behind one button there is
+            nothing left to break for, and the row fits on one line. */}
+        <span className={'foot-gap' + (phone ? ' foot-gap-tight' : '')} />
+        <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
         {!readOnly && (
           <button className="btn btn-primary" onClick={() => save()} disabled={busy || !form.title.trim()}>
-            {busy ? 'Saving…' : creating ? 'Create task' : 'Save changes'}
+            {busy ? t('task.saving') : creating ? t('task.create') : t('task.savechanges')}
           </button>
         )}
       </>}
     >
+      {asCrew && (
+        <div className="as-crew-note">
+          <Eye size={14} />
+          You are looking at this the way {crewHats.find((h) => h.key === asCrew)?.name || asCrew} sees it.
+          Their ticks and their box, nobody else’s.
+        </div>
+      )}
       {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
 
       {/* Scheduling warning: the operator is double-booked or off the clock.
@@ -580,13 +1345,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           <div className="conflict-actions">
             {conflict.can_force ? (
               <>
-                <span className="stat-sub">You’re the admin — you can book it anyway.</span>
+                <span className="stat-sub">{tx("You’re the admin — you can book it anyway.")}</span>
                 <button type="button" className="btn btn-sm btn-danger" disabled={busy} onClick={() => save(true)}>
                   Schedule anyway
                 </button>
               </>
             ) : (
-              <span className="stat-sub">Pick another time — only an admin can double-book an operator.</span>
+              <span className="stat-sub">{tx("Pick another time — only an admin can double-book an operator.")}</span>
             )}
           </div>
         </div>
@@ -600,64 +1365,220 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         value={form.title}
         onChange={(e) => setForm({ ...form, title: e.target.value })}
         onKeyDown={(e) => { if (e.key === 'Enter') save() }}
-        placeholder="Task title"
+        placeholder={tx("Task title")}
       />
+
+      <div className={secCls('brief')} data-sec="brief">
+      {!crewViewer && (<>
+      {/* What is it? The type binds the task to each platform's plan. */}
+      <div className="cm-row">
+        <span className="cm-key">{t('task.type')}</span>
+        {/* Six chips wrapping onto two rows to say one word. It is a choice
+            from a fixed short list that changes rarely — which is a dropdown,
+            and gives the height back to the form. */}
+        <select className="select cm-pick" value={form.type} disabled={detailsLocked}
+          onChange={(e) => setForm({ ...form, type: e.target.value })}>
+          {CONTENT_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
+      </div>
+      {(fOn('format') || fOn('rubrika')) && (
+        <div className="cm-row">
+          <span className="cm-key">{t('task.brief')}</span>
+          {/* Own classes on purpose: these are brief fields, not crew hats —
+              nothing that counts crew-fields may count these. */}
+          <div className="brief-fields">
+            {fOn('format') && (
+              <label className={'brief-field' + (badField === 'format' ? ' field-bad' : '')} data-field="format">
+                <span className="brief-label"><Layers size={12} /> Format {fReq('format')
+                  ? <b className="req-star" data-tip={tx("The admin made this required")}>*</b>
+                  : <span className="crew-opt">{tx("optional")}</span>}</span>
+                <select className="select" disabled={detailsLocked} value={form.format}
+                  onChange={(e) => setForm({ ...form, format: e.target.value })}>
+                  <option value="">— pick a format —</option>
+                  {[...new Set([...(fieldRules.format.options || []), ...(form.format ? [form.format] : [])])]
+                    .map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </label>
+            )}
+            {fOn('rubrika') && (
+              <label className={'brief-field' + (badField === 'rubrika' ? ' field-bad' : '')} data-field="rubrika">
+                <span className="brief-label"><Hash size={12} /> Rubrika {fReq('rubrika')
+                  ? <b className="req-star" data-tip={tx("The admin made this required")}>*</b>
+                  : <span className="crew-opt">{tx("optional")}</span>}</span>
+                {(fieldRules.rubrika.options || []).length > 0 ? (
+                  <select className="select" disabled={detailsLocked} value={form.rubrika}
+                    onChange={(e) => setForm({ ...form, rubrika: e.target.value })}>
+                    <option value="">— pick a rubrika —</option>
+                    {[...new Set([...(fieldRules.rubrika.options || []), ...(form.rubrika ? [form.rubrika] : [])])]
+                      .map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input className="input" disabled={detailsLocked} placeholder={tx("e.g. SU events")}
+                    value={form.rubrika} onChange={(e) => setForm({ ...form, rubrika: e.target.value })} />
+                )}
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+      </>)}
 
       {/* Stage — the pipeline, in its own colours */}
       <div className="cm-row">
-        <span className="cm-key">Stage</span>
-        <div className="stage-chips">
-          {statuses.map((s) => {
-            const active = form.status_id === s.id
-            // The crew see the stage but never set it by hand (they tick their
-            // milestone instead) — only move_tasks unlocks the picker.
-            const locked = !creating && !canMove
-            return (
-              <button
-                key={s.id}
-                type="button"
-                className={'stage-chip' + (active ? ' on' : '')}
-                disabled={locked && !active}
-                style={active ? { background: s.color, borderColor: s.color, color: onColor(s.color) } : undefined}
-                onClick={() => !locked && setForm({ ...form, status_id: s.id })}
-              >
-                <span className="status-dot" style={{ background: active ? onColor(s.color) : s.color }} />
-                {s.label}
-              </button>
-            )
-          })}
+        <span className="cm-key">{t('task.stage')}</span>
+        <div className="stage-wrap">
+        {/* One row per stage was a colour bar the width of the sheet. The
+            colour is what people read it by, so it stays — as the dot beside
+            the name rather than as a wall of filled pills.
+            The crew see the stage but never set it by hand (they tick their
+            milestone instead); only move_tasks unlocks the picker. */}
+        <span className="cm-stage-pick">
+          <span className="status-dot" style={{ background: statuses.find((x) => x.id === form.status_id)?.color || 'transparent' }} />
+          <select className="select cm-pick" value={form.status_id ?? ''}
+            disabled={!creating && !canMove}
+            onChange={(e) => setForm({ ...form, status_id: e.target.value === '' ? null : Number(e.target.value) })}>
+            <option value="">{tx('Idea')}</option>
+            {statuses.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </span>
+        {/* Still missing — the checker, in the open, on the row it is about. */}
+        {gaps.length > 0 && (
+          <div className="cm-gaps">
+            <span className="gap-key">{tx('Still missing')}</span>
+            {gaps.map((g) => <span key={g.key} className="chip chip-gap">{tx(g.label)}</span>)}
+          </div>
+        )}
         </div>
       </div>
+
+      {/* ---- what it got ---- */}
+      {showViews && (
+        <div className="cm-row cm-views">
+          <span className="cm-key"><Eye size={13} style={{ verticalAlign: -2 }} /> {tx('Views')}</span>
+          <div className="views-box">
+            {canCount ? (
+              <input className="input views-input" type="number" min="0" step="1" inputMode="numeric"
+                placeholder={tx('Not counted yet')}
+                value={form.views}
+                onChange={(e) => setForm({ ...form, views: e.target.value.replace(/[^0-9]/g, '') })} />
+            ) : (
+              <b className="views-read">
+                {form.views === '' ? tx('Not counted yet') : Number(form.views).toLocaleString()}
+              </b>
+            )}
+            <span className="stat-sub">
+              {form.views === ''
+                ? tx('Leave it empty until somebody has actually looked — an empty box is not zero views.')
+                : tx('Counts towards the maker’s month.')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* How much of it people skipped. Read off the same screen as the view
+          count, so it is asked for in the same place — and left empty until
+          somebody has actually looked, for the same reason. */}
+      {/* Its own class, not the view count's: the two rows are read together
+          and styled alike, and anything that COUNTS the views box must not
+          find two of them. */}
+      {showViews && (
+        <div className="cm-row cm-skip">
+          <span className="cm-key"><SkipForward size={13} style={{ verticalAlign: -2 }} /> {tx('Skip rate')}</span>
+          <div className="views-box">
+            {canCount ? (
+              <span className="skip-input">
+                <input className="input skip-input-box" type="number" min="0" max="100" step="0.1" inputMode="decimal"
+                  placeholder={tx('Not measured yet')}
+                  value={form.skip_rate}
+                  onChange={(e) => setForm({ ...form, skip_rate: e.target.value.replace(/[^0-9.]/g, '') })} />
+                <b>%</b>
+              </span>
+            ) : (
+              <b className="views-read">
+                {form.skip_rate === '' ? tx('Not measured yet') : `${form.skip_rate}%`}
+              </b>
+            )}
+            <span className="stat-sub">
+              {form.skip_rate === ''
+                ? tx('Empty until somebody has looked — an empty box is not a nought per cent skip.')
+                : tierNote}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* A hand up: somebody on this piece saying early that it is in trouble.
+          Sits directly under the stage, because it is about to change it. */}
+      {(openFlags.length > 0 || raising) && (
+        <div className="cm-row cm-flags">
+          <span className="cm-key"><Hand size={13} style={{ verticalAlign: -2 }} /> {t('task.trouble')}</span>
+          <div className="flag-block">
+            {openFlags.map((f) => (
+              <div key={f.id} className={`flag-item flag-${f.kind}`}>
+                <span className="flag-line">
+                  <b>{f.raised_name}</b> {f.kind === 'cant_take' ? tx('cannot take this on') : tx('says this will be late')}
+                </span>
+                <span className="flag-why">“{f.reason}”</span>
+                {(canEdit || f.raised_by === user.id) && (
+                  <button type="button" className="btn btn-sm" disabled={busy} onClick={() => lowerHand(f.id)}>
+                    {tx('Sorted — hand down')}
+                  </button>
+                )}
+              </div>
+            ))}
+            {raising && (
+              <div className="flag-form">
+                <div className="pravki-target">
+                  {[['at_risk', tx('This will be late')], ['cant_take', tx('I can’t take this on')]].map(([k, label]) => (
+                    <button key={k} type="button" className={'tchip' + (raising.kind === k ? ' on' : '')}
+                      onClick={() => setRaising({ ...raising, kind: k })}>{label}</button>
+                  ))}
+                </div>
+                <textarea className="input" rows={2} autoFocus value={raising.reason}
+                  onChange={(e) => setRaising({ ...raising, reason: e.target.value })}
+                  placeholder={tx("What is in the way? The other shoot overran, the location fell through…")} />
+                <div className="pravki-actions">
+                  <span className="stat-sub">{tx("Said now, it can still be planned around.")}</span>
+                  <button type="button" className="btn btn-sm" onClick={() => setRaising(null)}>{tx("Cancel")}</button>
+                  <button type="button" className="btn btn-sm btn-primary" disabled={busy || !raising.reason.trim()} onClick={raiseHand}>
+                    <Hand size={13} /> {tx('Say it now')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Reference — the brief the crew reads before working: style/mood/format
           notes, example links, and a reference photo. All optional; none of it
           blocks moving a task forward. Crew see it; only editors set it. */}
-      {(hasRef || (canEdit && show.reference)) && (
-        <div className="cm-row cm-ref">
-          <span className="cm-key"><BookOpen size={13} style={{ verticalAlign: -2 }} /> Reference</span>
+      {!ideaOnly && (hasRef || (canEdit && show.reference)) && (
+        <div className={'cm-row cm-ref' + (badField === 'reference' ? ' field-bad' : '')} data-field="reference">
+          <span className="cm-key"><BookOpen size={13} style={{ verticalAlign: -2 }} /> {t('task.reference')}</span>
           <div className="ref-block">
-            {canEdit ? (
+            {briefEditable ? (
               <textarea className="input" rows={2} value={form.reference_text}
                 onChange={(e) => setForm({ ...form, reference_text: e.target.value })}
-                placeholder="Style, mood, length, format… (optional)" />
+                placeholder={tx("Style, mood, length, format… (optional)")} />
             ) : form.reference_text ? <p className="ref-text">{form.reference_text}</p> : null}
 
-            {canEdit ? (
+            {briefEditable ? (
               <div className="ref-links">
                 {form.reference_links.map((url, i) => (
                   <div key={i} className="ref-link-row">
                     <input className="input" value={url} placeholder="https://… reference video or post"
                       onChange={(e) => setRefLink(i, e.target.value)} />
-                    <button type="button" className="icon-btn" aria-label="Remove link" onClick={() => removeRefLink(i)}><X size={13} /></button>
+                    <button type="button" className="icon-btn" aria-label={tx("Remove link")} onClick={() => removeRefLink(i)}><X size={13} /></button>
                   </div>
                 ))}
-                <button type="button" className="extra-btn" onClick={addRefLink}><Plus size={13} /> Example link</button>
+                <button type="button" className="extra-btn" onClick={addRefLink}><Plus size={13} />{' '}{tx("Example link")}</button>
               </div>
             ) : form.reference_links.length > 0 ? (
               <div className="ref-links-view">
                 {form.reference_links.map((url, i) => (
                   /^https?:\/\//i.test(url)
-                    ? <a key={i} className="ref-link-chip" href={url} target="_blank" rel="noreferrer"><Link2 size={12} /> {shortUrl(url)} <ExternalLink size={11} /></a>
+                    ? <HoverPreview key={i} href={url}><a className="ref-link-chip" href={url} target="_blank" rel="noreferrer"><Link2 size={12} /> {shortUrl(url)} <ExternalLink size={11} /></a></HoverPreview>
                     : <span key={i} className="ref-link-chip"><Link2 size={12} /> {url}</span>
                 ))}
               </div>
@@ -665,12 +1586,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
             {(form.photo || form.photo_thumb) ? (
               <div className="photo-wrap ref-photo">
-                <img src={form.photo || form.photo_thumb} alt="reference" />
-                {canEdit && <button className="photo-remove" data-tip="Remove the photo" data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label="Remove photo"><X size={14} /></button>}
+                <Zoom src={form.photo_thumb || form.photo} full={form.photo || form.photo_thumb} alt="reference" />
+                {briefEditable && <button className="photo-remove" data-tip={tx("Remove the photo")} data-tip-left="" onClick={() => setForm({ ...form, photo: null, photo_thumb: null })} aria-label={tx("Remove photo")}><X size={14} /></button>}
               </div>
-            ) : canEdit ? (
-              <label className="photo-pick ref-photo-pick">
-                <ImagePlus size={15} /> Reference photo
+            ) : briefEditable ? (
+              <label className="photo-pick ref-photo-pick"
+                data-tip={tx("Pick a file — or just press Ctrl+V with a screenshot on the clipboard")}>
+                <ImagePlus size={15} /> {tx('Reference photo')}{' '}
+                <span className="crew-opt">{phone ? tx('take one or pick one') : tx('or paste it — Ctrl+V')}</span>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPhoto} />
               </label>
             ) : null}
@@ -685,22 +1608,22 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           the bytes are fetched on the click that opens one. */}
       {!creating && (docs.length > 0 || show.docs) && (
         <div className="cm-row">
-          <span className="cm-key"><Paperclip size={13} style={{ verticalAlign: -2 }} /> Documents</span>
+          <span className="cm-key"><Paperclip size={13} style={{ verticalAlign: -2 }} /> {t('task.documents')}</span>
           <div className="doc-block">
             {docs.map((d) => (
               <div key={d.id} className={`doc-row dk-${docKind(d.name)}`}>
                 <FileType2 size={15} className="doc-ico" />
                 <button type="button" className="doc-name" onClick={() => openDoc(d)}
-                  data-tip="Download this document">{d.name}</button>
+                  data-tip={tx("Download this document")}>{d.name}</button>
                 <span className="doc-meta">
                   {docSize(d.size)}
                   {d.uploader && <span className="doc-who"> · {d.uploader.split(' ')[0]}</span>}
                 </span>
-                <button type="button" className="icon-btn doc-get" onClick={() => openDoc(d)} aria-label="Download"
-                  data-tip="Download"><Download size={14} /></button>
+                <button type="button" className="icon-btn doc-get" onClick={() => openDoc(d)} aria-label={tx("Download")}
+                  data-tip={tx("Download")}><Download size={14} /></button>
                 {(user.role === 'admin' || d.uploaded_by === user.id) && (
-                  <button type="button" className="icon-btn" onClick={() => removeDoc(d)} aria-label="Remove"
-                    data-tip="Remove this document" data-tip-left=""><X size={14} /></button>
+                  <button type="button" className="icon-btn" onClick={() => removeDoc(d)} aria-label={tx("Remove")}
+                    data-tip={tx("Remove this document")} data-tip-left=""><X size={14} /></button>
                 )}
               </div>
             ))}
@@ -708,40 +1631,101 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <Paperclip size={14} /> {docBusy ? 'Uploading…' : 'Attach a document'}
               <input type="file" accept={DOC_ACCEPT} style={{ display: 'none' }} disabled={docBusy} onChange={pickDoc} />
             </label>
-            <span className="doc-hint">Word, PDF, Excel, PowerPoint or text — up to 4 MB each.</span>
+            <span className="doc-hint">{tx("Word, PDF, Excel, PowerPoint or text — up to 4 MB each.")}</span>
           </div>
         </div>
       )}
 
       {/* The script — the words and shots the crew films by. Editors write it;
           the crew read it. Folds behind the extras row unless demanded. */}
-      {fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
+      {!ideaOnly && fOn('script') && !crewViewer && canEdit && (form.script || fReq('script') || show.script) && (
+        <div className={'cm-row' + (badField === 'script' ? ' field-bad' : '')} data-field="script">
+          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}{fReq('script') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
+          <div>
+            <textarea className="input cm-script" rows={6} disabled={detailsLocked}
+              placeholder={tx("The script / shot plan the crew works by…")}
+              value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
+            {!creating && <TextHelp text={item?.script} label={t('task.script')} />}
+          </div>
+        </div>
+      )}
+      {/* ТЗ — техническое задание. Separate from the script on purpose: the
+          script is what the operator films, the ТЗ is what the editor is told
+          to make of it. A shoot can be scripted with no ТЗ written yet, and
+          an edit cannot start without one. */}
+      {!ideaOnly && fOn('tz') && !crewViewer && canEdit && (form.tz || fReq('tz') || show.tz) && (
+        <div className={'cm-row' + (badField === 'tz' ? ' field-bad' : '')} data-field="tz">
+          <span className="cm-key"><ClipboardList size={13} style={{ verticalAlign: -2 }} /> {tx('ТЗ')}{fReq('tz') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
+          <div>
+            <textarea className="input cm-script" rows={5} disabled={detailsLocked}
+              placeholder={tx('What the editor is asked to make — length, cuts, captions, music…')}
+              value={form.tz} onChange={(e) => setForm({ ...form, tz: e.target.value })} />
+            {!creating && <TextHelp text={item?.tz} label={tx('ТЗ')} />}
+          </div>
+        </div>
+      )}
+      {(crewViewer || !canEdit) && form.tz && (
         <div className="cm-row">
-          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> Script{fReq('script') && <b className="req-star" data-tip="The admin made this required"> *</b>}</span>
-          <textarea className="input cm-script" rows={6} disabled={detailsLocked}
-            placeholder="The script / shot plan the crew works by…"
-            value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
+          <span className="cm-key"><ClipboardList size={13} style={{ verticalAlign: -2 }} /> {tx('ТЗ')}</span>
+          <div>
+            <div className="crew-script">{form.tz}</div>
+            <TextHelp text={form.tz} label={tx('ТЗ')} />
+          </div>
         </div>
       )}
       {(crewViewer || !canEdit) && form.script && (
         <div className="cm-row">
-          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> Script</span>
-          <div className="crew-script">{form.script}</div>
+          <span className="cm-key"><FileText size={13} style={{ verticalAlign: -2 }} /> {t('task.script')}</span>
+          <div>
+            <div className="crew-script">{form.script}</div>
+            {/* The shooter who cannot read the brief is exactly who this is
+                for, and this is the screen they read it on. */}
+            <TextHelp text={form.script} label={t('task.script')} />
+          </div>
         </div>
       )}
 
+      {/* The description sits with the rest of the brief rather than at the
+          foot of the form — it is read at the same moment as the reference. */}
+      {ideaOnly && (
+        <div className="cm-idea-note">
+          <span className="stat-sub">
+            {tx('An idea needs a name and a couple of sentences. Everything else is asked for when it is actually going to be made.')}
+          </span>
+          <button type="button" className="btn btn-sm" onClick={() => setFillNow(true)}>
+            {tx('I already know the rest')}
+          </button>
+        </div>
+      )}
+
+      {show.description && !crewViewer && (
+        <div className={'cm-row' + (badField === 'description' ? ' field-bad' : '')} data-field="description">
+          <span className="cm-key"><AlignLeft size={13} style={{ verticalAlign: -2 }} /> {t('task.description')}{fReq('description') && <b className="req-star" data-tip={tx("The admin made this required")}> *</b>}</span>
+          <div>
+            <textarea className="input" rows={2} disabled={detailsLocked} value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={tx("References, links, notes…")} />
+            {!creating && <TextHelp text={item?.description} label={t('task.description')} />}
+          </div>
+        </div>
+      )}
+
+      </div>
+
+      <div className={secCls('review')} data-sec="review">
       {/* Review (SMM & admin): a Ready task waits here for release. Publish it,
           or send it back to the crew with one note (Pravki). */}
       {atReady && (canReview || canRequest) && (
         <div className="cm-row cm-review">
-          <span className="cm-key">Review</span>
+          <span className="cm-key">{t('task.reviewer')}</span>
           <div className="review-block">
             {reviewLinks.length > 0 && (
               <div className="review-links">
                 {reviewLinks.map((l) => (
-                  <a key={l.label} className="btn btn-sm" href={l.url} target="_blank" rel="noreferrer">
-                    {l.label} <ExternalLink size={12} />
-                  </a>
+                  <HoverPreview key={l.label} href={l.url}>
+                    <a className="btn btn-sm" href={l.url} target="_blank" rel="noreferrer">
+                      {l.label}{l.note ? ` · ${l.note}` : ''} <ExternalLink size={12} />
+                    </a>
+                  </HoverPreview>
                 ))}
               </div>
             )}
@@ -753,21 +1737,42 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   </button>
                 )}
                 {canRequest && (
-                  <button type="button" className="btn" onClick={() => setPravki({ note: '', target: pravkiTargets[0].key })}>
-                    <RotateCcw size={14} /> Request changes
+                  <button type="button" className="btn" onClick={() => setPravki({ note: '', target: pravkiTargets[0].key, photo: null, photo_thumb: null })}>
+                    <RotateCcw size={14} /> {t('task.requestchanges')}
                   </button>
                 )}
-                <span className="stat-sub">Waiting for review before it goes out.</span>
+                <span className="stat-sub">{tx("Waiting for review before it goes out.")}</span>
               </div>
             )}
             {pravki && (
               <div className="pravki-form">
                 <textarea className="input" rows={3} autoFocus value={pravki.note}
+                  onPaste={pravkiPaste}
                   onChange={(e) => setPravki({ ...pravki, note: e.target.value })}
-                  placeholder="Write everything that needs changing, in one go…" />
+                  placeholder={phone
+                    ? tx("Write everything that needs changing, in one go…")
+                    : tx("Write everything that needs changing, in one go… (Ctrl+V pastes the screenshot)")} />
+                <div className="pravki-voice">
+                  {canRecord() && <VoiceRecorder key={`p${clipNonce}`} onClip={(c) => setPravki((p) => (p ? { ...p, clip: c } : p))} disabled={busy} />}
+                  <span className="stat-sub">Say it out loud if it is quicker — the note still goes in writing, so it can be skimmed later.</span>
+                </div>
+                {pravki.photo ? (
+                  <div className="photo-wrap pravki-shot">
+                    <Zoom src={pravki.photo_thumb || pravki.photo} full={pravki.photo || pravki.photo_thumb} alt="what needs changing" />
+                    <button className="photo-remove" aria-label={tx("Remove screenshot")} data-tip={tx("Remove the screenshot")} data-tip-left=""
+                      onClick={() => setPravki({ ...pravki, photo: null, photo_thumb: null })}><X size={14} /></button>
+                  </div>
+                ) : phone ? (
+                  <label className="photo-pick pravki-pick">
+                    <ImagePlus size={15} /> {tx('Add the frame you mean')}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pickPravkiShot} />
+                  </label>
+                ) : (
+                  <span className="doc-hint"><ImagePlus size={12} />{' '}{tx("Press Ctrl+V to paste the frame you mean.")}</span>
+                )}
                 {pravkiTargets.length > 1 && (
                   <div className="pravki-target">
-                    <span className="crew-opt">Send back to:</span>
+                    <span className="crew-opt">{t('task.sendbackto')}</span>
                     {pravkiTargets.map((t) => (
                       <button key={t.key} type="button" className={'tchip' + (pravki.target === t.key ? ' on' : '')}
                         onClick={() => setPravki({ ...pravki, target: t.key })}>{t.label}</button>
@@ -775,9 +1780,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   </div>
                 )}
                 <div className="pravki-actions">
-                  <button type="button" className="btn btn-sm" onClick={() => setPravki(null)}>Cancel</button>
+                  <button type="button" className="btn btn-sm" onClick={() => setPravki(null)}>{tx("Cancel")}</button>
                   <button type="button" className="btn btn-sm btn-primary" disabled={!pravki.note.trim() || busy} onClick={submitPravki}>
-                    <RotateCcw size={13} /> Send back
+                    <RotateCcw size={13} /> {t('task.sendback')}
                   </button>
                 </div>
               </div>
@@ -789,15 +1794,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* Revision history — a plain list: round, who asked, the note, the date. */}
       {revisions.length > 0 && (
         <div className="cm-row cm-revs">
-          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> Revisions</span>
+          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> {t('task.revisions')}</span>
           <div className="rev-list">
             {revisions.map((r) => (
               <div key={r.id} className={'rev-item' + (r.resolved_at ? ' rev-done' : '')}>
                 <span className="rev-round">#{r.round}</span>
                 <span className="rev-body">
                   <span className="rev-note">{r.note}</span>
+                  {r.voice_id ? <VoicePlayer id={r.voice_id} secs={r.voice_secs} /> : null}
+                  {r.photo && <span className="rev-shot"><Zoom src={r.photo_thumb || r.photo} full={r.photo} alt="what needed changing" /></span>}
                   <span className="rev-meta">
-                    {r.requested_name || '—'} · {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · to {r.target}{r.resolved_at ? ' · fixed' : ''}
+                    {r.requested_name || '—'} · {new Date(r.created_at).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })} · to {r.target}{r.resolved_at ? ' · fixed' : ''}
                   </span>
                 </span>
               </div>
@@ -813,15 +1820,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           admin should never have to hunt for a link that is plainly there. */}
       {!creating && deliveryLinks.length > 0 && (
         <div className="cm-row">
-          <span className="cm-key"><Link2 size={13} style={{ verticalAlign: -2 }} /> Files</span>
+          <span className="cm-key"><Link2 size={13} style={{ verticalAlign: -2 }} /> {t('task.files')}</span>
           <div className="file-links">
             {deliveryLinks.map((f) => {
               const Icon = f.icon
               return (
-                <a key={f.col} className={`file-link fl-${f.kind}`} href={form[f.col]} target="_blank" rel="noreferrer"
-                  data-tip={f.sub}>
-                  <Icon size={13} /> {f.label} <ExternalLink size={12} className="fl-go" />
-                </a>
+                <HoverPreview key={f.col} href={f.href}>
+                  <a className={`file-link fl-${f.kind}`} href={f.href} target="_blank" rel="noreferrer"
+                    data-tip={f.note ? `${f.sub} — ${f.note}` : f.sub}>
+                    <Icon size={13} /> {f.label}{f.note ? ` · ${f.note}` : ''} <ExternalLink size={12} className="fl-go" />
+                  </a>
+                </HoverPreview>
               )
             })}
           </div>
@@ -830,49 +1839,78 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {!creating && (deliveryFields.length > 0 || (crewViewer && (myHats.operator || myHats.editor || myHats.designer))) && (
         <div className="cm-row">
-          <span className="cm-key">Your part</span>
+          <span className="cm-key">{t('task.yourpart')}</span>
           <div className="crew-do">
             {crewViewer && (myHats.operator || myHats.editor || myHats.designer) && (
               <div className="crew-ticks">
                 {myHats.operator && (
                   <button type="button" className={'do-tick' + ((alreadyShot || milestone === 'shot') ? ' on' : '')}
-                    disabled={alreadyShot} data-tip="Filming is done"
+                    disabled={alreadyShot} data-tip={tx("Filming is done")}
                     onClick={() => tickMilestone('shot')}>
                     <span className="do-box">{(alreadyShot || milestone === 'shot') && <Check size={12} strokeWidth={3.5} />}</span>
-                    <Clapperboard size={13} /> {alreadyShot ? 'Shot' : 'Mark as shot'}
+                    <Clapperboard size={13} /> {alreadyShot ? t('task.shot') : t('task.markshot')}
                   </button>
                 )}
                 {myHats.editor && (
                   <button type="button" className={'do-tick' + ((alreadyReady || milestone === 'edited') ? ' on' : '')}
-                    disabled={alreadyReady} data-tip="The cut is ready"
+                    disabled={alreadyReady} data-tip={tx("The cut is ready")}
                     onClick={() => tickMilestone('edited')}>
                     <span className="do-box">{(alreadyReady || milestone === 'edited') && <Check size={12} strokeWidth={3.5} />}</span>
-                    <Scissors size={13} /> {alreadyReady ? 'Edited' : 'Mark as edited'}
+                    <Scissors size={13} /> {alreadyReady ? t('task.edited') : t('task.markedited')}
                   </button>
                 )}
                 {myHats.designer && (
                   <button type="button" className={'do-tick' + ((alreadyReady || milestone === 'designed') ? ' on' : '')}
-                    disabled={alreadyReady} data-tip="The artwork is ready"
+                    disabled={alreadyReady} data-tip={tx("The artwork is ready")}
                     onClick={() => tickMilestone('designed')}>
                     <span className="do-box">{(alreadyReady || milestone === 'designed') && <Check size={12} strokeWidth={3.5} />}</span>
-                    <Palette size={13} /> {alreadyReady ? 'Designed' : 'Mark as designed'}
+                    <Palette size={13} /> {alreadyReady ? t('task.designed') : t('task.markdesigned')}
                   </button>
                 )}
               </div>
             )}
+            {/* Three near-identical Drive boxes in a row were impossible to
+                tell apart at a glance — people pasted the cut into Recording.
+                Each one now carries its stage's colour, its own icon and the
+                name of the person it belongs to, so the box you want is the
+                one you can see. */}
             {deliveryFields.map((f) => {
               const Icon = f.icon
-              const editable = f.mine || canEdit
+              // In a borrowed seat only THEIR box is theirs to fill — otherwise
+              // the preview would show reach the person does not have, which
+              // is the thing it exists to reveal.
+              const editable = f.mine || (canEdit && !asCrew)
+              const owner = team.find((u) => u.id === item?.[{ shot: 'operator_id', edit: 'editor_id', design: 'designer_id' }[f.kind]])
               return (
-                <label key={f.col} className="ready-link-field">
-                  <span className="crew-label"><Icon size={12} /> {f.label} <span className="crew-opt">{f.sub}</span></span>
+                <label key={f.col} data-field={f.col}
+                  className={`ready-link-field dlv-${f.kind}` + (f.mine ? ' dlv-mine' : '') + (badField === f.col ? ' field-bad' : '')}>
+                  <span className="crew-label dlv-head">
+                    {/* The filmed chain is numbered because it has an order —
+                        footage first, cut second. Design is a track of its own
+                        and wears no number rather than a confusing second "2". */}
+                    {f.kind !== 'design' && <span className="dlv-step">{f.kind === 'shot' ? '1' : '2'}</span>}
+                    <span className="dlv-badge"><Icon size={14} /></span>
+                    <b className="dlv-name">{f.label}</b>
+                    <span className="crew-opt dlv-sub">{f.sub}</span>
+                    <span className="dlv-who">{f.mine ? 'yours' : owner ? owner.name.split(' ')[0] : 'nobody yet'}</span>
+                  </span>
                   <span className="ready-link-input">
-                    <input className="input" placeholder="https://drive.google.com/…"
-                      disabled={!editable}
-                      value={form[f.col]}
-                      onChange={(e) => setForm({ ...form, [f.col]: e.target.value })} />
-                    {form[f.col] && /^https?:\/\//i.test(form[f.col]) && (
-                      <a className="btn btn-sm" href={form[f.col]} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open</a>
+                    {/* With a folder on the channel, the box asks WHICH file —
+                        the folder is the same forty times a week and the file
+                        is the part people leave out. */}
+                    {sharedFolder && !/^https?:\/\//i.test(form[f.col] || '') ? (
+                      <input className="input" placeholder={tx("which file? e.g. 1-3, or “reel 14”")}
+                        disabled={!editable}
+                        value={form[f.file] || ''}
+                        onChange={(e) => setForm({ ...form, [f.file]: e.target.value })} />
+                    ) : (
+                      <input className="input" placeholder="https://drive.google.com/…"
+                        disabled={!editable}
+                        value={form[f.col]}
+                        onChange={(e) => setForm({ ...form, [f.col]: e.target.value })} />
+                    )}
+                    {deliveryHref(form[f.col]) && (
+                      <HoverPreview href={deliveryHref(form[f.col])}><a className="btn btn-sm" href={deliveryHref(form[f.col])} target="_blank" rel="noreferrer"><ExternalLink size={14} />{' '}{tx("Open")}</a></HoverPreview>
                     )}
                   </span>
                 </label>
@@ -882,13 +1920,39 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
+      {/* Where it actually went live. Asked for once the piece is near the
+          end, and always shown once there is one — this is the address every
+          report downstream is built on, and the board used to record that
+          something was published without recording WHERE. */}
+      {!creating && (form.post_link || nearlyOut) && (
+        <div className="cm-row">
+          <span className="cm-key">{tx('Published at')}</span>
+          <label className="ready-link-field dlv-post" data-field="post_link">
+            <span className="crew-label dlv-head">
+              <Send size={13} />
+              <b>{tx('The published post')}</b>
+              <span className="stat-sub">{tx('needed before it can move to the last stage')}</span>
+            </span>
+            <input className={'input' + (badField === 'post_link' ? ' field-bad' : '')}
+              value={form.post_link} disabled={!canEdit} placeholder="https://…"
+              onChange={(e) => setForm({ ...form, post_link: e.target.value })} />
+            {form.post_link && (
+              <HoverPreview href={form.post_link}><a className="btn btn-sm" href={form.post_link} target="_blank" rel="noreferrer">{tx('Open it')}</a></HoverPreview>
+            )}
+          </label>
+        </div>
+      )}
+
+      </div>
+
+      <div className={secCls('setup')} data-sec="setup">
       {/* Crew read, they don't configure: instead of four pickers they can't
           touch (type, platforms, crew, campaign), one compact line says what
           the piece is, where it goes and who else is on it — the modal stays
           small, especially on a phone. */}
       {crewViewer && !creating ? (
         <div className="cm-row">
-          <span className="cm-key">About</span>
+          <span className="cm-key">{t('task.about')}</span>
           <div className="crew-about">
             <span className={`chip ct-${form.type}`}>{typeInfo(form.type).label}</span>
             {form.format && <span className="chip chip-muted"><Layers size={11} /> {form.format}</span>}
@@ -905,22 +1969,6 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           </div>
         </div>
       ) : (<>
-      {/* What is it? The type binds the task to each platform's plan. */}
-      <div className="cm-row">
-        <span className="cm-key">Type</span>
-        <div className="stage-chips">
-          {CONTENT_TYPES.map((t) => {
-            const Icon = t.icon
-            return (
-              <button key={t.key} type="button" disabled={detailsLocked}
-                className={`tchip ct-${t.key}` + (form.type === t.key ? ' on' : '')}
-                onClick={() => setForm({ ...form, type: t.key })}>
-                <Icon size={13} /> {t.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
       {creating && plan && (
         <div className="cm-hint">Raises the {plan} plan by one — completing the task fills it.</div>
       )}
@@ -928,50 +1976,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       {/* The brief: Format (talking head, split screen…) and Rubrika (the
           recurring column). The admin decides which types carry them and
           whether they're demanded — Admin → Pipeline → The task form. */}
-      {(fOn('format') || fOn('rubrika')) && (
-        <div className="cm-row">
-          <span className="cm-key">Brief</span>
-          {/* Own classes on purpose: these are brief fields, not crew hats —
-              nothing that counts crew-fields may count these. */}
-          <div className="brief-fields">
-            {fOn('format') && (
-              <label className="brief-field">
-                <span className="brief-label"><Layers size={12} /> Format {fReq('format')
-                  ? <b className="req-star" data-tip="The admin made this required">*</b>
-                  : <span className="crew-opt">optional</span>}</span>
-                <select className="select" disabled={detailsLocked} value={form.format}
-                  onChange={(e) => setForm({ ...form, format: e.target.value })}>
-                  <option value="">— pick a format —</option>
-                  {[...new Set([...(fieldRules.format.options || []), ...(form.format ? [form.format] : [])])]
-                    .map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-              </label>
-            )}
-            {fOn('rubrika') && (
-              <label className="brief-field">
-                <span className="brief-label"><Hash size={12} /> Rubrika {fReq('rubrika')
-                  ? <b className="req-star" data-tip="The admin made this required">*</b>
-                  : <span className="crew-opt">optional</span>}</span>
-                {(fieldRules.rubrika.options || []).length > 0 ? (
-                  <select className="select" disabled={detailsLocked} value={form.rubrika}
-                    onChange={(e) => setForm({ ...form, rubrika: e.target.value })}>
-                    <option value="">— pick a rubrika —</option>
-                    {[...new Set([...(fieldRules.rubrika.options || []), ...(form.rubrika ? [form.rubrika] : [])])]
-                      .map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                ) : (
-                  <input className="input" disabled={detailsLocked} placeholder="e.g. SU events"
-                    value={form.rubrika} onChange={(e) => setForm({ ...form, rubrika: e.target.value })} />
-                )}
-              </label>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* Platforms — a task can go out on several at once */}
-      <div className="cm-row">
-        <span className="cm-key">Platforms</span>
+      {/* Platforms — a task can go out on several at once. Quiet: every piece
+          has one, so it says nothing about whether anybody has been here. */}
+      <div className="cm-row" data-quiet>
+        <span className="cm-key">{t('task.platforms')}</span>
         <div className="checkbox-row">
           {visible.map((c) => (
             <label key={c.key} className={'checkbox-chip chip-sm' + (form.channels.includes(c.key) ? ' on' : '')}>
@@ -981,16 +1990,16 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           ))}
           {user.role === 'admin' && !detailsLocked && (
             newDept === null ? (
-              <button type="button" className="checkbox-chip chip-sm chip-add" data-tip="Create a new department right here"
+              <button type="button" className="checkbox-chip chip-sm chip-add" data-tip={tx("Create a new department right here")}
                 onClick={() => setNewDept('')}>
                 <Plus size={12} /> New
               </button>
             ) : (
               <span className="chip-add-form">
-                <input className="input pc-mini" autoFocus placeholder="Department name…" value={newDept}
+                <input className="input pc-mini" autoFocus placeholder={tx("Department name…")} value={newDept}
                   onChange={(e) => setNewDept(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); createDept() } if (e.key === 'Escape') setNewDept(null) }} />
-                <button type="button" className="btn btn-sm" onClick={createDept}>Add</button>
+                <button type="button" className="btn btn-sm" onClick={createDept}>{tx("Add")}</button>
               </span>
             )
           )}
@@ -999,36 +2008,42 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* Who is it for? Admins assign any number of people; an empty list
           leaves the task to the whole channel. */}
+      {/* Quiet, like the channel row above it: a new piece is assigned to
+          whoever made it, so an assignee is on every piece that exists and
+          says nothing about whether the production side has been set up.
+          What DOES mean that — a crew hat, a reviewer, a handover — is below,
+          and any of those opens this view on its own. */}
       {user.role === 'admin' && (
-        <div className="cm-row">
-          <span className="cm-key"><UserRound size={13} style={{ verticalAlign: -2 }} /> Assignees</span>
+        <div className="cm-row" data-quiet>
+          <span className="cm-key"><UserRound size={13} style={{ verticalAlign: -2 }} /> {t('task.assignees')}</span>
           <div className="assignee-multi">
-            {form.assignee_ids.length === 0 && <span className="chip chip-muted">Unassigned — whole channel</span>}
+            {form.assignee_ids.length === 0 && <span className="chip chip-muted">{tx("Unassigned — whole channel")}</span>}
             {form.assignee_ids.map((id) => {
               const u = team.find((x) => x.id === id)
               return (
                 <span key={id} className="chip assignee-chip">
                   {u?.name || '…'}
-                  <button type="button" className="chip-x" aria-label="Remove"
+                  <button type="button" className="chip-x" aria-label={tx("Remove")}
                     onClick={() => setForm({ ...form, assignee_ids: form.assignee_ids.filter((x) => x !== id) })}>×</button>
                 </span>
               )
             })}
-            <select
-              className="select assignee-add"
-              value=""
-              data-tip="Add another person to this task"
-              onChange={(e) => {
-                const id = Number(e.target.value)
+            <PersonPicker
+              className="assignee-add"
+              value={null}
+              clearable={false}
+              placeholder={tx('Add person…')}
+              tip={tx("Add another person to this task")}
+              groups={[{
+                label: '',
+                people: [...team].filter((u) => !form.assignee_ids.includes(u.id))
+                  .sort((a, b) => (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name))
+                  .map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar, hint: u.role === 'admin' ? tx('admin') : '' })),
+              }]}
+              onPick={(id) => {
                 if (id && !form.assignee_ids.includes(id)) setForm({ ...form, assignee_ids: [...form.assignee_ids, id] })
               }}
-            >
-              <option value="">+ Add person…</option>
-              {[...team].filter((u) => !form.assignee_ids.includes(u.id))
-                .sort((a, b) => (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name)).map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}{u.role === 'admin' ? ' (admin)' : ''}</option>
-                ))}
-            </select>
+            />
           </div>
         </div>
       )}
@@ -1038,66 +2053,142 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           in Admin → People (they multi-select). A post is designed, not shot,
           so it carries only the designer hat; filmed types carry all three.
           Hidden hats keep their person, so flipping the type loses nothing. */}
-      <div className="cm-row">
-        <span className="cm-key">Crew</span>
+      <div className="cm-row" data-field={badField === 'operator_id' ? 'operator_id' : badField === 'editor_id' ? 'editor_id' : undefined}>
+        <span className="cm-key">{t('task.crew')}</span>
         <div className="crew-row">
-          {(isDesign ? [
-            { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs this post' },
-          ] : [
-            { key: 'operator_id', label: 'Operator', role: 'operator', tip: 'Who films / shoots this' },
-            { key: 'editor_id', label: 'Editor', role: 'editor', tip: 'Who edits this' },
-            { key: 'designer_id', label: 'Designer', role: 'designer', tip: 'Who designs the artwork (thumbnail, cover…)' },
-          ]).map((f) => {
+          {/* Two hats. The designer used to be a third, offered on every task
+              and picked on almost none — the pipeline this board runs is
+              idea → shoot → edit, and a designer has no stage in it. The
+              column and anyone already holding it are untouched; it is simply
+              not offered any more. */}
+          {[
+            { key: 'operator_id', label: tx('Operator'), role: 'operator', tip: 'Who films / shoots this' },
+            { key: 'editor_id', label: tx('Editor'), role: 'editor', tip: 'Who edits this' },
+          ].map((f) => {
             const holds = (u) => (u.crew_roles || []).includes(f.role)
             const bySort = (a, b) =>
               (picks[b.id] || 0) - (picks[a.id] || 0) || a.name.localeCompare(b.name)
-            // Specialists lead the list, but ANYBODY can take the hat — a
-            // one-time editor, a content head doing the filming.
-            const specialists = team.filter(holds).sort(bySort)
-            const everyoneElse = team.filter((u) => !holds(u)).sort(bySort)
+            // Only the people who work on THIS channel. Somebody scoped to
+            // two channels was previously offered on all nine, and the
+            // refusal came at save time, after the picking. Now they simply
+            // are not in the list. Nobody scoped is offered everywhere, as
+            // before. The person already holding the hat stays visible even
+            // if the channel later moves out from under them — a select whose
+            // value is not among its options renders blank while still
+            // holding the id, which is worse than showing it.
+            const here = (u) => {
+              if (u.id === form[f.key]) return true
+              const mine = u.crew_channels || []
+              if (!mine.length) return true
+              return form.channels.some((ch) => mine.includes(ch))
+            }
+            const pool = team.filter(here)
+            const specialists = pool.filter(holds).sort(bySort)
+            const everyoneElse = pool.filter((u) => !holds(u)).sort(bySort)
+            // "Dilnoza (3/4 that day)" — and a full day says so rather than
+            // waiting for the save to say it. The person already holding the
+            // hat is never marked full by their own piece.
+            const load = dayLoad[f.key] || {}
+            const nameOf = (u) => {
+              const l = load[u.id]
+              if (!l || !l.cap) return u.name
+              const mine = u.id === form[f.key] ? 1 : 0
+              const taken = Math.max(0, l.taken - mine)
+              return `${u.name} — ${taken}/${l.cap}${taken >= l.cap ? ` ${tx('day is full')}` : ''}`
+            }
+            const isFull = (u) => {
+              const l = load[u.id]
+              if (!l || !l.cap || u.id === form[f.key]) return false
+              return l.taken >= l.cap
+            }
+            // What the stage owes: a booked shoot needs its shooter, and
+            // footage in hand needs the editor who will cut it. An idea owes
+            // neither — the hats say "optional" until the work reaches them.
+            const mustHave = (f.key === 'operator_id' && needsOperator) || (f.key === 'editor_id' && needsEditor)
             return (
-              <label key={f.key} className="crew-field">
-                <span className="crew-label">{f.label} <span className="crew-opt">optional</span></span>
-                <select className="select" disabled={detailsLocked} value={form[f.key] ?? ''}
-                  data-tip={f.tip}
-                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value === '' ? null : Number(e.target.value) })}>
-                  <option value="">— nobody —</option>
-                  {specialists.length > 0 && (
-                    <optgroup label={`${f.label}s`}>
-                      {specialists.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </optgroup>
-                  )}
-                  {everyoneElse.length > 0 && (
-                    <optgroup label="Everyone else — one-time duty">
-                      {everyoneElse.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </optgroup>
-                  )}
-                </select>
-              </label>
+              <div key={f.key} className={'crew-field' + (mustHave && !form[f.key] ? ' crew-missing' : '') + (badField === f.key ? ' field-bad' : '')}>
+                <span className="crew-label">
+                  {f.label}{' '}
+                  {mustHave
+                    ? <span className="crew-req">{tx("required")}</span>
+                    : <span className="crew-opt">{tx("optional")}</span>}
+                </span>
+                <PersonPicker
+                  disabled={detailsLocked}
+                  value={form[f.key] ?? null}
+                  placeholder={mustHave ? `— pick the ${f.label.toLowerCase()} —` : tx('— nobody —')}
+                  tip={mustHave ? `${f.label} — this stage can’t go on without one` : f.tip}
+                  groups={[
+                    { label: `${f.label}s`, people: specialists.map((u) => ({ id: u.id, name: nameOf(u), color: u.color, avatar: u.avatar, disabled: isFull(u) })) },
+                    { label: tx('Everyone else — one-time duty'), people: everyoneElse.map((u) => ({ id: u.id, name: nameOf(u), color: u.color, avatar: u.avatar, disabled: isFull(u) })) },
+                  ].filter((g) => g.people.length > 0)}
+                  onPick={(id) => setForm({ ...form, [f.key]: id })}
+                />
+              </div>
             )
           })}
+          {/* Whose face carries it. Not a crew hat — a hat is work done ON the
+              piece, and this is the piece. Offered for anything filmed, and
+              always shown once somebody has been named. Its own class on
+              purpose: nothing that counts crew-fields may count it. */}
+          {(form.face_id || (fieldRules?.crew?.operator || []).includes(form.type)) && (
+            <div className="face-field">
+              <span className="crew-label">
+                {tx('Who is in it')}{' '}<span className="crew-opt">{tx('optional')}</span>
+              </span>
+              <PersonPicker
+                disabled={detailsLocked}
+                value={form.face_id ?? null}
+                placeholder={tx('— nobody —')}
+                tip={tx('Whose face carries this piece')}
+                groups={[{ label: '', people: team.map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })) }]}
+                onPick={(id) => setForm({ ...form, face_id: id })}
+              />
+            </div>
+          )}
         </div>
       </div>
 
       {/* Review can be shared — several names, all of them on the hook for the
           same date. Kept apart from the single-hat crew pickers above. */}
       <div className="cm-row">
-        <span className="cm-key">Review</span>
+        <span className="cm-key">{t('task.reviewer')}</span>
+        {/* Who signs it off, as the people who ARE on it — not as the whole
+            team laid out in a grid for you to read your colleagues' names.
+            A thirty-person board drew thirty buttons here, twenty-nine of
+            which were the wrong answer. The picked faces show; the rest are
+            behind a search that narrows. */}
         <div className="rev-picker">
-          {team.map((u) => {
-            const on = form.reviewer_ids.includes(u.id)
+          {form.reviewer_ids.map((id) => {
+            const u = team.find((x) => x.id === id)
             return (
-              <button key={u.id} type="button" disabled={detailsLocked}
-                className={'rev-chip' + (on ? ' on' : '')}
-                onClick={() => setForm({
-                  ...form,
-                  reviewer_ids: on ? form.reviewer_ids.filter((id) => id !== u.id) : [...form.reviewer_ids, u.id],
-                })}>
-                {u.name}
-              </button>
+              <span key={id} className="chip assignee-chip">
+                <Avatar name={u?.name || '…'} color={u?.color} src={u?.avatar} size="xs" />
+                {u?.name || '…'}
+                {!detailsLocked && (
+                  <button type="button" className="chip-x" aria-label={tx('Remove')}
+                    onClick={() => setForm({ ...form, reviewer_ids: form.reviewer_ids.filter((x) => x !== id) })}>×</button>
+                )}
+              </span>
             )
           })}
-          {form.reviewer_ids.length === 0 && <span className="cm-hint">Nobody signs this off yet.</span>}
+          {!detailsLocked && (
+            <PersonPicker
+              className="reviewer-add"
+              value={null}
+              clearable={false}
+              placeholder={form.reviewer_ids.length ? tx('Add person…') : tx('Nobody signs this off yet.')}
+              tip={tx('Who signs this off')}
+              groups={[{
+                label: '',
+                people: team.filter((u) => !form.reviewer_ids.includes(u.id))
+                  .map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })),
+              }]}
+              onPick={(id) => {
+                if (id && !form.reviewer_ids.includes(id)) setForm({ ...form, reviewer_ids: [...form.reviewer_ids, id] })
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -1105,7 +2196,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           happened to the task, not by anything typed here. */}
       {!creating && phases.some((p) => p.state !== 'none') && (
         <div className="cm-row">
-          <span className="cm-key">Deadlines</span>
+          <span className="cm-key">{t('task.deadlines')}</span>
           <div className="phases">
             {phases.filter((p) => p.state !== 'none').map((p) => {
               const who = (p.owner_ids || [p.owner_id]).filter(Boolean)
@@ -1135,30 +2226,148 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* Campaign — one dropdown, so campaign progress follows the kanban */}
       <div className="cm-row">
-        <span className="cm-key">Campaign</span>
+        <span className="cm-key">{t('task.campaign')}</span>
         <select
           className="select"
           style={{ maxWidth: 280 }}
           disabled={detailsLocked}
           value={form.campaign_id ?? ''}
-          data-tip="Tags this card to a campaign — its board fills itself"
+          data-tip={tx("Tags this card to a campaign — its board fills itself")}
           onChange={(e) => setForm({ ...form, campaign_id: e.target.value === '' ? null : Number(e.target.value) })}
         >
-          <option value="">No campaign</option>
+          <option value="">{tx("No campaign")}</option>
           {campaigns.map((cp) => <option key={cp.id} value={cp.id}>{cp.name}</option>)}
         </select>
       </div>
       </>)}
 
+      </div>
+
+      <div className={secCls('when')} data-sec="when">
       {/* Dates — the shoot in hours (from–to), the editor's cut deadline, the
           designer's artwork deadline, and the public release. Each maker is
           judged by their own date, never by the release. */}
       <div className="dates-block">
-        {!isDesign && <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" form={form} setForm={setForm} disabled={detailsLocked} />}
-        {!isDesign && <DateRow icon={Scissors} label="Edit ready" dateKey="edit_ready_date" form={form} setForm={setForm} disabled={detailsLocked} />}
-        <DateRow icon={Palette} label="Design ready" dateKey="design_ready_date" form={form} setForm={setForm} disabled={detailsLocked} />
-        {!crewViewer && <DateRow icon={Send} label="Release" dateKey="release_date" timeKey="release_time" form={form} setForm={setForm} disabled={detailsLocked} />}
+        {(() => {
+          const shared = {
+            form, setForm, disabled: detailsLocked, confirmSet,
+            locked: datesLocked && !creating, onAskMove: canAsk ? askToMove : null,
+          }
+          const at = (k) => ({ ...shared, bad: badField === k })
+          return (<>
+            <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" {...at('recording_date')} />
+            {/* …or pick the time out of the operator's actual week. Typing a
+                date and a time was guessing at somebody else's diary and
+                being corrected afterwards; this asks how long the shoot is
+                and then offers only the times that exist. Folded away by
+                default — the boxes above are still the fast path for a
+                planner who already agreed the time in the corridor. */}
+            {!detailsLocked && form.operator_id && (
+              <div className="cm-row cm-slots">
+                <span className="cm-key">
+                  <CalendarClock size={13} style={{ verticalAlign: -2 }} /> {tx('Free times')}
+                </span>
+                <div className="cm-slot-wrap">
+                  <button type="button" className="btn btn-sm cm-slot-toggle" onClick={() => setSlotsOpen((v) => !v)}>
+                    {slotsOpen ? tx('Hide the calendar') : tx('Find a free slot')}
+                  </button>
+                  {slotsOpen && (
+                    <SlotPicker
+                      userId={Number(form.operator_id) || null}
+                      excludeId={item?.id}
+                      value={form.recording_date && form.recording_time
+                        ? { date: form.recording_date, from: form.recording_time } : null}
+                      onPick={({ date, from, to }) => {
+                        setForm((f) => ({ ...f, recording_date: date, recording_time: from, recording_end: to }))
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+            {/* The booked slot, and whether the person holding it has agreed
+                to it. A date typed into a box is a plan; this is where it
+                becomes an arrangement between two people. */}
+            {!creating && (
+              <Booking item={booked} which="shoot" label={tx('Shoot')}
+                holderName={team.find((u) => u.id === booked?.operator_id)?.name?.split(' ')[0]}
+                mine={booked?.operator_id === user.id} onAnswered={setBooked} />
+            )}
+            <DateRow icon={Scissors} label="Edit ready" dateKey="edit_ready_date" {...at('edit_ready_date')} />
+            {!creating && (
+              <Booking item={booked} which="edit" label={tx('Edit ready')}
+                holderName={team.find((u) => u.id === booked?.editor_id)?.name?.split(' ')[0]}
+                mine={booked?.editor_id === user.id} onAnswered={setBooked} />
+            )}
+            <DateRow icon={Palette} label="Design ready" dateKey="design_ready_date" {...at('design_ready_date')} />
+            {!crewViewer && <DateRow icon={Send} label="Release" dateKey="release_date" timeKey="release_time" {...at('release_date')} />}
+          </>)
+        })()}
       </div>
+
+      {/* Asking for a promised day to move. The reason is the point: a date
+          that slips without one is a date nobody can plan around next time. */}
+      {asking && (
+        <div className="ask-move">
+          <div className="ask-head">
+            <CalendarClock size={15} /> {tx('Ask an admin to move {day}', { day: promisedDay(asking.field) })}
+          </div>
+          <div className="ask-row">
+            <span className="ask-was">now <b>{item?.[asking.field] || '—'}</b></span>
+            <span className="drow-dash">→</span>
+            <input className="input" type="date" value={asking.to}
+              onChange={(e) => setAsking({ ...asking, to: e.target.value })} />
+          </div>
+          <textarea className="input" rows={2} autoFocus value={asking.reason}
+            onChange={(e) => setAsking({ ...asking, reason: e.target.value })}
+            placeholder={tx("What happened? The shoot was rained off, the location fell through…")} />
+          <div className="ask-actions">
+            <span className="stat-sub">{tx("They see it in the bell and in Telegram. The day does not move until they say yes.")}</span>
+            <button type="button" className="btn btn-sm" onClick={() => setAsking(null)}>{tx("Cancel")}</button>
+            <button type="button" className="btn btn-sm btn-primary" disabled={busy || !asking.reason.trim()} onClick={sendAsk}>
+              <Send size={13} /> {tx('Ask')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* The asks themselves: what is waiting, and what was decided and why. */}
+      {dateReqs.length > 0 && (
+        <div className="cm-row cm-asks">
+          <span className="cm-key"><CalendarClock size={13} style={{ verticalAlign: -2 }} /> {t('task.daymoves')}</span>
+          <div className="ask-list">
+            {dateReqs.map((r) => (
+              <div key={r.id} className={`ask-item ask-${r.state}`}>
+                <span className="ask-line">
+                  <b>{promisedDay(r.field)}</b>: {r.from_date || '—'} → {r.to_date || tx('cleared')}
+                  <span className={`chip ask-state ask-chip-${r.state}`}>
+                    {r.state === 'open' ? tx('waiting on an admin')
+                      : r.state === 'approved' ? tx('moved')
+                        : r.state === 'stale' ? tx('out of date') : tx('kept where it was')}
+                  </span>
+                </span>
+                <span className="ask-why">“{r.reason}” — {r.asked_name || 'someone'}</span>
+                {r.decided_at && (
+                  <span className="ask-meta">
+                    {r.state === 'approved' ? tx('Moved by {name}', { name: r.decided_name })
+                      : r.state === 'stale' ? tx('Dropped by {name}', { name: r.decided_name })
+                        : tx('Kept by {name}', { name: r.decided_name })}
+                    {r.decided_note ? ` — ${r.decided_note}` : ''}
+                  </span>
+                )}
+                {r.state === 'open' && isAdmin && (
+                  <span className="ask-decide">
+                    <button type="button" className="btn btn-sm" disabled={busy} onClick={() => decide(r.id, false)}>{tx("Keep the day")}</button>
+                    <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => decide(r.id, true)}>
+                      <Check size={13} /> {tx('Move it')}
+                    </button>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {(form.edit_ready_date || form.design_ready_date) && (
         <div className="cm-hint">
           <Scissors size={11} />{' '}
@@ -1170,27 +2379,26 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       )}
 
-      {/* Extras appear only when wanted (the photo lives in Reference now). */}
-      {!detailsLocked && (!show.description || !show.checklist || (!hasRef && !show.reference) || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !show.docs && docs.length === 0) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
-        <div className="extra-btns">
-          {!hasRef && !show.reference && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, reference: true })}><BookOpen size={14} /> Reference</button>}
-          {!creating && !show.docs && docs.length === 0 && (
-            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, docs: true })}><Paperclip size={14} /> Documents</button>
-          )}
-          {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, script: true })}><FileText size={14} /> Script</button>}
-          {!show.description && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, description: true })}><AlignLeft size={14} /> Description</button>}
-          {!show.checklist && <button type="button" className="extra-btn" onClick={() => setShow({ ...show, checklist: true })}><CheckSquare size={14} /> Checklist</button>}
-          {!creating && !crewViewer && canEdit && !show.delivery && (
-            <button type="button" className="extra-btn" onClick={() => setShow({ ...show, delivery: true })}><Link2 size={14} /> Delivery links</button>
-          )}
-        </div>
-      )}
+      </div>
 
-      {show.description && (
-        <div className="field">
-          <label>Description</label>
-          <textarea className="input" rows={2} disabled={detailsLocked} autoFocus={!form.description} value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="References, links, notes…" />
+      <div className={secCls('more')} data-sec="more">
+      {/* Reference and Description are open from the start now, so what is
+          left here is the chrome that only earns its space once it holds
+          something. */}
+      {/* Asking for a row is asking to fill it in, so the sheet takes you to
+          where it appeared. Before the views, "Delivery links" opened three
+          boxes somewhere below the fold; now it opens them and puts them in
+          front of you. */}
+      {!detailsLocked && (!show.checklist || (fOn('script') && !show.script && !form.script && !fReq('script')) || (!creating && !show.docs && docs.length === 0) || (!creating && !crewViewer && canEdit && !show.delivery)) && (
+        <div className="extra-btns">
+          {!creating && !show.docs && docs.length === 0 && (
+            <button type="button" className="extra-btn" onClick={() => { setShow({ ...show, docs: true }); setSec(tabOf('more')) }}><Paperclip size={14} />{' '}{tx("Documents")}</button>
+          )}
+          {fOn('script') && !show.script && !form.script && !fReq('script') && <button type="button" className="extra-btn" onClick={() => { setShow({ ...show, script: true }); setSec(tabOf('brief')) }}><FileText size={14} />{' '}{tx("Script")}</button>}
+          {!show.checklist && <button type="button" className="extra-btn" onClick={() => { setShow({ ...show, checklist: true }); setSec(tabOf('more')) }}><CheckSquare size={14} />{' '}{tx("Checklist")}</button>}
+          {!creating && !crewViewer && canEdit && !show.delivery && (
+            <button type="button" className="extra-btn" onClick={() => { setShow({ ...show, delivery: true }); setSec(tabOf('review')) }}><Link2 size={14} />{' '}{tx("Delivery links")}</button>
+          )}
         </div>
       )}
 
@@ -1204,14 +2412,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   {c.done && <Check size={12} strokeWidth={3} />}
                 </button>
                 <span className={c.done ? 'done-txt' : ''} style={{ flex: 1 }}>{c.text}</span>
-                {!checklistLocked && <button className="icon-btn" style={{ padding: 2 }} data-tip="Remove this item" data-tip-left="" onClick={() => removeCheck(i)} aria-label="Remove"><X size={13} /></button>}
+                {!checklistLocked && <button className="icon-btn" style={{ padding: 2 }} data-tip={tx("Remove this item")} data-tip-left="" onClick={() => removeCheck(i)} aria-label={tx("Remove")}><X size={13} /></button>}
               </div>
             ))}
           </div>
           {!checklistLocked && (
             <div className="add-inline" style={{ padding: '6px 0 0' }}>
               <input className="input" value={subText} onChange={(e) => setSubText(e.target.value)}
-                placeholder="Add an item, press Enter…" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCheck() } }} />
+                placeholder={tx("Add an item, press Enter…")} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCheck() } }} />
               <button className="btn btn-sm" onClick={addCheck}><Plus size={14} /></button>
             </div>
           )}
@@ -1223,21 +2431,25 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           bell carries each line to the rest. */}
       {!creating && (
         <div className="cm-row cm-comments">
-          <span className="cm-key"><MessageSquare size={13} style={{ verticalAlign: -2 }} /> Talk{comments.length > 0 && <span className="count"> · {comments.length}</span>}</span>
+          <span className="cm-key"><MessageSquare size={13} style={{ verticalAlign: -2 }} /> {t('task.talk')}{comments.length > 0 && <span className="count"> · {comments.length}</span>}</span>
           <div className="cmt-block">
             {comments.map((c) => (
               <div key={c.id} className="cmt-row">
                 <b className="cmt-who">{(c.author || '?').split(' ')[0]}</b>
-                <span className="cmt-text">{c.text}</span>
+                <span className="cmt-text">
+                  {c.text ? withMentions(c.text) : <span className="muted">{tx("voice note")}</span>}
+                  {c.voice_id ? <VoicePlayer id={c.voice_id} secs={c.voice_secs} mine={c.user_id === user.id} /> : null}
+                </span>
                 <span className="cmt-when">{cmtWhen(c.created_at)}</span>
               </div>
             ))}
-            {comments.length === 0 && <div className="tt-none" style={{ padding: '0 0 6px' }}>Nothing said yet — better here than lost in Telegram.</div>}
+            {comments.length === 0 && <div className="tt-none" style={{ padding: '0 0 6px' }}>{tx("Nothing said yet — better here than lost in Telegram.")}</div>}
             <div className="add-inline cmt-input">
-              <input className="input" value={cmtDraft} placeholder="Say it where the task lives…"
+              <input className="input" value={cmtDraft} placeholder={tx("Say it where the task lives… @name reaches them")}
                 onChange={(e) => setCmtDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); sendComment() } }} />
-              <button className="btn btn-sm" onClick={sendComment} disabled={cmtBusy || !cmtDraft.trim()} aria-label="Send comment">
+              {canRecord() && <VoiceRecorder key={clipNonce} onClip={setCmtClip} disabled={cmtBusy} />}
+              <button className="btn btn-sm" onClick={sendComment} disabled={cmtBusy || (!cmtDraft.trim() && !cmtClip)} aria-label={tx("Send comment")}>
                 <Send size={14} />
               </button>
             </div>
@@ -1250,7 +2462,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           the whole story on request. */}
       {!creating && activity.length > 0 && (
         <div className="cm-row cm-history">
-          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> History<span className="count"> · {activity.length}</span></span>
+          <span className="cm-key"><History size={13} style={{ verticalAlign: -2 }} /> {t('task.history')}<span className="count"> · {activity.length}</span></span>
           <div className="hist-block">
             {(allLog ? activity : activity.slice(0, 3)).map((a) => (
               <div key={a.id} className="cmt-row hist-row">
@@ -1264,6 +2476,27 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 {allLog ? 'Show less' : `Show all ${activity.length}`}
               </button>
             )}
+          </div>
+        </div>
+      )}
+      </div>
+
+      {/* Leaving with words nobody saved. Two ways out and no third: go back
+          to the form, or drop what was typed. No "save and close" — a save
+          that happens as a side effect of leaving is a save nobody read. */}
+      {leaving && (
+        <div className="cm-leave" role="alertdialog" aria-modal="true">
+          <div className="cm-leave-box u-quiet">
+            <b>{tx('You have changes nobody has saved.')}</b>
+            <span className="stat-sub">{tx('Close this and they are gone.')}</span>
+            <div className="cm-leave-acts">
+              <button type="button" className="btn" onClick={() => setLeaving(false)}>
+                {tx('Keep editing')}
+              </button>
+              <button type="button" className="btn btn-danger" onClick={() => { setLeaving(false); onClose() }}>
+                {tx('Discard them')}
+              </button>
+            </div>
           </div>
         </div>
       )}

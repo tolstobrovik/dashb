@@ -1,20 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
-  X, CheckSquare, Scissors, Video, History, Eye, EyeOff,
+  X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Palette, UserCheck, RotateCcw, Languages, Loader2,
+  SlidersHorizontal, Activity,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
+import { rewardIfFinished } from '../lib/reward.js'
 import { toast, loadFailed } from '../lib/toast.js'
+import { markDone } from '../lib/finish.js'
+import Fold from '../components/Fold.jsx'
 import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
 import { CHANNEL_ICONS, iconFor, PERMISSIONS, CONTENT_TYPES, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
+import { Dots } from '../components/Dots.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import Whiteboard from '../components/Whiteboard.jsx'
 import { activityLine } from '../lib/activity.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Distinct hues so member avatars/chips are tellable apart (matches Profile).
 const SWATCHES = ['#a32234', '#2a78d6', '#1D9E75', '#BA7517', '#7b5ad6', '#0e8f8f', '#d6499b', '#5a6b7a']
@@ -32,7 +38,11 @@ const TABS = [
   { key: 'board', label: 'Whiteboard', icon: Network },
   { key: 'channels', label: 'Channels', icon: PanelLeft },
   { key: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
+  { key: 'settings', label: 'Settings', icon: SlidersHorizontal },
   { key: 'reports', label: 'Reports', icon: FileBarChart },
+  { key: 'pay', label: 'Payroll', icon: Wallet },
+  { key: 'ai', label: 'Language help', icon: Languages },
+  { key: 'usage', label: 'Usage', icon: Activity },
   { key: 'history', label: 'History', icon: History },
   { key: 'telegram', label: 'Telegram', icon: Send },
 ]
@@ -49,7 +59,7 @@ export default function Admin() {
           const Icon = t.icon
           return (
             <button key={t.key} className={'tab' + (tab === t.key ? ' active' : '')} onClick={() => setTab(t.key)}>
-              <Icon size={16} /> {t.label}
+              <Icon size={16} /> {tx(t.label)}
             </button>
           )
         })}
@@ -59,7 +69,11 @@ export default function Admin() {
       {tab === 'board' && <Whiteboard />}
       {tab === 'channels' && <ChannelsTab onOpenReport={openReport} />}
       {tab === 'pipeline' && <PipelineTab />}
+      {tab === 'settings' && <SettingsTab />}
       {tab === 'reports' && <ReportsTab channel={reportChannel} setChannel={setReportChannel} />}
+      {tab === 'pay' && <PayTab />}
+      {tab === 'ai' && <AiTab />}
+      {tab === 'usage' && <UsageTab />}
       {tab === 'history' && <HistoryTab />}
       {tab === 'telegram' && <TelegramTab />}
     </>
@@ -187,7 +201,7 @@ function Reminders({ members }) {
     try {
       if (edit.id) await api.patch(`/telegram/templates/${edit.id}`, edit)
       else await api.post('/telegram/templates', edit)
-      setEdit(null); await load(); toast('Reminder saved — synced')
+      setEdit(null); await load(); toast(tx('Reminder saved — synced'))
     } catch (e) { alert(e.message) } finally { setBusy(false) }
   }
   const toggle = async (t) => {
@@ -358,12 +372,140 @@ function HistoryTab() {
             <span className="alog-text">
               {activityLine(a)} on{' '}
               {a.kind !== 'deleted' && a.content_id
-                ? <a className="alog-task" href={`/todo?task=${a.content_id}`}>«{a.content_title}»</a>
+                ? <a className="alog-task" href={`/brief?task=${a.content_id}`}>«{a.content_title}»</a>
                 : <>«{a.content_title}»</>}
             </span>
           </div>
         ))}
         {shown.length === 0 && <div className="empty">Nothing yet — changes will be written down here.</div>}
+      </div>
+    </>
+  )
+}
+
+/* ==================== USAGE (is it being used, and for what) ============= */
+/* Two questions with no answer before this: is this person on the platform at
+   all, and which parts of it does anybody touch. Both are counted per person
+   per DAY — minutes with the board in front of them, and presses of buttons
+   the app itself names. There is deliberately no moment-by-moment log: see
+   server/routes/usage.js. */
+function UsageTab() {
+  const [span, setSpan] = useState('7')
+  const [data, setData] = useState(null)
+  const [who, setWho] = useState(0)
+  const to = todayISO()
+  const from = span === 'today' ? to : addDaysISO(to, -(Number(span) - 1))
+  useEffect(() => {
+    let on = true
+    setData(null)
+    api.get(`/usage?from=${from}&to=${to}`).then((r) => { if (on) setData(r) }).catch(() => { if (on) setData({ rows: [], buttons: [], pages: [], per_person: {} }) })
+    return () => { on = false }
+  }, [from, to])
+
+  // "3h 20m" reads; 12000 does not.
+  const spell = (secs) => {
+    const m = Math.round((Number(secs) || 0) / 60)
+    if (m < 1) return '—'
+    const h = Math.floor(m / 60)
+    return h ? `${h}h ${m % 60}m` : `${m}m`
+  }
+  const seen = (iso) => (iso
+    ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+    : tx('never'))
+
+  if (!data) return <div className="card"><span className="spinner" /></div>
+  const rows = data.rows || []
+  const busiest = Math.max(1, ...rows.map((r) => r.seconds || 0))
+  const mine = who ? (data.per_person?.[who] || []) : (data.buttons || [])
+  const topN = Math.max(1, ...mine.map((b) => b.n))
+  const quiet = rows.filter((r) => !r.seconds).length
+
+  return (
+    <>
+      <div className="section-head">
+        <h2>{tx('Usage')}</h2>
+        <span className="count">· {tx('{n} on the board', { n: rows.length - quiet })}</span>
+        <span style={{ flex: 1 }} />
+        <div className="pill-group usage-span">
+          {[['today', tx('Today')], ['7', tx('7 days')], ['30', tx('30 days')]].map(([k, label]) => (
+            <button key={k} className={'pill' + (span === k ? ' active' : '')} onClick={() => setSpan(k)}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <p className="stat-sub" style={{ margin: '0 0 10px' }}>
+        {tx('Minutes with the board open in front of somebody, and the buttons they pressed — counted per day, never per moment. Nothing here records what anybody read or wrote.')}
+      </p>
+
+      <div className="usage-grid">
+        <div className="card usage-people">
+          <table className="tbl usage-tbl">
+            <thead>
+              <tr>
+                <th>{tx('Person')}</th>
+                <th>{tx('Time on the platform')}</th>
+                <th>{tx('Days')}</th>
+                <th>{tx('Presses')}</th>
+                <th>{tx('Last seen')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className={(who === r.id ? 'on ' : '') + (r.seconds ? '' : 'usage-quiet')}
+                  onClick={() => setWho(who === r.id ? 0 : r.id)}>
+                  <td>
+                    <span className="usage-who">
+                      <Avatar name={r.name} color={r.color} src={r.avatar} size="sm" />
+                      <span>{r.name}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <span className="usage-bar" aria-hidden="true">
+                      <i style={{ width: `${Math.round((r.seconds / busiest) * 100)}%` }} />
+                    </span>
+                    <b className="usage-num">{spell(r.seconds)}</b>
+                  </td>
+                  <td>{r.days || '—'}</td>
+                  <td>{r.taps || '—'}</td>
+                  <td className="stat-sub">{seen(r.last_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {quiet > 0 && (
+            <div className="stat-sub" style={{ padding: '8px 4px 2px' }}>
+              {tx('{n} people did not open the board in this window.', { n: quiet })}
+            </div>
+          )}
+        </div>
+
+        <div className="card usage-buttons">
+          <div className="section-head" style={{ marginTop: 0 }}>
+            <h3>{who ? tx('What they press') : tx('What people press')}</h3>
+            {who > 0 && (
+              <button className="btn btn-sm" onClick={() => setWho(0)}>{tx('Everyone')}</button>
+            )}
+          </div>
+          {mine.length === 0 && <div className="empty">{tx('Nothing here')}</div>}
+          {mine.map((b) => (
+            <div key={b.action} className="usage-act">
+              <span className="usage-act-name">{b.action}</span>
+              <span className="usage-bar"><i style={{ width: `${Math.round((b.n / topN) * 100)}%` }} /></span>
+              <b className="usage-num">{b.n}</b>
+            </div>
+          ))}
+          {!who && (data.pages || []).length > 0 && (
+            <>
+              <div className="section-head"><h3>{tx('Where they go')}</h3></div>
+              {data.pages.map((b) => (
+                <div key={b.action} className="usage-act">
+                  <span className="usage-act-name">{b.action}</span>
+                  <span className="usage-bar"><i style={{ width: `${Math.round((b.n / Math.max(1, data.pages[0].n)) * 100)}%` }} /></span>
+                  <b className="usage-num">{b.n}</b>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
       </div>
     </>
   )
@@ -376,7 +518,9 @@ function TaskRow({ item, ctx }) {
   const { statusesById, usersById, byKey, toggle, setOpenItem, togglePin, removeTask, openMenu } = ctx
   const isDone = !!item.done_at
   const status = statusesById[item.status_id]
-  const who = usersById[item.assignee_id]
+  // Everyone it was handed to, not whoever happened to be first in the list.
+  const held = (item.assignees?.length ? item.assignees : item.assignee_id ? [item.assignee_id] : [])
+  const who = usersById[held[0]]
   return (
     <div className={'todo-row' + (item.pinned && !isDone ? ' pinned' : '')}
       onContextMenu={(e) => openMenu(e, [
@@ -403,7 +547,13 @@ function TaskRow({ item, ctx }) {
               <Send size={10} /> {dateLabel(item.release_date)}
             </span>
           )}
-          {who && <span className="chip chip-muted">{who.name.split(' ')[0]}</span>}
+          {/* One name and how many more, the way the board's cards do it — a
+              task handed to two people used to name only the first. */}
+          {who && (
+            <span className="chip chip-muted">
+              {who.name.split(' ')[0]}{held.length > 1 ? ` +${held.length - 1}` : ''}
+            </span>
+          )}
         </span>
       </button>
       <span className="todo-actions">
@@ -455,14 +605,10 @@ function TasksTab() {
   const open = filtered.filter((i) => !i.done_at).sort((a, b) => (b.pinned || 0) - (a.pinned || 0))
   const done = filtered.filter((i) => i.done_at)
 
-  const toggle = async (item) => {
-    try {
-      const u = await api.patch(`/content/${item.id}`, { done: !item.done_at })
-      setItems((prev) => prev.map((x) => (x.id === item.id ? u : x)))
-    } catch (e) { alert(e.message) }
-  }
+  const toggle = (item) => markDone(item, updateContent, setOpenItem)
   const updateContent = async (item, payload) => {
     const c = await api.patch(`/content/${item.id}`, payload)
+    rewardIfFinished(item, c)
     setItems((prev) => prev.map((x) => (x.id === item.id ? c : x)))
   }
   const deleteContent = async (item) => {
@@ -517,17 +663,17 @@ function TasksTab() {
       )}
 
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem}
           statuses={statuses}
-          onClose={() => setOpenItem(null)}
+          onClose={(next) => setOpenItem(next?.id ? next : null)}
           onCreate={() => {}}
           onUpdate={updateContent}
           onDelete={deleteContent}
         />
       )}
       {creating && (
-        <ContentModal
+        <ContentModal key='new'
           item={null}
           statuses={statuses}
           defaults={chan !== 'all' ? { channels: [chan] } : {}}
@@ -542,9 +688,23 @@ function TasksTab() {
 }
 
 /* ==================== TEAM (+ permissions) ==================== */
-const BLANK_USER = { name: '', username: '', password: '', role: 'member', crew_roles: [], departments: [], permissions: {} }
+const BLANK_USER = { name: '', username: '', password: '', role: 'member', crew_roles: [], departments: [], admin_channels: [], crew_channels: [], daily_cap: 0, permissions: {} }
+
+// Who owns sprints. Kept beside the people table because that is where the
+// question is asked: this person, yes or no. An admin sets it; being an admin
+// is not the same as being one.
+function useSprintOwners() {
+  const [owners, setOwners] = useState([])
+  useEffect(() => { api.get('/sprints/owners').then(setOwners).catch(() => setOwners([])) }, [])
+  const toggle = async (id, on) => {
+    try { setOwners(await api.put(`/sprints/owners/${id}`, { owner: on })) }
+    catch (e) { toast(e.message, 'err') }
+  }
+  return { owners, toggle }
+}
 
 function TeamTab() {
+  const { owners, toggle: toggleOwner } = useSprintOwners()
   const { channels } = useChannels()
   const [users, setUsers] = useState([])
   const [modal, setModal] = useState(false)
@@ -558,7 +718,7 @@ function TeamTab() {
 
   const openAdd = () => { setForm(BLANK_USER); setUsernameTouched(false); setEditing(null); setErr(''); setModal(true) }
   const openEdit = (u) => {
-    setForm({ name: u.name, username: u.username, password: '', role: u.role, crew_roles: [...(u.crew_roles || [])], departments: u.departments, permissions: { ...u.permissions } })
+    setForm({ name: u.name, username: u.username, password: '', role: u.role, crew_roles: [...(u.crew_roles || [])], departments: u.departments, admin_channels: [...(u.admin_channels || [])], crew_channels: [...(u.crew_channels || [])], daily_cap: u.daily_cap || 0, permissions: { ...u.permissions } })
     setUsernameTouched(true); setEditing(u.id); setErr(''); setModal(true)
   }
 
@@ -566,7 +726,7 @@ function TeamTab() {
     setBusy(true); setErr('')
     try {
       if (editing) {
-        const body = { name: form.name, username: form.username, role: form.role, crew_roles: form.crew_roles, departments: form.departments, permissions: form.permissions }
+        const body = { name: form.name, username: form.username, role: form.role, crew_roles: form.crew_roles, departments: form.departments, admin_channels: form.admin_channels || [], crew_channels: form.crew_channels || [], daily_cap: Number(form.daily_cap) || 0, permissions: form.permissions }
         if (form.password) body.password = form.password
         const u = await api.patch(`/users/${editing}`, body)
         setUsers((prev) => prev.map((x) => (x.id === editing ? u : x)))
@@ -585,6 +745,16 @@ function TeamTab() {
 
   const toggleDept = (k) =>
     setForm((f) => ({ ...f, departments: f.departments.includes(k) ? f.departments.filter((d) => d !== k) : [...f.departments, k] }))
+  const toggleAdminChan = (k) =>
+    setForm((f) => {
+      const cur = f.admin_channels || []
+      return { ...f, admin_channels: cur.includes(k) ? cur.filter((d) => d !== k) : [...cur, k] }
+    })
+  const toggleCrewChan = (k) =>
+    setForm((f) => {
+      const cur = f.crew_channels || []
+      return { ...f, crew_channels: cur.includes(k) ? cur.filter((d) => d !== k) : [...cur, k] }
+    })
   const togglePerm = (k) =>
     setForm((f) => ({ ...f, permissions: { ...f.permissions, [k]: !f.permissions[k] } }))
 
@@ -598,10 +768,11 @@ function TeamTab() {
       </div>
       <div className="card table-wrap">
         <table className="tbl">
-          <thead><tr><th>Member</th><th>Role</th><th>Channels</th><th>Permissions</th><th style={{ textAlign: 'right' }} /></tr></thead>
+          <thead><tr><th>Member</th><th>Role</th><th>Channels</th><th>Permissions</th><th>{tx('Sprint owner')}</th>
+                  <th style={{ textAlign: 'right' }} /></tr></thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id}>
+              <tr key={u.id} className="u-row">
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Avatar name={u.name} color={u.color} src={u.avatar} size="sm" />
@@ -612,14 +783,19 @@ function TeamTab() {
                   </div>
                 </td>
                 <td>
-                  {u.role === 'admin' ? <span className="badge"><ShieldCheck size={12} /> Admin</span>
+                  {u.role === 'admin' ? <span className="badge"><ShieldCheck size={12} /> {(u.admin_channels || []).length ? 'Channel admin' : 'Admin'}</span>
                     : (u.crew_roles || []).length > 0 ? <span className="badge badge-muted"><Video size={12} /> {(u.crew_roles || []).map((c) => c[0].toUpperCase() + c.slice(1)).join(' & ')}</span>
                     : <span className="badge badge-muted">Member</span>}
                 </td>
                 <td>
                   <div className="dept-chips">
                     {u.role === 'admin'
-                      ? <span className="stat-sub">All channels</span>
+                      ? ((u.admin_channels || []).length
+                        ? u.admin_channels.map((d) => {
+                          const c = channels.find((x) => x.key === d)
+                          return <span key={d} className="badge">{c?.label || d}</span>
+                        })
+                        : <span className="stat-sub">All channels</span>)
                       : (u.crew_roles || []).length > 0
                         ? <span className="stat-sub">Their work, any channel</span>
                         : u.departments.map((d) => {
@@ -636,9 +812,23 @@ function TeamTab() {
                       : <span className="stat-sub">{PERMISSIONS.filter((p) => u.permissions[p.key]).length}/{PERMISSIONS.length} enabled</span>}
                 </td>
                 <td>
+                  {/* Owners may promote an idea into a sprint and change a
+                      sprint after it freezes. Nothing else in the module cares
+                      who you are. */}
+                  <label className="checkbox-chip chip-sm">
+                    <input type="checkbox" checked={owners.includes(u.id)}
+                      onChange={(e) => toggleOwner(u.id, e.target.checked)} />
+                    {owners.includes(u.id) ? tx('Owner') : tx('No')}
+                  </label>
+                </td>
+                <td>
                   <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                     <button className="btn btn-ghost btn-sm btn-icon" onClick={() => openEdit(u)} data-tip="Edit member, channels & rights" aria-label="Edit"><Pencil size={15} /></button>
-                    <button className="btn btn-danger btn-sm btn-icon" onClick={() => del(u)} data-tip="Remove this member" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
+                    {/* Deleting somebody's account had exactly the weight of
+                        editing it: two buttons side by side, one of them red,
+                        on every row of a long table. It is still one press
+                        away — on the row you are actually pointing at. */}
+                    <button className="btn btn-danger btn-sm btn-icon u-onhover" onClick={() => del(u)} data-tip="Remove this member" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
                   </div>
                 </td>
               </tr>
@@ -675,6 +865,24 @@ function TeamTab() {
             <RolePicker role={form.role} crewRoles={form.crew_roles}
               onChange={(role, crew_roles) => setForm({ ...form, role, crew_roles })} />
           </div>
+          {form.role === 'admin' && (
+            <div className="field">
+              <label>Which channels do they run?</label>
+              <div className="checkbox-row">
+                {channels.map((c) => (
+                  <label key={c.key} className={'checkbox-chip' + ((form.admin_channels || []).includes(c.key) ? ' on' : '')}>
+                    <input type="checkbox" checked={(form.admin_channels || []).includes(c.key)} onChange={() => toggleAdminChan(c.key)} />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+              <div className="cm-hint">
+                {(form.admin_channels || []).length === 0
+                  ? 'Nothing ticked — an admin of the whole board: every channel, plus accounts, channels and the pipeline rules.'
+                  : 'They run these channels only. Full reach over the work there — the dates, the crew, publishing — and no access to accounts, channels or the pipeline rules.'}
+              </div>
+            </div>
+          )}
           {form.role === 'member' && (
             <>
               <div className="field"><label>Channels</label>
@@ -704,11 +912,40 @@ function TeamTab() {
           )}
           {form.role === 'admin' && <span className="stat-sub">Admins can access every channel and do everything.</span>}
           {!['member', 'admin'].includes(form.role) && (
-            <span className="stat-sub">
-              Production crew: no channels, no metrics, no task creation. They sign in to a daily brief of
-              the tasks where they hold a hat ({(form.crew_roles || []).join(', ') || 'crew'}) — set on each task’s
-              Crew row — with deadlines and hours, and they move that work through the pipeline themselves.
-            </span>
+            <>
+              <div className="field">
+                <label>Which channels do they work on?</label>
+                <div className="checkbox-row">
+                  {channels.map((c) => (
+                    <label key={c.key} className={'checkbox-chip' + ((form.crew_channels || []).includes(c.key) ? ' on' : '')}>
+                      <input type="checkbox" checked={(form.crew_channels || []).includes(c.key)} onChange={() => toggleCrewChan(c.key)} />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+                <div className="cm-hint">
+                  {(form.crew_channels || []).length === 0
+                    ? 'Nothing ticked — they can be given work on any channel.'
+                    : 'They only appear in the crew pickers on these channels, and cannot be assigned work on the others.'}
+                </div>
+              </div>
+              <div className="field">
+                <label>How many pieces a day?</label>
+                <input className="input" type="number" min="0" max="50" style={{ maxWidth: 120 }}
+                  value={form.daily_cap ?? 0}
+                  onChange={(e) => setForm({ ...form, daily_cap: e.target.value })} />
+                <div className="cm-hint">
+                  {Number(form.daily_cap) > 0
+                    ? `At most ${Number(form.daily_cap)} for one day — handing them one more is refused, so it is caught while it can still be moved. Counted on the day the work is due FROM them: a cut day, a shoot day, an artwork day, never the release.`
+                    : 'No limit, which is what everybody was before this existed. Set a number and over-assignment is refused rather than discovered on the day.'}
+                </div>
+              </div>
+              <span className="stat-sub">
+                Production crew: no channels, no metrics, no task creation. They sign in to a daily brief of
+                the tasks where they hold a hat ({(form.crew_roles || []).join(', ') || 'crew'}) — set on each task’s
+                Crew row — with deadlines and hours, and they move that work through the pipeline themselves.
+              </span>
+            </>
           )}
         </Modal>
       )}
@@ -716,7 +953,554 @@ function TeamTab() {
   )
 }
 
-/* ==================== CHANNELS (custom sidebar) ==================== */
+/* ==================== PAY ==================== */
+/* What people are paid, worked out from what the board already knows.
+ *
+ * Payroll was being rebuilt by hand every month from numbers this system had
+ * to the day: who shot what, who cut what, and how much of it landed on the
+ * day they promised. The rates are the part no code can know — they differ per
+ * person and they change — so they are edited here and stored as data. One
+ * default card everybody starts from, and a card per person that overrides it.
+ *
+ * Nothing here invents a KPI. It multiplies counts by rates an admin typed. */
+const RATE_ROWS = [
+  { key: 'base', label: 'Base', hint: 'Paid for the period whatever the count' },
+  { key: 'per_shoot', label: 'Per shoot', hint: 'Each shoot handed to the editor' },
+  { key: 'per_edit', label: 'Per cut', hint: 'Each cut handed to review' },
+  { key: 'per_design', label: 'Per design', hint: 'Each piece they designed' },
+  { key: 'per_publish', label: 'Per piece run', hint: 'Each piece that went out as theirs' },
+  { key: 'per_review', label: 'Per sign-off', hint: 'Each piece they signed off' },
+  { key: 'quota', label: 'Pieces a month', hint: 'What a full month of this job looks like. 0 means no quota', plain: true },
+  { key: 'quota_bonus', label: 'Quota bonus', hint: 'Paid whole when they reach it' },
+  { key: 'ontime_bonus', label: 'On-time bonus', hint: 'Paid whole, or not at all' },
+  { key: 'ontime_target', label: 'On-time target %', hint: 'The share of deliveries that earns the bonus', pct: true },
+  { key: 'late_penalty', label: 'Per late piece', hint: 'Taken off for each delivery after its promised day' },
+  // What the work was WORTH. Both are 0 on a card nobody has set, so a board
+  // that does not pay on views never has to think about them.
+  { key: 'per_1k_views', label: 'Per 1,000 views', hint: 'Paid on the views the pieces they made actually got' },
+  { key: 'views_target', label: 'Views a month', hint: 'What a full month of watching looks like. 0 means no target', plain: true },
+  { key: 'views_bonus', label: 'Views bonus', hint: 'Paid whole when their month reaches that many views' },
+]
+const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0, per_1k_views: 0, views_target: 0, views_bonus: 0 }
+
+/* ---- working a card out from one number ----
+ *
+ * Typing eleven rates from scratch, per person, is how a pay scheme never
+ * gets set up at all. Almost nobody thinks in rates; everybody thinks in "an
+ * editor's month is worth about four million". So that is the question asked,
+ * plus roughly how many pieces a full month is, and the shape is applied:
+ *
+ *   60%  base            paid for turning up and being available
+ *   25%  piecework       spread over the quota, so a full month lands on the
+ *                        full package and every piece past it pays on top
+ *   10%  quota bonus     for doing the whole job
+ *    5%  on-time bonus   for doing it when promised
+ *   late costs half a piece, so slipping is felt but does not wipe out the day
+ *
+ * These are a starting shape, not a rule. Every line stays editable, and
+ * nothing is saved until Save is pressed — the numbers just appear in the
+ * boxes where they can be argued with.
+ */
+const SHAPE = { base: 0.60, piece: 0.25, quota: 0.10, ontime: 0.05 }
+const JOBS = [
+  { key: 'editor', label: tx('Editor'), rate: 'per_edit', monthly: 4000000, quota: 20 },
+  { key: 'operator', label: tx('Operator'), rate: 'per_shoot', monthly: 4000000, quota: 20 },
+  { key: 'designer', label: tx('Designer'), rate: 'per_design', monthly: 3500000, quota: 25 },
+  { key: 'planner', label: 'Runs the channel', rate: 'per_publish', monthly: 5000000, quota: 30 },
+]
+// Round to something a person would actually write down.
+const tidy = (n, step = 10000) => Math.max(0, Math.round(n / step) * step)
+function workOutCard(job, monthly, quota, currency) {
+  const q = Math.max(1, Math.round(Number(quota) || 1))
+  const m = Math.max(0, Number(monthly) || 0)
+  const perPiece = tidy((m * SHAPE.piece) / q, 5000)
+  return {
+    ...BLANK_CARD,
+    currency,
+    base: tidy(m * SHAPE.base),
+    [job.rate]: perPiece,
+    quota: q,
+    quota_bonus: tidy(m * SHAPE.quota),
+    ontime_bonus: tidy(m * SHAPE.ontime),
+    ontime_target: 90,
+    late_penalty: tidy(perPiece / 2, 5000),
+  }
+}
+
+// Money reads as money: grouped thousands, no decimals for whole sums. UZS
+// runs to millions, so an ungrouped 2200000 is unreadable at a glance.
+const money = (n, cur) => `${Math.round(Number(n) || 0).toLocaleString('en-US').replace(/,/g, ' ')} ${cur || ''}`.trim()
+
+function PayTab() {
+  const t = todayISO()
+  const monthStart = t.slice(0, 8) + '01'
+  const prevEnd = addDaysISO(monthStart, -1)
+  const prevStart = prevEnd.slice(0, 8) + '01'
+  const PRESETS = [
+    { key: 'month', label: tx('This month'), from: monthStart, to: t },
+    { key: 'prev', label: tx('Last month'), from: prevStart, to: prevEnd },
+    { key: 'custom', label: 'Custom' },
+  ]
+  const [preset, setPreset] = useState('month')
+  const [from, setFrom] = useState(monthStart)
+  const [to, setTo] = useState(t)
+  const [data, setData] = useState(null)
+  const [rules, setRules] = useState([])
+  const [card, setCard] = useState(null) // { userId | 'default', name, form }
+  const [plan, setPlan] = useState(null) // null | { job, monthly, quota } — the calculator
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const range = useMemo(() => {
+    const p = PRESETS.find((x) => x.key === preset)
+    return preset === 'custom' ? { from, to } : { from: p.from, to: p.to }
+  }, [preset, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const load = () => {
+    api.get(`/reports/pay?from=${range.from}&to=${range.to}`).then(setData).catch(() => setData(null))
+    api.get('/reports/pay/rules').then(setRules).catch(() => setRules([]))
+  }
+  useEffect(() => { load() }, [range.from, range.to]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openCard = (userId, name) => {
+    const row = rules.find((r) => (userId === 'default' ? !r.user_id : r.user_id === userId))
+    const fallback = userId === 'default' ? BLANK_CARD : (rules.find((r) => !r.user_id) || BLANK_CARD)
+    setErr('')
+    setPlan(null)
+    setCard({ userId, name, own: !!row, form: { ...BLANK_CARD, ...(row || fallback) } })
+  }
+  const saveCard = async () => {
+    if (!card) return
+    setBusy(true); setErr('')
+    try {
+      await api.put(`/reports/pay/rules/${card.userId}`, card.form)
+      setCard(null)
+      load()
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const dropCard = async () => {
+    if (!card || card.userId === 'default') return
+    if (!confirm(`Put ${card.name} back on the default card?`)) return
+    setBusy(true)
+    try { await api.del(`/reports/pay/rules/${card.userId}`); setCard(null); load() }
+    catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  const total = (data?.people || []).reduce((a, p) => a + p.total, 0)
+  const cur = data?.currency || 'UZS'
+
+  return (
+    <>
+      <div className="section-head">
+        <h2>Pay</h2>
+        <span className="count">· worked out from what was delivered</span>
+        <span className="spacer" />
+        <button className="btn btn-sm" onClick={() => openCard('default', 'everybody')}>
+          <Wallet size={14} /> Default rates
+        </button>
+        <div className="pill-group" style={{ marginLeft: 10 }}>
+          {PRESETS.map((p) => (
+            <button key={p.key} className={'pill' + (preset === p.key ? ' active' : '')} onClick={() => setPreset(p.key)}>{p.label}</button>
+          ))}
+        </div>
+      </div>
+      {preset === 'custom' && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          <input className="input" type="date" style={{ width: 160 }} value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input className="input" type="date" style={{ width: 160 }} value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+      )}
+
+      {!data ? <div className="app-loading"><span className="spinner" /></div> : (
+        <>
+          {!data.hasDefault && (
+            <div className="card card-pad pay-empty">
+              <b>No rates set yet.</b>
+              <span className="stat-sub">
+                Nothing here is guessed. Set the default card — a base, and what a shoot, a cut and a
+                design are each worth — and every person is worked out from it. Anybody paid differently
+                gets a card of their own on their row.
+              </span>
+              <button className="btn btn-primary btn-sm" onClick={() => openCard('default', 'everybody')}>Set the default rates</button>
+            </div>
+          )}
+
+          <div className="card card-pad rp-head">
+            <div className="rp-big">
+              <b>{money(total, cur)}</b>
+              <span className="rp-big-label">
+                the whole payroll for the period
+                <br /><span className="stat-sub">{range.from} → {range.to}</span>
+              </span>
+            </div>
+          </div>
+
+          {/* The arithmetic, once, in words. Every number in the table below
+              is one of these four, and the last column is the four added up.
+              Without this the table is eight numbers with no relationship
+              between them. */}
+          <div className="card card-pad pay-legend">
+            <div className="pay-sum">
+              <span className="pay-term pay-term-base">{tx('Base')}</span>
+              <span className="pay-op">+</span>
+              <span className="pay-term pay-term-piece">{tx('Piecework')}</span>
+              <span className="pay-op">+</span>
+              <span className="pay-term pay-term-bonus">{tx('Bonus')}</span>
+              <span className="pay-op">−</span>
+              <span className="pay-term pay-term-late">{tx('Late penalty')}</span>
+              <span className="pay-op">=</span>
+              <span className="pay-term pay-term-total">{tx('Pay')}</span>
+            </div>
+            <ul className="pay-defs">
+              <li><b>{tx('Base')}</b> — {tx('paid for the period whatever the count')}</li>
+              <li><b>{tx('Piecework')}</b> — {tx('what each finished piece is worth, added up')}</li>
+              <li><b>{tx('Bonus')}</b> — {tx('paid for meeting the quota, and for hitting the on-time target')}</li>
+              <li><b>{tx('Late penalty')}</b> — {tx('taken off for each piece delivered after its day')}</li>
+            </ul>
+          </div>
+
+          <div className="card table-wrap" style={{ marginTop: 14 }}>
+            <table className="tbl pay-tbl">
+              <thead><tr>
+                <th>{tx('Member')}</th>
+                <th data-tip={tx('Finished pieces in this period, against the quota if one is set')}>{tx('Delivered')}</th>
+                <th data-tip={tx('How many of them landed on or before their day')}>{tx('Delivered on time')}</th>
+                <th data-tip={tx('Views on the pieces made for them, and the target if one is set')}>{tx('Views')}</th>
+                <th data-tip={tx('Paid for the period whatever the count')}>{tx('Base')}</th>
+                <th data-tip={tx('What each finished piece is worth, added up')}>{tx('Piecework')}</th>
+                <th data-tip={tx('Paid for meeting the quota, and for hitting the on-time target')}>{tx('Bonus')}</th>
+                <th data-tip={tx('Taken off for each piece delivered after its day')}>{tx('Late penalty')}</th>
+                <th data-tip={tx('Base plus piecework plus bonus, less late')}>{tx('Pay')}</th><th />
+              </tr></thead>
+              <tbody>
+                {data.people.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar name={p.name} color={p.color} src={p.avatar} size="sm" />
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{p.name}</div>
+                          <div className="stat-sub">
+                            {p.source === 'own' ? 'own rates' : p.source === 'default' ? 'default rates' : 'no rates'}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <b>{p.delivered}</b>{p.quota > 0 && <span className="stat-sub"> / {p.quota}</span>}
+                      {p.quota > 0 && (
+                        <div className={p.quotaMet ? 'pay-good' : 'stat-sub'} style={{ fontSize: 11 }}>
+                          {p.quotaMet ? 'quota met' : `${p.quotaLeft} to go`}
+                        </div>
+                      )}
+                      {p.lines.filter((l) => l.count > 0).length > 0 && (
+                        <div className="stat-sub">{p.lines.filter((l) => l.count > 0).map((l) => `${l.label} ${l.count}`).join(' · ')}</div>
+                      )}
+                    </td>
+                    <td>{p.onTimePct === null ? <span className="stat-sub">—</span>
+                      : <span className={p.onTimePct >= (p.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>{p.onTimePct}%</span>}</td>
+                    <td>
+                      <b>{(p.views || 0).toLocaleString()}</b>
+                      {p.viewsTarget > 0 && <span className="stat-sub"> / {p.viewsTarget.toLocaleString()}</span>}
+                      {p.viewsTarget > 0 && (
+                        <div className={p.viewsMet ? 'pay-good' : 'stat-sub'} style={{ fontSize: 11 }}>
+                          {p.viewsMet ? tx('target met') : `${(p.viewsLeft || 0).toLocaleString()} ${tx('to go')}`}
+                        </div>
+                      )}
+                      {/* A sum drawn from a third of the pieces reads as if it
+                          were all of them, so it says how many it is from. */}
+                      {p.viewsCounted > 0 && p.viewsCounted < p.delivered && (
+                        <div className="stat-sub" style={{ fontSize: 11 }}>
+                          {p.viewsCounted}/{p.delivered} {tx('counted')}
+                        </div>
+                      )}
+                    </td>
+                    <td>{money(p.base, p.currency)}</td>
+                    <td>
+                      {money(p.piecework + (p.viewsPay || 0), p.currency)}
+                      {p.viewsPay > 0 && (
+                        <div className="stat-sub" style={{ fontSize: 11 }}>{tx('incl. views')} {money(p.viewsPay, p.currency)}</div>
+                      )}
+                    </td>
+                    <td>
+                      {p.bonus ? <span className="pay-good">+{money(p.bonus, p.currency)}</span> : <span className="stat-sub">—</span>}
+                      {p.bonus > 0 && (
+                        <div className="stat-sub" style={{ fontSize: 11 }}>
+                          {[p.quotaBonus > 0 && tx('quota'), p.onTimeBonus > 0 && tx('on time'), p.viewsBonus > 0 && tx('views')].filter(Boolean).join(' + ')}
+                        </div>
+                      )}
+                    </td>
+                    <td>{p.penalty ? <span className="pay-bad">−{money(p.penalty, p.currency)}</span> : <span className="stat-sub">—</span>}</td>
+                    <td>
+                      <b>{money(p.total, p.currency)}</b>
+                      {/* Where this person's money comes from, at a glance.
+                          Two people on the same total can be paid in
+                          completely different shapes, and the table alone
+                          never showed that. */}
+                      {p.total > 0 && (
+                        <div className="pay-bar" data-tip={payShape(p)}>
+                          {[['base', p.base], ['piece', p.piecework + (p.viewsPay || 0)], ['bonus', p.bonus]]
+                            .filter(([, v]) => v > 0)
+                            .map(([k, v]) => (
+                              <span key={k} className={`pay-bar-${k}`}
+                                style={{ flexGrow: v }} />
+                            ))}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="icon-btn" onClick={() => openCard(p.id, p.name)}
+                        data-tip={`${p.name}'s rates`} data-tip-left=""><Pencil size={14} /></button>
+                    </td>
+                  </tr>
+                ))}
+                {data.people.length === 0 && (
+                  <tr><td colSpan={9} className="empty">Nobody delivered anything in this period.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {card && (
+        <Modal
+          title={card.userId === 'default' ? 'Default rates' : `${card.name}'s rates`}
+          onClose={() => setCard(null)}
+          footer={<>
+            {card.userId !== 'default' && card.own && (
+              <button className="btn" onClick={dropCard} disabled={busy}><RotateCcw size={14} /> Use the default</button>
+            )}
+            <span className="foot-gap" />
+            <button className="btn" onClick={() => setCard(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveCard} disabled={busy}>Save rates</button>
+          </>}
+        >
+          {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
+          <div className="cm-hint" style={{ marginBottom: 12 }}>
+            {card.userId === 'default'
+              ? 'What everybody is paid on unless they have a card of their own. Leave a line at zero and it simply does not count.'
+              : card.own
+                ? `${card.name} is paid on these rates instead of the default ones.`
+                : `${card.name} is on the default rates. Change anything here and they get a card of their own.`}
+          </div>
+          <div className="field"><label>Currency</label>
+            <input className="input" style={{ maxWidth: 120 }} value={card.form.currency || ''}
+              onChange={(e) => setCard({ ...card, form: { ...card.form, currency: e.target.value } })} />
+          </div>
+
+          {/* Eleven rates typed from scratch, per person, is how a pay scheme
+              never gets set up at all. Nobody thinks in rates; everybody
+              thinks in "an editor's month is worth about four million". */}
+          {!plan ? (
+            <button type="button" className="btn btn-sm" style={{ marginBottom: 14 }}
+              onClick={() => setPlan({ job: JOBS[0].key, monthly: JOBS[0].monthly, quota: JOBS[0].quota })}>
+              <Wallet size={14} /> Work it out from a monthly figure
+            </button>
+          ) : (
+            <div className="card card-pad pay-plan">
+              <div className="cm-hint">
+                Say what a full month of this job is worth and roughly how many pieces that is.
+                It splits into {Math.round(SHAPE.base * 100)}% base, {Math.round(SHAPE.piece * 100)}% paid per piece,
+                {' '}{Math.round(SHAPE.quota * 100)}% for reaching the quota and {Math.round(SHAPE.ontime * 100)}% for
+                being on time — a starting shape, not a rule. Nothing is saved until you press Save, and every
+                line below stays yours to argue with.
+              </div>
+              <div className="pay-plan-row">
+                <label>
+                  <span>Job</span>
+                  <select className="select" value={plan.job}
+                    onChange={(e) => {
+                      const j = JOBS.find((x) => x.key === e.target.value)
+                      setPlan({ job: j.key, monthly: j.monthly, quota: j.quota })
+                    }}>
+                    {JOBS.map((j) => <option key={j.key} value={j.key}>{j.label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>A full month is worth</span>
+                  <input className="input" type="number" min="0" step="100000" value={plan.monthly}
+                    onChange={(e) => setPlan({ ...plan, monthly: e.target.value })} />
+                </label>
+                <label>
+                  <span>…and is about</span>
+                  <input className="input" type="number" min="1" step="1" value={plan.quota}
+                    onChange={(e) => setPlan({ ...plan, quota: e.target.value })} />
+                </label>
+              </div>
+              <div className="pay-plan-do">
+                <button type="button" className="btn btn-sm" onClick={() => setPlan(null)}>Never mind</button>
+                <button type="button" className="btn btn-sm btn-primary"
+                  onClick={() => {
+                    const j = JOBS.find((x) => x.key === plan.job)
+                    setCard({ ...card, form: workOutCard(j, plan.monthly, plan.quota, card.form.currency || 'UZS') })
+                    setPlan(null)
+                  }}>
+                  <Check size={14} /> Fill the rates in
+                </button>
+              </div>
+            </div>
+          )}
+          {RATE_ROWS.map((r) => (
+            <div className="field" key={r.key}>
+              <label>{r.label} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>— {r.hint}</span></label>
+              <input className="input" type="number" min="0" style={{ maxWidth: 220 }}
+                step={r.pct || r.plain ? 1 : 1000} max={r.pct ? 100 : undefined}
+                value={card.form[r.key] ?? 0}
+                onChange={(e) => setCard({ ...card, form: { ...card.form, [r.key]: e.target.value } })} />
+            </div>
+          ))}
+        </Modal>
+      )}
+    </>
+  )
+}
+
+/* ==================== LANGUAGE HELP ==================== */
+/* Who translates the briefs, and whether it costs anything.
+ *
+ * "Is a key set" and "does it work from where this is deployed" are different
+ * questions, and only the second one matters — a free endpoint that is fine
+ * from a laptop can be blocked from a data centre. So Test them now really
+ * calls each one with two words and reports what came back. */
+// Who came, and when.
+//
+// Nobody is late by default. A day nobody has looked at says nothing, and the
+// register only ever says what an admin said, which is why "on time" is a
+// state somebody chooses rather than what an empty row means.
+// "12 000 base + 40 000 piecework + 5 000 bonus, less 2 000 late" — the row's
+// own arithmetic, spelled out for the bar under its total.
+const payShape = (p) => {
+  const bits = []
+  if (p.base > 0) bits.push(`${p.base.toLocaleString()} base`)
+  if (p.piecework > 0) bits.push(`${p.piecework.toLocaleString()} piecework`)
+  if (p.viewsPay > 0) bits.push(`${p.viewsPay.toLocaleString()} on views`)
+  if (p.bonus > 0) bits.push(`${p.bonus.toLocaleString()} bonus`)
+  const sum = bits.join(' + ') || '0'
+  return p.penalty > 0 ? `${sum}, less ${p.penalty.toLocaleString()} late` : sum
+}
+
+
+function AiTab() {
+  const [st, setSt] = useState(null)
+  const [probe, setProbe] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [draft, setDraft] = useState({})
+  const load = () => api.get('/ai/status').then(setSt).catch(() => setSt(null))
+  // Wrapped, not passed: load returns a Promise, and an effect that returns
+  // one has React calling it as the cleanup when the tab is left.
+  useEffect(() => { load() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runProbe = useCallback(async () => {
+    setBusy(true)
+    try { setProbe((await api.post('/ai/probe', {})).results) }
+    catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }, [])
+  // Reachability answers itself on arrival. It used to sit on a dash until
+  // somebody found the button, which reads as "nothing works" rather than
+  // "nobody has asked yet".
+  useEffect(() => { runProbe() }, [runProbe])
+
+  const saveKey = async (provider, key) => {
+    setBusy(true)
+    try {
+      setSt(await api.put(`/ai/keys/${provider}`, { key }))
+      setDraft((d) => ({ ...d, [provider]: '' }))
+      toast(key ? tx('Key saved — testing it now') : tx('Key removed'))
+      runProbe()
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+  const clear = async () => {
+    try { await api.del('/ai/cache'); toast(tx('Saved — synced')); load() }
+    catch (e) { toast(e.message, 'err') }
+  }
+  if (!st) return <div className="app-loading"><span className="spinner" /></div>
+
+  const rows = [
+    ...(st.providers || []).map((p) => ({ ...p, kind: 'model' })),
+    ...st.free.map((f) => ({ name: f, kind: 'free', set: true, source: 'built in' })),
+  ]
+
+  return (
+    <>
+      <div className="section-head">
+        <h2>{tx('Translation & plain language')}</h2>
+        <span className="count">· {tx('Who does the work, and what it costs')}</span>
+        <span className="spacer" />
+        <button className="btn btn-sm" disabled={busy} onClick={runProbe}>
+          {busy ? <Loader2 size={14} className="txh-spin" /> : <Languages size={14} />} {tx('Test them now')}
+        </button>
+      </div>
+
+      <div className="card card-pad ai-note">
+        <b>{tx('The free two need no key and handle translation on their own.')}</b>
+        <span className="stat-sub">
+          {tx('A model key is what makes «Explain simply» reword a brief instead of just splitting its sentences. Paste one below and it is used straight away. One is enough; the rest are tried only if it fails.')}
+        </span>
+      </div>
+
+      <div className="card table-wrap">
+        <table className="tbl">
+          <thead><tr>
+            <th>{tx('Provider')}</th><th>{tx('Kind')}</th><th>{tx('Key')}</th>
+            <th>{tx('Reachable')}</th><th />
+          </tr></thead>
+          <tbody>
+            {rows.map((row) => {
+              const hit = (probe || []).find((x) => x.name === row.name)
+              const typed = draft[row.name] ?? ''
+              return (
+                <tr key={row.name + row.kind}>
+                  <td><b>{row.name}</b></td>
+                  <td className="stat-sub">{row.kind === 'model' ? tx('model') : tx('free translation')}</td>
+                  <td>
+                    {row.kind === 'free'
+                      ? <span className="stat-sub">{tx('none needed')}</span>
+                      : row.set
+                        ? <span className="ai-keyset">
+                            <ShieldCheck size={13} /> {tx('set')}
+                            <span className="stat-sub"> · {tx('from the {where}', { where: row.source })}</span>
+                          </span>
+                        : <span className="stat-sub">{tx('no key')}</span>}
+                  </td>
+                  <td>
+                    {row.kind === 'model' && !row.set ? <span className="stat-sub">—</span>
+                      : busy && !hit ? <span className="stat-sub">{tx('testing…')}</span>
+                        : !hit ? <span className="stat-sub">—</span>
+                          : hit.ok ? <span className="pay-good">{tx('reachable')} · {hit.ms}ms</span>
+                            : <span className="pay-bad" data-tip={hit.why}>{tx('not reachable')}</span>}
+                  </td>
+                  <td className="ai-keycell">
+                    {row.kind === 'model' && (
+                      <span className="ai-keyform">
+                        <input className="input" type="password" autoComplete="off"
+                          placeholder={row.set ? tx('replace the key') : tx('paste the key')}
+                          value={typed} onChange={(e) => setDraft({ ...draft, [row.name]: e.target.value })} />
+                        <button className="btn btn-sm" disabled={busy || !typed.trim()}
+                          onClick={() => saveKey(row.name, typed.trim())}>{tx('Save')}</button>
+                        {row.set && row.source === 'typed in' && (
+                          <button className="btn btn-sm btn-danger" disabled={busy}
+                            onClick={() => saveKey(row.name, '')}>{tx('Remove')}</button>
+                        )}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card card-pad" style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <b>{st.cached}</b><span className="stat-sub">{tx('saved translations')}</span>
+        <span className="spacer" />
+        <button className="btn" onClick={clear}>{tx('Clear the saved translations')}</button>
+      </div>
+    </>
+  )
+}
+
 function ChannelsTab({ onOpenReport }) {
   const { channels, reload } = useChannels()
   const [modal, setModal] = useState(null) // {id?, label, icon, head_id}
@@ -752,7 +1536,7 @@ function ChannelsTab({ onOpenReport }) {
     if (!modal.label.trim()) return
     setErr('')
     try {
-      const body = { label: modal.label.trim(), icon: modal.icon, head_id: modal.head_id ?? null }
+      const body = { label: modal.label.trim(), icon: modal.icon, head_id: modal.head_id ?? null, drive_url: (modal.drive_url ?? '').trim(), daily_ad_cap: Number(modal.daily_ad_cap) || 0 }
       if (modal.id) await api.patch(`/channels/${modal.id}`, body)
       else await api.post('/channels', body)
       reload()
@@ -777,13 +1561,13 @@ function ChannelsTab({ onOpenReport }) {
         <h2>Sidebar channels</h2>
         <span className="count">· shown top to bottom</span>
         <span className="spacer" />
-        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', icon: 'instagram', head_id: null }); setErr('') }}><Plus size={15} /> Add channel</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', icon: 'instagram', head_id: null, drive_url: '', daily_ad_cap: 0 }); setErr('') }}><Plus size={15} /> Add channel</button>
       </div>
       <div className="card" style={{ padding: '6px 14px' }}>
         {channels.map((c, i) => {
           const Icon = iconFor(c.icon)
           return (
-            <div key={c.id} className="chan-row">
+            <div key={c.id} className="chan-row u-row">
               <span className="chan-icon"><Icon size={17} /></span>
               <span style={{ fontWeight: 600 }}>{c.label}</span>
               <span className="stat-sub" style={{ fontFamily: 'ui-monospace, monospace' }}>{c.key}</span>
@@ -799,9 +1583,7 @@ function ChannelsTab({ onOpenReport }) {
                 const st = statsFor(c.key)
                 return (
                   <span className="chan-stats">
-                    <span className="chan-stat" data-tip="Completed this month — same number as the Reports tab"><b>{st.done}</b> done</span>
-                    <span className="chan-stat" data-tip="Open tasks right now"><b>{st.open}</b> open</span>
-                    {st.overdue > 0 && <span className="chan-stat late" data-tip="Open tasks past their date"><b>{st.overdue}</b> overdue</span>}
+                    <Dots late={st.overdue} open={st.open} done={st.done} />
                     <button className="btn btn-ghost btn-sm" onClick={() => onOpenReport(c.key)} data-tip="This channel's full report">
                       Report →
                     </button>
@@ -811,8 +1593,8 @@ function ChannelsTab({ onOpenReport }) {
               <span className="spacer" style={{ flex: 1 }} />
               <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} data-tip="Move up in the sidebar" aria-label="Up"><ArrowUp size={15} /></button>
               <button className="icon-btn" disabled={i === channels.length - 1} onClick={() => move(i, 1)} data-tip="Move down in the sidebar" aria-label="Down"><ArrowDown size={15} /></button>
-              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null }); setErr('') }} data-tip="Edit name, head & icon" aria-label="Edit"><Pencil size={15} /></button>
-              <button className="btn btn-danger btn-sm btn-icon" onClick={() => del(c)} data-tip="Delete channel & its data" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
+              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null, drive_url: c.drive_url || '', daily_ad_cap: c.daily_ad_cap || 0 }); setErr('') }} data-tip="Edit name, head & icon" aria-label="Edit"><Pencil size={15} /></button>
+              <button className="btn btn-danger btn-sm btn-icon u-onhover" onClick={() => del(c)} data-tip="Delete channel & its data" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
             </div>
           )
         })}
@@ -837,6 +1619,29 @@ function ChannelsTab({ onOpenReport }) {
               {team.map((u) => <option key={u.id} value={u.id}>{u.name}{u.role === 'admin' ? ' (admin)' : ''}</option>)}
             </select>
           </div>
+          <div className="field"><label>Shared Drive folder <span className="stat-sub">(optional)</span></label>
+            <input className="input" value={modal.drive_url ?? ''}
+              onChange={(e) => setModal({ ...modal, drive_url: e.target.value })}
+              placeholder="https://drive.google.com/drive/folders/…" />
+            <div className="cm-hint">
+              {modal.drive_url
+                ? 'Set. The crew now name the file — “1-3”, “reel 14” — instead of pasting this address on every task. Naming one is still required.'
+                : 'With a folder here, the crew name the file instead of pasting a full link every time. Without one they paste the whole address, as now.'}
+            </div>
+          </div>
+          {/* Ads are bought a month at a time and burn their audience if they
+              land in a heap, so the ceiling belongs to the channel rather
+              than to whoever happens to be making them. */}
+          <div className="field"><label>{tx('Video ads a day')}</label>
+            <input className="input" type="number" min="0" max="50" style={{ maxWidth: 120 }}
+              value={modal.daily_ad_cap ?? 0}
+              onChange={(e) => setModal({ ...modal, daily_ad_cap: e.target.value })} />
+            <div className="cm-hint">
+              {Number(modal.daily_ad_cap) > 0
+                ? `At most ${Number(modal.daily_ad_cap)} Target ${Number(modal.daily_ad_cap) === 1 ? 'piece' : 'pieces'} going out on one day for this channel — a further one is refused while it can still be moved. Other kinds of video are not counted.`
+                : 'No limit, which is what every channel was before this existed. Set a number and a day that is already full refuses the next ad instead of quietly running it.'}
+            </div>
+          </div>
           <div className="field"><label>Icon</label>
             <div className="icon-grid">
               {Object.entries(CHANNEL_ICONS).map(([name, Icon]) => (
@@ -856,9 +1661,9 @@ function ChannelsTab({ onOpenReport }) {
 // Who moves work OUT of which stage — the natural chain by default (operator
 // works until Shot, editor until Ready, the SMM everywhere), tunable per cell.
 const STAGE_ACTORS = [
-  { key: 'operator', label: 'Operator' },
-  { key: 'editor', label: 'Editor' },
-  { key: 'designer', label: 'Designer' },
+  { key: 'operator', label: tx('Operator') },
+  { key: 'editor', label: tx('Editor') },
+  { key: 'designer', label: tx('Designer') },
   { key: 'member', label: 'Member (SMM)' },
 ]
 
@@ -869,30 +1674,38 @@ const TASK_FIELD_DEFS = [
   { key: 'format', label: 'Format', hint: 'talking head, split screen…' },
   { key: 'rubrika', label: 'Rubrika', hint: 'the recurring column it belongs to' },
   { key: 'script', label: 'Script', hint: 'the words and shots the crew films by' },
+  { key: 'tz', label: 'ТЗ', hint: 'what the editor is asked to make of the footage' },
   { key: 'reference', label: 'Reference', hint: 'examples, mood, style — the brief' },
   { key: 'description', label: 'Description', hint: 'free notes on the task' },
 ]
 
-function PipelineTab() {
-  const [statuses, setStatuses] = useState([])
-  const [modal, setModal] = useState(null)
-  const [err, setErr] = useState('')
-  const [rules, setRules] = useState(null)
+// Every page an admin can switch off, in the order the sidebar draws them.
+// My Day and the channel boards are not here on purpose: they are the work
+// itself, and a board with no way into the work is not a tidier board.
+const PAGE_DEFS = [
+  { key: 'overview', label: 'Overview', hint: 'every channel’s process on one screen' },
+  { key: 'releases', label: 'Releases', hint: 'what is going out, every channel' },
+  { key: 'recordings', label: 'Recordings', hint: 'what is being filmed, every channel' },
+  { key: 'missed', label: 'Statistics', hint: 'the month, its conclusions and the misses behind them' },
+  { key: 'design', label: 'Design', hint: 'the designer’s own board' },
+  { key: 'docs', label: 'Documents', hint: 'the shelf of SOPs and papers' },
+  { key: 'sprints', label: 'Sprints', hint: 'the weekly board and its backlog' },
+  { key: 'projects', label: 'Projects', hint: 'projects and the campaigns under them' },
+  { key: 'crew', label: 'Post Production', hint: 'the editors’ and designers’ desk' },
+  { key: 'team', label: 'Team & hiring', hint: 'the team, candidates and vacancies' },
+]
+
+function SettingsTab() {
   const [fields, setFields] = useState(null)
   const [optDraft, setOptDraft] = useState({})
-
-  const load = () => Promise.all([
-    api.get('/statuses').then(setStatuses),
-    api.get('/statuses/rules').then(setRules).catch(() => {}),
-    api.get('/fields').then(setFields).catch(() => {}),
-  ])
+  const load = () => api.get('/fields').then(setFields).catch(() => {})
   useEffect(() => { load() }, [])
 
   // One change = one save; the server answers the effective config back.
   const patchField = (k, part) => {
     const next = { ...fields, [k]: { ...fields[k], ...part } }
     setFields(next)
-    api.post('/fields', next).then((eff) => { setFields(eff); toast('Task form saved — synced') })
+    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Task form saved — synced')) })
       .catch((e) => { alert(e.message); load() })
   }
   const toggleFieldType = (k, t) => patchField(k, {
@@ -904,8 +1717,8 @@ function PipelineTab() {
     setOptDraft({ ...optDraft, [k]: '' })
     patchField(k, { options: [...new Set([...(fields[k].options || []), v])] })
   }
-  // The crew rules: which types DEMAND each hat — what the Unassigned page
-  // and Overview's gap strip count as a real gap.
+  // The crew rules: which types DEMAND each hat — what the task itself counts
+  // as a real gap, and what the stage walls refuse a move over.
   const patchCrew = (hat, type) => {
     const cur = fields.crew?.[hat] || []
     const next = {
@@ -913,114 +1726,60 @@ function PipelineTab() {
       crew: { ...fields.crew, [hat]: cur.includes(type) ? cur.filter((x) => x !== type) : [...cur, type] },
     }
     setFields(next)
-    api.post('/fields', next).then((eff) => { setFields(eff); toast('Crew rules saved — synced') })
+    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Crew rules saved — synced')) })
       .catch((e) => { alert(e.message); load() })
   }
 
-  const toggleRule = async (actor, sid) => {
-    const next = { ...rules, [actor]: { ...rules[actor], [sid]: !rules[actor]?.[sid] } }
-    setRules(next)
-    try { await api.post('/statuses/rules', next); toast('Stage rules saved — synced') }
-    catch (e) { alert(e.message); load() }
+  // Which pages the team has. Switching one off takes it out of the sidebar,
+  // the phone's More sheet and its own route, for everybody — the admin turns
+  // it back on here.
+  const togglePage = (key) => {
+    const cur = fields.pages || {}
+    const next = { ...fields, pages: { ...cur, [key]: !cur[key] } }
+    setFields(next)
+    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Pages saved — synced')) })
+      .catch((e) => { alert(e.message); load() })
   }
 
-  const save = async () => {
-    if (!modal.label.trim()) return
-    setErr('')
-    try {
-      if (modal.id) await api.patch(`/statuses/${modal.id}`, { label: modal.label.trim(), color: modal.color })
-      else await api.post('/statuses', { label: modal.label.trim(), color: modal.color })
-      await load()
-      setModal(null)
-    } catch (e) { setErr(e.message) }
-  }
-  const del = async (s) => {
-    if (!confirm(`Delete stage "${s.label}"? Its tasks move to the first stage.`)) return
-    try { await api.del(`/statuses/${s.id}`); load() } catch (e) { alert(e.message) }
-  }
-  const move = async (idx, dir) => {
-    const ids = statuses.map((s) => s.id)
-    const j = idx + dir
-    if (j < 0 || j >= ids.length) return
-    ;[ids[idx], ids[j]] = [ids[j], ids[idx]]
-    try { await api.post('/statuses/reorder', { ids }); load() } catch (e) { alert(e.message) }
-  }
-  const setFinal = async (s) => {
-    try { await api.patch(`/statuses/${s.id}`, { is_final: true }); load() } catch (e) { alert(e.message) }
-  }
-
+  if (!fields) return <div className="app-loading"><span className="spinner" /></div>
   return (
     <>
+      {/* ---- the pages this board shows ---- */}
       <div className="section-head">
-        <h2>Content pipeline</h2>
-        <span className="count">· stages every task moves through</span>
-        <span className="spacer" />
-        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', color: STATUS_COLORS[0] }); setErr('') }}><Plus size={15} /> Add stage</button>
+        <h2>{tx('Pages')}</h2>
+        <span className="count">· {tx('which of them the team has at all')}</span>
       </div>
-      <div className="card" style={{ padding: '6px 14px' }}>
-        {statuses.map((s, i) => (
-          <div key={s.id} className="chan-row">
-            <span className="status-dot" style={{ background: s.color, width: 12, height: 12 }} />
-            <span style={{ fontWeight: 600 }}>{s.label}</span>
-            {s.is_final
-              ? <span className="badge">Final — counts as published</span>
-              : <button className="btn btn-ghost btn-sm" onClick={() => setFinal(s)} data-tip="Tasks reaching this stage count as published">Make final</button>}
-            <span className="spacer" style={{ flex: 1 }} />
-            <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} data-tip="Move stage earlier" aria-label="Up"><ArrowUp size={15} /></button>
-            <button className="icon-btn" disabled={i === statuses.length - 1} onClick={() => move(i, 1)} data-tip="Move stage later" aria-label="Down"><ArrowDown size={15} /></button>
-            <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: s.id, label: s.label, color: s.color }); setErr('') }} data-tip="Rename or recolor" aria-label="Edit"><Pencil size={15} /></button>
-            <button className="btn btn-danger btn-sm btn-icon" onClick={() => del(s)} data-tip="Delete this stage" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
-          </div>
-        ))}
-      </div>
-
-      {/* ---- stage rules: who moves work out of each stage ---- */}
-      {rules && statuses.length > 0 && (
-        <>
-          <div className="section-head" style={{ marginTop: 18 }}>
-            <h2>Stage rules</h2>
-            <span className="count">· who may move a task out of each stage</span>
-          </div>
-          <div className="card table-wrap">
-            <table className="tbl rules-tbl">
-              <thead>
-                <tr>
-                  <th>Stage</th>
-                  {STAGE_ACTORS.map((a) => <th key={a.key}>{a.label}</th>)}
+      <div className="card table-wrap">
+        <table className="tbl pages-tbl">
+          <thead>
+            <tr><th>{tx('Page')}</th><th>{tx('Shown to the team')}</th></tr>
+          </thead>
+          <tbody>
+            {PAGE_DEFS.map((pg) => {
+              const on = (fields.pages || {})[pg.key] !== false
+              return (
+                <tr key={pg.key}>
+                  <td>
+                    <b>{tx(pg.label)}</b>
+                    <div className="stat-sub">{tx(pg.hint)}</div>
+                  </td>
+                  <td>
+                    <button type="button" className={'switch' + (on ? ' on' : '')} role="switch" aria-checked={on}
+                      data-tip={on ? tx('Switch this page off for everyone') : tx('Bring this page back')}
+                      onClick={() => togglePage(pg.key)}>
+                      <i />
+                      <span>{on ? tx('On') : tx('Off')}</span>
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {statuses.filter((s) => !s.is_final).map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      <span className="status-dot" style={{ background: s.color, marginRight: 7 }} />
-                      <b>{s.label}</b> <span className="stat-sub">→ onward</span>
-                    </td>
-                    {STAGE_ACTORS.map((a) => {
-                      const on = !!rules[a.key]?.[s.id]
-                      return (
-                        <td key={a.key}>
-                          <button type="button" className={'perm-toggle rules-cell' + (on ? ' on' : '')}
-                            onClick={() => toggleRule(a.key, s.id)}
-                            data-tip={on ? `${a.label} may move work out of ${s.label}` : `${a.label} may NOT move work out of ${s.label}`}
-                            aria-label={`${a.label} out of ${s.label}`}>
-                            {on && <Check size={12} strokeWidth={3.5} />}
-                          </button>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
-              Admins always move everything. Publishing (into the final stage) is governed by each member’s
-              “Review &amp; publish” permission, not by this table. Rules narrow what a role could already do —
-              the crew still work through their ticks.
-            </div>
-          </div>
-        </>
-      )}
+              )
+            })}
+          </tbody>
+        </table>
+        <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
+          {tx('This is tidying, not permission: a page switched off leaves the sidebar and its own address for everybody, but the work behind it is still on the board and still counted.')}
+        </div>
+      </div>
 
       {/* ---- the task form: which brief fields exist, and which are demanded ---- */}
       {fields && (
@@ -1104,7 +1863,7 @@ function PipelineTab() {
             <>
               <div className="section-head" style={{ marginTop: 18 }}>
                 <h2>Who must be on a task</h2>
-                <span className="count">· only these hats count as gaps on Unassigned and Overview</span>
+                <span className="count">· only these hats count as missing on a task</span>
               </div>
               <div className="card table-wrap">
                 <table className="tbl crew-tbl">
@@ -1113,9 +1872,9 @@ function PipelineTab() {
                   </thead>
                   <tbody>
                     {[
-                      { key: 'operator', label: 'Operator', hint: 'who films it' },
-                      { key: 'editor', label: 'Editor', hint: 'who cuts it' },
-                      { key: 'designer', label: 'Designer', hint: 'who draws the artwork' },
+                      { key: 'operator', label: tx('Operator'), hint: 'who films it' },
+                      { key: 'editor', label: tx('Editor'), hint: 'who cuts it' },
+                      { key: 'designer', label: tx('Designer'), hint: 'who draws the artwork' },
                     ].map((h) => (
                       <tr key={h.key}>
                         <td>
@@ -1128,7 +1887,7 @@ function PipelineTab() {
                               <button key={t.key} type="button"
                                 className={'pill' + ((fields.crew[h.key] || []).includes(t.key) ? ' active' : '')}
                                 data-tip={(fields.crew[h.key] || []).includes(t.key)
-                                  ? `A ${t.label.toLowerCase()} without ${h.label.toLowerCase()} shows on Unassigned`
+                                  ? `A ${t.label.toLowerCase()} without ${h.label.toLowerCase()} says so on the task`
                                   : `${t.label}s never ask for ${h.label.toLowerCase()}`}
                                 onClick={() => patchCrew(h.key, t.key)}>
                                 {t.label}
@@ -1141,11 +1900,252 @@ function PipelineTab() {
                   </tbody>
                 </table>
                 <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
-                  Untick a type and its tasks stop shouting for that hat — the Unassigned page quiets down instantly.
+                  Untick a type and its tasks stop asking for that hat — the “still missing” line on the task drops it at once, and no stage wall refuses a move over it.
                 </div>
               </div>
             </>
           )}
+
+          <LadderEditor
+            title={tx('What a piece pays, by how much of it was watched')}
+            note={tx('A band of skip rate, and what a piece in it pays. Lower skip is better. A piece nobody has measured is in no band and adds nothing — it is not the worst one.')}
+            rows={fields.skip_tiers || []}
+            cols={[
+              { key: 'name', label: tx('Tier'), kind: 'text', hint: 'A' },
+              { key: 'min', label: tx('Skip from'), kind: 'num', suffix: '%' },
+              { key: 'max', label: tx('to'), kind: 'num', suffix: '%' },
+              { key: 'per_film', label: tx('For filming'), kind: 'num' },
+              { key: 'per_edit', label: tx('For the edit'), kind: 'num' },
+            ]}
+            blank={{ name: '', min: 0, max: 100, per_film: 0, per_edit: 0 }}
+            onSave={(rows) => {
+              const next = { ...fields, skip_tiers: rows }
+              setFields(next)
+              api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Saved — synced')) })
+                .catch((e) => { alert(e.message); load() })
+            }}
+          />
+
+          <LadderEditor
+            title={tx('How many pieces earns which grade')}
+            note={tx('Everybody sees which rung they are on and what the next one costs. Nothing delivered is not a grade.')}
+            rows={fields.maker_grades || []}
+            cols={[
+              { key: 'name', label: tx('Grade'), kind: 'text', hint: 'A+' },
+              { key: 'pieces', label: tx('Pieces a month'), kind: 'num' },
+            ]}
+            blank={{ name: '', pieces: 0 }}
+            onSave={(rows) => {
+              const next = { ...fields, maker_grades: rows }
+              setFields(next)
+              api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Saved — synced')) })
+                .catch((e) => { alert(e.message); load() })
+            }}
+          />
+        </>
+      )}
+    </>
+  )
+}
+
+// A short list of rungs an admin edits as a whole — the pay tiers and the
+// grade ladder are the same shape, so they are the same editor. Rows are
+// added and removed here and saved together: a ladder with a rung missing
+// while somebody types the next one is not a state worth storing.
+// Paying happens outside this system. This records that somebody said it was
+// done, and who — the same shape as the sprint board recording who dropped a
+// task rather than pretending the system did it.
+function MonthPaid({ month, sheet, onDone }) {
+  const [busy, setBusy] = useState(false)
+  if (!month) return null
+  const unpaid = sheet.filter((r) => !r.paid).length
+  const go = async (path) => {
+    setBusy(true)
+    try { const r = await api.post(`/reports/work/${path}`, { month }); toast(tx('Saved — synced')); onDone(r) }
+    catch (e) { alert(e.message) } finally { setBusy(false) }
+  }
+  return unpaid > 0 ? (
+    <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => go('paid')}>
+      {tx('Mark {month} paid', { month })}
+    </button>
+  ) : (
+    <button className="btn btn-sm" disabled={busy} onClick={() => go('unpaid')}>
+      {tx('Re-open {month}', { month })}
+    </button>
+  )
+}
+
+function LadderEditor({ title, note, rows, cols, blank, onSave }) {
+  const [draft, setDraft] = useState(rows)
+  useEffect(() => { setDraft(rows) }, [rows])
+  const dirty = JSON.stringify(draft) !== JSON.stringify(rows)
+  const set = (i, k, v) => setDraft(draft.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
+  return (
+    <>
+      <div className="section-head" style={{ marginTop: 18 }}>
+        <h2>{title}</h2>
+      </div>
+      <div className="card table-wrap">
+        <table className="tbl ladder-tbl">
+          <thead>
+            <tr>{cols.map((c) => <th key={c.key}>{c.label}</th>)}<th /></tr>
+          </thead>
+          <tbody>
+            {draft.map((r, i) => (
+              <tr key={i}>
+                {cols.map((c) => (
+                  <td key={c.key}>
+                    <span className="ladder-cell">
+                      <input className="input pc-mini"
+                        type={c.kind === 'num' ? 'number' : 'text'}
+                        min={c.kind === 'num' ? 0 : undefined}
+                        placeholder={c.hint || ''}
+                        value={r[c.key] ?? ''}
+                        onChange={(e) => set(i, c.key, c.kind === 'num' ? Number(e.target.value) : e.target.value)} />
+                      {c.suffix && <b className="stat-sub">{c.suffix}</b>}
+                    </span>
+                  </td>
+                ))}
+                <td className="right">
+                  <button className="btn btn-sm btn-danger" onClick={() => setDraft(draft.filter((_, j) => j !== i))}>
+                    <X size={13} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {draft.length === 0 && (
+              <tr><td colSpan={cols.length + 1} className="empty">{tx('Nothing set')}</td></tr>
+            )}
+          </tbody>
+        </table>
+        <div className="ladder-foot">
+          <button className="btn btn-sm" onClick={() => setDraft([...draft, { ...blank }])}>
+            <Plus size={13} /> {tx('Add a row')}
+          </button>
+          <span className="spacer" />
+          {dirty && <button className="btn btn-sm" onClick={() => setDraft(rows)}>{tx('Cancel')}</button>}
+          <button className="btn btn-sm btn-primary" disabled={!dirty} onClick={() => onSave(draft)}>{tx('Save')}</button>
+        </div>
+        <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>{note}</div>
+      </div>
+    </>
+  )
+}
+
+function PipelineTab() {
+  const [statuses, setStatuses] = useState([])
+  const [modal, setModal] = useState(null)
+  const [err, setErr] = useState('')
+  const [rules, setRules] = useState(null)
+
+  const load = () => Promise.all([
+    api.get('/statuses').then(setStatuses),
+    api.get('/statuses/rules').then(setRules).catch(() => {}),
+  ])
+  useEffect(() => { load() }, [])
+
+  const toggleRule = async (actor, sid) => {
+    const next = { ...rules, [actor]: { ...rules[actor], [sid]: !rules[actor]?.[sid] } }
+    setRules(next)
+    try { await api.post('/statuses/rules', next); toast(tx('Stage rules saved — synced')) }
+    catch (e) { alert(e.message); load() }
+  }
+
+  const save = async () => {
+    if (!modal.label.trim()) return
+    setErr('')
+    try {
+      if (modal.id) await api.patch(`/statuses/${modal.id}`, { label: modal.label.trim(), color: modal.color })
+      else await api.post('/statuses', { label: modal.label.trim(), color: modal.color })
+      await load()
+      setModal(null)
+    } catch (e) { setErr(e.message) }
+  }
+  const del = async (s) => {
+    if (!confirm(`Delete stage "${s.label}"? Its tasks move to the first stage.`)) return
+    try { await api.del(`/statuses/${s.id}`); load() } catch (e) { alert(e.message) }
+  }
+  const move = async (idx, dir) => {
+    const ids = statuses.map((s) => s.id)
+    const j = idx + dir
+    if (j < 0 || j >= ids.length) return
+    ;[ids[idx], ids[j]] = [ids[j], ids[idx]]
+    try { await api.post('/statuses/reorder', { ids }); load() } catch (e) { alert(e.message) }
+  }
+  const setFinal = async (s) => {
+    try { await api.patch(`/statuses/${s.id}`, { is_final: true }); load() } catch (e) { alert(e.message) }
+  }
+
+  return (
+    <>
+      <div className="section-head">
+        <h2>Content pipeline</h2>
+        <span className="count">· stages every task moves through</span>
+        <span className="spacer" />
+        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', color: STATUS_COLORS[0] }); setErr('') }}><Plus size={15} /> Add stage</button>
+      </div>
+      <div className="card" style={{ padding: '6px 14px' }}>
+        {statuses.map((s, i) => (
+          <div key={s.id} className="chan-row u-row">
+            <span className="status-dot" style={{ background: s.color, width: 12, height: 12 }} />
+            <span style={{ fontWeight: 600 }}>{s.label}</span>
+            {s.is_final
+              ? <span className="badge">Final — counts as published</span>
+              : <button className="btn btn-ghost btn-sm" onClick={() => setFinal(s)} data-tip="Tasks reaching this stage count as published">Make final</button>}
+            <span className="spacer" style={{ flex: 1 }} />
+            <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} data-tip="Move stage earlier" aria-label="Up"><ArrowUp size={15} /></button>
+            <button className="icon-btn" disabled={i === statuses.length - 1} onClick={() => move(i, 1)} data-tip="Move stage later" aria-label="Down"><ArrowDown size={15} /></button>
+            <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: s.id, label: s.label, color: s.color }); setErr('') }} data-tip="Rename or recolor" aria-label="Edit"><Pencil size={15} /></button>
+            <button className="btn btn-danger btn-sm btn-icon u-onhover" onClick={() => del(s)} data-tip="Delete this stage" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+
+      {/* ---- stage rules: who moves work out of each stage ---- */}
+      {rules && statuses.length > 0 && (
+        <>
+          <div className="section-head" style={{ marginTop: 18 }}>
+            <h2>Stage rules</h2>
+            <span className="count">· who may move a task out of each stage</span>
+          </div>
+          <div className="card table-wrap">
+            <table className="tbl rules-tbl">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  {STAGE_ACTORS.map((a) => <th key={a.key}>{a.label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {statuses.filter((s) => !s.is_final).map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <span className="status-dot" style={{ background: s.color, marginRight: 7 }} />
+                      <b>{s.label}</b> <span className="stat-sub">→ onward</span>
+                    </td>
+                    {STAGE_ACTORS.map((a) => {
+                      const on = !!rules[a.key]?.[s.id]
+                      return (
+                        <td key={a.key}>
+                          <button type="button" className={'perm-toggle rules-cell' + (on ? ' on' : '')}
+                            onClick={() => toggleRule(a.key, s.id)}
+                            data-tip={on ? `${a.label} may move work out of ${s.label}` : `${a.label} may NOT move work out of ${s.label}`}
+                            aria-label={`${a.label} out of ${s.label}`}>
+                            {on && <Check size={12} strokeWidth={3.5} />}
+                          </button>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
+              Admins always move everything. Publishing (into the final stage) is governed by each member’s
+              “Review &amp; publish” permission, not by this table. Rules narrow what a role could already do —
+              the crew still work through their ticks.
+            </div>
+          </div>
         </>
       )}
 
@@ -1177,6 +2177,16 @@ function PipelineTab() {
 }
 
 /* ==================== REPORTS ==================== */
+// The five ways a person can have had a hand in a piece. Each is counted on
+// the day THEIR part was delivered, not on the day the piece went out.
+const HATS = [
+  { key: 'assignee', label: 'Ran it', icon: UserCheck, noun: 'piece', verb: 'published', tip: 'Whose piece it was — the planner who saw it out' },
+  { key: 'operator', label: 'Shot it', icon: Video, noun: 'shoot', verb: 'delivered', tip: 'Counted on the day the footage reached the editor' },
+  { key: 'editor', label: 'Cut it', icon: Scissors, noun: 'cut', verb: 'delivered', tip: 'Counted on the day the cut reached review' },
+  { key: 'designer', label: 'Designed it', icon: Palette, noun: 'piece', verb: 'designed', tip: 'Artwork has no handover of its own, so it counts when the piece goes out' },
+  { key: 'reviewer', label: 'Signed it off', icon: CheckSquare, noun: 'sign-off', verb: 'given', tip: 'Review is shared — every name on it is counted' },
+]
+
 function ReportsTab({ channel, setChannel }) {
   const { channels, byKey } = useChannels()
   const t = todayISO()
@@ -1190,13 +2200,15 @@ function ReportsTab({ channel, setChannel }) {
 
   const PRESETS = [
     { key: 'week', label: 'This week', from: weekStart, to: t },
-    { key: 'month', label: 'This month', from: monthStart, to: t },
-    { key: 'prev', label: 'Last month', from: prevMonthStart, to: prevMonthEnd },
+    { key: 'month', label: tx('This month'), from: monthStart, to: t },
+    { key: 'prev', label: tx('Last month'), from: prevMonthStart, to: prevMonthEnd },
     { key: 'custom', label: 'Custom' },
   ]
   const [preset, setPreset] = useState('month')
   const [from, setFrom] = useState(monthStart)
   const [to, setTo] = useState(t)
+  const [hat, setHat] = useState('assignee')
+  const [type, setType] = useState('')
   const [data, setData] = useState(null)
 
   const range = useMemo(() => {
@@ -1205,8 +2217,28 @@ function ReportsTab({ channel, setChannel }) {
   }, [preset, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.get(`/reports?from=${range.from}&to=${range.to}`).then(setData).catch(() => setData(null))
-  }, [range.from, range.to])
+    setData(null)
+    api.get(`/reports?from=${range.from}&to=${range.to}&hat=${hat}${type ? `&type=${type}` : ''}`)
+      .then(setData).catch(() => setData(null))
+  }, [range.from, range.to, hat, type])
+
+  // What it all got watched — the same window and the same channel lens, so
+  // the two blocks on this page can never be talking about different months.
+  const [views, setViews] = useState(null)
+  useEffect(() => {
+    setViews(null)
+    api.get(`/reports/views?from=${range.from}&to=${range.to}&channel=${channel}`)
+      .then(setViews).catch(() => setViews(null))
+  }, [range.from, range.to, channel])
+
+  // What each person actually MADE — filmed, edited, and both — and the
+  // register those counts came from. Same window, same channel lens.
+  const [work, setWork] = useState(null)
+  const loadWork = useCallback(() => {
+    api.get(`/reports/work?from=${range.from}&to=${range.to}&channel=${channel}`)
+      .then(setWork).catch(() => setWork(null))
+  }, [range.from, range.to, channel])
+  useEffect(() => { setWork(null); loadWork() }, [loadWork])
 
   const colorOf = useMemo(() => Object.fromEntries(channels.map((c, i) => [c.key, deptColor(i)])), [channels])
   const chStats = channel !== 'all' ? data?.byChannel?.[channel] : null
@@ -1253,6 +2285,229 @@ function ReportsTab({ channel, setChannel }) {
         ))}
       </div>
 
+      {/* ---- what each person actually made ---- */}
+      {/* The delivery report answers "was it on time". This answers "what did
+          you make" — which for an operator or an editor is the whole question,
+          and the board had no way to say it. */}
+      {work && (
+        <>
+          <div className="section-head" style={{ marginTop: 4 }}>
+            <h2>{tx('What everyone made')}</h2>
+            <span className="count">· {tx('filmed, edited, and both')}</span>
+          </div>
+          <div className="card table-wrap">
+            <table className="tbl work-tbl">
+              <thead>
+                <tr>
+                  <th>{tx('Name')}</th>
+                  <th data-tip={tx('Pieces they filmed and somebody else cut')}>{tx('Filmed')}</th>
+                  <th data-tip={tx('Pieces they cut and somebody else filmed')}>{tx('Edited')}</th>
+                  <th data-tip={tx('Pieces they both filmed and cut — one whole piece carried alone')}>{tx('Both')}</th>
+                  <th data-tip={tx('Pieces their face carries')}>{tx('In front')}</th>
+                  <th data-tip={tx('Where their delivered count puts them on the ladder')}>{tx('Grade')}</th>
+                  <th data-tip={tx('What the tiers pay for what they filmed and cut')}>{tx('Tier pay')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {work.people.map((p) => (
+                  <tr key={p.user_id}>
+                    <td><b>{p.name}</b></td>
+                    <td>{p.filmed || <span className="stat-sub">—</span>}</td>
+                    <td>{p.edited || <span className="stat-sub">—</span>}</td>
+                    <td>{p.both || <span className="stat-sub">—</span>}</td>
+                    <td>{p.faced || <span className="stat-sub">—</span>}</td>
+                    <td>
+                      {p.grade
+                        ? <b>{p.grade}</b>
+                        : <span className="stat-sub">—</span>}
+                      {p.next && (
+                        <span className="stat-sub"> · {tx('{name} at {n}', { name: p.next, n: p.next_at })}</span>
+                      )}
+                    </td>
+                    <td>{p.tier_pay ? money(p.tier_pay, '') : <span className="stat-sub">—</span>}</td>
+                  </tr>
+                ))}
+                {work.people.length === 0 && (
+                  <tr><td colSpan={7} className="empty">{tx('Nothing here')}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* The register the counts came from. Anybody can check the total
+              rather than take it. */}
+          <Fold id="admin_work_sheet" title={tx('Every piece, one by one')} count={work.sheet.length}>
+            <div className="card table-wrap">
+              <table className="tbl work-sheet">
+                <thead>
+                  <tr>
+                    <th>#</th><th>{tx('Title')}</th><th>{tx('Filmed')}</th><th>{tx('Edited')}</th>
+                    <th>{tx('In front')}</th><th>{tx('Views')}</th><th>{tx('Skip')}</th>
+                    <th>{tx('Where it went')}</th><th>{tx('Paid')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {work.sheet.map((r) => (
+                    <tr key={r.id}>
+                      <td className="stat-sub">{r.n}</td>
+                      <td><b>{r.title}</b><div className="stat-sub">{r.day}</div></td>
+                      <td>{r.filmed_by || <span className="stat-sub">—</span>}</td>
+                      <td>{r.edited_by || <span className="stat-sub">—</span>}</td>
+                      <td>{r.face || <span className="stat-sub">—</span>}</td>
+                      <td>{r.views == null ? <span className="stat-sub">{tx('not counted')}</span> : r.views.toLocaleString()}</td>
+                      <td>
+                        {r.skip_rate == null
+                          ? <span className="stat-sub">{tx('not measured')}</span>
+                          : <>{r.skip_rate}%{r.tier && <b className="chip chip-muted"> {r.tier}</b>}</>}
+                      </td>
+                      <td>
+                        {r.post_link
+                          ? <a href={r.post_link} target="_blank" rel="noreferrer">{tx('Open it')}</a>
+                          : <span className="stat-sub">—</span>}
+                      </td>
+                      <td>{r.paid ? <b className="paid-yes">{tx('Paid')}</b> : <span className="stat-sub">{tx('Not yet')}</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="ladder-foot">
+                <span className="stat-sub">
+                  {tx('{n} of {m} paid', { n: work.sheet.filter((r) => r.paid).length, m: work.sheet.length })}
+                </span>
+                <span className="spacer" />
+                <MonthPaid month={work.sheet[0]?.day?.slice(0, 7) || ''} sheet={work.sheet} onDone={loadWork} />
+              </div>
+            </div>
+          </Fold>
+        </>
+      )}
+
+      {/* ---- what it all got watched ---- */}
+      {/* The delivery report says how much went out. It said nothing at all
+          about whether anybody watched it, which is a strange thing for a
+          marketing board to be quiet about. Same window, same channel lens. */}
+      {views && (
+        <>
+          <div className="section-head" style={{ marginTop: 4 }}>
+            <h2>{tx('Views')}</h2>
+            <span className="count">· {tx('what the work actually got')}</span>
+          </div>
+          <div className="card card-pad vw-card">
+            <div className="vw-tiles">
+              <div className="vw-tile">
+                <b>{views.totals.views.toLocaleString()}</b>
+                <span>{tx('views in this period')}</span>
+              </div>
+              <div className="vw-tile">
+                <b>{views.totals.avg === null ? '—' : views.totals.avg.toLocaleString()}</b>
+                <span>{tx('average per counted piece')}</span>
+              </div>
+              <div className="vw-tile">
+                <b>{views.totals.counted}<span className="stat-sub"> / {views.totals.pieces}</span></b>
+                <span>{tx('pieces with a number on them')}</span>
+              </div>
+            </div>
+            {/* A total drawn from a third of the month reads as if it were the
+                whole month unless it says so. */}
+            {views.uncounted > 0 && (
+              <div className="vw-warn">
+                <AlertCircle size={14} />
+                {views.uncounted === 1
+                  ? tx('One piece went out with nobody counting its views — this total is what has been counted, not what the month got.')
+                  : `${views.uncounted} ${tx('pieces went out with nobody counting their views — this total is what has been counted, not what the month got.')}`}
+              </div>
+            )}
+            {views.totals.pieces === 0 && (
+              <div className="stat-sub">{tx('Nothing went out in this period.')}</div>
+            )}
+
+            {views.byType.length > 0 && (
+              <div className="vw-split">
+                <div className="vw-col">
+                  <h3>{tx('By type')}</h3>
+                  {views.byType.map((r) => (
+                    <div key={r.key} className="vw-row">
+                      <span className={`chip ct-${r.key}`}>{typeInfo(r.key).label}</span>
+                      <span className="vw-bar">
+                        <span style={{ width: `${views.byType[0].views > 0 ? Math.round((r.views / views.byType[0].views) * 100) : 0}%` }} />
+                      </span>
+                      <b>{r.views.toLocaleString()}</b>
+                      <span className="stat-sub">{r.counted}/{r.pieces}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="vw-col">
+                  <h3>{tx('By channel')}</h3>
+                  {views.byChannel.map((r) => (
+                    <div key={r.key} className="vw-row">
+                      <span className="vw-name">
+                        <span className="rp-dot" style={{ background: colorOf[r.key] }} />{r.label}
+                      </span>
+                      <span className="vw-bar">
+                        <span style={{ width: `${views.byChannel[0].views > 0 ? Math.round((r.views / views.byChannel[0].views) * 100) : 0}%` }} />
+                      </span>
+                      <b>{r.views.toLocaleString()}</b>
+                      <span className="stat-sub">{r.counted}/{r.pieces}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {views.byPerson.length > 0 && (
+              <div className="vw-col" style={{ marginTop: 14 }}>
+                <h3>{tx('By content maker')}</h3>
+                {views.byPerson.map((r) => (
+                  <div key={r.id} className="vw-row">
+                    <span className="vw-name">{r.name || `#${r.id}`}</span>
+                    <span className="vw-bar">
+                      <span style={{ width: `${views.byPerson[0].views > 0 ? Math.round((r.views / views.byPerson[0].views) * 100) : 0}%` }} />
+                    </span>
+                    <b>{r.views.toLocaleString()}</b>
+                    <span className="stat-sub">{r.counted}/{r.pieces}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {views.top.length > 0 && (
+              <div className="vw-col" style={{ marginTop: 14 }}>
+                <h3>{tx('What worked best')}</h3>
+                {views.top.slice(0, 8).map((r) => (
+                  <div key={r.id} className="vw-row">
+                    <span className="vw-name vw-title">{r.title}</span>
+                    <span className={`chip ct-${r.type}`}>{typeInfo(r.type).label}</span>
+                    <b>{r.views.toLocaleString()}</b>
+                    <span className="stat-sub">{dateLabel(r.day)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Whose work. The report counted only the ASSIGNEE — the planner —
+          which made the crew invisible: an editor who cut forty videos in a
+          month showed as nothing, because somebody else's name was on the
+          assignee line. Each hat is now counted on the day THAT person's work
+          left their hands. */}
+      <div className="rp-filters">
+        <div className="pill-group">
+          {HATS.map((h) => (
+            <button key={h.key} className={'pill' + (hat === h.key ? ' active' : '')}
+              onClick={() => setHat(h.key)} data-tip={h.tip}>
+              <h.icon size={13} /> {h.label}
+            </button>
+          ))}
+        </div>
+        <select className="select rp-type" value={type} onChange={(e) => setType(e.target.value)}
+          data-tip="Only one kind of piece">
+          <option value="">Every type</option>
+          {CONTENT_TYPES.map((c) => <option key={c.key} value={c.key}>{typeInfo(c.key).plan || c.label}</option>)}
+        </select>
+      </div>
+
       {!data ? (
         <div className="app-loading"><span className="spinner" /></div>
       ) : (
@@ -1262,7 +2517,7 @@ function ReportsTab({ channel, setChannel }) {
             <div className="rp-big">
               <b>{shownTotal}</b>
               <span className="rp-big-label">
-                task{shownTotal === 1 ? '' : 's'} completed
+                {HATS.find((h) => h.key === hat)?.noun || 'task'}{shownTotal === 1 ? '' : 's'} {HATS.find((h) => h.key === hat)?.verb || 'completed'}
                 {channel !== 'all' ? <> on <b style={{ color: colorOf[channel] }}>{byKey[channel]?.label || channel}</b></> : ''}
                 <br /><span className="stat-sub">{range.from} → {range.to}</span>
               </span>
@@ -1309,6 +2564,11 @@ function ReportsTab({ channel, setChannel }) {
                     <div className="rp-person-total">
                       <b>{n}</b>
                       <span>done</span>
+                      {r.late > 0 && (
+                        <span className="rp-late" data-tip="Delivered after the day they promised. A piece that arrived to them late is not counted against them.">
+                          {r.late} late
+                        </span>
+                      )}
                     </div>
                   </div>
                   {r.items.length > 0 && (
@@ -1318,7 +2578,10 @@ function ReportsTab({ channel, setChannel }) {
                         {r.items.map((it) => (
                           <div key={it.id} className="report-item">
                             <span>{it.title}</span>
-                            <span className="stat-sub">{byKey[it.channel]?.label || it.channel} · {tashkentDay(it.done_at)}</span>
+                            <span className="stat-sub">
+                              {byKey[it.channel]?.label || it.channel} · {it.day || (it.done_at ? tashkentDay(it.done_at) : '')}
+                              {it.late && <span className="rp-late" style={{ display: 'inline', marginLeft: 6 }}>late</span>}
+                            </span>
                           </div>
                         ))}
                       </div>
