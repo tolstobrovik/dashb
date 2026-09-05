@@ -5263,3 +5263,18 @@ button.blame-person:hover { background: var(--surface-2); }
 .bk-hand { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
 /* The offer is the useful half of a refusal, so it reads louder than the reason. */
 .bk-alt { margin-left: 8px; color: var(--good-ink, #0ca30c); font-size: 12.5px; }
+
+/* ---- a calendar that keeps its shape (round 91) --------------------------
+   A month whose rows are all different heights is a month you cannot scan,
+   and the height was set by whichever day happened to be busiest. Each day
+   draws a fixed few and then says how many more it holds. */
+.cal-more {
+  display: block; width: 100%; text-align: left;
+  padding: 2px 6px; margin-top: 1px;
+  background: none; border: 0; cursor: pointer;
+  font-size: 10.5px; font-weight: 700; color: var(--muted);
+}
+.cal-more:hover { color: var(--brand-600); text-decoration: underline; }
+/* The day opens over the month instead of replacing it. */
+.planner-sheet { display: flex; flex-direction: column; gap: 10px; }
+@media (hover: hover) { .planner-back { display: none; } }

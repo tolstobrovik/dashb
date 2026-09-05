@@ -29,6 +29,12 @@ const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale(
 //  - Week: seven tall columns with rich cards (type, stage, time) — the
 //    day-to-day working view. Cards drag between days in both scales;
 //    click a card to open it, a day to plan it, + to add straight there.
+// How many pills a day draws before it stops and offers the day instead. A
+// month whose rows are all different heights is a month you cannot scan, and
+// the row height is set by whichever day happens to be busiest.
+const CAL_MAX = 3
+const WK_MAX = 6
+
 export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [], onRange }) {
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
   const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
@@ -305,7 +311,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   )}
                 </div>
                 <div className="wk-cards">
-                  {dayItems.map((it) => {
+                  {dayItems.slice(0, WK_MAX).map((it) => {
                     const st = statusesById[it.status_id]
                     const TIcon = typeInfo(it.type).icon
                     const SIcon = st ? statusIcon(st.label) : null
@@ -329,6 +335,12 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                       </div>
                     )
                   })}
+                  {dayItems.length > WK_MAX && (
+                    <button type="button" className="cal-more"
+                      onClick={(e) => { e.stopPropagation(); onDayClick(iso) }}>
+                      {tx('{n} more', { n: dayItems.length - WK_MAX })}
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -355,7 +367,12 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   >
                     <div className="cal-daynum">{date.getDate()}</div>
                     <div className="cal-events">
-                      {dayItems.map((it) => {
+                      {/* A ceiling, so one busy day cannot make its whole week
+                          row twice the height of the others and push the month
+                          off the screen. What does not fit is not hidden — the
+                          day says how many more it holds, and opens on the
+                          whole list in time order. */}
+                      {dayItems.slice(0, CAL_MAX).map((it) => {
                         // Every task shows — a crowded day makes its week row
                         // taller instead of hiding work behind a "+N more".
                         // The pill wears its pipeline stage's color (To shoot =
@@ -393,6 +410,12 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                           </div>
                         )
                       })}
+                      {dayItems.length > CAL_MAX && (
+                        <button type="button" className="cal-more"
+                          onClick={(e) => { e.stopPropagation(); onDayClick(iso) }}>
+                          {tx('{n} more', { n: dayItems.length - CAL_MAX })}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )

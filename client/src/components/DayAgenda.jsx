@@ -19,9 +19,12 @@ export default function DayAgenda({ date, items, statusesById, canEdit, onOpen, 
   const heading = dt.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
 
   return (
-    <div className="card planner">
+    <div className="planner planner-sheet">
       <div className="planner-head">
-        <button className="btn btn-sm" onClick={onBack}><ArrowLeft size={15} />{' '}{tx("Month")}</button>
+        {/* Inside the day sheet the way out is the sheet's own close, so this
+            is a second door to the same place. It stays for the phone, where
+            a modal's X is a small target at the top of a tall screen. */}
+        <button className="btn btn-sm planner-back" onClick={onBack}><ArrowLeft size={15} />{' '}{tx("Month")}</button>
         <h3>{heading}</h3>
         <div style={{ flex: 1 }} />
         {canEdit && <button className="btn btn-primary btn-sm" onClick={() => onAdd(date)}><Plus size={15} />{' '}{tx("Add")}</button>}

@@ -582,20 +582,28 @@ export default function Department() {
         statuses={statuses} teamById={teamById}
       />
 
-      {selectedDate ? (
-        <DayAgenda
-          date={selectedDate}
-          items={wsLive}
-          statusesById={statusesById}
-          canEdit={manageContent}
-          onOpen={setOpenItem}
-          onAdd={(iso) => {
-            setNewDefaults({ channels: [key], [view === 'recording' ? 'recording_date' : 'release_date']: iso })
-            setOpenItem('new')
-          }}
-          onBack={() => setSelectedDate(null)}
-        />
-      ) : view === 'board' ? (
+      {/* A day opens OVER the month rather than replacing it. Reading one day
+          is a glance — what is on today, in order — and losing the month you
+          were looking at to take that glance means finding your way back to it
+          afterwards. */}
+      {selectedDate && (
+        <Modal title="" onClose={() => setSelectedDate(null)} wide>
+          <DayAgenda
+            date={selectedDate}
+            items={wsLive}
+            statusesById={statusesById}
+            canEdit={manageContent}
+            onOpen={(it) => { setSelectedDate(null); setOpenItem(it) }}
+            onAdd={(iso) => {
+              setSelectedDate(null)
+              setNewDefaults({ channels: [key], [view === 'recording' ? 'recording_date' : 'release_date']: iso })
+              setOpenItem('new')
+            }}
+            onBack={() => setSelectedDate(null)}
+          />
+        </Modal>
+      )}
+      {view === 'board' ? (
         <ContentBoard items={wsContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} myStages={myStages}
           onMenu={cardMenu} isBusy={isBusy}
           onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />

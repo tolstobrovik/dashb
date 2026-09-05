@@ -547,6 +547,7 @@ const PHRASES = {
     // The ambassador programme: saying a video is live, and checking it.
     "I posted it": "Я выложил",
     "Videos this month": "Видео в этом месяце",
+    "{n} more": "ещё {n}",
     // Saying no to a booking, in a way somebody can act on.
     "A day you could do instead": "День, когда получится",
     "I cannot do this one at all — give it to somebody else": "Совсем не смогу — передайте другому",
@@ -1598,6 +1599,7 @@ const PHRASES = {
     // The ambassador programme: saying a video is live, and checking it.
     "I posted it": "Men joyladim",
     "Videos this month": "Bu oydagi videolar",
+    "{n} more": "yana {n}",
     // Saying no to a booking, in a way somebody can act on.
     "A day you could do instead": "Qaysi kuni qila olasiz",
     "I cannot do this one at all — give it to somebody else": "Umuman qila olmayman — boshqaga bering",
