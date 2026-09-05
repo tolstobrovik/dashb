@@ -42,11 +42,21 @@ const hubs = async (pg) => (await pg.locator('.nav-hub-head').allTextContents())
 const { ctx, page } = await signIn('admin', 'admin123')
 const H = await hubs(page)
 ok('the sidebar is hubs, not one wall of doors', H.length >= 3 && H.length <= 5, H.join(' | '))
+// Round 91 folds every hub but Work to start with, so the doors behind the
+// others are a press away rather than on screen. Open them to count.
+// Re-query each time: clicking one changes the DOM, so a list collected up
+// front goes stale after the first press.
+for (let i = 0; i < 5; i++) {
+  const shut = page.locator('.nav-hub:not(.open) .nav-hub-head')
+  if (!(await shut.count())) break
+  await shut.first().click(); await page.waitForTimeout(200)
+}
 ok('…and every door is still behind one of them', (await page.locator('.nav-item').count()) >= 8,
   `${await page.locator('.nav-item').count()} doors`)
 
 // ---- folding, and remembering it ----
 const numbers = page.locator('.nav-hub').filter({ hasText: /Numbers/ }).first()
+// It was opened just above, so it holds its doors and can be folded again.
 const wasIn = await numbers.locator('.nav-item').count()
 await numbers.locator('.nav-hub-head').click(); await page.waitForTimeout(250)
 ok('a hub you never use folds away', (await numbers.locator('.nav-item').count()) === 0, `held ${wasIn}`)

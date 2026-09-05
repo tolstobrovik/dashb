@@ -336,10 +336,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                     )
                   })}
                   {dayItems.length > WK_MAX && (
-                    <button type="button" className="cal-more"
-                      onClick={(e) => { e.stopPropagation(); onDayClick(iso) }}>
-                      {tx('{n} more', { n: dayItems.length - WK_MAX })}
-                    </button>
+                    <span className="cal-more">{tx('{n} more', { n: dayItems.length - WK_MAX })}</span>
                   )}
                 </div>
               </div>
@@ -410,11 +407,12 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                           </div>
                         )
                       })}
+                      {/* Not a button. The whole day already opens the day,
+                           so a second control inside it would be a 36px target
+                           competing with a 90px one for the same press. This
+                           is the count; the cell is the door. */}
                       {dayItems.length > CAL_MAX && (
-                        <button type="button" className="cal-more"
-                          onClick={(e) => { e.stopPropagation(); onDayClick(iso) }}>
-                          {tx('{n} more', { n: dayItems.length - CAL_MAX })}
-                        </button>
+                        <span className="cal-more">{tx('{n} more', { n: dayItems.length - CAL_MAX })}</span>
                       )}
                     </div>
                   </div>

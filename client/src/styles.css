@@ -694,6 +694,11 @@ table.tbl tr:hover td { background: var(--surface-2); }
      out at a negative x — off the edge, unreachable, with no scroll to
      recover them. */
   width: 100%; max-width: min(460px, calc(100vw - 32px));
+  /* And min-width 0, or that max-width is a suggestion. A flex item's default
+     min-width is its CONTENT's, which wins over max-width — so one child too
+     wide for the phone (the strip of view names, once it grew icons) made the
+     whole sheet wider than the screen and put Save off the right edge. */
+  min-width: 0;
   max-height: 90vh;
   display: flex; flex-direction: column;
   animation: pop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
@@ -4216,6 +4221,11 @@ button.blame-person:hover { background: var(--surface-2); }
 .cm-pages {
   display: flex; gap: 4px; padding: 8px 10px;
   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  /* A flex child's default min-width is its CONTENT, so a strip too wide for
+     the phone pushed the whole sheet wider instead of scrolling — and the
+     footer's Save went off the right edge. Adding icons to these tabs is what
+     made the strip wide enough to notice. */
+  min-width: 0;
 }
 .cm-pages::-webkit-scrollbar { display: none; }
 .cm-page-tab {
@@ -5271,10 +5281,17 @@ button.blame-person:hover { background: var(--surface-2); }
 .cal-more {
   display: block; width: 100%; text-align: left;
   padding: 2px 6px; margin-top: 1px;
-  background: none; border: 0; cursor: pointer;
   font-size: 10.5px; font-weight: 700; color: var(--muted);
+  pointer-events: none;   /* the day underneath is the target */
 }
-.cal-more:hover { color: var(--brand-600); text-decoration: underline; }
+.cal-day:hover .cal-more, .wk-col:hover .cal-more { color: var(--brand-600); }
 /* The day opens over the month instead of replacing it. */
 .planner-sheet { display: flex; flex-direction: column; gap: 10px; }
 @media (hover: hover) { .planner-back { display: none; } }
+
+/* Each view wears the sign of what it holds. Marks are quicker to tell apart
+   than four words of the same length, and on a phone the strip is mostly
+   marks — so the icon carries and the word confirms. */
+.cm-page-tab { display: inline-flex; align-items: center; gap: 6px; }
+.cm-tab-ico { opacity: 0.7; flex: none; }
+.cm-page-tab.on .cm-tab-ico { opacity: 1; }

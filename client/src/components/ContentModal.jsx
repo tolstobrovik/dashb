@@ -181,12 +181,16 @@ function hasSomethingIn(el) {
   return false
 }
 
+// Each view wears the sign of what it holds: the brief is a page of writing,
+// execution is the people doing it, logistics is a calendar, the talk is a
+// conversation. Four words read the same length at a glance; four marks do
+// not, and on a phone the strip is mostly marks.
 const SECTIONS = [
-  { key: 'brief', label: 'Brief' },
-  { key: 'review', label: 'Execution' },
+  { key: 'brief', label: 'Brief', icon: FileText },
+  { key: 'review', label: 'Execution', icon: UserRound },
   { key: 'setup', label: 'Execution', mergeInto: 'review' },
-  { key: 'when', label: 'Logistics' },
-  { key: 'more', label: 'Talk' },
+  { key: 'when', label: 'Logistics', icon: CalendarClock },
+  { key: 'more', label: 'Talk', icon: MessageSquare },
 ]
 // Two code sections wear one tab: the crew and the handovers are the same
 // question asked twice, and a person opening a task to see who is on it
@@ -1231,6 +1235,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                   the revision notes, the finished files and the crew's own
                   tick, and which of those you are here for depends on who you
                   are. */}
+              {x.icon && <x.icon size={13} className="cm-tab-ico" />}
               {tx(x.key === 'review' && crewViewer ? 'Your part' : x.label)}
             </button>
           ))}
