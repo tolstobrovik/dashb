@@ -82,7 +82,10 @@ export default function Docs() {
     api.cached('/users').then(setTeam).catch(() => {})
   }, [])
 
-  const allMode = isAdmin && who === 0
+  // Everybody's shelves at once is a filing cabinet, not a page somebody
+  // needs. An admin reaches one person at a time, which is how a contract
+  // actually gets put somewhere.
+  const allMode = false
   const load = () => {
     setErr('')
     api.get(allMode ? '/docs?all=1' : `/docs?user_id=${who}`)
@@ -204,7 +207,6 @@ export default function Docs() {
           <label className="docs-who">
             <span className="crew-label">{tx("Person")}</span>
             <select className="select" value={who} onChange={(e) => setWho(Number(e.target.value))}>
-              <option value={0}>{tx("All people — every document")}</option>
               {[...team].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                 <option key={u.id} value={u.id}>{u.name}{u.role === 'admin' ? ' (admin)' : ''}</option>
               ))}
@@ -242,31 +244,12 @@ export default function Docs() {
           )}
         </div>
 
-        {/* the filters: what kind, and a search across titles, file names and
-            (in all-people mode) whose shelf it sits on */}
-        <div className="docs-filters">
-          <div className="pill-group">
-            <button className={'pill' + (kindFilter === 'all' ? ' active' : '')} onClick={() => setKindFilter('all')}>
-              {tx('All')} · {(docs || []).length}
-            </button>
-            {/* A shelf nobody has put anything on is not offered to the person
-                whose shelf it is; an admin keeps the empty one, because an
-                empty shelf is a fact about the team's paperwork. */}
-            {KINDS.map((k) => ({ k, n: (docs || []).filter((d) => d.kind === k.key).length }))
-              .filter(({ k, n }) => offerFilter(user, n, kindFilter === k.key))
-              .map(({ k, n }) => (
-                <button key={k.key} className={'pill' + (kindFilter === k.key ? ' active' : '')}
-                  onClick={() => setKindFilter(kindFilter === k.key ? 'all' : k.key)}>{k.label} · {n}</button>
-              ))}
-          </div>
-          <span className="spacer" />
-          <label className="docs-search">
-            <Search size={14} />
-            <input className="input" value={q} placeholder={tx('Search documents…')}
-              onChange={(e) => setQ(e.target.value)} />
-            {q && <button type="button" className="icon-btn" onClick={() => setQ('')} aria-label={tx('Clear')}><X size={14} /></button>}
-          </label>
-        </div>
+        {/* The filters went with the browsing. A shelf that is one person's
+            own is a handful of files; a filter row and a search box over four
+            rows is furniture pretending to be a feature. An admin looking at
+            somebody else's shelf still gets the search, because they are
+            looking for something rather than reading what they already know
+            they have. */}
 
         {docs === null ? (
           <div className="empty">{tx("Loading…")}</div>

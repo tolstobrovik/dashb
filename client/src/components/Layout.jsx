@@ -137,11 +137,16 @@ export default function Layout() {
   // The bar has room for two destinations beside My Day and More, and a slot
   // cannot hold a page an admin switched off — so they are taken from what is
   // still there, in the order they matter, and the rest fall into More.
+  const crewHats = user.crew_roles || []
+  const designsToo = user.role === 'admin' || crewHats.includes('designer')
+    || !(crewHats.includes('editor') || crewHats.includes('operator'))
   const CANDIDATES = [
     { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
     { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
     { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
-    { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
+    // Same as the sidebar: an editor is not shown a door to the designers'
+    // board. See client/src/components/Sidebar.jsx.
+    ...(designsToo ? [{ key: 'design', to: '/design', label: t('nav.design'), icon: Palette }] : []),
     { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
     { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
     { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },

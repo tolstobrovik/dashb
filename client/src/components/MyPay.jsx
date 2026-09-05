@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Wallet, ChevronDown } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Wallet, ChevronDown, Eye, EyeOff, Target } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { todayISO } from '../lib/constants.js'
 
@@ -17,9 +17,71 @@ import { todayISO } from '../lib/constants.js'
 
 const money = (n, cur) => `${Math.round(Number(n) || 0).toLocaleString('en-US').replace(/,/g, ' ')} ${cur || ''}`.trim()
 
+// Money on a screen other people can see over your shoulder.
+//
+// The board draws this on My Day, which is the page somebody has open while a
+// colleague leans in to ask something. A salary is not a secret from the
+// person earning it and IS one from the room, so it is covered until it is
+// asked for — the way a banking app does it, and for the same reason.
+//
+// The choice is remembered per browser, not per account: it is about the room
+// you are sitting in, not about you.
+const SHOW_KEY = 'satashkent_pay_shown'
+const readShown = () => { try { return localStorage.getItem(SHOW_KEY) === '1' } catch { return false } }
+
+// What it would take to reach a number.
+//
+// People ask "how many more do I have to do" and answer it on paper with a
+// rate they half-remember. The board holds every rate the admin set and every
+// piece this person delivered, so it can answer properly — and it answers with
+// THEIR mix of work, not an average of everybody's: somebody who shoots and
+// cuts is told about shoots and cuts, and somebody who only writes is not
+// offered a camera.
+//
+// Nothing here is hardcoded. Every rate comes down with the pay card, so
+// changing what a reel is worth in the Admin panel changes this the next time
+// the page loads and nowhere else.
+function planFor(pay, target) {
+  const gap = Math.max(0, target - (Number(pay.total) || 0))
+  if (!gap) return { gap: 0, done: true, ways: [], mix: null }
+
+  // Only hats that pay something. A rate of zero is not a way to earn.
+  const paying = (pay.lines || []).filter((l) => Number(l.rate) > 0)
+  if (!paying.length) return { gap, done: false, ways: [], mix: null }
+
+  // One kind at a time: "or N of these".
+  const ways = paying
+    .map((l) => ({ hat: l.hat, label: l.label, rate: l.rate, need: Math.ceil(gap / l.rate) }))
+    .sort((a, b) => a.need - b.need)
+
+  // And the same gap closed the way they ACTUALLY work — their delivered
+  // counts this month as the shape, scaled up until it covers the gap. A plan
+  // shaped like somebody else's month is a plan they cannot follow.
+  const doing = paying.filter((l) => l.count > 0)
+  let mix = null
+  if (doing.length > 1) {
+    const perRound = doing.reduce((n, l) => n + l.count * l.rate, 0)
+    if (perRound > 0) {
+      const rounds = gap / perRound
+      const parts = doing
+        .map((l) => ({ label: l.label, n: Math.ceil(l.count * rounds) }))
+        .filter((x) => x.n > 0)
+      const worth = doing.reduce((n, l, i) => n + (parts[i]?.n || 0) * l.rate, 0)
+      if (parts.length) mix = { parts, worth }
+    }
+  }
+  return { gap, done: false, ways, mix }
+}
+
 export default function MyPay() {
   const [pay, setPay] = useState(null)
   const [open, setOpen] = useState(false)
+  const [shown, setShown] = useState(readShown)
+  const [goal, setGoal] = useState('')
+  const showMoney = (on) => {
+    setShown(on)
+    try { localStorage.setItem(SHOW_KEY, on ? '1' : '0') } catch { /* private window */ }
+  }
 
   useEffect(() => {
     const t = todayISO()
@@ -36,7 +98,7 @@ export default function MyPay() {
       <button type="button" className="my-pay-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <Wallet size={17} />
         <span className="my-pay-sum">
-          <b>{money(pay.total, cur)}</b>
+          <b className={shown ? '' : 'pay-hidden'}>{shown ? money(pay.total, cur) : '••• •••'}</b>
           <span className="stat-sub">this month so far</span>
         </span>
         <span className="my-pay-facts">
@@ -57,6 +119,15 @@ export default function MyPay() {
         </span>
         <ChevronDown size={16} className={'my-pay-caret' + (open ? ' open' : '')} />
       </button>
+      {/* Its own control, outside the fold: covering the number and opening the
+          breakdown are different questions, and one button cannot answer both. */}
+      <button type="button" className="my-pay-eye" onClick={() => showMoney(!shown)}
+        data-tip={shown ? 'Hide the money' : 'Show the money'} data-tip-left=""
+        aria-label={shown ? 'Hide the money' : 'Show the money'} aria-pressed={shown}>
+        {shown ? <Eye size={15} /> : <EyeOff size={15} />}
+      </button>
+
+      {open && <GoalBox pay={pay} cur={cur} goal={goal} setGoal={setGoal} shown={shown} />}
 
       {open && (
         <div className="my-pay-lines">
@@ -169,6 +240,57 @@ export default function MyPay() {
             its own day had gone is not counted against you.
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// Type a number, see what reaches it.
+function GoalBox({ pay, cur, goal, setGoal, shown }) {
+  const target = Number(String(goal).replace(/\s/g, '')) || 0
+  const plan = useMemo(() => (target > 0 ? planFor(pay, target) : null), [pay, target])
+
+  return (
+    <div className="pay-goal">
+      <label className="pay-goal-ask">
+        <Target size={15} />
+        <span className="stat-sub">What do you want to make this month?</span>
+        <input className="input" inputMode="numeric" value={goal} placeholder="5 000 000"
+          onChange={(e) => setGoal(e.target.value.replace(/[^\d\s]/g, ''))} />
+      </label>
+
+      {plan && plan.done && (
+        <div className="pay-goal-hit">You are there already.</div>
+      )}
+
+      {plan && !plan.done && plan.ways.length === 0 && (
+        <div className="stat-sub">No rates are set for the work you do, so there is nothing to work out.</div>
+      )}
+
+      {plan && !plan.done && plan.ways.length > 0 && (
+        <>
+          <div className="pay-goal-gap">
+            <span className="stat-sub">Still to earn</span>
+            <b>{shown ? money(plan.gap, cur) : '••• •••'}</b>
+          </div>
+          {/* Their own mix first: the plan somebody can actually follow. */}
+          {plan.mix && (
+            <div className="pay-goal-mix">
+              {plan.mix.parts.map((p) => (
+                <span key={p.label} className="pay-goal-part"><b>{p.n}</b> {p.label.toLowerCase()}</span>
+              ))}
+            </div>
+          )}
+          <div className="pay-goal-ways">
+            <span className="stat-sub">or</span>
+            {plan.ways.map((w) => (
+              <span key={w.hat} className="pay-goal-way">
+                <b>{w.need}</b> {w.label.toLowerCase()}
+                <i className="stat-sub"> · {money(w.rate, cur)} each</i>
+              </span>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

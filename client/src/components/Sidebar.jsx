@@ -97,6 +97,11 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   // The ambassador programme is a job somebody can hold without running the
   // board — see server/routes/ambassadors.js.
   const runsProgramme = !!(user.permissions && user.permissions.manage_ambassadors)
+  // Whose board /design is. A member with no crew hat plans the work and needs
+  // to see it; an editor or an operator does not.
+  const hats = user.crew_roles || []
+  const doesDesign = isAdmin || hats.includes('designer')
+    || !(hats.includes('editor') || hats.includes('operator'))
   // A page the admin switched off in Settings has no door here. Only the ones
   // that ARE switchable are asked; My Day and the channels are the work.
   //
@@ -121,8 +126,12 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       // Every channel at once: what is going out, and what is being filmed.
       shows('releases') && { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
       shows('recordings') && { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
-      // The designer's own board, beside the work rather than inside a channel.
-      shows('design') && { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
+      // The designer's own board, beside the work rather than inside a channel
+      // — and only for the people whose board it is. An editor was being shown
+      // a door to somebody else's work: every piece on it is artwork they will
+      // never touch, in a page shaped around a job they do not do. Designers
+      // and whoever runs the board keep it.
+      shows('design') && doesDesign && { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
       shows('sprints') && { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
       // A campaign lives inside a project, so /campaigns/7 lights Projects up
       // rather than lighting nothing up.
@@ -144,7 +153,7 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       isAdmin && shows('team') && { key: 'team', to: '/team', label: t('nav.team'), icon: UsersRound },
       ...(runsEverything ? [{ key: 'admin', to: '/admin', label: t('nav.admin'), icon: Shield }] : []),
     ].filter(Boolean),
-  }), [isAdmin, runsEverything, runsProgramme, visible, t, shows])
+  }), [isAdmin, runsEverything, runsProgramme, doesDesign, visible, t, shows])
 
   // Which hub holds the page you are on. A deep link drops you INSIDE one —
   // /sprints/backlog, /projects/7, /dept/instagram_main — so the match is on
