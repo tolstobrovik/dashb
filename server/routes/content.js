@@ -234,8 +234,8 @@ const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, ass
   face_id, skip_rate, skip_rate_at,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, post_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
-  shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note,
-  edit_ack, edit_ack_at, edit_ack_by, edit_ack_note,
+  shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note, shoot_alt,
+  edit_ack, edit_ack_at, edit_ack_by, edit_ack_note, edit_alt,
   checklist, todo_sort, pinned, ${withThumbs ? 'photo_thumb,' : ''}
   CASE WHEN photo_thumb IS NULL THEN 0 ELSE 1 END AS has_thumb,
   (SELECT COUNT(*) FROM comments WHERE comments.content_id = content.id) AS comment_count,
@@ -347,11 +347,13 @@ async function notifyAssigned(req, contentId, title, roleById, extra = '') {
 const BOOKINGS = {
   shoot: {
     holder: 'operator_id', ack: 'shoot_ack', at: 'shoot_ack_at', by: 'shoot_ack_by', note: 'shoot_ack_note',
+    alt: 'shoot_alt',
     day: 'recording_date', from: 'recording_time', to: 'recording_end',
     what: 'the shoot', role: 'operator',
   },
   edit: {
     holder: 'editor_id', ack: 'edit_ack', at: 'edit_ack_at', by: 'edit_ack_by', note: 'edit_ack_note',
+    alt: 'edit_alt',
     day: 'edit_ready_date', from: null, to: null,
     what: 'the edit deadline', role: 'editor',
   },
@@ -2854,10 +2856,34 @@ router.post('/:id/confirm', wrap(async (req, res) => {
   const note = String(req.body?.note ?? '').trim().slice(0, 400)
   if (!ok && !note) return res.status(400).json({ error: 'Say what is in the way — a no with no reason cannot be planned around' })
 
+  // A "no" in three steps, because a bare no leaves the planner exactly where
+  // they were: a day nobody can do, and nothing to do about it.
+  //
+  //   1. the reason      already required above
+  //   2. a day you CAN   optional, and the useful answer most of the time —
+  //                      the planner re-books instead of guessing again
+  //   3. or hand it back  when it is not a date problem at all. The seat is
+  //                      cleared and the piece goes back to the pool for
+  //                      somebody else, rather than sitting on a person who
+  //                      has already said they cannot do it.
+  const alt = String(req.body?.alt ?? '').trim().slice(0, 10)
+  if (alt && !/^\d{4}-\d{2}-\d{2}$/.test(alt)) return res.status(400).json({ error: 'A day is YYYY-MM-DD' })
+  const handBack = !ok && req.body?.release === true
+  if (handBack && alt) return res.status(400).json({ error: 'Either offer another day or hand it back — not both' })
+
   const now = new Date().toISOString()
-  await run(
-    `UPDATE content SET ${b.ack} = ?, ${b.at} = ?, ${b.by} = ?, ${b.note} = ? WHERE id = ?`,
-    ok ? 'yes' : 'no', now, req.user.id, ok ? null : note, row.id)
+  if (handBack) {
+    // The seat empties and every trace of the question goes with it: the next
+    // person to hold it is being asked fresh, not inheriting somebody else's
+    // refusal.
+    await run(
+      `UPDATE content SET ${b.holder} = NULL, ${b.ack} = '', ${b.at} = NULL, ${b.by} = NULL, ${b.note} = NULL, ${b.alt} = NULL WHERE id = ?`,
+      row.id)
+  } else {
+    await run(
+      `UPDATE content SET ${b.ack} = ?, ${b.at} = ?, ${b.by} = ?, ${b.note} = ?, ${b.alt} = ? WHERE id = ?`,
+      ok ? 'yes' : 'no', now, req.user.id, ok ? null : note, ok ? null : (alt || null), row.id)
+  }
   await run(...actRow(req.user, row.id, row.title, 'confirmed', which, row[b.ack] || 'waiting', ok ? 'yes' : 'no', now))
 
   // Whoever booked it hears back. A booking answered into silence is a
@@ -2866,7 +2892,11 @@ router.post('/:id/confirm', wrap(async (req, res) => {
   if (tell.length) {
     const line = ok
       ? `${req.user.name} confirmed ${b.what} — ${slotWords(row, which)}`
-      : `${req.user.name} can't make ${b.what} (${slotWords(row, which)}) — “${note}”`
+      : handBack
+        ? `${req.user.name} handed back ${b.what} on «${row.title}» — “${note}”. It needs a ${b.role}.`
+        : alt
+          ? `${req.user.name} can't make ${b.what} (${slotWords(row, which)}) — “${note}”. They can do ${alt}.`
+          : `${req.user.name} can't make ${b.what} (${slotWords(row, which)}) — “${note}”`
     await batch(tell.map((id) => [
       'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
       id, ok ? 'confirmed' : 'declined', `${line} · «${row.title}»`, row.id, now,

@@ -677,10 +677,12 @@ export async function initSchema() {
       -- their afternoon for; changing it puts the question back and tells
       -- them.
       shoot_ack      TEXT    NOT NULL DEFAULT '',
+      shoot_alt      TEXT,                                -- a day they COULD do instead
       shoot_ack_at   TEXT,
       shoot_ack_by   INTEGER,
       shoot_ack_note TEXT,
       edit_ack       TEXT    NOT NULL DEFAULT '',
+      edit_alt       TEXT,
       edit_ack_at    TEXT,
       edit_ack_by    INTEGER,
       edit_ack_note  TEXT,
@@ -1542,6 +1544,8 @@ async function migrate() {
     // The ambassador programme grew a terms line the three boxes could not say,
     // and a moment somebody said their video was live.
     for (const [tbl, col, decl] of [
+      ['content', 'shoot_alt', 'TEXT'],   // the day they CAN do, offered with a no
+      ['content', 'edit_alt', 'TEXT'],
       ['ambassadors', 'default_terms_other', "TEXT NOT NULL DEFAULT ''"],
       ['ambassador_cards', 'terms_other', "TEXT NOT NULL DEFAULT ''"],
       ['ambassador_cards', 'posted_at', 'TEXT'],

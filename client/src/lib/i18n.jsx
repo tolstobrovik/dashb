@@ -547,6 +547,12 @@ const PHRASES = {
     // The ambassador programme: saying a video is live, and checking it.
     "I posted it": "Я выложил",
     "Videos this month": "Видео в этом месяце",
+    // Saying no to a booking, in a way somebody can act on.
+    "A day you could do instead": "День, когда получится",
+    "I cannot do this one at all — give it to somebody else": "Совсем не смогу — передайте другому",
+    "Hand it back": "Вернуть в общий список",
+    "Handed back. It is waiting for somebody else now.": "Возвращено. Теперь ждёт другого исполнителя.",
+    "Can do {day}": "Может {day}",
     // Empty states: one faint string, not a sentence.
     "Nothing here": "Пусто",
     "Nothing set": "Не задано",
@@ -1592,6 +1598,12 @@ const PHRASES = {
     // The ambassador programme: saying a video is live, and checking it.
     "I posted it": "Men joyladim",
     "Videos this month": "Bu oydagi videolar",
+    // Saying no to a booking, in a way somebody can act on.
+    "A day you could do instead": "Qaysi kuni qila olasiz",
+    "I cannot do this one at all — give it to somebody else": "Umuman qila olmayman — boshqaga bering",
+    "Hand it back": "Qaytarish",
+    "Handed back. It is waiting for somebody else now.": "Qaytarildi. Endi boshqa odamni kutmoqda.",
+    "Can do {day}": "{day} kuni qila oladi",
     // Empty states: one faint string, not a sentence.
     "Nothing here": "Bo‘sh",
     "Nothing set": "Belgilanmagan",
