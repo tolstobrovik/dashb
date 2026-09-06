@@ -115,6 +115,18 @@ await page.fill('input[name="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 
+// Round 91 folds Channels, Numbers and People to start with, so what is
+// behind them is a press away rather than in the DOM. Open them all before
+// reading the sidebar as text.
+const unfold = async (pg) => {
+  for (let i = 0; i < 5; i++) {
+    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
+    if (!(await shut.count())) break
+    await shut.first().click(); await pg.waitForTimeout(180)
+  }
+}
+
+await unfold(page)
 ok('the sidebar says Post Production', (await page.locator('.sidebar').textContent()).includes('Post Production'))
 await page.goto(BASE + '/crew')
 await page.waitForSelector('.pp-tabs', { timeout: 10000 })

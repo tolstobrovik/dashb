@@ -235,6 +235,18 @@ ok('every other address sends them back to their page', true)
 
 const boss = await open('admin', 'admin123')
 await boss.goto(`${BASE}/ambassador`); await boss.waitForTimeout(1900)
+// Round 91 folds Channels, Numbers and People to start with, so what is
+// behind them is a press away rather than in the DOM. Open them all before
+// reading the sidebar as text.
+const unfold = async (pg) => {
+  for (let i = 0; i < 5; i++) {
+    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
+    if (!(await shut.count())) break
+    await shut.first().click(); await pg.waitForTimeout(180)
+  }
+}
+
+await unfold(boss)
 ok('the admin has a door to it', (await boss.locator('.sidebar a[href="/ambassador"]').count()) === 1)
 ok('…and sees the queue', (await boss.locator('.amb-row').count()) === 1)
 await boss.locator('.amb-row-head').first().click(); await boss.waitForTimeout(700)
