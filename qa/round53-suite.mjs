@@ -114,6 +114,13 @@ ok('…and the broken answer is never written to the cache',
 cut = 0
 await a.page.reload()
 await a.page.waitForTimeout(2000)
+// Round 91 folds the Channels hub to start with.
+for (let i = 0; i < 5; i++) {
+  const shut = a.page.locator('.nav-hub:not(.open) .nav-hub-head')
+  if (!(await shut.count())) break
+  await shut.first().click(); await a.page.waitForTimeout(180)
+}
+
 ok('once the answer arrives whole, the channels are back',
   (await a.page.locator('a[href^="/dept/"]').count()) > 0)
 ok('…with no error along the way', a.errs.length === 0, a.errs.join(' | '))

@@ -32,8 +32,12 @@ const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale(
 // How many pills a day draws before it stops and offers the day instead. A
 // month whose rows are all different heights is a month you cannot scan, and
 // the row height is set by whichever day happens to be busiest.
-const CAL_MAX = 3
-const WK_MAX = 6
+// No cap. Round 36 settled this: the month calendar hides nothing, a crowded
+// day grows its row and every piece shows. Round 91 briefly put a "+N more"
+// back — which was never asked for (the brief wanted long tasks CONTAINED in
+// their day and a day you can open, both of which stand) and quietly undid a
+// decision somebody had already made for a reason. A day you can open is the
+// answer to a crowded day; hiding four of its six pieces is not.
 
 export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [], onRange }) {
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
@@ -311,7 +315,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   )}
                 </div>
                 <div className="wk-cards">
-                  {dayItems.slice(0, WK_MAX).map((it) => {
+                  {dayItems.map((it) => {
                     const st = statusesById[it.status_id]
                     const TIcon = typeInfo(it.type).icon
                     const SIcon = st ? statusIcon(st.label) : null
@@ -335,9 +339,6 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                       </div>
                     )
                   })}
-                  {dayItems.length > WK_MAX && (
-                    <span className="cal-more">{tx('{n} more', { n: dayItems.length - WK_MAX })}</span>
-                  )}
                 </div>
               </div>
             )
@@ -369,7 +370,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                           off the screen. What does not fit is not hidden — the
                           day says how many more it holds, and opens on the
                           whole list in time order. */}
-                      {dayItems.slice(0, CAL_MAX).map((it) => {
+                      {dayItems.map((it) => {
                         // Every task shows — a crowded day makes its week row
                         // taller instead of hiding work behind a "+N more".
                         // The pill wears its pipeline stage's color (To shoot =
@@ -407,13 +408,6 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                           </div>
                         )
                       })}
-                      {/* Not a button. The whole day already opens the day,
-                           so a second control inside it would be a 36px target
-                           competing with a 90px one for the same press. This
-                           is the count; the cell is the door. */}
-                      {dayItems.length > CAL_MAX && (
-                        <span className="cal-more">{tx('{n} more', { n: dayItems.length - CAL_MAX })}</span>
-                      )}
                     </div>
                   </div>
                 )

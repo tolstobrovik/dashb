@@ -140,7 +140,7 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
             <button type="button" className="btn btn-sm btn-danger" disabled={busy || !saying.note.trim()}
               onClick={() => answer(false, saying.note.trim(),
                 saying.hand ? { release: true } : (saying.alt ? { alt: saying.alt } : {}))}>
-              {saying.hand ? tx('Hand it back') : tx('Send it')}
+              {saying.hand ? tx('Give it back to the pool') : tx('Send it')}
             </button>
           </div>
         </div>

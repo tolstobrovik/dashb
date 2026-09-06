@@ -803,9 +803,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     if (!badField) return
     const el = document.querySelector(`[data-field="${badField}"]`)
     if (!el) return
-    // On a phone the field may be on a page that is not showing. Turn to it
-    // first, then scroll — an element inside `display: none` cannot be
-    // scrolled to, and the refusal would have pointed at nothing.
+    // The field may be on a view that is not showing — because you are on
+    // another one, or because round 91 tucked the untouched views behind "Add
+    // details". Reveal them all and turn to it: an element inside
+    // `display: none` cannot be scrolled to, and a refusal that points at
+    // nothing is worse than the refusal. This is the door the published-link
+    // wall opens; it has to lead somewhere.
+    setShowAll(true)
     const page = tabOf(el.closest('.cm-sec')?.dataset.sec)
     if (page) setSec(page)
     const go = () => {

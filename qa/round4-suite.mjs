@@ -155,7 +155,11 @@ ok('quiet channels show a zero, dimmed', (await page.locator('.pill-zero').count
 ok('the by-person report card renders', (await page.locator('.miss-report .miss-person-row').count()) >= 1)
 const firstRow = page.locator('.miss-report .miss-person-row').first()
 const rowTxt = await firstRow.textContent()
-ok('report rows carry the split', /\d+ open/.test(rowTxt) && /\d+ late/.test(rowTxt), rowTxt)
+// Round 91 made these counts dots rather than sentences: the digit keeps its
+// place and the noun becomes a colour, so what is asserted is the marks.
+ok('report rows carry the split',
+  (await firstRow.locator('.dot-open').count()) + (await firstRow.locator('.dot-late').count()) >= 1,
+  rowTxt)
 await page.screenshot({ path: 'r4-missed-report.png', fullPage: true })
 await firstRow.click()
 await page.waitForTimeout(400)

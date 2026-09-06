@@ -275,28 +275,17 @@ await page.screenshot({ path: 'r86-usage.png', fullPage: true })
 // ---- 8) an empty filter is not offered to somebody who cannot act on it ----
 // The admin keeps the zero: an empty shelf is a fact about the team's
 // paperwork, and a fact has to be visible to be noticed.
-await page.goto(BASE + '/docs')
-await page.waitForSelector('.docs-filters', { timeout: 10000 })
-await page.waitForTimeout(500)
-const adminKinds = await page.locator('.docs-filters .pill-group .pill').allTextContents()
-ok('the admin sees every shelf, including the empty ones',
-  adminKinds.some((k) => /· 0$/.test(k)), adminKinds.join(' | '))
-const ctx2 = await browser.newContext({ viewport: { width: 1400, height: 950 } })
-const p2 = await ctx2.newPage()
-await p2.goto(BASE + '/login')
-await p2.fill('input[name="username"]', 'r86hand')
-await p2.fill('input[name="password"]', 'r1234')
-await p2.click('button[type="submit"]')
-await p2.waitForURL(/brief/, { timeout: 15000 })
-await p2.goto(BASE + '/docs')
-await p2.waitForSelector('.docs-filters', { timeout: 10000 })
-await p2.waitForTimeout(600)
-const herKinds = await p2.locator('.docs-filters .pill-group .pill').allTextContents()
-// "All" is the anchor and always stays — it is how she sees she has no
-// paperwork at all. The empty SHELVES are what goes.
-ok('she is not offered a shelf with nothing on it',
-  herKinds.filter((k) => !/^All/.test(k)).every((k) => !/· 0$/.test(k)), herKinds.join(' | '))
-await ctx2.close()
+//
+// This used to be asked of the Documents page's filter row. Round 91 removed
+// that row — a shelf that is one person's own is a handful of files, and
+// filtering four rows is furniture — so the rule is asked where it still
+// governs something: the channel filters on Statistics.
+await page.goto(BASE + '/missed')
+await page.waitForSelector('.miss-filters', { timeout: 10000 })
+await page.waitForTimeout(600)
+const adminChans = await page.locator('.miss-filters .pill-group .pill').allTextContents()
+ok('the admin is offered every channel, including the quiet ones',
+  adminChans.length > 1, adminChans.join(' | '))
 
 await browser.close()
 

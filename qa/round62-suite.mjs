@@ -255,6 +255,13 @@ ok('a link that says something wins over what you last looked at',
 
 // ==================== the new pages are findable ====================
 await page.goto(BASE + '/brief')
+await page.waitForSelector('.sidebar nav', { timeout: 25000 })
+// Round 91 folds Channels, Numbers and People to start with.
+for (let i = 0; i < 5; i++) {
+  const shut = page.locator('.nav-hub:not(.open) .nav-hub-head')
+  if (!(await shut.count())) break
+  await shut.first().click(); await page.waitForTimeout(180)
+}
 await page.waitForSelector('a[href="/dept/instagram_main"]', { timeout: 25000 })
 await page.waitForTimeout(500)
 await page.keyboard.press('Control+k')
