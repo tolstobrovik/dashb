@@ -15,6 +15,17 @@
 // from the screen: the board looked right and did the wrong thing underneath.
 //
 // Self-contained: port 4135, its own data directory, its own browser pass.
+//
+// TIME-DEPENDENT, and not by choice. The sprint week freezes at noon on
+// Saturday, and half of what this suite asks — "anybody may put the first real
+// day on it", "moving it afterwards is refused" — is about the difference
+// between before and after that moment. Run on a Sunday, the week is already
+// frozen and the before-the-freeze checks are being asked of an after-the-
+// freeze board: they fail, and the failure says nothing about the code.
+//
+// It is left honest rather than made to pass: skipping them quietly would be
+// worse. If this is red and today is Saturday afternoon or Sunday, check the
+// day before reading anything into it.
 import { spawn } from 'child_process'
 import { chromium } from 'playwright'
 import { mkdtempSync, rmSync } from 'fs'
@@ -67,14 +78,26 @@ const O = await login('spo', 'pass1234')
 ok('an admin is not a sprint owner', (await req('/sprints/current')).data.owner === false)
 ok('…and the owner is', (await req('/sprints/current', 'GET', null, O)).data.owner === true)
 
-const mk = async (title, tok) => (await req('/sprints/tasks', 'POST', { title }, tok)).data.tasks.find((t) => t.title === title)
+// Fixtures are made by an OWNER, whoever the test is later going to act as.
+//
+// The sprint week freezes at noon on Saturday and only an owner may write to a
+// frozen one — so every weekend this suite's setup was refused with a 423 and
+// then crashed reading `.tasks` off the refusal, which reads like a broken
+// board and is the rule working. Making the FIXTURES as the owner separates
+// "can this suite set itself up" from "does the freeze hold", which is what
+// the checks below actually ask.
+const mk = async (title, tok = O) => {
+  const r = await req('/sprints/tasks', 'POST', { title }, tok)
+  if (!r.data?.tasks) throw new Error(`could not add "${title}": ${r.status} ${r.data?.error || ''}`)
+  return r.data.tasks.find((t) => t.title === title)
+}
 const one = async (id) => (await req('/sprints/current')).data.tasks.find((t) => t.id === id)
 
 // ---- 1) a finished week is finished for everybody but an owner -------------
 // The freeze used to be read off whichever sprint was CURRENT, whoever the
 // task belonged to. A task answers to its OWN week.
 const WEEK = 7 * 86400e3
-const past = await mk('spa: last week', M)
+const past = await mk('spa: last week')
 const cur = (await req('/sprints/current')).data.sprint
 await db.execute({
   sql: `INSERT INTO sprints (code, start_at, freeze_at, meeting_at, status, created_at)
@@ -101,7 +124,7 @@ ok('…and the owner still can', (await req(`/sprints/tasks/${past.id}`, 'PATCH'
 // everybody — otherwise nothing could ever be scheduled.
 const s0 = (await req('/sprints/current')).data.sprint
 const weekEnd = s0.freeze_at.slice(0, 10)
-const t1 = await mk('spa: a day', M)
+const t1 = await mk('spa: a day')
 ok('a new task carries the week’s end', t1.deadline === weekEnd, `${t1.deadline} vs ${weekEnd}`)
 ok('anybody may put the first real day on it',
   (await req(`/sprints/tasks/${t1.id}`, 'PATCH', { deadline: '2027-03-04' }, M)).status === 200)
@@ -126,7 +149,7 @@ ok('…and it moved', (await one(t1.id)).deadline === '2027-09-09')
 // ---- 3) dropped, not deleted -------------------------------------------------
 // /history counts a week's tasks live. Deleting a row therefore changed a
 // FINISHED week's numbers under whoever was reading them.
-const t2 = await mk('spa: dropped one', M)
+const t2 = await mk('spa: dropped one')
 const before = (await req('/sprints/history')).data.find((w) => w.id === s0.id)
 const dropped = await req(`/sprints/tasks/${t2.id}`, 'DELETE', { reason: 'the client cancelled' }, M)
 ok('a member may drop a task on the open week', dropped.status === 200, String(dropped.status))
@@ -191,7 +214,7 @@ ok('setting a first day is not logged as a move',
   log.filter((e) => e.kind === 'deadline').length === 1, String(log.filter((e) => e.kind === 'deadline').length))
 // The log is for what was UNDONE. A card walking To Do → In Progress → Done is
 // the week working, and thirty lines of it would bury the two that matter.
-const walked = await mk('spa: walks the board', M)
+const walked = await mk('spa: walks the board')
 await req(`/sprints/tasks/${walked.id}`, 'PATCH', { status: 'in_progress' }, M)
 await req(`/sprints/tasks/${walked.id}`, 'PATCH', {
   status: 'done', result_type: 'link', result_link: 'https://example.com/it',
@@ -208,7 +231,7 @@ ok('…and says which way it went', undone[0].old_value === 'done' && undone[0].
 // A task can run for weeks before somebody gives up on it, and the weeks that
 // carried it did not drop it. (Carrying is not wired up yet; the second week
 // row is written here the way a carry would leave it.)
-const carried = await mk('spa: carried then dropped', M)
+const carried = await mk('spa: carried then dropped')
 await db.execute({ sql: 'INSERT INTO sprint_task_sprints (task_id, sprint_id, outcome) VALUES (?, ?, NULL)',
   args: [carried.id, old] })
 await req(`/sprints/tasks/${carried.id}`, 'DELETE', { reason: 'we gave up in the end' }, O)
@@ -244,7 +267,7 @@ const open = async (user) => {
   return page
 }
 
-const t3 = await mk('spa: on screen', M)
+const t3 = await mk('spa: on screen')
 const mp = await open('spm')
 
 // Drop one from the card, with a reason, the way a person would.

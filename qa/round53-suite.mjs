@@ -135,6 +135,12 @@ await ctx2.addInitScript(() => {
 })
 const b = await openApp(ctx2)
 ok('a browser holding the poisoned value opens anyway', b.errs.length === 0, b.errs.join(' | '))
+// A second browser, so it starts folded like any first run does.
+for (let i = 0; i < 5; i++) {
+  const shut = b.page.locator('.nav-hub:not(.open) .nav-hub-head')
+  if (!(await shut.count())) break
+  await shut.first().click(); await b.page.waitForTimeout(180)
+}
 ok('…and shows its channels', (await b.page.locator('a[href^="/dept/"]').count()) > 0)
 await b.page.goto(BASE + '/brief')
 await b.page.waitForTimeout(1500)

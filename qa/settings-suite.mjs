@@ -138,7 +138,17 @@ await row('Design').locator('.switch').click(); await p.waitForTimeout(800)
 ok('…one tap turns it off', (await row('Design').locator('.switch.on').count()) === 0)
 ok('…and the server holds it', (await req('/fields')).data.pages.design === false)
 
+// Round 91 folds Channels, Numbers and People to start with, and Documents
+// lives in Numbers — so its door is a press away rather than in the DOM.
+const unfold = async (pg) => {
+  for (let i = 0; i < 5; i++) {
+    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
+    if (!(await shut.count())) break
+    await shut.first().click(); await pg.waitForTimeout(180)
+  }
+}
 await p.goto(`${BASE}/brief`); await p.waitForTimeout(1500)
+await unfold(p)
 ok('the sidebar loses that door', (await p.locator('.sidebar a[href="/design"]').count()) === 0)
 ok('…and keeps the others', (await p.locator('.sidebar a[href="/docs"]').count()) === 1)
 await p.goto(`${BASE}/design`); await p.waitForTimeout(1500)
@@ -150,6 +160,7 @@ await p.goto(`${BASE}/admin`); await p.waitForTimeout(1100)
 await p.locator('.tab', { hasText: 'Settings' }).click(); await p.waitForTimeout(1000)
 await row('Design').locator('.switch').click(); await p.waitForTimeout(800)
 await p.goto(`${BASE}/brief`); await p.waitForTimeout(1500)
+await unfold(p)
 ok('switching it back brings the door with it', (await p.locator('.sidebar a[href="/design"]').count()) === 1)
 
 // A page nobody switched off is a page that works, whatever the server said —
