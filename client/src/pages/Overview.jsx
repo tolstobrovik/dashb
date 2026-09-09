@@ -214,24 +214,36 @@ export default function Overview() {
       )}
 
       {/* Hands up. Somebody on a piece has said early that it is in trouble —
-          which is only worth saying if the people who plan see it early. */}
+          which is only worth saying if the people who plan see it early.
+          Four columns, aligned, one row per hand: what kind of trouble, which
+          piece, who said so, and why. It used to be a paragraph per row — the
+          title, then a sentence saying the person "says this will be late",
+          then the reason underneath — so ten hands were thirty lines of prose
+          and the only way to find the worst one was to read all of it. The
+          sentence was the same on every row of its kind, which makes it a
+          COLUMN, not a sentence. */}
       {hands.length > 0 && (
-        <div className="card card-pad ov-asks ov-hands">
-          <div className="ov-asks-head">
+        <div className="card card-pad ov-hands">
+          <div className="section-head ov-hands-head">
             <Hand size={16} />
-            <b>{hands.length} hand{hands.length === 1 ? '' : 's'} up</b>
+            <h2>{tx('Hands up')}</h2>
+            <span className="count">· {hands.length}</span>
           </div>
-          {hands.map((h) => (
-            <button key={h.id} className="ov-ask" onClick={() => navigate(`/brief?task=${h.content_id}`)}>
-              <span className="ov-ask-main">
-                <span className="ov-ask-title">{h.title}</span>
-                <span className="ov-ask-move">
-                  {h.raised_name} {h.kind === 'cant_take' ? 'cannot take this on' : 'says this will be late'}
-                </span>
-                <span className="ov-ask-why">“{h.reason}”</span>
-              </span>
-            </button>
-          ))}
+          <div className="hands-grid">
+            {hands.map((h) => {
+              const cant = h.kind === 'cant_take'
+              return (
+                <button key={h.id} className="hand-row" onClick={() => navigate(`/brief?task=${h.content_id}`)}>
+                  <span className={'hand-kind' + (cant ? ' is-cant' : '')}>
+                    <i className="dot" /> {cant ? tx('Can’t take it') : tx('At risk')}
+                  </span>
+                  <span className="hand-title">{h.title}</span>
+                  <span className="hand-who">{h.raised_name}</span>
+                  <span className="hand-why" title={h.reason}>{h.reason}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -256,8 +268,8 @@ export default function Overview() {
               {open.length > 0 ? (
                 <div className="ov-stages">
                   {byStage.map(({ s, n }) => (
-                    <span key={s.id} className="ov-stage" style={{ background: s.color, color: onColor(s.color) }}>
-                      {s.label} <b>{n}</b>
+                    <span key={s.id} className="ov-stage">
+                      <i className="dot" style={{ background: s.color }} /> {s.label} <b>{n}</b>
                     </span>
                   ))}
                 </div>

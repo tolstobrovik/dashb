@@ -17,7 +17,6 @@
   ],
   "shortcuts": [
     { "name": "My Day", "url": "/brief" },
-    { "name": "Unassigned", "url": "/unassigned" },
     { "name": "Releases", "url": "/releases" }
   ]
 }

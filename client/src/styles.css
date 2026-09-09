@@ -494,8 +494,9 @@ button { font-family: inherit; }
 .empty {
   text-align: center;
   color: var(--muted);
-  padding: 34px 16px;
-  font-size: 13.5px;
+  padding: 18px 14px;
+  font-size: 13px;
+  font-weight: 500;
 }
 .empty svg { color: var(--hairline-strong); margin-bottom: 8px; }
 
@@ -694,11 +695,6 @@ table.tbl tr:hover td { background: var(--surface-2); }
      out at a negative x — off the edge, unreachable, with no scroll to
      recover them. */
   width: 100%; max-width: min(460px, calc(100vw - 32px));
-  /* And min-width 0, or that max-width is a suggestion. A flex item's default
-     min-width is its CONTENT's, which wins over max-width — so one child too
-     wide for the phone (the strip of view names, once it grew icons) made the
-     whole sheet wider than the screen and put Save off the right edge. */
-  min-width: 0;
   max-height: 90vh;
   display: flex; flex-direction: column;
   animation: pop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
@@ -1415,8 +1411,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .wk-card.dim { opacity: 0.4; }
 .wk-title {
   font-size: 12px; font-weight: 650; color: var(--ink); line-height: 1.3;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
-  word-break: break-word;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .wk-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
 .wk-chips .chip { font-size: 9.5px; padding: 1px 6px; }
@@ -1653,9 +1648,6 @@ table.tbl tr:hover td { background: var(--surface-2); }
 
 /* ---- Channels tab: the report on every row ---- */
 .chan-stats { display: flex; align-items: center; gap: 12px; margin-left: 14px; flex-wrap: wrap; }
-.chan-stat { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
-.chan-stat b { font-size: 16px; font-weight: 800; color: var(--ink); }
-.chan-stat.late, .chan-stat.late b { color: #A32D2D; }
 
 /* ---- Reports: big and readable ---- */
 .rp-head { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
@@ -1955,8 +1947,6 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .miss-person-bar span { display: block; height: 100%; border-radius: 999px; background: var(--critical); }
 .miss-person-n { font-size: 14px; min-width: 24px; text-align: right; }
 .miss-person-split { display: inline-flex; gap: 8px; font-size: 11.5px; font-weight: 700; min-width: 110px; justify-content: flex-end; }
-.mp-open { color: var(--critical); }
-.mp-late { color: var(--muted); }
 
 /* crew: the big week timetable */
 .tt-wrap { margin-top: 2px; }
@@ -3570,6 +3560,36 @@ button.blame-person:hover { background: var(--surface-2); }
 .my-pay-facts b { font-variant-numeric: tabular-nums; }
 .my-pay-caret { transition: transform 0.15s ease; flex: none; color: var(--muted); }
 .my-pay-caret.open { transform: rotate(180deg); }
+
+/* The amount hides like a bank balance; the eye sits inside the head row. */
+.my-pay-hidden .my-pay-sum b { letter-spacing: .12em; color: var(--muted); }
+.my-pay-eye { flex: none; margin-left: -4px; }
+.my-pay-veil { padding: 8px 0 2px; }
+/* The planner: what a wanted month would take. */
+.planner { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hairline); display: grid; gap: 8px; }
+.planner-head { display: flex; align-items: center; gap: 8px; }
+.planner-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.planner-in { flex: 0 1 200px; min-width: 140px; font-variant-numeric: tabular-nums; }
+.planner-tiers { margin-left: auto; }
+.planner-note { line-height: 1.4; }
+.planner-out { display: grid; gap: 6px; padding-top: 4px; }
+.planner-mix { display: flex; gap: 8px; flex-wrap: wrap; }
+.planner-chip { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 999px; background: var(--surface-2); font-size: 13px; }
+.planner-chip b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.planner-line { font-size: 13.5px; }
+/* Documents is the KPI document. */
+.kpi-doc-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 14px 10px; }
+.kpi-doc-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.kpi-doc-actions .btn { padding: 6px 10px; font-size: 12.5px; }
+.kpi-doc-body { min-height: 60vh; }
+.kpi-doc-body .doc-frame { min-height: 70vh; }
+.kpi-doc-older { padding: 8px 14px 12px; }
+.kpi-doc-older summary { cursor: pointer; }
+.kpi-doc-list { display: grid; gap: 6px; padding-top: 8px; }
+.kpi-doc-row { display: flex; align-items: center; gap: 8px; }
+.kpi-doc-row .btn { padding: 4px 8px; }
+/* An empty state is one faint line, not a paragraph. */
+.empty.faint { color: var(--muted); font-size: 13px; padding: 18px 14px; }
 .my-pay-lines { padding: 4px 18px 16px; border-top: 1px solid var(--hairline); }
 .my-pay-line {
   display: grid;
@@ -4221,11 +4241,6 @@ button.blame-person:hover { background: var(--surface-2); }
 .cm-pages {
   display: flex; gap: 4px; padding: 8px 10px;
   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-  /* A flex child's default min-width is its CONTENT, so a strip too wide for
-     the phone pushed the whole sheet wider instead of scrolling — and the
-     footer's Save went off the right edge. Adding icons to these tabs is what
-     made the strip wide enough to notice. */
-  min-width: 0;
 }
 .cm-pages::-webkit-scrollbar { display: none; }
 .cm-page-tab {
@@ -4235,6 +4250,33 @@ button.blame-person:hover { background: var(--surface-2); }
   -webkit-tap-highlight-color: transparent;
 }
 .cm-page-tab.on { background: var(--brand-50); color: var(--brand-600); }
+/* The one button the other three views hide behind. */
+.cm-add-details, .cm-less-details {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
+  padding: 8px 13px; min-height: 38px; cursor: pointer;
+  background: none; border: 1px dashed var(--hairline-strong); border-radius: 999px;
+  color: var(--muted); font-size: 13px; font-weight: 700;
+}
+.cm-add-details:hover, .cm-less-details:hover { color: var(--brand-600); border-color: var(--brand-200, #e3c3c9); }
+.cm-less-details { border-style: solid; }
+.cm-pages-wrap { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 10px 0 0; overflow: hidden; }
+.cm-pages-wrap > .cm-pages { flex: 1 1 auto; min-width: 0; }
+.cm-pages-wrap > .cm-add-details, .cm-pages-wrap > .cm-less-details { flex: none; }
+@media (max-width: 640px) {
+  /* On a thumb-wide screen the control is its icon; the tooltip and the
+     aria-label carry the words. */
+  .cm-less-details span { display: none; }
+  .cm-less-details { padding: 8px 10px; }
+}
+/* Type and Stage are one small dropdown each. */
+.cm-select { max-width: 260px; }
+.cm-stage-pick { display: inline-flex; align-items: center; gap: 8px; }
+/* A "no" says what happens next. */
+.bk-choice { display: grid; gap: 6px; margin-top: 8px; }
+.bk-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
+.bk-opt.on { border-color: var(--brand-200, #e3c3c9); background: var(--brand-50); }
+.bk-when-pick { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+.bk-when-pick .input { flex: 0 0 auto; width: auto; }
 /* The strip is sized for a thumb: 38px of tab inside 16px of padding is 54px
    of the window spent on four short words. A mouse does not need the margin,
    and those pixels are the form's — the strip exists to give you MORE of the
@@ -4546,6 +4588,28 @@ button.blame-person:hover { background: var(--surface-2); }
   padding: 10px 14px; margin-bottom: 14px; font-size: 13.5px; font-weight: 600;
 }
 .new-build svg { flex: none; }
+
+/* The planned-update notice: one quiet strip, dismissed per person. Same
+   family as .new-build so the two never fight for attention. */
+.notice-strip {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--brand-50); color: var(--brand-700, var(--brand-600));
+  border: 1px solid var(--brand-200, #e3c3c9); border-radius: var(--radius-sm);
+  padding: 8px 12px; margin-bottom: 14px; font-size: 13.5px; line-height: 1.35;
+}
+.notice-strip svg { flex: none; }
+.notice-strip > span { min-width: 0; flex: 1; }
+.notice-strip b { font-weight: 700; }
+.notice-strip .notice-x { margin-left: auto; flex: none; color: inherit; opacity: .7; }
+.notice-strip .notice-x:hover { opacity: 1; }
+[data-theme="dark"] .notice-strip { background: #2a1f22; color: #f0c9cf; border-color: #4a2e34; }
+
+.notice-editor { padding: 12px 14px 14px; display: grid; gap: 10px; }
+.notice-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.notice-row .input { flex: 1 1 320px; min-width: 0; }
+.notice-row .notice-date { flex: 0 0 160px; }
+.notice-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
 .new-build-go {
   margin-left: auto; flex: none; cursor: pointer;
   background: var(--brand-600); color: #fff; border: none;
@@ -5174,124 +5238,184 @@ button.blame-person:hover { background: var(--surface-2); }
 .amb-pay-total .spacer { flex: 1 1 0; }
 .amb-pay-total b { font-size: 15px; }
 
-/* ---- counts as dots, not as sentences (round 91) ------------------------
-   "3 open · 2 overdue" was three short sentences where three marks would do.
-   The digit stays; the noun becomes a colour and a tooltip. Zero is not
-   drawn at all — a row that owes nothing should look like one. */
-.dots { display: inline-flex; align-items: center; gap: 10px; }
-.dot {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
-  color: var(--ink-2); cursor: default;
+
+/* ---- Phase 5: one vocabulary for state ---- */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; vertical-align: middle; }
+.dot-late { background: var(--critical); }
+.dot-ok { background: var(--good-ink, #2e8b57); }
+.dot-wait { background: #d9a400; }
+.sdot { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.sdot i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.sdot svg { flex: none; color: var(--muted); }
+.cdots { display: inline-flex; align-items: center; gap: 10px; }
+.cdot { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
+.cdot i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.cdot-late i { background: var(--critical); }
+.cdot-late { color: var(--critical); }
+.cdot-wait i { background: #d9a400; }
+.cdot-open i { background: var(--brand-600, #2a78d6); }
+.cdot-done i { background: var(--good-ink, #2e8b57); }
+.chip[data-late="1"]::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--critical); }
+.ov-stage { display: inline-flex; align-items: center; gap: 5px; background: var(--surface-2) !important; color: var(--ink-2) !important; }
+.ov-stage b { color: var(--ink); }
+.streak-flame svg { vertical-align: middle; color: var(--brand-600); }
+
+/* ---- the sidebar: pins, and a fold that starts folded ---- */
+.nav-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.nav-row > .nav-item { flex: 1 1 auto; min-width: 0; }
+.nav-pin { flex: none; opacity: 0; background: none; border: none; color: var(--cream); cursor: pointer; padding: 0; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 40px; }
+.nav-row:hover .nav-pin, .nav-row.here .nav-pin, .nav-pin.on { opacity: .75; }
+.nav-pin:hover { opacity: 1; background: rgba(255, 255, 255, 0.08); }
+.nav-pin.on svg { fill: currentColor; }
+.nav-pins { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+
+/* ---- the hover preview ---- */
+.hover-preview {
+  position: fixed; z-index: 9999; width: 340px; max-width: calc(100vw - 24px);
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18); padding: 8px;
+  pointer-events: none; animation: hp-in 0.12s ease-out;
 }
-.dot-mark { width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.dot-late .dot-mark { background: var(--critical); }
-.dot-late { color: var(--critical); }
-.dot-open .dot-mark { background: var(--brand-500); }
-.dot-wait .dot-mark { background: #BA7517; }
-.dot-done .dot-mark { background: var(--good-ink, #0ca30c); }
-.dot-done { color: var(--muted); }
+@keyframes hp-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.hover-preview .hp-img { display: block; max-width: 100%; max-height: 240px; object-fit: contain; border-radius: 6px; margin: 0 auto; }
+.hp-media { position: relative; border-radius: 6px; overflow: hidden; background: #000; }
+.hp-media img { display: block; width: 100%; max-height: 190px; object-fit: cover; opacity: 0.92; }
+.hp-play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #fff; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6)); }
+.hp-line { display: flex; align-items: center; gap: 8px; padding: 4px 4px 2px; font-size: 12.5px; min-width: 0; }
+.hp-line b { font-weight: 700; flex: none; }
+.hp-line span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.hp-line svg { flex: none; color: var(--brand-600); }
+.hover-preview.hp-link, .hover-preview.hp-drive, .hover-preview.hp-doc { width: auto; max-width: 360px; }
+@media (hover: none) { .hover-preview { display: none; } }
 
-/* The three or four doors somebody actually uses, lifted out of their hubs.
-   No heading over them: they are not a category, they are this person's day. */
-.nav-pins { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; margin-bottom: 4px;
-  border-bottom: 1px solid rgba(255,255,255,0.08); }
-.side-pin { opacity: 0.4; }
-.side-pin:hover { opacity: 0.9; }
-.side-pin.on { opacity: 1; color: var(--brand-300, #e88); }
 
-/* ---- looking at a link without leaving the page (round 91) ---------------
-   Fixed, not absolute: these hang off rows inside scrolling panels and modals,
-   and an absolutely-positioned popover inherits every clip its ancestors have. */
-.hp-pop {
-  position: fixed; z-index: 90;
-  display: flex; flex-direction: column;
-  border-radius: 10px; overflow: hidden;
-  background: var(--surface); box-shadow: var(--shadow-lg, 0 12px 40px rgba(0,0,0,0.3));
-  pointer-events: none;            /* it is for looking at, never for catching the cursor */
-  animation: hp-in 120ms ease-out;
+/* ---- Phase 6: one colour rule — the stage — on every calendar block ---- */
+.st-tint { background: color-mix(in srgb, var(--st) 13%, var(--surface)) !important; color: var(--ink) !important; }
+.st-tint:hover { background: color-mix(in srgb, var(--st) 20%, var(--surface)) !important; }
+.cc-ev.st-tint { border-left-color: var(--st); }
+.cc-ev.st-tint b, .cc-ev.st-tint span, .cc-ev.st-tint i { color: inherit; }
+.agenda-row.st-tint { border-left: 3px solid var(--st); border-radius: 6px; margin-bottom: 3px; }
+.agenda-row.st-tint:last-child { border-bottom: none; }
+.agenda-kinds { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+/* every block is one line: a long title is cut, never wrapped into a tall row */
+.cc-ev { min-height: 0; }
+.cc-ev span, .agenda-title, .cal-tray-chip, .rel-ev .ev-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agenda-title { flex: 1; min-width: 0; }
+.cc-day.cc-click { cursor: pointer; }
+.cc-day.cc-click:hover { background: var(--surface-2); }
+/* the legend */
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.cal-legend .st-legend { background: var(--surface-2); color: var(--ink-2); gap: 6px; }
+/* the day, whole, on top of the calendar */
+.day-sheet { position: fixed; inset: 0; z-index: 90; background: rgba(20, 16, 20, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow: auto; animation: hp-in 0.12s ease-out; }
+.day-sheet-card { width: min(920px, 100%); min-height: min(70vh, 640px); margin: 0 auto; }
+.day-sheet .planner-head h3 { font-size: 20px; }
+@media (max-width: 640px) { .day-sheet { padding: 0; align-items: stretch; } .day-sheet-card { width: 100%; min-height: 100vh; border-radius: 0; } }
+
+
+/* The error boundary's own face. */
+.boom { display: grid; gap: 10px; justify-items: start; padding: 22px; margin: 16px 0; background: var(--surface); border: 1px solid var(--hairline-strong); border-radius: var(--radius); }
+.boom > b { font-size: 15px; }
+.boom-do { display: flex; gap: 8px; flex-wrap: wrap; }
+.boom-why { width: 100%; }
+.boom-why summary { cursor: pointer; }
+.boom-why pre { margin-top: 8px; padding: 10px; background: var(--surface-2); border-radius: var(--radius-sm); font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; }
+
+
+/* ---- Hands up: four aligned columns, one row per hand ---- */
+.ov-hands { border-left: 3px solid #A32D2D; display: flex; flex-direction: column; gap: 6px; }
+.ov-hands-head { margin: 0; }
+.ov-hands-head svg { color: #A32D2D; }
+.ov-hands-head h2 { font-size: 15px; }
+.hands-grid { display: flex; flex-direction: column; }
+.hand-row {
+  display: grid; align-items: baseline; gap: 4px 14px; width: 100%;
+  grid-template-columns: max-content minmax(0, 1.2fr) max-content minmax(0, 1.6fr);
+  padding: 9px 2px; min-height: 40px;
+  background: none; border: 0; border-top: 1px solid var(--hairline);
+  font-family: inherit; color: inherit; text-align: left; cursor: pointer;
 }
-@keyframes hp-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-.hp-img { display: block; width: 100%; max-height: 240px; object-fit: cover; background: rgba(127,127,127,0.12); }
-.hp-frame { display: block; width: 100%; height: 240px; border: 0; background: #fff; }
-.hp-meta { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0; }
-.hp-note { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--brand-600); }
-.hp-url { font-size: 11.5px; color: var(--muted); word-break: break-all; line-height: 1.35;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-/* A finger cannot hover, so there is nothing to show and nothing to get in the way. */
-@media (hover: none) { .hp-pop { display: none; } }
-
-/* ---- money you can cover, and a number you can aim at (round 91) --------- */
-.my-pay { position: relative; }
-.my-pay-eye {
-  position: absolute; top: 14px; right: 14px;
-  background: none; border: 0; cursor: pointer; padding: 6px;
-  color: var(--muted); border-radius: 8px; line-height: 0;
+.hand-row:first-child { border-top: 0; }
+.hand-row:hover { background: var(--surface-2); }
+.hand-kind { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #BA7517; white-space: nowrap; }
+.hand-kind .dot { background: #BA7517; }
+.hand-kind.is-cant { color: #A32D2D; }
+.hand-kind.is-cant .dot { background: #A32D2D; }
+.hand-title { font-size: 13.5px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hand-who { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
+.hand-why { font-size: 12.5px; color: var(--ink-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* On a phone the four columns become two lines: what and which, then who and why. */
+@media (max-width: 640px) {
+  .hand-row { grid-template-columns: max-content minmax(0, 1fr); }
+  .hand-who { grid-column: 1; }
+  .hand-why { grid-column: 2; }
 }
-.my-pay-eye:hover { color: var(--ink); background: rgba(127,127,127,0.12); }
-.pay-hidden { letter-spacing: 2px; color: var(--muted); }
 
-.pay-goal { display: flex; flex-direction: column; gap: 10px; padding: 14px 0 4px;
-  border-top: 1px solid var(--hairline); margin-top: 12px; }
-.pay-goal-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.pay-goal-ask .input { width: 160px; font-variant-numeric: tabular-nums; }
-.pay-goal-gap { display: flex; align-items: baseline; gap: 10px; }
-.pay-goal-gap b { font-size: 17px; font-variant-numeric: tabular-nums; }
-.pay-goal-hit { font-weight: 700; color: var(--good-ink, #0ca30c); }
-/* Their own mix reads as the answer; the single-kind ways read as alternatives. */
-.pay-goal-mix { display: flex; gap: 8px; flex-wrap: wrap; }
-.pay-goal-part {
-  padding: 6px 11px; border-radius: 999px; font-size: 13px;
-  background: color-mix(in srgb, var(--brand-500) 12%, transparent); color: var(--ink);
+
+/* ---- My Day, flat: one list, three tiers, the colour IS the label ---- */
+.day-flat .ov-row { gap: 10px; }
+.day-flat .dot { flex: none; }
+.dot-late { background: var(--critical); }
+.dot-today { background: #1D9E75; }
+.dot-soon { background: #2a78d6; }
+.day-flat .pers-add { border-top: 1px solid var(--hairline); padding-top: 10px; margin-top: 4px; }
+
+
+/* ---- who each page is for (Admin → Settings → Pages) ---- */
+/* The chips wrap rather than widening the row, so a narrow window folds the
+   column instead of pushing the On/Off switch off the side of the table. */
+.aud-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.aud-chips .checkbox-chip { padding: 6px 11px; font-size: 12.5px; }
+/* A page switched off has no audience worth arguing about: the chips stay
+   readable and keep their last state, they just stop inviting a click. */
+.aud-chips.is-moot { opacity: 0.45; }
+.aud-chips.is-moot .checkbox-chip { cursor: default; }
+
+
+/* ---- the draft that survived the tab dying ---- */
+/* Quiet, not alarming: nothing is wrong, there is simply a copy waiting. It
+   sits at the top of the sheet because it is about the whole sheet, and it
+   leaves the moment either button is pressed. */
+.cm-rescue {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 12px; padding: 10px 12px;
+  border: 1px solid var(--hairline); border-left: 3px solid var(--brand-500);
+  border-radius: 8px; background: var(--surface-2);
 }
-.pay-goal-part b { font-variant-numeric: tabular-nums; }
-.pay-goal-ways { display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; font-size: 12.5px; }
-.pay-goal-way b { font-variant-numeric: tabular-nums; }
+.cm-rescue b { font-size: 13px; }
+.cm-rescue .stat-sub { font-size: 12px; }
 
-/* The views nobody has been in yet, behind one control instead of laid out as
-   empty tabs. Quieter than a tab on purpose — it is a way in, not a place. */
-.cm-page-more {
-  flex: none; display: inline-flex; align-items: center; gap: 5px;
-  padding: 5px 11px; min-height: 30px;
-  background: none; border: 1px dashed var(--hairline); border-radius: 999px;
-  cursor: pointer; color: var(--muted); font-size: 12.5px; font-weight: 600;
+
+/* ---- what a document actually looks like, on its own row ---- */
+/* Small, fixed and clipped: the point is recognition at a glance, not reading.
+   The iframe inside is inert — pointer-events off — so the row's own buttons
+   stay clickable and a PDF cannot swallow the scroll. */
+.doc-row-thumbed { align-items: center; gap: 10px; }
+.doc-thumb {
+  flex: none; width: 46px; height: 58px; border-radius: 5px; overflow: hidden;
+  border: 1px solid var(--hairline); background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center; position: relative;
 }
-.cm-page-more:hover { color: var(--ink); border-color: var(--muted); }
-@media (hover: none) { .cm-page-more { min-height: 38px; } }
-
-/* Type and stage: a short fixed list is a dropdown, not a wall of chips. The
-   stage keeps its colour, as the dot that names it rather than as a filled
-   pill the width of the sheet. */
-.cm-pick { min-width: 170px; max-width: 240px; }
-.cm-stage-pick { display: inline-flex; align-items: center; gap: 8px; }
-.cm-stage-pick .status-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-
-/* Saying no in three steps: what is in the way, a day you could do instead,
-   or hand it back entirely. */
-.bk-alt-ask { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
-.bk-alt-ask .input { width: auto; }
-.bk-hand { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
-/* The offer is the useful half of a refusal, so it reads louder than the reason. */
-.bk-alt { margin-left: 8px; color: var(--good-ink, #0ca30c); font-size: 12.5px; }
-
-/* ---- a calendar that keeps its shape (round 91) --------------------------
-   A month whose rows are all different heights is a month you cannot scan,
-   and the height was set by whichever day happened to be busiest. Each day
-   draws a fixed few and then says how many more it holds. */
-.cal-more {
-  display: block; width: 100%; text-align: left;
-  padding: 2px 6px; margin-top: 1px;
-  font-size: 10.5px; font-weight: 700; color: var(--muted);
-  pointer-events: none;   /* the day underneath is the target */
+.doc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.doc-thumb iframe {
+  width: 200%; height: 200%; border: 0; transform: scale(0.5); transform-origin: top left;
+  pointer-events: none; background: #fff;
 }
-.cal-day:hover .cal-more, .wk-col:hover .cal-more { color: var(--brand-600); }
-/* The day opens over the month instead of replacing it. */
-.planner-sheet { display: flex; flex-direction: column; gap: 10px; }
-@media (hover: hover) { .planner-back { display: none; } }
+.doc-thumb-kind {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: 0.3px;
+}
+@media (max-width: 560px) { .doc-thumb { width: 38px; height: 48px; } }
 
-/* Each view wears the sign of what it holds. Marks are quicker to tell apart
-   than four words of the same length, and on a phone the strip is mostly
-   marks — so the icon carries and the word confirms. */
-.cm-page-tab { display: inline-flex; align-items: center; gap: 6px; }
-.cm-tab-ico { opacity: 0.7; flex: none; }
-.cm-page-tab.on .cm-tab-ico { opacity: 1; }
+
+/* ---- history reads across the sheet, not down a column ---- */
+/* Every other row in the sheet is "label, then one value", so 86px + 1fr is
+   right for them. A log is not one value: it is many lines of prose, each
+   with a time, a name and a sentence, and squeezing it into the value column
+   wrapped every entry two or three times over. It gets the whole width now —
+   the label sits above it, where a section heading belongs. */
+.cm-row.cm-history,
+.cm-row.cm-revs { grid-template-columns: 1fr; align-items: start; gap: 8px; }
+.cm-row.cm-history > .cm-key,
+.cm-row.cm-revs > .cm-key { padding-top: 2px; }

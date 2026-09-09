@@ -1,3 +1,4 @@
+import { Flame, Clapperboard } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api.js'
 import { useT } from '../lib/i18n.jsx'
@@ -27,7 +28,7 @@ export default function Streak() {
 
   return (
     <div className="card card-pad streak-chip">
-      <span className="streak-flame" aria-hidden="true">{s.streak >= 2 ? '🔥' : '🎬'}</span>
+      <span className="streak-flame" aria-hidden="true">{s.streak >= 2 ? <Flame size={16} /> : <Clapperboard size={16} />}</span>
       <span className="streak-main">
         <b>
           {s.streak >= 2

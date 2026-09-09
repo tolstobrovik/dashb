@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { run, getTaskFields, DEFAULT_TASK_FIELDS, TASK_FIELD_KEYS, CONTENT_TYPES, getCrewNeeds, CREW_NEED_KEYS, getPageRules, PAGE_KEYS, getSkipTiers, getMakerGrades } from '../db.js'
+import { get, run, getTaskFields, DEFAULT_TASK_FIELDS, TASK_FIELD_KEYS, CONTENT_TYPES, getCrewNeeds, CREW_NEED_KEYS, getPageRules, getPageAudience, PAGE_KEYS, PAGE_AUDIENCES, getSkipTiers, getMakerGrades, getPlannedUpdate } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 
 // How this board is set up, in one place: which briefing fields the task form
@@ -19,12 +19,17 @@ router.get('/', wrap(async (req, res) => {
     ...(await getTaskFields()),
     crew: await getCrewNeeds(),
     pages: await getPageRules(),
+    page_audience: await getPageAudience(),
     // What a reel earns by how much of it was watched, and how many pieces
     // earns which grade. Everybody reads these: a person is shown their own
     // grade and what their pieces earned, so hiding the ladder from the people
     // climbing it would be the wrong way round.
     skip_tiers: await getSkipTiers(),
     maker_grades: await getMakerGrades(),
+    // The one notice the board may put above everybody's work. Rides here
+    // because every signed-in page already fetches this, so a notice costs no
+    // extra request and appears on the next page anybody opens.
+    notice: await getPlannedUpdate(),
   })
 }))
 
@@ -88,6 +93,29 @@ router.post('/', adminOnly, wrap(async (req, res) => {
       JSON.stringify(grades))
   }
 
+  // The planned-update notice. Sending it at all replaces whatever stood
+  // before; sending empty text takes the banner down. The id is bumped HERE
+  // rather than trusted from the client, because it is what decides whether
+  // somebody's dismissal still counts — a client that sent the old id back
+  // would post a new announcement nobody sees.
+  if (body.notice !== undefined) {
+    const text = String(body.notice?.text ?? '').trim().slice(0, 240)
+    if (!text) {
+      await run("DELETE FROM meta WHERE key = 'planned_update'")
+    } else {
+      let prev = null
+      try { prev = JSON.parse((await get("SELECT value FROM meta WHERE key = 'planned_update'"))?.value || 'null') } catch { prev = null }
+      const at = /^\d{4}-\d{2}-\d{2}$/.test(String(body.notice?.at || '')) ? String(body.notice.at) : null
+      // Same words and same date is the admin saving the settings page, not
+      // announcing anything — leave the id alone so nobody's dismissal is
+      // undone by somebody pressing Save on an unrelated switch.
+      const same = prev && String(prev.text || '').trim() === text && (prev.at || null) === at
+      const id = same ? Math.max(1, Math.round(Number(prev.id) || 1)) : Math.max(0, Math.round(Number(prev?.id) || 0)) + 1
+      await run("INSERT INTO meta (key, value) VALUES ('planned_update', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        JSON.stringify({ id, text, at }))
+    }
+  }
+
   // Which pages the team has. Only sent keys change, so a client that knows
   // about fewer pages than the server does cannot switch off the rest.
   if (body.pages && typeof body.pages === 'object') {
@@ -97,7 +125,30 @@ router.post('/', adminOnly, wrap(async (req, res) => {
     await run("INSERT INTO meta (key, value) VALUES ('page_rules', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       JSON.stringify(pages))
   }
-  res.json({ ...(await getTaskFields()), crew: await getCrewNeeds(), pages: await getPageRules() })
+
+  // And who each page is for. Same posture as the switch above: only sent keys
+  // change, and anything the server does not recognise — a page key it has not
+  // heard of, an audience word that is not an account kind — is dropped rather
+  // than stored, so a stale client cannot write a rule nobody can read back.
+  if (body.page_audience && typeof body.page_audience === 'object') {
+    const eff = await getPageAudience()
+    const aud = {}
+    for (const k of PAGE_KEYS) {
+      const sent = body.page_audience[k]
+      aud[k] = Array.isArray(sent) ? PAGE_AUDIENCES.filter((a) => sent.includes(a)) : eff[k]
+    }
+    await run("INSERT INTO meta (key, value) VALUES ('page_audience', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      JSON.stringify(aud))
+  }
+  res.json({
+    ...(await getTaskFields()),
+    crew: await getCrewNeeds(),
+    pages: await getPageRules(),
+    page_audience: await getPageAudience(),
+    skip_tiers: await getSkipTiers(),
+    maker_grades: await getMakerGrades(),
+    notice: await getPlannedUpdate(),
+  })
 }))
 
 export default router

@@ -78,13 +78,6 @@ ok('the admin’s trims are still theirs', !(await p.locator('.sidebar nav').tex
 await p.locator('.side-edit-btn', { hasText: /Personalize/ }).click()
 await p.locator('.side-edit-btn', { hasText: 'Reset' }).click()
 await p.locator('.side-edit-btn', { hasText: 'Done' }).click()
-// Reset restores the DEFAULT sidebar, and round 91's default is folded —
-// so the doors are a press away, exactly as on a first run.
-for (let i = 0; i < 5; i++) {
-  const shut = p.locator('.nav-hub:not(.open) .nav-hub-head')
-  if (!(await shut.count())) break
-  await shut.first().click(); await p.waitForTimeout(180)
-}
 const navReset = await p.locator('.sidebar nav').textContent()
 ok('reset restores the full sidebar', navReset.includes('Sprints') && navReset.includes('Post Production'))
 

@@ -1,9 +1,9 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
-  Sun, Clapperboard, Scissors, Send, AlertCircle, CheckCircle2, CalendarRange, Check, StickyNote, ListTodo, PenLine, Trash2, Palette,
-  Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, RotateCcw, ExternalLink, Link2,
-  SlidersHorizontal, Eye, EyeOff, CalendarClock, Plus,
+  Sun, Clapperboard, Scissors, Send, AlertCircle, CheckCircle2, Check, StickyNote, ListTodo, PenLine, Trash2, Palette,
+  Rows3, CalendarDays, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, RotateCcw, ExternalLink, Link2,
+  CalendarClock, Plus,
 } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
@@ -13,6 +13,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import { rewardIfFinished } from '../lib/reward.js'
 import MyLate from '../components/MyLate.jsx'
 import MyPay from '../components/MyPay.jsx'
+import DayAgenda from '../components/DayAgenda.jsx'
 import MyGrade from '../components/MyGrade.jsx'
 import Streak from '../components/Streak.jsx'
 import { deliveryHref, splitDelivery } from '../lib/text.js'
@@ -21,6 +22,7 @@ import { toast, loadFailed } from '../lib/toast.js'
 import { markDone, moveTo } from '../lib/finish.js'
 import { playDone } from '../lib/sound.js'
 import { tr as tx, locale } from '../lib/i18n.jsx'
+import { StageDot, Dot } from '../components/Dot.jsx'
 
 // My Day — the deadline-first landing page, in two shapes:
 //   crew (operator / editor / both): what to shoot at which hour, the editing
@@ -47,7 +49,7 @@ const workOnDate = (t, d) =>
 /* The crew's own month calendar: their shoots on the shoot day, their cuts on
    the edit-ready day, their artwork on the design-ready day. No release dates
    — the crew works to the maker deadlines, not the publishing schedule. */
-function CrewCalendar({ tasks, userId, today, byKey, onOpen }) {
+function CrewCalendar({ tasks, userId, today, byKey, statusesById, onOpen, onDay }) {
   const [month, setMonth] = useState(today.slice(0, 7)) // YYYY-MM
   const move = (n) => {
     const d = new Date(`${month}-01T00:00:00Z`)
@@ -109,13 +111,15 @@ function CrewCalendar({ tasks, userId, today, byKey, onOpen }) {
           {row.map((iso) => {
             const other = iso.slice(0, 7) !== month
             return (
-              <div key={iso} className={'cc-day' + (other ? ' cc-other' : '') + (iso === today ? ' cc-today' : '')}>
+              <div key={iso} className={'cc-day' + (other ? ' cc-other' : '') + (iso === today ? ' cc-today' : '') + (onDay ? ' cc-click' : '')} onClick={() => onDay?.(iso)}>
                 <span className="cc-num">{Number(iso.slice(8))}</span>
                 {(entries[iso] || []).map(({ kind, t }) => {
                   const K = KIND[kind]
                   const Icon = K.icon
+                  const st = statusesById?.[t.status_id]
                   return (
-                    <button key={`${kind}${t.id}`} className={`cc-ev ${K.cls}`} onClick={() => onOpen(t)} title={t.title}>
+                    <button key={`${kind}${t.id}`} className={`cc-ev ${K.cls}${st ? ' st-tint' : ''}`} style={st ? { '--st': st.color, borderLeftColor: st.color } : undefined}
+                      onClick={(e) => { e.stopPropagation(); onOpen(t) }} title={t.title}>
                       <b><Icon size={10} /> {K.word}{kind === 'shoot' && t.recording_time ? ` · ${t.recording_time.slice(0, 5)}` : ''}</b>
                       <span>{t.title}</span>
                       <i>{t.channels.map((c) => byKey[c]?.label || c).join(' · ')}</i>
@@ -132,13 +136,23 @@ function CrewCalendar({ tasks, userId, today, byKey, onOpen }) {
 }
 
 /* Module-level row (poll ticks must not remount it). */
-function BriefRow({ item, when, time, late = false, done = false, work = null, byKey, statusesById, onOpen, onMenu }) {
+// One flat list, three tiers, in the order a day is actually worked: what
+// you are already late on, what is due today, what is coming. The colour is
+// the whole label — red, green, blue — and the word is on the dot for anyone
+// who needs it.
+const TIER_WORD = {
+  late: () => tx('Overdue'),
+  today: () => tx('Today'),
+  soon: () => tx('Coming up'),
+}
+function BriefRow({ item, when, time, late = false, done = false, work = null, tier = null, byKey, statusesById, onOpen, onMenu }) {
   const status = statusesById[item.status_id]
   const wk = work && WORK[work]
   const WkIcon = wk?.icon
   return (
     <button className="ov-row" onClick={() => onOpen(item)}
       onContextMenu={onMenu ? (e) => onMenu(e, item) : undefined}>
+      {tier && <i className={`dot dot-${tier}`} aria-label={TIER_WORD[tier]()} data-tip={TIER_WORD[tier]()} />}
       <span className={'brief-when' + (late ? ' late' : '')}>
         {time ? <b>{time}</b> : <span className="brief-anytime">{tx("any time")}</span>}
         {when && <span className="brief-when-sub">{when}</span>}
@@ -155,7 +169,7 @@ function BriefRow({ item, when, time, late = false, done = false, work = null, b
         {wk && <span className={`chip wk-chip ${wk.cls}`}><WkIcon size={10} /> {wk.label}</span>}
         <span className={`chip ct-${item.type}`}>{typeInfo(item.type).label}</span>
         {item.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
-        {status && !done && <span className="chip" style={{ background: status.color, color: onColor(status.color) }}>{status.label}</span>}
+        {status && !done && <StageDot status={status} />}
       </span>
     </button>
   )
@@ -408,6 +422,7 @@ export default function Brief() {
   const { user } = useAuth()
   const { byKey } = useChannels()
   const isCrew = ['editor', 'operator', 'crew'].includes(user.role)
+  const [dayOpen, setDayOpen] = useState(null) // a day of the crew calendar, opened whole
   // The crew flips between the day list and their own month calendar.
   const [myView, setMyViewState] = useState(() => localStorage.getItem('satashkent_myday_view') || 'list')
   const setMyView = (v) => { setMyViewState(v); localStorage.setItem('satashkent_myday_view', v) }
@@ -425,12 +440,21 @@ export default function Brief() {
   // because "somebody sent you this task" and "this task is yours" are
   // different things and the link should work either way.
   const location = useLocation()
+  // Keyed on the NAVIGATION, not on the URL. It used to remember the last
+  // `?task=` it had opened and refuse to open that one again — which is
+  // exactly what the bell and the Overview hand-ups ask it to do: you open a
+  // task from a notification, close it, press the same notification again,
+  // and the address it navigates to is the one already in the bar. Nothing
+  // changed, so nothing happened, and the task simply would not open any
+  // more. `location.key` is a fresh value for every navigation even when the
+  // URL is identical, so pressing the same link twice works the way pressing
+  // a link is supposed to.
   const linkOpened = useRef('')
   useEffect(() => {
     if (loading) return
     const id = Number(new URLSearchParams(location.search).get('task'))
-    if (!id || linkOpened.current === location.search) return
-    linkOpened.current = location.search
+    if (!id || linkOpened.current === location.key) return
+    linkOpened.current = location.key
     // Always from the server, never from the copy this browser happens to
     // hold: My Day boots from a cache so the page paints instantly, and a link
     // opened against that cache showed the task as it was last time — dates
@@ -442,45 +466,7 @@ export default function Brief() {
         if (mine) { setOpenItem(mine); return }
         toast(tx('That task isn’t on your channels — ask an admin to show it to you'), 'err')
       })
-  }, [loading, content, location.search]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // the simple view's custom horizon — folded until asked for
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [customOpen, setCustomOpen] = useState(false)
-  // My Day, your order: the simple view's sections can be reordered and
-  // hidden per account (this browser). Defaults match the built-in order,
-  // so an untouched day looks exactly as it always did.
-  const DAY_KEYS = ['missing', 'pravki', 'review', 'today', 'personal', 'coming', 'done']
-  const [dayPrefs, setDayPrefs] = useState(() => {
-    try {
-      const o = JSON.parse(localStorage.getItem(`satashkent_day_${user.id}`) || 'null')
-      if (o && Array.isArray(o.order) && Array.isArray(o.hidden)) return o
-    } catch { /* defaults */ }
-    return { order: [], hidden: [] }
-  })
-  const [arranging, setArranging] = useState(false)
-  const saveDayPrefs = (next) => {
-    setDayPrefs(next)
-    try { localStorage.setItem(`satashkent_day_${user.id}`, JSON.stringify(next)) } catch { /* ok */ }
-  }
-  const orderedDayKeys = () => {
-    const pos = new Map(dayPrefs.order.map((k, i) => [k, i]))
-    return [...DAY_KEYS].sort((a, b) => (pos.has(a) ? pos.get(a) : 1e9) - (pos.has(b) ? pos.get(b) : 1e9))
-  }
-  const moveSection = (key, dir) => {
-    const keys = orderedDayKeys()
-    const i = keys.indexOf(key)
-    const j = i + dir
-    if (i < 0 || j < 0 || j >= keys.length) return
-    keys.splice(j, 0, keys.splice(i, 1)[0])
-    saveDayPrefs({ ...dayPrefs, order: keys })
-  }
-  const toggleSection = (key) => saveDayPrefs({
-    ...dayPrefs,
-    hidden: dayPrefs.hidden.includes(key) ? dayPrefs.hidden.filter((k) => k !== key) : [...dayPrefs.hidden, key],
-  })
-  const resetDayPrefs = () => saveDayPrefs({ order: [], hidden: [] })
+  }, [loading, content, location.key, location.search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     Promise.all([api.get('/content'), api.cached('/statuses'), api.get('/personal'), api.get('/content/revisions/mine')])
@@ -610,40 +596,43 @@ export default function Brief() {
     return ds.sort()[0] || null
   }
 
-  // Coming up, in the horizons everyone plans by. The simple view swaps the
-  // month for a custom date range of your own.
-  const horizons = useMemo(() => {
-    const buckets = [
-      { key: '1d', label: 'Tomorrow', from: 1, to: 1 },
-      { key: '3d', label: 'Next 3 days', from: 2, to: 3 },
-      { key: '7d', label: 'Next 7 days', from: 4, to: 7 },
-      ...(isCrew ? [{ key: '30d', label: 'Next month', from: 8, to: 30 }] : []),
-    ].map((b) => ({ ...b, items: [] }))
-    for (const t of open) {
-      const d = nextOf(t)
-      if (!d) continue
-      const away = Math.round((Date.parse(`${d}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 864e5)
-      const b = buckets.find((x) => away >= x.from && away <= x.to)
-      if (b) b.items.push({ ...t, _next: d, _rec: t.recording_date === d })
-    }
-    for (const b of buckets) b.items.sort((a, x) => a._next.localeCompare(x._next))
-    return buckets
-  }, [open, today, isCrew]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // The custom horizon (simple view): any dates you pick.
-  const customItems = useMemo(() => {
-    if (!from && !to) return null
-    return open
-      .map((t) => ({ ...t, _next: nextOf(t) }))
-      .filter((t) => t._next && (!from || t._next >= from) && (!to || t._next <= to))
-      .sort((a, b) => a._next.localeCompare(b._next))
-  }, [open, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // Everything due today, whatever the clock — the simple view's main list.
   const dueToday = useMemo(
     () => open.filter((t) => t.recording_date === today || t.release_date === today || t.edit_ready_date === today)
       .sort((a, b) => (a.recording_time || a.release_time || '99').localeCompare(b.recording_time || b.release_time || '99')),
     [open, today])
+
+  // THE DAY, FLAT. It used to be five headed sections — missing, to do
+  // today, also on your list, coming up, done — each with its own count, plus
+  // a panel for reordering and hiding them and a date-range picker inside the
+  // last one. That is a filing system on top of a to-do list: to find what to
+  // start on you read five headings and decided which one you believed.
+  //
+  // One list now, sorted the way the day is worked. A personal task carries
+  // its own date and sorts in beside the rest of the work rather than living
+  // in a section of its own; the line that adds one is still at the bottom,
+  // because a list nobody can put anything on stops being a list.
+  const priority = useMemo(() => {
+    const rows = []
+    const seen = new Set()
+    for (const t of overdue) { rows.push({ k: `c${t.id}`, tier: 'late', when: deadlineOf(t), t }); seen.add(t.id) }
+    for (const t of dueToday) { if (!seen.has(t.id)) { rows.push({ k: `c${t.id}`, tier: 'today', when: today, t }); seen.add(t.id) } }
+    for (const t of open) {
+      if (seen.has(t.id)) continue
+      const d = nextOf(t)
+      if (d) { rows.push({ k: `c${t.id}`, tier: 'soon', when: d, t }); seen.add(t.id) }
+    }
+    for (const pt of personal) {
+      if (pt.done_at) continue
+      const d = pt.due_date || null
+      const tier = d ? (d < today ? 'late' : d === today ? 'today' : 'soon') : 'today'
+      rows.push({ k: `p${pt.id}`, tier, when: d || today, p: pt })
+    }
+    const RANK = { late: 0, today: 1, soon: 2 }
+    return rows.sort((a, b) => RANK[a.tier] - RANK[b.tier] ||
+      String(a.when).localeCompare(String(b.when)) ||
+      String(a.t?.title || a.p?.title || '').localeCompare(String(b.t?.title || b.p?.title || '')))
+  }, [overdue, dueToday, open, personal, today]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // What they have done — the finished work, freshest first.
   const doneRows = useMemo(
@@ -693,7 +682,19 @@ export default function Brief() {
       toast(tx('Fixed — back to the SMM'))
     } catch (e) { alert(e.message) }
   }
-  const openByContentId = (cid) => { const t = content.find((x) => x.id === cid); if (t) setOpenItem(t) }
+  // A row that names a task must open it. This looked in the loaded list and,
+  // finding nothing, did nothing at all — no modal, no message — which is how
+  // a late task on a channel that is not in your own board, or one the poll
+  // has not caught up with, became a row that could be clicked for ever with
+  // no result. Same rule as a pasted link: fetch it, and say so if it really
+  // is out of reach.
+  const openByContentId = (cid) => {
+    const t = content.find((x) => x.id === cid)
+    if (t) { setOpenItem(t); return }
+    api.get(`/content/${cid}`)
+      .then(setOpenItem)
+      .catch(() => toast(tx('That task isn’t on your channels — ask an admin to show it to you'), 'err'))
+  }
 
   // Right-click on any row: the quick verbs without opening the task.
   const { openMenu } = useContextMenu()
@@ -709,24 +710,6 @@ export default function Brief() {
   const niceDate = new Date(`${today}T12:00:00Z`).toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
   const firstName = user.name.split(' ')[0]
 
-  const missingBlock = overdue.length > 0 && (
-    <>
-      <div className="section-head">
-        <AlertCircle size={17} style={{ color: '#A32D2D' }} />
-        <h2 style={{ color: '#A32D2D' }}>{isCrew ? 'Needs attention' : 'Missing'}</h2>
-        <span className="count">· past the deadline</span>
-        <span className="spacer" />
-        <Link className="btn btn-sm" to="/missed">{tx("All missed deadlines →")}</Link>
-      </div>
-      <div className="card card-pad brief-list">
-        {overdue.map((t) => (
-          <BriefRow key={t.id} item={t} late done={false}
-            when={dateLabel(deadlineOf(t))} work={crewWork(workOnDate(t, deadlineOf(t)))}
-            time={null} byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
-        ))}
-      </div>
-    </>
-  )
 
   const publishNow = (t) => {
     const fin = statuses.find((s) => s.is_final)
@@ -807,11 +790,50 @@ export default function Brief() {
     </>
   )
 
+  const priorityBlock = (
+    <>
+      <div className="section-head">
+        <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />
+        <h2>{tx('Your day')}</h2>
+        <span className="count">· {priority.length}</span>
+      </div>
+      <div className="card card-pad brief-list day-flat">
+        {priority.length === 0 && <div className="empty faint">{tx('No tasks')}</div>}
+        {priority.map((r) => (r.p ? (
+          <div key={r.k} className="ov-row" style={{ cursor: 'default' }}>
+            <i className={`dot dot-${r.tier}`} aria-label={TIER_WORD[r.tier]()} data-tip={TIER_WORD[r.tier]()} />
+            <button className="todo-check" onClick={() => togglePersonal(r.p)} data-tip={tx('Mark as done')} aria-label={tx('Complete')}>
+              {r.p.done_at && <Check size={15} strokeWidth={3.5} />}
+            </button>
+            <span className="ov-title">{r.p.title}</span>
+            <span className="ov-chips">
+              {r.p.due_date && <span className="chip chip-muted">{dateLabel(r.p.due_date)}</span>}
+            </span>
+          </div>
+        ) : (
+          <BriefRow key={r.k} item={r.t} tier={r.tier}
+            when={r.tier === 'today' ? null : dateLabel(r.when)} late={r.tier === 'late'}
+            work={workOnDate(r.t, r.when)}
+            time={((r.t.recording_date === r.when && r.t.recording_time) || (r.t.release_date === r.when && r.t.release_time) || '').slice(0, 5) || null}
+            byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
+        )))}
+        {/* The one thing that was worth keeping out of "Also on your list". */}
+        <form className="pers-add" onSubmit={(e) => { e.preventDefault(); addPersonal() }}>
+          <input className="input" value={pDraft} onChange={(e) => setPDraft(e.target.value)}
+            placeholder={tx('Something of your own — Enter adds it')} />
+          <button className="btn btn-sm btn-primary" type="submit" disabled={!pDraft.trim() || pBusy}>
+            <Plus size={14} />{' '}{tx('Add')}
+          </button>
+        </form>
+      </div>
+    </>
+  )
+
   const personalBlock = (
     <>
       <div className="section-head">
         <CheckCircle2 size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>{tx("Also on your list")}</h2>
+        <h2>{tx('Your own list')}</h2>
         <span className="count">· {personalToday.length}</span>
       </div>
       <div className="card card-pad brief-list">
@@ -829,7 +851,7 @@ export default function Brief() {
             </button>
             <span className="ov-title">{p.title}</span>
             <span className="ov-chips">
-              {p.due_date && <span className={'chip ' + (p.due_date < today ? 'chip-danger' : 'chip-muted')}>{dateLabel(p.due_date)}</span>}
+              {p.due_date && <span className="chip chip-muted" data-late={p.due_date < today ? '1' : undefined}>{dateLabel(p.due_date)}</span>}
             </span>
           </div>
         ))}
@@ -860,91 +882,6 @@ export default function Brief() {
   // ============ the simple view: admin & members ============
   if (!isCrew) {
     const nothingToday = dueToday.length === 0 && overdue.length === 0
-    const todayBlock = dueToday.length > 0 && (
-      <>
-        <div className="section-head">
-          <ListTodo size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>{tx("To do today")}</h2>
-          <span className="count">· {dueToday.length}</span>
-        </div>
-        <div className="card card-pad brief-list">
-          {dueToday.map((t) => (
-            <BriefRow key={t.id} item={t} work={workOnDate(t, today)}
-              time={hhmm(t.recording_date === today ? t.recording_time : t.release_time)}
-              byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
-          ))}
-        </div>
-      </>
-    )
-    const comingBlock = (
-      <>
-        <div className="section-head">
-          <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
-          <h2>{tx("Coming up")}</h2>
-          <span className="stat-sub" style={{ fontWeight: 500 }}>{tx("tomorrow · 3 days · 7 days · your dates")}</span>
-        </div>
-        <div className="card card-pad brief-list">
-          {/* Only horizons that hold work render — a quiet week is one calm
-              line, not four headed blocks of dashes. */}
-          {horizons.every((b) => b.items.length === 0) && (
-            <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("Nothing scheduled in the next 7 days.")}</div>
-          )}
-          {horizons.filter((b) => b.items.length > 0).map((b) => (
-            <div key={b.key} className="brief-horizon">
-              <div className="brief-h-head">
-                {b.label} <span className="count">· {b.items.length}</span>
-              </div>
-              {b.items.map((t) => (
-                <BriefRow key={`${t.id}-${t._next}`} item={t}
-                  when={dateLabel(t._next)} work={workOnDate(t, t._next)}
-                  time={t._rec ? (t.recording_time || '').slice(0, 5) || null : (t.release_time || '').slice(0, 5) || null}
-                  byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
-              ))}
-            </div>
-          ))}
-          <div className="brief-horizon">
-            {!customOpen ? (
-              <button className="extra-btn" onClick={() => setCustomOpen(true)}>
-                <CalendarRange size={13} />{' '}{tx('Pick your own dates')}
-              </button>
-            ) : (
-              <>
-                <div className="brief-h-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Custom
-                  <span className="miss-custom" style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-                    <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                    <span className="drow-dash">–</span>
-                    <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-                  </span>
-                  {customItems && <span className="count">· {customItems.length}</span>}
-                </div>
-                {customItems === null ? (
-                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("pick dates to see that stretch")}</div>
-                ) : customItems.length === 0 ? (
-                  <div className="tt-none" style={{ padding: '2px 0 6px' }}>{tx("nothing in those dates")}</div>
-                ) : customItems.map((t) => (
-                  <BriefRow key={`${t.id}-c`} item={t} when={dateLabel(t._next)} time={null} work={workOnDate(t, t._next)}
-                    byKey={byKey} statusesById={statusesById} onOpen={setOpenItem} onMenu={rowMenu} />
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-      </>
-    )
-    // The day in the order YOU keep it — sections move and hide per account;
-    // untouched prefs render the built-in order exactly as before.
-    const SECTION_DEFS = {
-      missing: { label: 'Missing — past the deadline', node: missingBlock },
-      pravki: { label: 'Changes to make (Pravki)', node: pravkiBlock },
-      review: { label: 'Waiting for your review', node: reviewBlock },
-      today: { label: 'To do today', node: todayBlock },
-      personal: { label: 'Personal tasks', node: personalBlock },
-      coming: { label: 'Coming up', node: comingBlock },
-      done: { label: 'What you’ve done', node: doneBlock },
-    }
-    const orderedKeys = orderedDayKeys()
-    const customized = dayPrefs.order.length > 0 || dayPrefs.hidden.length > 0
     return (
       <>
         <div className="card card-pad brief-hero">
@@ -958,11 +895,6 @@ export default function Brief() {
               ].filter(Boolean).join(' · ')
             )}
           </h2>
-          <button className={'icon-btn brief-arrange' + (arranging ? ' on' : '')}
-            onClick={() => setArranging((v) => !v)}
-            data-tip={tx("Arrange your day — order and hide sections")} data-tip-left="" aria-label={tx("Arrange sections")}>
-            <SlidersHorizontal size={15} />
-          </button>
         </div>
 
         {/* What they have DONE, before what they owe. Every other line on
@@ -974,40 +906,16 @@ export default function Brief() {
             rates — a card reading "0" says something about the person that
             it does not mean. */}
         <MyPay />
-      <MyGrade />
         <MyGrade />
 
-        {arranging && (
-          <div className="card card-pad br-arrange">
-            <div className="pc-check-head" style={{ marginBottom: 6 }}>
-              <h3>{tx("Arrange your day")}</h3>
-              <span className="stat-sub">{tx("order and visibility — saved to this account")}</span>
-            </div>
-            {orderedKeys.map((k) => {
-              const off = dayPrefs.hidden.includes(k)
-              return (
-                <div key={k} className={'br-arr-row' + (off ? ' off' : '')}>
-                  <span className="br-arr-name">{SECTION_DEFS[k].label}</span>
-                  <button className="side-eye" onClick={() => moveSection(k, -1)} aria-label={`Move ${SECTION_DEFS[k].label} up`}><ChevronUp size={13} /></button>
-                  <button className="side-eye" onClick={() => moveSection(k, +1)} aria-label={`Move ${SECTION_DEFS[k].label} down`}><ChevronDown size={13} /></button>
-                  <button className={'side-eye' + (off ? ' off' : '')} onClick={() => toggleSection(k)}
-                    data-tip={off ? 'Show this section' : 'Hide this section'} data-tip-left=""
-                    aria-label={off ? `Show ${SECTION_DEFS[k].label}` : `Hide ${SECTION_DEFS[k].label}`}>
-                    {off ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              )
-            })}
-            <div className="br-arr-foot">
-              {customized && <button className="btn btn-sm" onClick={resetDayPrefs}><RotateCcw size={13} />{' '}{tx("Reset")}</button>}
-              <button className="btn btn-sm btn-primary" onClick={() => setArranging(false)}><Check size={14} />{' '}{tx("Done")}</button>
-            </div>
-          </div>
-        )}
+        {/* Two things that are work but carry no day of their own, so they
+            cannot sort into the list below: changes somebody has sent back to
+            you, and work waiting on your sign-off. */}
+        {pravkiBlock}
+        {reviewBlock}
 
-        {orderedKeys.filter((k) => !dayPrefs.hidden.includes(k)).map((k) => (
-          <Fragment key={k}>{SECTION_DEFS[k].node}</Fragment>
-        ))}
+        {priorityBlock}
+        {doneBlock}
 
         {openItem && (
           <ContentModal key={openItem?.id || 'new'} item={openItem} statuses={statuses} onClose={(next) => setOpenItem(next?.id ? next : null)}
@@ -1071,9 +979,10 @@ export default function Brief() {
         </h2>
       </div>
 
-      <Streak />
+      {/* The crew's day is the work and the money. The streak and the grade
+          ladder are the planner's ornaments; here they stood between an editor
+          and the queue. */}
       <MyPay />
-      <MyGrade />
 
       <div className="miss-filters">
         <div className="pill-group">
@@ -1088,7 +997,8 @@ export default function Brief() {
 
       {myView === 'calendar' && (
         <>
-          <CrewCalendar tasks={open} userId={user.id} today={today} byKey={byKey} onOpen={setOpenItem} />
+          {dayOpen && <DayAgenda date={dayOpen} items={content} statusesById={statusesById} canEdit={false} onOpen={(t) => { setDayOpen(null); (setOpenItem)(t) }} onBack={() => setDayOpen(null)} />}
+          <CrewCalendar tasks={open} userId={user.id} today={today} byKey={byKey} onOpen={setOpenItem} statusesById={statusesById} onDay={setDayOpen} />
           {openItem && (
             <ContentModal key={openItem?.id || 'new'} item={openItem} statuses={statuses} onClose={(next) => setOpenItem(next?.id ? next : null)}
               onUpdate={updateContent} onDelete={deleteContent} />

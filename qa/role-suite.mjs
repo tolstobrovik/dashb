@@ -31,14 +31,18 @@ ok('operator created', op.role === 'operator')
 // tasks: one theirs, one foreign
 const statuses = (await req('/statuses')).data
 const sid = (l) => statuses.find((s) => s.label.toLowerCase() === l)?.id
-const vid = (await req('/content', 'POST', { title: 'Edit: campus film', channels: ['youtube'], type: 'video', editor_id: ed.id, operator_id: op.id, recording_date: '2026-07-14', release_date: '2026-07-18', status_id: sid('shot') })).data
+const vid = (await req('/content', 'POST', { title: 'Edit: campus film', channels: ['youtube'], type: 'video', editor_id: ed.id, operator_id: op.id, recording_date: '2026-07-14', release_date: '2026-07-18', status_id: sid('editing') })).data
 const foreign = (await req('/content', 'POST', { title: 'Foreign post', channels: ['telegram_main'], type: 'post' })).data
 
 const ET = await login('tim', 't1234')
 const mine = (await req('/content', 'GET', null, ET)).data
 ok('editor sees only their videos', mine.some((c) => c.id === vid.id) && !mine.some((c) => c.id === foreign.id), `sees ${mine.length}`)
 ok('editor sees the whole team for names', (await req('/users', 'GET', null, ET)).data.length >= 5)
-ok('editor cannot set a raw stage', (await req(`/content/${vid.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)
+// (The fixture used to ask for 'shot', a stage round 82 folded into Editing;
+// sid() answered undefined and the piece was born with NO stage — which the
+// board counts as a thought, and a thought is anybody's to move. Editing is
+// where a filmed piece sits now, and from there a raw stage is not the crew's.)
+ok('editor cannot set a raw stage', (await req(`/content/${vid.id}`, 'PATCH', { status_id: sid('ready') }, ET)).status === 403)
 // milestone verified on a throwaway so vid stays pristine (unstamped) for the UI below
 const mp = (await req('/content', 'POST', { title: 'Edit: milestone probe', channels: ['youtube'], type: 'video', editor_id: ed.id, status_id: sid('shot') })).data
 // The cut rides along with the tick since round 69: saying a stage is
@@ -50,7 +54,7 @@ await req(`/content/${mp.id}`, 'DELETE')
 ok('editor cannot touch a foreign task', (await req(`/content/${foreign.id}`, 'PATCH', { status_id: sid('editing') }, ET)).status === 403)
 ok('editor cannot rewrite details', (await req(`/content/${vid.id}`, 'PATCH', { title: 'renamed' }, ET)).status === 403)
 ok('editor cannot create team tasks', (await req('/content', 'POST', { title: 'sneak', channels: ['youtube'], type: 'post' }, ET)).status === 403)
-ok('editor cannot complete — that is not their reach', (await req(`/content/${vid.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, ET)).status === 403)
+ok('editor cannot complete — that is not their reach', (await req(`/content/${vid.id}`, 'PATCH', { done: true, post_link: `https://instagram.com/p/qa-${vid.id}` }, ET)).status === 403)
 ok('editor drops a Google-Drive ready link', (await req(`/content/${vid.id}`, 'PATCH', { ready_link: 'https://drive.google.com/x' }, ET)).status === 200)
 
 // a department member sees crew users for the chips
@@ -93,27 +97,17 @@ ok('crew chrome: their own pages, nothing else',
 // part" to whoever does the work on it. Idempotent, and silent on a sheet
 // short enough to show whole.
 const cmTab = async (pg, name) => {
-  // Round 91 hides a view nobody has been in, behind one "Add details"
-  // control — so reaching one is two presses when it is empty and one when it
-  // is not, exactly as it is for a person.
-  const more = pg.locator('.cm-page-more')
-  for (const pass of [0, 1]) {
-    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-      const tab = pg.locator('.cm-page-tab', { hasText: n })
-      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
-    }
-    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
-    else return
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
   }
 }
 
 // move the stage through the modal
 await page.locator('.cb-row', { hasText: 'Edit: campus film' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
-// Round 91 made the stage one dropdown instead of a row of chips; whether the
-// crew may move it is the same question, asked of the control that now holds it.
-const stagePick = page.locator('.modal .cm-stage-pick select')
-ok('the stage is read-only for the editor', await stagePick.isDisabled())
+ok('the stage is read-only for the editor', await page.locator('.modal select[data-pick="stage"]').isDisabled())
 await cmTab(page, 'Execution')
 ok('the editor sees a "Mark as edited" tick', (await page.locator('.modal .do-tick', { hasText: 'edited' }).count()) === 1)
 await page.locator('.modal .do-tick', { hasText: 'edited' }).click()

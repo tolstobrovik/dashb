@@ -1,96 +1,104 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ExternalLink, FileText, Folder, Play, Table2, Presentation, File } from 'lucide-react'
+import { tr as tx } from '../lib/i18n.jsx'
 
-// Look at a link without leaving the page.
+// Hover on a link, a photo, a document, a Drive URL or a YouTube link and,
+// after a beat, see what it is before you commit to it — the way a thumbnail
+// answers "is this the one?" without opening anything.
 //
-// This board is mostly links: a reference on a task, a Drive folder, the cut
-// an editor handed back, a published post, a contract. Checking any of them
-// meant opening a tab, looking, and coming back — so mostly nobody checked,
-// and a wrong link sat on a task until somebody tried to use it.
-//
-// Hovering shows the thing. One component for every kind, because a preview
-// that works on some links and not others is one nobody trusts:
-//
-//   image     drawn straight
-//   youtube   its poster frame, from the video id
-//   drive     the file's own thumbnail, when Drive will give one
-//   pdf       the first page, in a frame
-//   anything  the address, spelled out, big enough to read
-//
-// DELAYED on purpose. A popover that appears the instant a cursor crosses a
-// link is a popover that appears while you are moving the cursor somewhere
-// else — the delay is what separates "I am looking at this" from "I passed
-// over it".
-const WAIT = 420
+// One listener on the document, not a prop on every link: the board has
+// hundreds of anchors in a dozen files, and a preview that only works where
+// somebody remembered to add it is a preview people stop trusting. The
+// popover never takes the mouse (pointer-events: none), is gone on scroll,
+// on any key and on any click, and does not exist at all on a screen with no
+// hover — a phone would only ever see it stuck open.
+const YT = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{6,})/i
+const DRIVE = /^https?:\/\/(?:drive|docs)\.google\.com\/(?:drive\/(?:u\/\d+\/)?folders\/([\w-]+)|file\/d\/([\w-]+)|document\/d\/([\w-]+)|spreadsheets\/d\/([\w-]+)|presentation\/d\/([\w-]+)|open\?id=([\w-]+))/i
+const DOC = /\/([^/?#]+\.(pdf|docx?|xlsx?|pptx?|txt))(?:[?#]|$)/i
+const DELAY = 450
 
-const YT = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/i
-const DRIVE = /drive\.google\.com\/(?:file\/d\/([\w-]{10,})|open\?id=([\w-]{10,}))/i
-const IMG = /\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?|$)/i
-const PDF = /\.pdf(\?|$)/i
-
-// What we can show for this address, worked out once.
-export function previewOf(raw) {
-  const url = String(raw || '').trim()
-  if (!url) return null
-  if (url.startsWith('data:image/')) return { kind: 'image', src: url, url }
-  let u
-  try { u = new URL(url) } catch { return null }
-  if (!/^https?:$/.test(u.protocol)) return null
-
-  const yt = url.match(YT)
-  if (yt) return { kind: 'video', src: `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`, url, note: 'YouTube' }
-  const dr = url.match(DRIVE)
-  if (dr) {
-    const id = dr[1] || dr[2]
-    return { kind: 'drive', src: `https://drive.google.com/thumbnail?id=${id}&sz=w640`, url, note: 'Google Drive' }
+function describe(el) {
+  if (el.tagName === 'IMG') {
+    const src = el.currentSrc || el.src
+    if (!src || (el.naturalWidth && el.naturalWidth < 48)) return null
+    return { kind: 'image', src }
   }
-  if (IMG.test(u.pathname)) return { kind: 'image', src: url, url }
-  if (PDF.test(u.pathname)) return { kind: 'pdf', src: url, url, note: 'PDF' }
-  return { kind: 'link', url, note: u.hostname.replace(/^www\./, '') }
+  const href = el.getAttribute('href') || el.dataset.preview
+  if (!href || !/^https?:\/\//i.test(href)) return null
+  const yt = YT.exec(href)
+  if (yt) return { kind: 'youtube', id: yt[1], href }
+  const d = DRIVE.exec(href)
+  if (d) return { kind: 'drive', what: d[1] ? 'folder' : d[3] ? 'doc' : d[4] ? 'sheet' : d[5] ? 'slides' : 'file', href }
+  const doc = DOC.exec(href)
+  if (doc) return { kind: 'doc', name: decodeURIComponent(doc[1]), ext: doc[2].toLowerCase(), href }
+  let where = href
+  try { const u = new URL(href); where = u.host.replace(/^www\./, '') + (u.pathname.length > 1 ? u.pathname : '') } catch { /* keep the raw string */ }
+  return { kind: 'link', where: where.length > 72 ? `${where.slice(0, 70)}…` : where, href }
 }
 
-// Wrap anything. `href` is what to preview; the children are what you hover.
-export default function HoverPreview({ href, children, className = '', as: Tag = 'span' }) {
-  const info = previewOf(href)
-  const [at, setAt] = useState(null)      // { x, y } once it is open
-  const [broke, setBroke] = useState(false)
-  const timer = useRef(null)
-  const box = useRef(null)
+const DRIVE_WORD = { folder: () => tx('Folder'), doc: () => tx('Document'), sheet: () => tx('Spreadsheet'), slides: () => tx('Slides'), file: () => tx('File') }
+const DRIVE_ICON = { folder: Folder, doc: FileText, sheet: Table2, slides: Presentation, file: File }
 
-  useEffect(() => () => clearTimeout(timer.current), [])
-  if (!info) return <Tag className={className}>{children}</Tag>
-
-  const enter = (e) => {
-    const r = e.currentTarget.getBoundingClientRect()
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => { setBroke(false); setAt({ x: r.left, y: r.bottom }) }, WAIT)
+function Body({ info }) {
+  if (info.kind === 'image') return <img className="hp-img" src={info.src} alt="" />
+  if (info.kind === 'youtube') {
+    return (<>
+      <div className="hp-media"><img src={`https://img.youtube.com/vi/${info.id}/hqdefault.jpg`} alt="" /><Play size={30} className="hp-play" /></div>
+      <div className="hp-line"><Play size={14} /><b>YouTube</b><span>{info.id}</span></div>
+    </>)
   }
-  const leave = () => { clearTimeout(timer.current); setAt(null) }
+  if (info.kind === 'drive') {
+    const Icon = DRIVE_ICON[info.what]
+    return <div className="hp-line"><Icon size={16} /><b>Google Drive</b><span>{DRIVE_WORD[info.what]()}</span></div>
+  }
+  if (info.kind === 'doc') return <div className="hp-line"><FileText size={16} /><b>{info.ext.toUpperCase()}</b><span>{info.name}</span></div>
+  return <div className="hp-line"><ExternalLink size={14} /><span>{info.where}</span></div>
+}
 
-  // Kept inside the window: a preview half off the right edge is worse than
-  // none, and the thing it is about is usually near an edge.
-  const W = 340
-  const style = at ? {
-    left: Math.max(8, Math.min(at.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - W - 8)),
-    top: at.y + 8,
-    width: W,
-  } : null
-
-  return (
-    <Tag className={className} onMouseEnter={enter} onMouseLeave={leave} onFocus={enter} onBlur={leave}>
-      {children}
-      {at && (
-        <span className="hp-pop" style={style} ref={box} role="tooltip">
-          {info.src && !broke ? (
-            info.kind === 'pdf'
-              ? <iframe className="hp-frame" src={info.src} title={info.url} />
-              : <img className="hp-img" src={info.src} alt="" onError={() => setBroke(true)} />
-          ) : null}
-          <span className="hp-meta">
-            {info.note && <b className="hp-note">{info.note}</b>}
-            <span className="hp-url">{info.url}</span>
-          </span>
-        </span>
-      )}
-    </Tag>
+export default function HoverPreview() {
+  const [show, setShow] = useState(null) // { info, x, y }
+  const timer = useRef(null)
+  const target = useRef(null)
+  useEffect(() => {
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(hover: none)').matches) return undefined
+    const SEL = 'a[href], img, [data-preview]'
+    const cancel = () => { clearTimeout(timer.current); timer.current = null; target.current = null; setShow(null) }
+    const onOver = (e) => {
+      const el = e.target?.closest?.(SEL)
+      if (!el || el === target.current || el.closest('.hover-preview')) return
+      clearTimeout(timer.current)
+      const info = describe(el)
+      if (!info) { target.current = null; setShow(null); return }
+      target.current = el
+      const { clientX: x, clientY: y } = e
+      timer.current = setTimeout(() => setShow({ info, x, y }), DELAY)
+    }
+    const onOut = (e) => {
+      const el = e.target?.closest?.(SEL)
+      if (el && el === target.current && !(e.relatedTarget && el.contains(e.relatedTarget))) cancel()
+    }
+    document.addEventListener('mouseover', onOver)
+    document.addEventListener('mouseout', onOut)
+    document.addEventListener('scroll', cancel, true)
+    document.addEventListener('keydown', cancel)
+    document.addEventListener('mousedown', cancel)
+    return () => {
+      document.removeEventListener('mouseover', onOver)
+      document.removeEventListener('mouseout', onOut)
+      document.removeEventListener('scroll', cancel, true)
+      document.removeEventListener('keydown', cancel)
+      document.removeEventListener('mousedown', cancel)
+      clearTimeout(timer.current)
+    }
+  }, [])
+  if (!show) return null
+  const { info, x, y } = show
+  const W = 340, H = info.kind === 'image' || info.kind === 'youtube' ? 260 : 56
+  const left = Math.max(8, Math.min(x + 16, window.innerWidth - W - 12))
+  const top = y + 22 + H > window.innerHeight ? Math.max(8, y - H - 14) : y + 22
+  return createPortal(
+    <div className={`hover-preview hp-${info.kind}`} style={{ left, top }} role="tooltip"><Body info={info} /></div>,
+    document.body,
   )
 }

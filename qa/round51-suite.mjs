@@ -189,10 +189,9 @@ if (await dayCell.count()) {
   const agenda = (await page.locator('.agenda-title').allTextContents()).filter((t) => t.startsWith('f51'))
   ok('a day’s agenda shows only the filtered person’s work',
     agenda.length > 0 && agenda.every((t) => t === 'f51: anvar shoots'), agenda.join(' / '))
-  // Round 91 opens a day OVER the page rather than navigating to it, so the
-  // view pills are behind it until it is closed.
-  await page.keyboard.press('Escape')
-  await page.waitForTimeout(400)
+  // The day view is a sheet over the calendar now; close it before reaching
+  // for a control underneath, the way a person would.
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300)
   await page.locator('.pill', { hasText: 'Board' }).click()
   await page.waitForTimeout(300)
 } else ok('a day’s agenda shows only the filtered person’s work', false, 'day cell not found')

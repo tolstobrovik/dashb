@@ -35,17 +35,10 @@ const cmTab = async (pg, name) => {
   // whoever does the work on it — it holds the crew, the handovers and the
   // crew's own tick, and which of those you are here for depends on who you
   // are. Either name reaches it.
-  // Round 91 hides a view nobody has been in, behind one "Add details"
-  // control — so reaching one is two presses when it is empty and one when it
-  // is not, exactly as it is for a person.
-  const more = pg.locator('.cm-page-more')
-  for (const pass of [0, 1]) {
-    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-      const tab = pg.locator('.cm-page-tab', { hasText: n })
-      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
-    }
-    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
-    else return
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
   }
 }
 
@@ -108,7 +101,9 @@ await q.waitForTimeout(1000)
 ok('the hero admits the day is clear', (await q.locator('.brief-hero', { hasText: 'nothing on the schedule' }).count()) === 1)
 ok('no empty To-do-today section', (await q.locator('h2', { hasText: 'To do today' }).count()) === 0)
 ok('no “what you’ve done · nothing” stub', (await q.locator('h2', { hasText: 'What you’ve done' }).count()) === 0)
-ok('custom dates fold behind one button', (await q.locator('.brief-horizon .extra-btn', { hasText: 'Pick your own dates' }).count()) === 1)
+// The custom-date fold went with the tiered sections: My Day is one flat
+// list now (red · green · blue), so an empty day is the hero and nothing else.
+ok('no custom-date fold — the day is one flat list now', (await q.locator('.brief-horizon').count()) === 0)
 await q.close()
 await browser.close()
 await cleanup()

@@ -437,7 +437,7 @@ export default function ProgramsGantt({ channel, canManage, isAdmin = false, len
                     )}
                     <button
                       className={'gantt-bar' + (open ? ' prog-open' : '') + (p.status === 'paused' ? ' prog-halted' : '')}
-                      style={{ left: `${left}%`, width: `${Math.max(3.5, right - left)}%`, background: st.color, color: '#fff' }}
+                      style={{ left: `${left}%`, width: `${Math.max((86400000 / axis.span) * 100, right - left)}%`, background: st.color, color: '#fff' }}
                       onClick={() => canManage && setModal(p)}
                       data-tip={`${st.label}${pastEnd ? ' — past its end date: finish or extend' : ''}`}
                     >

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import GetSetUp from './GetSetUp.jsx'
-import { Menu, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, Send, Palette, ShieldAlert, Timer, LayoutGrid, User, RefreshCw, Clapperboard, Briefcase, GraduationCap } from 'lucide-react'
+import { Menu, LogOut, Sun, BarChart3, ScrollText, PanelLeftClose, PanelLeftOpen, Search, Send, Palette, ShieldAlert, Timer, LayoutGrid, User, RefreshCw, Clapperboard, Briefcase, GraduationCap, Megaphone, X } from 'lucide-react'
 import Sidebar from './Sidebar.jsx'
 import MobileTabs, { MoreSheet } from './MobileTabs.jsx'
 import NewTask from './NewTask.jsx'
@@ -11,7 +11,7 @@ import Logo from './Logo.jsx'
 import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
 import LangToggle from './LangToggle.jsx'
-import { useT, tr as tx } from '../lib/i18n.jsx'
+import { useT, tr as tx, locale } from '../lib/i18n.jsx'
 import { usePages } from '../lib/pages.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -53,9 +53,38 @@ function UpdateReady({ on, take }) {
   )
 }
 
+// A change the team should hear about BEFORE it lands — "the pay page moves
+// to Documents on Monday" — written once by an admin in Settings and shown to
+// everybody until each person dismisses it. This replaces the daily digest
+// that used to push at people whether or not anything had happened; the thing
+// worth saying is rarely daily, and a board that speaks every day is one
+// people stop reading.
+//
+// Dismissal is per person and per NOTICE: the id of what was dismissed is
+// kept, so a new announcement comes back for everybody, and pressing Save on
+// an unrelated setting (same words, same id) does not.
+const NOTICE_KEY = (uid) => `satashkent_notice_seen_${uid}`
+function PlannedUpdate({ notice, user }) {
+  const [seen, setSeen] = useState(() => { try { return Number(localStorage.getItem(NOTICE_KEY(user?.id))) || 0 } catch { return 0 } })
+  if (!notice?.text || seen >= notice.id) return null
+  const dismiss = () => {
+    try { localStorage.setItem(NOTICE_KEY(user?.id), String(notice.id)) } catch { /* private mode — it comes back next visit, which is fine */ }
+    setSeen(notice.id)
+  }
+  const when = notice.at ? new Date(`${notice.at}T12:00:00Z`).toLocaleDateString(locale(), { day: 'numeric', month: 'short' }) : null
+  return (
+    <div className="notice-strip" role="status">
+      <Megaphone size={15} />
+      <span><b>{tx('Planned update')}</b>{when ? ` · ${when}` : ''} — {notice.text}</span>
+      <button type="button" className="icon-btn notice-x" onClick={dismiss} aria-label={tx('Dismiss')}><X size={15} /></button>
+    </div>
+  )
+}
+
 export default function Layout() {
   const { user, logout } = useAuth()
   const { visible, byKey } = useChannels()
+  const { notice } = usePages()
   const { t } = useT()
   const location = useLocation()
   const [open, setOpen] = useState(false)
@@ -137,16 +166,11 @@ export default function Layout() {
   // The bar has room for two destinations beside My Day and More, and a slot
   // cannot hold a page an admin switched off — so they are taken from what is
   // still there, in the order they matter, and the rest fall into More.
-  const crewHats = user.crew_roles || []
-  const designsToo = user.role === 'admin' || crewHats.includes('designer')
-    || !(crewHats.includes('editor') || crewHats.includes('operator'))
   const CANDIDATES = [
     { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
     { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
     { key: 'missed', to: '/missed', label: t('nav.stats'), icon: BarChart3 },
-    // Same as the sidebar: an editor is not shown a door to the designers'
-    // board. See client/src/components/Sidebar.jsx.
-    ...(designsToo ? [{ key: 'design', to: '/design', label: t('nav.design'), icon: Palette }] : []),
+    { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
     { key: 'docs', to: '/docs', label: t('nav.docs'), icon: ScrollText },
     { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
     { key: 'projects', to: '/projects', label: t('nav.projects'), icon: Briefcase },
@@ -185,6 +209,7 @@ export default function Layout() {
         </header>
         <main className="content">
           <UpdateReady on={update.ready} take={update.take} />
+          <PlannedUpdate notice={notice} user={user} />
           <WeakPasswordBanner user={user} />
           <Outlet />
         </main>
@@ -256,6 +281,7 @@ export default function Layout() {
         </header>
         <main className="content">
           <UpdateReady on={update.ready} take={update.take} />
+          <PlannedUpdate notice={notice} user={user} />
           <GetSetUp />
           <WeakPasswordBanner user={user} />
           <Outlet />
@@ -320,6 +346,7 @@ export default function Layout() {
         </header>
         <main className="content">
           <UpdateReady on={update.ready} take={update.take} />
+          <PlannedUpdate notice={notice} user={user} />
           <GetSetUp />
           <WeakPasswordBanner user={user} />
           <Outlet />

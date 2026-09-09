@@ -83,6 +83,7 @@ await page.waitForTimeout(500)
 await page.locator('.mob-new').click()
 await page.waitForTimeout(1800)
 ok('the raised button opens the task form', await page.locator('.modal .cm-title').isVisible())
+if (await page.locator('.cm-add-details').count()) { await page.locator('.cm-add-details').click(); await page.waitForTimeout(250) }
 const pages = await page.locator('.cm-page-tab').allTextContents()
 ok('the form is dealt into pages', pages.length >= 3, pages.join(' / '))
 // Every page is reachable and none of them is the whole form again.

@@ -34,7 +34,7 @@ import { docsRouter } from './routes/docs.js'
 import warningRoutes from './routes/warnings.js'
 import ambassadorRoutes from './routes/ambassadors.js'
 import usageRoutes from './routes/usage.js'
-import { tgDailyReminders, tgRunSchedules } from './telegram.js'
+import { tgRunSchedules } from './telegram.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -56,15 +56,38 @@ app.get('/api/health', async (req, res) => {
   }
 })
 
-// Nightly tick (vercel.json cron, 00:05 Tashkent): writes today's snapshot for
-// every metric so the growth comparison always has a point per day, even on
-// days nobody edits anything. Idempotent — safe to call any number of times.
+// Nightly tick (vercel.json cron, 00:05 Tashkent): runs the admin's scheduled
+// nudges, raises a hand on work that has gone silently late, and compacts the
+// data branch. Idempotent — safe to call any number of times.
+let warnedOpenCron = false
 app.get('/api/cron/daily', wrap(async (req, res) => {
+  // The host calls this once a night. Until now so could anybody: the route
+  // sits above the authenticated mounts with nothing in front of it, and in
+  // GitHub-storage mode every call deletes and re-creates the branch that IS
+  // the database, then re-uploads the whole file. Enough of those in a loop
+  // and GitHub rate-limits the storage token, which this repository has
+  // already seen read as a dead credential once.
+  //
+  // Vercel sends `Authorization: Bearer $CRON_SECRET` on every cron call once
+  // that variable is set on the project. When it is set, nothing else gets in.
+  // When it is not, the route still answers — a deployment that never set it
+  // must not silently lose its nightly job — but the log says so once, where
+  // whoever is setting the project up will read it.
+  const secret = process.env.CRON_SECRET
+  if (secret && req.get('authorization') !== `Bearer ${secret}`) return res.status(401).json({ error: 'Not authenticated' })
+  if (!secret && !warnedOpenCron) {
+    warnedOpenCron = true
+    console.error('SECURITY: /api/cron/daily is open to anyone — set CRON_SECRET on the deployment (Vercel sends it as a Bearer token) so only the host can call it.')
+  }
   await initDb()
-  // The morning half of the bell, delivered instead of waited for: deadline
-  // reminders pushed to every Telegram-linked member.
-  let reminded = 0
-  try { reminded = await tgDailyReminders() } catch (e) { console.error('telegram reminders failed:', e.message) }
+  // No daily digest goes out from here any more. It used to: every linked
+  // member's phone rang at midnight with their deadlines whether or not
+  // anything had changed, and the team asked for it to stop — a board that
+  // speaks every day is a board people mute. What replaces it is the planned
+  // update notice (Admin → Settings), written by a person when there is
+  // something to say. The bell and the Telegram mirror of it still answer to
+  // EVENTS — a comment, a handover, a stage moved — which is what was ever
+  // worth interrupting anybody for.
   // The admin's scheduled nudges get a nightly backstop here; in practice they
   // leave earlier, the moment somebody opens the dashboard past their hour.
   try { await tgRunSchedules() } catch (e) { console.error('telegram schedules failed:', e.message) }
@@ -75,7 +98,7 @@ app.get('/api/cron/daily', wrap(async (req, res) => {
   let flagged = 0
   try { flagged = await autoFlagSilentlyLate() } catch (e) { console.error('auto-flag failed:', e.message) }
   try { await squashData(); squashed = true } catch (e) { console.error('squash failed:', e.message) }
-  res.json({ ok: true, day: dayISO(), reminded, flagged, squashed })
+  res.json({ ok: true, day: dayISO(), flagged, squashed })
 }))
 // A Monday-morning nudge should not wait for midnight. The host's cron runs
 // once a night, so the schedules are also checked as the team works: at most

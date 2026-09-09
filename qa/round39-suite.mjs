@@ -111,7 +111,7 @@ ok('a second /stop does not crash', true)
 await req(`/content/${task.id}`, 'PATCH', { status_id: shotId })
 ok('a stopped chat hears nothing more', !(await sentList()).some((s) => String(s.chat_id) === '701' && /🔔/.test(s.text || '')))
 
-// ---- the nightly digest skips killed work ----
+// ---- the nightly tick sends no digest (it once did, and once named killed work) ----
 const l3 = (await req('/telegram/link', 'POST', {}, MT)).data
 await msg(702, `/start ${l3.code}`)
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
@@ -121,8 +121,7 @@ const killed = (await req('/content', 'POST', { title: 'x39: killed launch', cha
 await reset()
 await fetch(BASE + '/api/cron/daily')
 const digest = (await sentList()).find((s) => String(s.chat_id) === '702' && /deadlines/i.test(s.text || ''))
-ok('the digest names the live release', !!digest && /moved phone video/.test(digest.text))
-ok('…and never the killed one', !!digest && !/killed launch/.test(digest.text))
+ok('no nightly digest goes out at all any more', !digest, digest?.text?.slice(0, 80))
 
 // ---- runaway text is clipped under Telegram's 4096 ----
 await reset()

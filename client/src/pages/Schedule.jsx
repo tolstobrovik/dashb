@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { StageLegend } from '../components/Dot.jsx'
 import { useSearchParams } from 'react-router-dom'
 import { Send, Clapperboard, AlertCircle, CalendarDays, Download } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
@@ -324,12 +325,10 @@ export default function Schedule({ mode }) {
               </button>
             )}
           </div>
-          {/* The strip said, in two sentences, what the strip itself already
-              shows. The data stands on its own. */}
         </div>
       )}
 
-      {selectedDate ? (
+      {selectedDate && (
         <DayAgenda
           date={selectedDate}
           items={shown}
@@ -339,12 +338,15 @@ export default function Schedule({ mode }) {
           onAdd={addAt}
           onBack={() => setSelectedDate(null)}
         />
-      ) : dated.length === 0 ? (
+      )}
+      {dated.length === 0 ? (
         <div className="card card-pad empty">
           <CalendarDays size={28} />
           <div>{M.empty}</div>
         </div>
       ) : (
+        <>
+        <StageLegend statusesById={statusesById} />
         <ContentCalendar
           items={dated}
           mode={mode}
@@ -356,6 +358,7 @@ export default function Schedule({ mode }) {
           onRange={onRange}
           statusesById={statusesById}
         />
+        </>
       )}
 
       {openItem && (

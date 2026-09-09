@@ -161,7 +161,7 @@ export default function Design() {
         <Palette size={17} style={{ color: 'var(--brand-500)' }} />
         <h2>{tx('Design')}</h2>
         {lateCount > 0 && (
-          <span className="chip chip-danger"><AlertTriangle size={12} /> {lateCount} {tx('past their day')}</span>
+          <span className="chip chip-muted" data-tip={tx('past their day')}><i className="dot dot-late" /> {lateCount}</span>
         )}
         <span className="spacer" />
         <div className="at-month">
@@ -205,7 +205,7 @@ export default function Design() {
               <ChevronDown size={16} className={'dz-caret' + (open ? ' open' : '')} />
             </button>
             {open && (rows.length === 0 ? (
-              <div className="empty">{tx('Nothing here')}</div>
+              <div className="empty">{tx('Nothing here this month.')}</div>
             ) : (
               <div className="dz-rows">
                 {rows.map((t) => {

@@ -115,9 +115,22 @@ const dropMemo = (path) => {
 const RECENT_GRACE = 45000
 const recentWrites = new Map() // `${base}:${id}` → { at, row|null }
 const baseOf = (p) => '/' + p.split('?')[0].split('/').filter(Boolean)[0]
+// Sub-resource writes that answer with the PARENT row (content.js hands back
+// listRow for each of these), so their answer really can stand in for it.
+const SELF_ANSWERING = new Set(['duplicate', 'revisions', 'confirm', 'undo'])
 const noteWrite = (p, row) => {
-  if (row && typeof row === 'object' && row.id != null && !Array.isArray(row))
-    recentWrites.set(`${baseOf(p)}:${row.id}`, { at: Date.now(), row })
+  if (!row || typeof row !== 'object' || row.id == null || Array.isArray(row)) return
+  // Only a write that answers with the resource ITSELF may be remembered as
+  // it. POST /content/5/comments answers with a comment — an object with an
+  // id and no channels, no status, no title. Remembered under /content, it
+  // was spliced into the next poll's list as if it were a task, and the first
+  // page to touch `.channels` on it (Overview, Admin → Content) went blank
+  // until reload, for 45 seconds after every comment. Flags, date requests
+  // and file uploads did the same. Depth is the tell: /content and
+  // /content/5 are the thing; /content/5/anything is about the thing.
+  const parts = p.split('?')[0].split('/').filter(Boolean)
+  if (parts.length > 2 && !SELF_ANSWERING.has(parts[2])) return
+  recentWrites.set(`${baseOf(p)}:${row.id}`, { at: Date.now(), row })
 }
 const noteDelete = (p) => {
   const parts = p.split('?')[0].split('/').filter(Boolean)

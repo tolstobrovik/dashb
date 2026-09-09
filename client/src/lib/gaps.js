@@ -39,6 +39,26 @@ export const stageRankOf = (statuses) => {
   }
 }
 
+// The stretch where the schedule stops being editable: from the shoot booking
+// until the work is up for review — To shoot and Editing on the pipeline as it
+// ships. A day booked is an operator's morning held and an editor told when
+// the cut is due, so the days stop moving for everyone but an admin.
+//
+// The server enforces this (datesFrozenAt in server/routes/content.js); this
+// is the same answer so the picker can say so instead of letting somebody type
+// a day and lose it on save. Read off the stages rather than their labels, so
+// it survives an admin renaming one.
+export const datesFrozenAt = (statusId, statuses) => {
+  const live = [...statuses].sort((a, b) => (a.sort - b.sort) || (a.id - b.id))
+    .filter((s) => !isDeletedLabel(s.label))
+  const at = live.findIndex((s) => s.id === statusId)
+  if (at < 0) return false
+  const from = live.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))
+  if (from < 0) return false // no shoot gate, no band
+  const until = live.findIndex((s) => /^ready$|review|tayyor/i.test(s.label || ''))
+  return at >= from && (until < 0 || at < until)
+}
+
 export const gapsOf = (t, crew, rank) => {
   const need = (hat, fallback) => (Array.isArray(crew?.[hat]) ? crew[hat] : fallback).includes(t.type)
   const filmed = t.type === 'reel' || t.type === 'video'

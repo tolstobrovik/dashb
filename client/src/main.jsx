@@ -11,6 +11,8 @@ import Toasts from './components/Toasts.jsx'
 import { applyTextSize } from './lib/textSize.js'
 import { applyTheme } from './lib/theme.js'
 import './styles.css'
+import HoverPreview from './components/HoverPreview.jsx'
+import Boom from './components/Boom.jsx'
 
 applyTextSize() // the remembered Small / Medium / Large, before first paint
 applyTheme()    // the remembered Light / Dark / System — no white flash at night
@@ -29,6 +31,7 @@ window.addEventListener('vite:preloadError', (e) => {
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
+      <Boom>
       <I18nProvider>
         <AuthProvider>
           <ChannelsProvider>
@@ -36,11 +39,13 @@ createRoot(document.getElementById('root')).render(
             <ContextMenuProvider>
               <App />
               <Toasts />
+              <HoverPreview />
             </ContextMenuProvider>
             </PagesProvider>
           </ChannelsProvider>
         </AuthProvider>
       </I18nProvider>
+      </Boom>
     </BrowserRouter>
   </React.StrictMode>,
 )

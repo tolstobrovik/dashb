@@ -88,10 +88,16 @@ async function createPgBackend() {
   return {
     all: async (sql, args) => (await query(sql, args)).rows,
     run: async (sql, args) => {
-      // Emulate SQLite's lastInsertRowid — every table run() inserts into has
-      // an `id` primary key.
+      // Emulate SQLite's lastInsertRowid. `RETURNING *`, not `RETURNING id`:
+      // not every table has one — meta, ai_cache, undo_moves and the usage
+      // tables are keyed by something else — and Postgres refuses `RETURNING
+      // id` on those with 42703, which is how a Postgres deployment came to
+      // fail at initDb() on the first `INSERT INTO meta` and never boot.
+      // Reading `.id` off whatever came back is the same answer on the tables
+      // that have one and undefined on the ones that do not, which is exactly
+      // what SQLite would have said.
       const wantsId = /^\s*insert\s/i.test(sql) && !/returning/i.test(sql)
-      const res = await query(wantsId ? `${sql} RETURNING id` : sql, args)
+      const res = await query(wantsId ? `${sql} RETURNING *` : sql, args)
       return { changes: res.rowCount, lastInsertRowid: res.rows?.[0]?.id }
     },
     batch: async (stmts) => {
@@ -677,12 +683,10 @@ export async function initSchema() {
       -- their afternoon for; changing it puts the question back and tells
       -- them.
       shoot_ack      TEXT    NOT NULL DEFAULT '',
-      shoot_alt      TEXT,                                -- a day they COULD do instead
       shoot_ack_at   TEXT,
       shoot_ack_by   INTEGER,
       shoot_ack_note TEXT,
       edit_ack       TEXT    NOT NULL DEFAULT '',
-      edit_alt       TEXT,
       edit_ack_at    TEXT,
       edit_ack_by    INTEGER,
       edit_ack_note  TEXT,
@@ -1544,8 +1548,6 @@ async function migrate() {
     // The ambassador programme grew a terms line the three boxes could not say,
     // and a moment somebody said their video was live.
     for (const [tbl, col, decl] of [
-      ['content', 'shoot_alt', 'TEXT'],   // the day they CAN do, offered with a no
-      ['content', 'edit_alt', 'TEXT'],
       ['ambassadors', 'default_terms_other', "TEXT NOT NULL DEFAULT ''"],
       ['ambassador_cards', 'terms_other', "TEXT NOT NULL DEFAULT ''"],
       ['ambassador_cards', 'posted_at', 'TEXT'],
@@ -1769,6 +1771,77 @@ export async function getPageRules() {
   const out = { ...DEFAULT_PAGES }
   for (const k of PAGE_KEYS) if (typeof stored[k] === 'boolean') out[k] = stored[k]
   return out
+}
+
+// ---- and who each page is FOR ----------------------------------------------
+// The switch above answers "does this board have a Design page at all". This
+// answers the other half: "whose page is it". A designer's board is furniture
+// to an operator — a door they open once, find nothing of theirs behind, and
+// never open again — so a page can be aimed at the people who do that job.
+//
+// An audience is a list of the account kinds that get the door. EMPTY means
+// everybody, which is what every page was before this existed, so nothing
+// narrowed when the column appeared. Admins are never in the list because
+// admins always have every page: an admin who could switch a page off and
+// then not see the switch is an admin locked out of their own settings.
+//
+// The vocabulary is the vocabulary the role picker already uses — a member, or
+// one of the three crew capabilities — so setting an audience is choosing from
+// the same words used to hire somebody, not learning a second scheme.
+//
+// Still visibility rather than a lock, exactly like the switch above: a page
+// aimed at designers is not shown to an operator, but the work behind it is
+// the same content the board already serves them. It sorts the doors; it does
+// not pretend to be a safe. Design and Sprints are views over work the account
+// already has, so there is nothing behind them to refuse — which is why the
+// rule is stored and served here and APPLIED in one place on the client
+// (openTo in client/src/lib/pages.jsx), rather than copied into both.
+export const PAGE_AUDIENCES = ['member', 'editor', 'operator', 'designer']
+// Design ships aimed at designers because that is what the page is: the
+// designer's own board. Every other page ships open, and an admin narrows the
+// ones they want narrowed.
+const DEFAULT_AUDIENCE = { design: ['designer'] }
+
+export async function getPageAudience() {
+  let stored = {}
+  try {
+    stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'page_audience'"))?.value || '{}')
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) stored = {}
+  } catch { stored = {} }
+  const out = {}
+  for (const k of PAGE_KEYS) {
+    const v = Array.isArray(stored[k]) ? stored[k] : DEFAULT_AUDIENCE[k]
+    // Order by the vocabulary, not by the order somebody clicked the chips, so
+    // two admins setting the same audience store the same bytes.
+    out[k] = PAGE_AUDIENCES.filter((a) => (v || []).includes(a))
+  }
+  return out
+}
+
+// ---- the one notice the board is allowed to put in front of everybody -----
+// A change people should hear about BEFORE it lands, written by an admin and
+// read by everyone: "the pay page moves to Documents on Monday". It replaces
+// the daily digest that used to push at people whether or not anything had
+// happened — a board that speaks every day is a board people stop reading, and
+// the thing worth saying is not usually daily.
+//
+// Deliberately one notice and not a queue. Two banners stacked above the work
+// is the density this was meant to remove, so posting a new one replaces the
+// old one, and clearing the text takes the banner away entirely.
+//
+// `id` is what makes dismissal honest. A person dismisses THIS notice, not
+// notices in general, so editing the text raises the id and the banner comes
+// back for everybody — otherwise the second announcement would be silently
+// swallowed by the first one's dismissal, which is the failure that makes
+// people distrust banners.
+export async function getPlannedUpdate() {
+  let stored = null
+  try { stored = JSON.parse((await get("SELECT value FROM meta WHERE key = 'planned_update'"))?.value || 'null') } catch { stored = null }
+  if (!stored || typeof stored !== 'object') return null
+  const text = String(stored.text ?? '').trim().slice(0, 240)
+  if (!text) return null // no text is how a notice is taken down
+  const at = /^\d{4}-\d{2}-\d{2}$/.test(String(stored.at || '')) ? String(stored.at) : null
+  return { id: Math.max(1, Math.round(Number(stored.id) || 1)), text, at }
 }
 
 // ---- what a reel earns, by how much of it people watched ------------------

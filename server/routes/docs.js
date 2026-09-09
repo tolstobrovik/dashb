@@ -10,7 +10,12 @@ import { Router } from 'express'
 import { all, get, run } from '../db.js'
 import { authRequired, wrap } from '../auth.js'
 
-export const DOC_KINDS = ['sop', 'responsibility', 'other']
+// 'kpi' is the team's document, not a person's: the one paper everybody is
+// measured against. Everybody may read it; only an admin may put one up, take
+// one down or rename it. The other three kinds are per-person shelves and
+// keep their rules — they are no longer drawn on the Documents page, which
+// is the KPI document now, but nothing about them is deleted.
+export const DOC_KINDS = ['kpi', 'sop', 'responsibility', 'other']
 
 // Files ride as data URLs like photos do elsewhere. ~6M chars ≈ 4.5 MB of
 // file — plenty for an SOP, small enough for the GitHub-backed store.
@@ -29,6 +34,9 @@ export const docsRouter = Router()
 docsRouter.use(authRequired)
 
 docsRouter.get('/', wrap(async (req, res) => {
+  // The KPI document belongs to the team, so everybody signed in reads it.
+  if (req.query.kind === 'kpi')
+    return res.json(await all(`SELECT ${LIST_COLUMNS} FROM person_docs WHERE kind = 'kpi' ORDER BY created_at DESC`))
   // The whole shelf in one place — admins only.
   if (req.query.all !== undefined) {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins see every folder at once' })
@@ -44,7 +52,7 @@ docsRouter.get('/', wrap(async (req, res) => {
 docsRouter.get('/:id', wrap(async (req, res) => {
   const row = await get('SELECT * FROM person_docs WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Document not found' })
-  if (req.user.role !== 'admin' && row.user_id !== req.user.id)
+  if (row.kind !== 'kpi' && req.user.role !== 'admin' && row.user_id !== req.user.id)
     return res.status(403).json({ error: 'Not your document' })
   res.json(row)
 }))
@@ -61,6 +69,8 @@ docsRouter.post('/', wrap(async (req, res) => {
   const fileName = String(b.file_name || 'document.pdf').trim().slice(0, 200)
   if (!title) return res.status(400).json({ error: 'Give the document a title' })
   const kind = DOC_KINDS.includes(b.kind) ? b.kind : 'other'
+  if (kind === 'kpi' && req.user.role !== 'admin')
+    return res.status(403).json({ error: 'Only an admin can put up the KPI document' })
 
   const data = String(b.data || '')
   const m = data.match(/^data:([^;,]+)[;,]/)
@@ -82,6 +92,8 @@ docsRouter.patch('/:id', wrap(async (req, res) => {
   if (req.user.role !== 'admin' && row.uploaded_by !== req.user.id)
     return res.status(403).json({ error: 'Only the uploader or an admin can change this' })
   const b = req.body || {}
+  if ((row.kind === 'kpi' || b.kind === 'kpi') && req.user.role !== 'admin')
+    return res.status(403).json({ error: 'Only an admin can change the KPI document' })
   const patch = {}
   if (b.title !== undefined) {
     const t = String(b.title).trim().slice(0, 200)
@@ -102,10 +114,12 @@ docsRouter.patch('/:id', wrap(async (req, res) => {
 }))
 
 docsRouter.delete('/:id', wrap(async (req, res) => {
-  const row = await get('SELECT id, uploaded_by FROM person_docs WHERE id = ?', req.params.id)
+  const row = await get('SELECT id, uploaded_by, kind FROM person_docs WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Document not found' })
   if (req.user.role !== 'admin' && row.uploaded_by !== req.user.id)
     return res.status(403).json({ error: 'Only the uploader or an admin can delete this' })
+  if (row.kind === 'kpi' && req.user.role !== 'admin')
+    return res.status(403).json({ error: 'Only an admin can take down the KPI document' })
   await run('DELETE FROM person_docs WHERE id = ?', row.id)
   res.json({ ok: true })
 }))

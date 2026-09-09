@@ -310,7 +310,7 @@ export default function Projects() {
           </div>
           <div className="pc-camp-list">
             {filtered.map((c) => <CampaignRow key={c.id} c={c} byKey={byKey} onOpen={(x) => navigate(`/campaigns/${x.id}`)} />)}
-            {filtered.length === 0 && <div className="card card-pad empty">Nothing here.</div>}
+            {filtered.length === 0 && <div className="card card-pad empty">{tx('No projects')}</div>}
           </div>
         </>
       )}
@@ -360,7 +360,7 @@ export default function Projects() {
                         : <div style={{ marginTop: 6 }}><PaceBarSafe c={c} /></div>}
                   </div>
                 ))}
-                {list.length === 0 && <div className="board-empty">{col.key === 'blocked' ? '—' : '—'}</div>}
+                {list.length === 0 && <div className="board-empty">{col.key === 'blocked' ? 'Empty — keep it that way' : '—'}</div>}
               </div>
             )
           })}

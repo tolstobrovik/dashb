@@ -114,6 +114,20 @@ await req('/fields', 'POST', { ...cfg, tz: { state: 'optional', types: ['reel', 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await browser.newPage({ viewport: { width: 1500, height: 1000 } })
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
+// Phase 5 folded the sidebar into hubs, so a door inside a closed one is not
+// in the DOM at all — and the question here is which doors EXIST, not which
+// happen to be unfolded. Clicking the chevrons would answer it, but a click
+// TOGGLES and the choice is remembered, so the calls fight each other. Write
+// the preference instead: no hub closed, which is what the sidebar's own
+// "reset" button leaves behind (Sidebar.jsx PREFS_KEY / PREFS_V).
+const unfoldSidebar = async (pg, uid) => {
+  await pg.addInitScript(([id, v]) => {
+    localStorage.setItem(`satashkent_side2_${id}`,
+      JSON.stringify({ order: {}, hidden: [], closed: [], pinned: [], v }))
+  }, [uid, 3])
+}
+
+await unfoldSidebar(p, 1) // the admin is user 1 on a fresh board
 await p.goto(`${BASE}/login`)
 await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
 await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 20000 })
@@ -138,17 +152,7 @@ await row('Design').locator('.switch').click(); await p.waitForTimeout(800)
 ok('…one tap turns it off', (await row('Design').locator('.switch.on').count()) === 0)
 ok('…and the server holds it', (await req('/fields')).data.pages.design === false)
 
-// Round 91 folds Channels, Numbers and People to start with, and Documents
-// lives in Numbers — so its door is a press away rather than in the DOM.
-const unfold = async (pg) => {
-  for (let i = 0; i < 5; i++) {
-    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
-    if (!(await shut.count())) break
-    await shut.first().click(); await pg.waitForTimeout(180)
-  }
-}
 await p.goto(`${BASE}/brief`); await p.waitForTimeout(1500)
-await unfold(p)
 ok('the sidebar loses that door', (await p.locator('.sidebar a[href="/design"]').count()) === 0)
 ok('…and keeps the others', (await p.locator('.sidebar a[href="/docs"]').count()) === 1)
 await p.goto(`${BASE}/design`); await p.waitForTimeout(1500)
@@ -160,7 +164,6 @@ await p.goto(`${BASE}/admin`); await p.waitForTimeout(1100)
 await p.locator('.tab', { hasText: 'Settings' }).click(); await p.waitForTimeout(1000)
 await row('Design').locator('.switch').click(); await p.waitForTimeout(800)
 await p.goto(`${BASE}/brief`); await p.waitForTimeout(1500)
-await unfold(p)
 ok('switching it back brings the door with it', (await p.locator('.sidebar a[href="/design"]').count()) === 1)
 
 // A page nobody switched off is a page that works, whatever the server said —

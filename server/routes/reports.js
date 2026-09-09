@@ -334,6 +334,78 @@ router.get('/work/mine', wrap(async (req, res) => {
   res.json({ from, to, filmed, edited, both, faced, made_for: forMe, ...gradeFor(grades, forMe || (filmed + edited + both)), ladder: grades })
 }))
 
+// A person's own PACE: what they made, month by month, by what it was — so a
+// planner can answer "what would it take to earn X" from what this person
+// has actually been doing rather than from a rate card in the abstract.
+// Declared before the admin gate for the same reason /work/mine is.
+//
+// Buckets are what the board sells: a reel (type reel), a YouTube video (type
+// video on the youtube channel — YouTube is a channel here, not a type), a
+// target (type target), and the rest. A piece counts in a bucket once per
+// month if this person had any hat on it; alongside, how OFTEN they filmed,
+// cut or ran a piece of that kind, because tier pay is per hat and a person
+// who only ever cuts YouTube videos is paid the cut, not the filming.
+//
+// The window is the last N COMPLETE months (this month so far is reported
+// separately, so a half month never drags an average down), and it starts at
+// the person's first delivered piece, so a newcomer's zero months before they
+// joined are not counted against them either.
+const bucketOf = (r) => (r.type === 'reel' ? 'reel'
+  : r.type === 'target' ? 'target'
+  : r.type === 'video' && parseList(r.channels).includes('youtube') ? 'youtube'
+  : 'other')
+const PACE_BUCKETS = ['reel', 'youtube', 'target', 'other']
+router.get('/work/mine/pace', wrap(async (req, res) => {
+  const months = Math.min(6, Math.max(1, Number(req.query.months) || 3))
+  const me = req.user.id
+  const statuses = await all('SELECT * FROM statuses')
+  const dead = new Set(statuses.filter((st) => /^deleted$/i.test(st.label)).map((st) => st.id))
+  const rows = await all(`
+    SELECT id, type, channels, status_id, assignee_id, assignees, done_at, operator_id, editor_id, skip_rate
+    FROM content WHERE done_at IS NOT NULL`)
+  const thisMonth = dayISO(0).slice(0, 7)
+  const keys = []
+  { let [y, m] = thisMonth.split('-').map(Number); for (let i = 0; i < months; i++) { m -= 1; if (m === 0) { m = 12; y -= 1 } keys.unshift(`${y}-${String(m).padStart(2, '0')}`) } }
+  const blank = () => ({ pieces: 0, filmed: 0, edited: 0, made: 0 })
+  const by = Object.fromEntries(PACE_BUCKETS.map((b) => [b, { months: Object.fromEntries(keys.map((k) => [k, blank()])) }]))
+  const current = Object.fromEntries(PACE_BUCKETS.map((b) => [b, 0]))
+  const total = blank()
+  let skipSum = 0, skipN = 0, first = null
+  for (const r of rows) {
+    if (dead.has(r.status_id)) continue
+    const filmed = r.operator_id === me, edited = r.editor_id === me
+    const made = (parseList(r.assignees).length ? parseList(r.assignees) : (r.assignee_id ? [r.assignee_id] : [])).includes(me)
+    if (!filmed && !edited && !made) continue
+    const month = tashkentDay(r.done_at).slice(0, 7)
+    if (!first || month < first) first = month
+    const b = bucketOf(r)
+    if (month === thisMonth) { current[b] += 1; continue }
+    const slot = by[b].months[month]
+    if (!slot) continue // older than the window
+    slot.pieces += 1; total.pieces += 1
+    if (filmed) { slot.filmed += 1; total.filmed += 1 }
+    if (edited) { slot.edited += 1; total.edited += 1 }
+    if (made) { slot.made += 1; total.made += 1 }
+    if (r.skip_rate !== null && r.skip_rate !== undefined && Number.isFinite(Number(r.skip_rate))) { skipSum += Number(r.skip_rate); skipN += 1 }
+  }
+  // Average over the months since this person started, never over months
+  // before they were here — and never over zero months.
+  const active = keys.filter((k) => !first || k >= first)
+  const div = Math.max(1, active.length)
+  const shares = (t) => (t.pieces ? { film: t.filmed / t.pieces, edit: t.edited / t.pieces, made: t.made / t.pieces } : null)
+  for (const b of PACE_BUCKETS) {
+    const sum = Object.values(by[b].months).reduce((acc, m) => ({ pieces: acc.pieces + m.pieces, filmed: acc.filmed + m.filmed, edited: acc.edited + m.edited, made: acc.made + m.made }), blank())
+    by[b].pieces = sum.pieces
+    by[b].avg = Math.round((sum.pieces / div) * 10) / 10
+    by[b].shares = shares(sum)
+  }
+  res.json({
+    months: keys, since: first, active_months: active.length,
+    by, current: { month: thisMonth, ...current },
+    pieces: total.pieces, shares: shares(total),
+    skip_avg: skipN ? Math.round(skipSum / skipN) : null, skip_counted: skipN,
+  })
+}))
 
 router.use(adminOnly)
 

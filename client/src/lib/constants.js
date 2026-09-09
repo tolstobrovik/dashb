@@ -47,6 +47,40 @@ export const isDeletedLabel = (label) => /^deleted$/i.test(label || '')
 // so planning views don't count its blanks as gaps.
 export const isIdeaLabel = (label) => /idea/i.test(label || '')
 
+// ---- channels where the work is WRITTEN rather than filmed ----------------
+// A Telegram post is typed. Nobody books an operator for it, nobody hands over
+// footage, and nobody waits on a cut — so the pipeline the rest of the board
+// runs on (Idea → To shoot → Editing → Ready → Published) asks a Telegram
+// channel four questions it does not have answers to, and gives it a Recording
+// calendar that is permanently empty.
+//
+// Such a channel has three states and only three: not started, being written,
+// out. Matched on the channel the way the platform lens already is — the icon
+// an admin picks when they create it, or the key it got from its name — so a
+// second Telegram channel is one without anybody wiring it up.
+export const isWritingChannel = (ch) =>
+  ch?.icon === 'telegram' || /telegram/i.test(ch?.key || '')
+
+// The three stages such a channel runs on. Idea and the making stage are
+// matched on the pipeline's own labels, the way the stage rules are; the last
+// one is matched on is_final instead, because "the stage that means it is out"
+// is a fact the pipeline records about itself and an admin is free to rename.
+//
+// "Writing" is the making stage under the name the work actually has here — the
+// same column an Instagram reel calls Editing, because it IS the same column in
+// the same pipeline. Nothing is renamed in the database and no task changes
+// stage; only the word above the column does.
+//
+// It is the one word here the BOARD supplies rather than the admin, so it is
+// the one that gets translated: the other two columns keep the label the admin
+// typed, already in their own language. Read through a function so a language
+// switch moves it, the way every other tx() string moves.
+export const WRITING_STAGES = [
+  { key: 'idea', is: (s) => /idea/i.test(s.label || ''), label: null },
+  { key: 'writing', is: (s) => /editing|montaj/i.test(s.label || ''), label: () => tx('Writing') },
+  { key: 'published', is: (s) => !!s.is_final, label: null },
+]
+
 // The little glyph a pipeline stage wears on calendar pills and chips —
 // matched by label so custom stages still land on something sensible.
 export const statusIcon = (label) => {

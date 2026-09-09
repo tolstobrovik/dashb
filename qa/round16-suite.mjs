@@ -38,7 +38,7 @@ const r1 = await req(`/content/${shootToday.id}`, 'PATCH', { milestone: 'shot' }
 ok('operator tick "shot" lands on the Shot stage', r1.status === 200 && r1.data.status_id === shotSt.id)
 ok('operator cannot set a raw stage', (await req(`/content/${shootToday.id}`, 'PATCH', { status_id: readySt.id }, tOp)).status === 403)
 ok('operator cannot mark a cut edited', (await req(`/content/${cutToday.id}`, 'PATCH', { milestone: 'edited' }, tOp)).status === 403)
-ok('operator cannot blanket-complete', (await req(`/content/${shootToday.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, tOp)).status === 403)
+ok('operator cannot blanket-complete', (await req(`/content/${shootToday.id}`, 'PATCH', { done: true, post_link: `https://instagram.com/p/qa-${shootToday.id}` }, tOp)).status === 403)
 // reset shootToday back so the UI still shows it in today
 await req(`/content/${shootToday.id}`, 'PATCH', { status_id: statuses[0].id })
 const tEd = await login('r16ed', 'e1234')
@@ -58,17 +58,10 @@ const cmTab = async (pg, name) => {
   // whoever does the work on it — it holds the crew, the handovers and the
   // crew's own tick, and which of those you are here for depends on who you
   // are. Either name reaches it.
-  // Round 91 hides a view nobody has been in, behind one "Add details"
-  // control — so reaching one is two presses when it is empty and one when it
-  // is not, exactly as it is for a person.
-  const more = pg.locator('.cm-page-more')
-  for (const pass of [0, 1]) {
-    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-      const tab = pg.locator('.cm-page-tab', { hasText: n })
-      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
-    }
-    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
-    else return
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
   }
 }
 
@@ -91,9 +84,8 @@ await page.screenshot({ path: 'r16-board.png' })
 // open the today shoot → the crew modal
 await shootLane.locator('.cb-row', { hasText: 'r16: shoot today' }).click()
 await page.waitForSelector('.modal', { timeout: 8000 })
-// The stage is read-only for the crew — one dropdown since round 91, so the
-// question is whether they can open it at all rather than how many chips are live.
-ok('the stage is read-only for the crew', await page.locator('.modal .cm-stage-pick select').isDisabled())
+// stage is read-only for the crew (no enabled non-active chip)
+ok('the stage is read-only for the crew', await page.locator('.modal select[data-pick="stage"]').isDisabled())
 // the operator gets a Shot tick, and the ready-link field
 ok('the operator sees a "Mark as shot" tick', (await page.locator('.modal .do-tick', { hasText: 'Mark as shot' }).count()) === 1)
 await cmTab(page, 'Execution')

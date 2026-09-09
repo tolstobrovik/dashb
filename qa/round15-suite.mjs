@@ -39,13 +39,13 @@ await req('/content', 'POST', { title: 'r15: release only', channels: ['youtube'
 ok('crew fixtures in place', !!shoot.id && !!cut.id)
 
 const doneT = (await req('/content', 'POST', { title: 'r15: shipped today', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id] })).data
-await req(`/content/${doneT.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
+await req(`/content/${doneT.id}`, 'PATCH', { done: true, post_link: `https://instagram.com/p/qa-${doneT.id}` })
 await req('/content', 'POST', { title: 'r15: upcoming post', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id], release_date: add(2) })
 await req('/content', 'POST', { title: 'r15: missed release', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id], release_date: yesterday })
 const proj = (await req('/projects', 'POST', { name: 'r15: Open Day' })).data
 const camp = (await req('/campaigns', 'POST', { name: 'r15: Open Day teasers', project_id: proj.id })).data
 const projTask = (await req('/content', 'POST', { title: 'r15: teaser video', channels: ['instagram_main'], type: 'post', campaign_id: camp.id, assignee_ids: [mir.id] })).data
-await req(`/content/${projTask.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' })
+await req(`/content/${projTask.id}`, 'PATCH', { done: true, post_link: `https://instagram.com/p/qa-${projTask.id}` })
 ok('statistics fixtures in place', !!proj.id && !!camp.id && !!projTask.id)
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
@@ -59,17 +59,10 @@ const cmTab = async (pg, name) => {
   // whoever does the work on it — it holds the crew, the handovers and the
   // crew's own tick, and which of those you are here for depends on who you
   // are. Either name reaches it.
-  // Round 91 hides a view nobody has been in, behind one "Add details"
-  // control — so reaching one is two presses when it is empty and one when it
-  // is not, exactly as it is for a person.
-  const more = pg.locator('.cm-page-more')
-  for (const pass of [0, 1]) {
-    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-      const tab = pg.locator('.cm-page-tab', { hasText: n })
-      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
-    }
-    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
-    else return
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
   }
 }
 
@@ -106,23 +99,20 @@ await pageC.keyboard.press('Escape')
 
 const page = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
+// Round 82 folded the sidebar into hubs that start CLOSED, so a door inside
+// one is not in the DOM to be read. This asks which doors EXIST, so write the
+// "nothing folded" preference before the page loads rather than clicking the
+// chevrons — a click toggles, and two calls would undo each other.
+// (Sidebar.jsx: PREFS_KEY `satashkent_side2_<uid>`, PREFS_V 3; admin is id 1.)
+await page.addInitScript(([id, v]) => {
+  localStorage.setItem(`satashkent_side2_${id}`,
+    JSON.stringify({ order: {}, hidden: [], closed: [], pinned: [], v }))
+}, [1, 3])
 await page.goto(BASE + '/login')
 await page.fill('input[name="username"]', 'admin')
 await page.fill('input[name="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
-// Round 91 folds Channels, Numbers and People to start with, so what is
-// behind them is a press away rather than in the DOM. Open them all before
-// reading the sidebar as text.
-const unfold = async (pg) => {
-  for (let i = 0; i < 5; i++) {
-    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
-    if (!(await shut.count())) break
-    await shut.first().click(); await pg.waitForTimeout(180)
-  }
-}
-
-await unfold(page)
 ok('the sidebar says Statistics now', (await page.locator('.sidebar').textContent()).includes('Statistics'))
 await page.goto(BASE + '/missed')
 await page.waitForSelector('.stats-card', { timeout: 10000 })

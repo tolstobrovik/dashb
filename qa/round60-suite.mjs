@@ -89,15 +89,7 @@ const ensureVisible = async () => {
 await page.goto(BASE + '/brief')
 // Wait for the shell to actually paint rather than guessing at a duration —
 // the first load after a restart is slower than any number worth hard-coding.
-await page.waitForSelector('.sidebar nav', { timeout: 20000 })
-// Round 91 folds Channels, Numbers and People to start with, so a channel
-// link is a press away rather than in the DOM.
-for (let i = 0; i < 5; i++) {
-  const shut = page.locator('.nav-hub:not(.open) .nav-hub-head')
-  if (!(await shut.count())) break
-  await shut.first().click(); await page.waitForTimeout(180)
-}
-await page.waitForSelector('a[href="/dept/instagram_main"]', { timeout: 20000 })
+await page.waitForSelector('.sidebar a[href="/brief"]', { timeout: 20000 })
 // Scoped to the sidebar: round 82 gave the phone's tab bar the slot To-Do used
 // to hold, and that bar is in the DOM on a desktop too (CSS hides it), so a
 // bare href count sees Releases twice and says the sidebar has lost it.

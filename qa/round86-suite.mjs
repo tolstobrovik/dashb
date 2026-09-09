@@ -133,10 +133,19 @@ const echo = await req(`/content/${piece.id}`, 'PATCH',
 ok('the boxes he never touched do not block his own delivery link',
   echo.status === 200, `${echo.status} ${echo.data.error || ''}`)
 ok('…and the link landed', /r86raw/.test((await req('/content')).data.find((c) => c.id === piece.id).shot_link || ''))
-// Each of them, one at a time, still refuses a real change.
-for (const [field, value] of [['reference_text', 'a different mood'], ['script', 'different words'], ['post_link', 'https://example.com/other']]) {
+// Each of the BRIEF boxes, one at a time, still refuses a real change.
+for (const [field, value] of [['reference_text', 'a different mood'], ['script', 'different words']]) {
   const r = await req(`/content/${piece.id}`, 'PATCH', { [field]: value }, OT)
   ok(`changing ${field} is still his to be refused`, r.status === 403, `${r.status} ${r.data.error || ''}`)
+}
+// The published address is not part of the brief and not a right anybody
+// holds: it is where a thing that already exists went, and the crew are the
+// people most likely to know. Anyone on the task may write it — him too.
+{
+  const pen = await req(`/content/${piece.id}`, 'PATCH', { post_link: 'https://example.com/r86-op' }, OT)
+  ok('…but where it went live is his to write, like anyone’s on the task', pen.status === 200, `${pen.status} ${pen.data.error || ''}`)
+  // Cleared again, so the wall below still meets a piece with no address.
+  await req(`/content/${piece.id}`, 'PATCH', { post_link: '' })
 }
 
 // ===================== a maker reads their own numbers =====================
@@ -168,17 +177,10 @@ const cmTab = async (pg, name) => {
   // whoever does the work on it — it holds the crew, the handovers and the
   // crew's own tick, and which of those you are here for depends on who you
   // are. Either name reaches it.
-  // Round 91 hides a view nobody has been in, behind one "Add details"
-  // control — so reaching one is two presses when it is empty and one when it
-  // is not, exactly as it is for a person.
-  const more = pg.locator('.cm-page-more')
-  for (const pass of [0, 1]) {
-    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-      const tab = pg.locator('.cm-page-tab', { hasText: n })
-      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
-    }
-    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
-    else return
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
   }
 }
 
@@ -272,20 +274,26 @@ ok('one click narrows to what that person presses',
   (await page.locator('.usage-buttons').textContent()).includes('r86 Publish'))
 await page.screenshot({ path: 'r86-usage.png', fullPage: true })
 
-// ---- 8) an empty filter is not offered to somebody who cannot act on it ----
-// The admin keeps the zero: an empty shelf is a fact about the team's
-// paperwork, and a fact has to be visible to be noticed.
-//
-// This used to be asked of the Documents page's filter row. Round 91 removed
-// that row — a shelf that is one person's own is a handful of files, and
-// filtering four rows is furniture — so the rule is asked where it still
-// governs something: the channel filters on Statistics.
-await page.goto(BASE + '/missed')
-await page.waitForSelector('.miss-filters', { timeout: 10000 })
-await page.waitForTimeout(600)
-const adminChans = await page.locator('.miss-filters .pill-group .pill').allTextContents()
-ok('the admin is offered every channel, including the quiet ones',
-  adminChans.length > 1, adminChans.join(' | '))
+// ---- 8) Documents is the KPI document, and only an admin can change it ----
+// The shelves, the filters and the search went with the simplification: the
+// page is the one paper everybody is measured against, previewed in place.
+await page.goto(BASE + '/docs')
+await page.waitForSelector('.kpi-doc', { timeout: 10000 })
+await page.waitForTimeout(400)
+ok('the admin is offered the upload', await page.locator('.kpi-doc .docs-up button').count() === 1)
+ok('…and no shelves, no filters, no search', await page.locator('.docs-filters, .docs-search, .docs-who').count() === 0)
+const ctx2 = await browser.newContext({ viewport: { width: 1400, height: 950 } })
+const p2 = await ctx2.newPage()
+await p2.goto(BASE + '/login')
+await p2.fill('input[name="username"]', 'r86hand')
+await p2.fill('input[name="password"]', 'r1234')
+await p2.click('button[type="submit"]')
+await p2.waitForURL(/brief/, { timeout: 15000 })
+await p2.goto(BASE + '/docs')
+await p2.waitForSelector('.kpi-doc', { timeout: 10000 })
+await p2.waitForTimeout(400)
+ok('she sees the same page, without the upload', await p2.locator('.kpi-doc').count() === 1 && await p2.locator('.kpi-doc .docs-up button').count() === 0)
+await ctx2.close()
 
 await browser.close()
 

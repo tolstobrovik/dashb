@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import { all, get, run, batch, publicUser, crewRolesOf, getChannelKeys, PERM_KEYS } from '../db.js'
-import { authRequired, adminOnly, wrap, isFullAdmin } from '../auth.js'
+import { authRequired, adminOnly, wrap, isFullAdmin, isAdminOn } from '../auth.js'
 
 const router = Router()
 router.use(authRequired)
@@ -432,10 +432,25 @@ router.get('/:id/slots', wrap(async (req, res) => {
   // both, because an editor with a cut due on Thursday is not free all
   // Thursday just because nobody booked an hour of it.
   const booked = await all(
-    `SELECT id, title, recording_date, recording_time, recording_end
+    `SELECT id, title, channels, assignee_id, assignees, operator_id, editor_id, designer_id,
+            recording_date, recording_time, recording_end
      FROM content
      WHERE operator_id = ? AND recording_date >= ? AND recording_date <= ?
        AND recording_time IS NOT NULL AND done_at IS NULL`, who, from, to)
+  // The hour is everybody's business — a planner needs to know it is taken.
+  // WHAT is booked in it is not: this list used to hand every signed-in
+  // person the title and id of every shoot on every channel, including the
+  // channels /api/content refuses them. Same rule as canSee over there —
+  // admin on the channel, on the task, or sharing a department with it —
+  // and a slot the caller may not see keeps its time and loses its name.
+  const parseList = (v) => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : [] } catch { return [] } }
+  const visible = (b) => {
+    const chans = parseList(b.channels)
+    return isAdminOn(req.user, chans) ||
+      parseList(b.assignees).includes(req.user.id) || b.assignee_id === req.user.id ||
+      b.operator_id === req.user.id || b.editor_id === req.user.id || b.designer_id === req.user.id ||
+      chans.some((ch) => (req.user.departments || []).includes(ch))
+  }
 
   const out = []
   for (let i = 0; i < days; i++) {
@@ -443,7 +458,7 @@ router.get('/:id/slots', wrap(async (req, res) => {
     const weekday = new Date(`${day}T12:00:00Z`).getUTCDay()
     const working = !setDays || workDays.includes(weekday)
     const busy = booked.filter((b) => b.recording_date === day && b.id !== excludeId).map((b) => ({
-      id: b.id, title: b.title, from: b.recording_time,
+      id: visible(b) ? b.id : null, title: visible(b) ? b.title : null, from: b.recording_time,
       to: b.recording_end || toHHMM(toMin(b.recording_time) + DEFAULT_LEN),
     })).sort((a, b) => a.from.localeCompare(b.from))
 

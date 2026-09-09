@@ -2,7 +2,7 @@
 // written in, so nothing changes there; set DASHB_ROOT to run them on a
 // laptop or in CI, where the checkout is somewhere else entirely.
 const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
-// Round 72: work that is DONE is not late, however long ago its day was.
+// Round 72: the digest that once called finished work late no longer exists.
 //
 // The digest went out saying
 //
@@ -159,24 +159,23 @@ await req(`/content/${out.id}`, 'PATCH', { milestone: 'shot' }, opT)
 await req(`/content/${out.id}`, 'PATCH', { milestone: 'edited', ready_link: 'https://drive.google.com/out' }, edT)
 await req(`/content/${out.id}`, 'PATCH', { status_id: sid(/published/i) })
 
-// ===================== ONE morning, one digest =====================
-// The digest claims its day the first time it runs, so it is asked once, with
-// every fixture already in place — which is also how it actually goes out.
+// The nightly tick sends NO digest. It used to: every linked member's phone
+// rang at midnight with their deadlines whether or not anything had changed,
+// and the team asked for it to stop — a board that speaks every day is a board
+// people mute. The planned-update notice (Admin → Settings) took its place.
+// The tick itself still runs, for the admin's own schedules and the auto-flag;
+// nothing about deadlines leaves it, and the answer no longer carries a
+// `reminded` count at all, so a client reading one is reading an old build.
 await reset()
-await req('/cron/daily')
+const cron = await req('/cron/daily')
+ok('the nightly tick answers without a digest count', cron.status === 200 && cron.data.reminded === undefined, JSON.stringify(cron.data))
 const toOp = await sentTo(7201)
 const toEd = await sentTo(7202)
-ok('the shoot is not called late on a piece that was filmed',
-  !/Bahrom student result».*the shoot,.*late/.test(toOp), toOp)
-ok('the cut is not called late on a piece that was cut',
-  !/Bahrom student result».*the cut,.*late/.test(toEd), toEd)
-ok('a piece parked on Shot is not an overdue shoot either',
-  !/filmed and parked».*late/.test(toOp), toOp)
-ok('published work is nobody’s overdue work', !/already published/.test(toEd), toEd)
-// And the part that must keep working: a fix that silences everything is a
-// mute button, not a fix.
-ok('work that really IS late is still named', /genuinely overdue».*the shoot, 5 days late/.test(toOp), toOp)
-ok('…under a heading that says work has slipped', /has slipped/.test(toOp), toOp.split('\n')[0])
+// The auto-flag may still nudge the operator about the one piece that is
+// genuinely late — an event, once ever — but no digest: no headings, no week.
+const DIGEST = /Your deadlines|heads-up on your deadlines|has slipped|Nothing is late|<b>Today<\/b>|<b>Tomorrow<\/b>|<b>In a week<\/b>/i
+ok('the operator gets no digest', !DIGEST.test(toOp), toOp.slice(0, 160))
+ok('the editor hears nothing at all', !toEd, toEd.slice(0, 120))
 
 stop()
 console.log(fails === 0 ? '\nRound-72 suite clean.' : `\n${fails} PROBLEMS`)

@@ -99,12 +99,18 @@ m = (await sentList()).find((s) => String(s.chat_id) === '900' && /🔔/.test(s.
 ok('after Activate the public origin takes over', !!m && m.text.includes(`https://team.example.org/brief?task=${task.id}`)
   && !m.text.includes('localhost:4098'))
 
-// ---- the nightly digest links every line ----
+// The nightly tick sends NO digest. It used to: every linked member's phone
+// rang at midnight with their deadlines whether or not anything had changed,
+// and the team asked for it to stop — a board that speaks every day is a board
+// people mute. The planned-update notice (Admin → Settings) took its place.
+// The tick itself still runs, for the admin's own schedules and the auto-flag;
+// nothing about deadlines leaves it, and the answer no longer carries a
+// `reminded` count at all, so a client reading one is reading an old build.
 await reset()
 const cron = await (await fetch(BASE + '/api/cron/daily')).json()
 m = (await sentList()).find((s) => String(s.chat_id) === '900' && /deadlines/i.test(s.text || ''))
-ok('the digest still fires', cron.reminded === 1 && !!m)
-ok('…and each line carries its own link', !!m && m.text.includes(`https://team.example.org/brief?task=${task.id}`))
+ok('the nightly tick still answers, without a digest count', cron.ok === true && cron.reminded === undefined, JSON.stringify(cron))
+ok('…and pushes no deadline digest to anybody', !m, m?.text?.slice(0, 80))
 
 stop()
 await new Promise((r) => setTimeout(r, 300))

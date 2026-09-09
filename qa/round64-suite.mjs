@@ -2,7 +2,7 @@
 // written in, so nothing changes there; set DASHB_ROOT to run them on a
 // laptop or in CI, where the checkout is somewhere else entirely.
 const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
-// Round 64: the morning digest stops lying about late work.
+// Round 64: the morning digest is gone — and stays gone.
 //
 // The nightly Telegram digest listed deadlines exactly a day and exactly a
 // week out, and then closed — every time, unconditionally — with
@@ -119,69 +119,26 @@ for (let i = 1; i <= 8; i++) {
   await mk({ title: `x64 buried ${i}`, assignee_ids: [buried.id], release_date: day(-i) })
 }
 
-// ---- the morning tick ----
+// The nightly tick sends NO digest. It used to: every linked member's phone
+// rang at midnight with their deadlines whether or not anything had changed,
+// and the team asked for it to stop — a board that speaks every day is a board
+// people mute. The planned-update notice (Admin → Settings) took its place.
+// The tick itself still runs, for the admin's own schedules and the auto-flag;
+// nothing about deadlines leaves it, and the answer no longer carries a
+// `reminded` count at all, so a client reading one is reading an old build.
 await reset()
 const cron = await req('/cron/daily')
-ok('the nightly tick runs and reports who it reminded', cron.status === 200 && cron.data.reminded >= 3,
-  JSON.stringify(cron.data))
-
+ok('the nightly tick runs, and carries no digest count', cron.status === 200 && cron.data.reminded === undefined, JSON.stringify(cron.data))
 const msgs = await sentList()
-const to = (chat) => msgs.filter((m) => String(m.chat_id) === String(chat) && m.method === 'sendMessage')
-  .map((m) => m.text).join('\n---\n')
-const A = to(641), C = to(642), Z = to(643)
-ok('everybody with something on carries a message', !!A && !!C && !!Z,
-  `behind=${A.length} clear=${C.length} buried=${Z.length}`)
-
-// ================= the person who is behind =================
-ok('the digest names what is LATE', /<b>Late<\/b>/.test(A), A.slice(0, 400))
-ok('…the release three days gone is named, with its age',
-  /x64 release three days ago».{0,40}3 days late/.test(A), A)
-ok('…a single day reads as “a day”, not “1 days”',
-  /x64 cut due yesterday».{0,30}a day late/.test(A), A)
-ok('…and the late lines say which hat it was',
-  /x64 cut due yesterday» — the cut/.test(A), A)
-ok('the oldest thing comes first', A.indexOf('three days ago') < A.indexOf('cut due yesterday'), 'order')
-
-// The line this round exists for.
-ok('it NO LONGER claims nothing is late while something is', !/Nothing is late/.test(A), A)
-ok('…and the heading says work has slipped', /has slipped/.test(A), A.split('\n')[0])
-
-// TODAY, which was never mentioned at all.
-ok('work due TODAY is in the digest', /<b>Today<\/b>/.test(A) && /x64 shoot today»/.test(A), A)
-ok('…still alongside tomorrow and the week out',
-  /<b>Tomorrow<\/b>/.test(A) && /x64 release tomorrow»/.test(A)
-  && /<b>In a week<\/b>/.test(A) && /x64 release in a week»/.test(A), A)
-
-// Finished and killed work is not late.
-ok('work already done is not called late', !/x64 done but overdue/.test(A), A)
-ok('killed work is not called late', !/x64 killed and overdue/.test(A), A)
-
-// ================= the person who is clear =================
-ok('somebody with nothing overdue gets no Late section', !/<b>Late<\/b>/.test(C), C)
-ok('…and DOES get the cheerful line, because now it is true', /Nothing is late/.test(C), C)
-ok('…their own work is the only work they hear about',
-  /x64 clear tomorrow»/.test(C) && !/x64 release three days ago/.test(C), C)
-
-// ================= the person who is buried =================
-// Count the late ROWS, not every occurrence of the word: the sign-off
-// contains "late" too, so a looser count answers a different question.
-const lateRows = (Z.match(/^• .*(a day|\d+ days) late/gm) || []).length
-ok('a long list of late work is capped, not dumped whole', lateRows === 6, `${lateRows} rows`)
-ok('…and the remainder is counted rather than dropped', /…and 2 more/.test(Z), Z)
-// Both of these are inside the cap; 'buried 1' and 'buried 2' are the two the
-// count stands in for, so they are deliberately absent.
-ok('…starting from the oldest', Z.indexOf('x64 buried 8') < Z.indexOf('x64 buried 3'), 'order')
-ok('…and the newest late ones are the ones summarised away',
-  !/x64 buried 1»/.test(Z) && !/x64 buried 2»/.test(Z), Z)
-
-// ---- the message is still valid Telegram HTML ----
-ok('nothing was rejected by the API', !msgs.some((m) => m.rejected), JSON.stringify(msgs.filter((m) => m.rejected).slice(0, 2)))
-
-// ---- and it stays a once-a-day thing ----
-await reset()
-await req('/cron/daily')
-ok('a second tick on the same day sends nothing again', (await sentList()).length === 0,
-  JSON.stringify((await sentList()).slice(0, 2)))
+const to = (chat) => msgs.filter((m) => String(m.chat_id) === String(chat) && m.method === 'sendMessage').map((m) => m.text).join('\n---\n')
+// The auto-flag may still speak — one nudge about ONE piece that has gone
+// silently late, once ever. That is an event, not a digest: no headings, no
+// list of the week, no cheerful line.
+const DIGEST = /Your deadlines|heads-up on your deadlines|has slipped|Nothing is late|<b>Today<\/b>|<b>Tomorrow<\/b>|<b>In a week<\/b>|<b>Late<\/b>/i
+ok('the person who is behind gets no digest', !DIGEST.test(to(641)), to(641).slice(0, 160))
+ok('the person who is clear hears nothing at all', !to(642), to(642).slice(0, 120))
+ok('the one who is buried gets no digest either', !DIGEST.test(to(643)), to(643).slice(0, 160))
+ok('nothing in the outbox is a digest', !msgs.some((m) => DIGEST.test(m.text || '')))
 
 stop()
 console.log(fails === 0 ? '\nRound-64 suite clean.' : `\n${fails} PROBLEMS`)

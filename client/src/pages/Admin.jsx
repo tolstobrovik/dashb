@@ -14,13 +14,13 @@ import { useChannels } from '../lib/channels.jsx'
 import RolePicker from '../components/RolePicker.jsx'
 import { CHANNEL_ICONS, iconFor, PERMISSIONS, CONTENT_TYPES, todayISO, addDaysISO, dateLabel, typeInfo, onColor, deptColor, tashkentDay } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
-import { Dots } from '../components/Dots.jsx'
 import Modal from '../components/Modal.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import Whiteboard from '../components/Whiteboard.jsx'
 import { activityLine } from '../lib/activity.js'
 import { tr as tx } from '../lib/i18n.jsx'
+import { StageDot, Dot, Dots } from '../components/Dot.jsx'
 
 // Distinct hues so member avatars/chips are tellable apart (matches Profile).
 const SWATCHES = ['#a32234', '#2a78d6', '#1D9E75', '#BA7517', '#7b5ad6', '#0e8f8f', '#d6499b', '#5a6b7a']
@@ -377,7 +377,7 @@ function HistoryTab() {
             </span>
           </div>
         ))}
-        {shown.length === 0 && <div className="empty">Nothing yet — changes will be written down here.</div>}
+        {shown.length === 0 && <div className="empty">{tx('No changes')}</div>}
       </div>
     </>
   )
@@ -485,7 +485,7 @@ function UsageTab() {
               <button className="btn btn-sm" onClick={() => setWho(0)}>{tx('Everyone')}</button>
             )}
           </div>
-          {mine.length === 0 && <div className="empty">{tx('Nothing here')}</div>}
+          {mine.length === 0 && <div className="empty">{tx('Nothing pressed')}</div>}
           {mine.map((b) => (
             <div key={b.action} className="usage-act">
               <span className="usage-act-name">{b.action}</span>
@@ -539,10 +539,10 @@ function TaskRow({ item, ctx }) {
           {!!item.pinned && !isDone && <span className="chip chip-pin"><Pin size={10} /> Pinned</span>}
           <span className={`chip ct-${item.type}`}>{typeInfo(item.type).label}</span>
           {item.channels.map((c) => <span key={c} className="chip chip-muted">{byKey[c]?.label || c}</span>)}
-          {status && !isDone && <span className="chip" style={{ background: status.color, color: onColor(status.color) }}>{status.label}</span>}
+          {status && !isDone && <StageDot status={status} />}
           {item.recording_date && <span className="chip chip-muted"><Clapperboard size={10} /> {dateLabel(item.recording_date)}</span>}
           {item.release_date && (
-            <span className={'chip ' + (!isDone && item.release_date < todayISO() ? 'chip-danger' : 'chip-muted')}
+            <span className="chip chip-muted" data-late={!isDone && item.release_date < todayISO() ? '1' : undefined}
               data-tip={!isDone && item.release_date < todayISO() ? 'Past its release date' : undefined}>
               <Send size={10} /> {dateLabel(item.release_date)}
             </span>
@@ -650,7 +650,7 @@ function TasksTab() {
       <div className="section-head"><h2>Open</h2><span className="count">· {open.length}</span></div>
       <div className="card" style={{ padding: '4px 14px' }}>
         {open.map((i) => <TaskRow key={i.id} item={i} ctx={rowCtx} />)}
-        {open.length === 0 && <div className="empty">Nothing open.</div>}
+        {open.length === 0 && <div className="empty">{tx('Nothing open')}</div>}
       </div>
 
       {done.length > 0 && (
@@ -1255,7 +1255,7 @@ function PayTab() {
                   </tr>
                 ))}
                 {data.people.length === 0 && (
-                  <tr><td colSpan={9} className="empty">Nobody delivered anything in this period.</td></tr>
+                  <tr><td colSpan={9} className="empty">{tx('No deliveries')}</td></tr>
                 )}
               </tbody>
             </table>
@@ -1695,6 +1695,57 @@ const PAGE_DEFS = [
   { key: 'team', label: 'Team & hiring', hint: 'the team, candidates and vacancies' },
 ]
 
+// Who a page can be aimed at. The same four words the role picker uses when a
+// person is hired — a member, or one of the three crew capabilities — so an
+// admin aiming a page chooses from the vocabulary they already know rather
+// than learning a second one. Admins are not on the list because admins always
+// have every page: an admin who could aim a page away from themselves would be
+// one click from losing the switch that undoes it.
+const AUDIENCE_DEFS = [
+  { key: 'member', label: 'Members' },
+  { key: 'editor', label: 'Editors' },
+  { key: 'operator', label: 'Operators' },
+  { key: 'designer', label: 'Designers' },
+]
+
+// The one notice the board may put above everybody's work. One, on purpose:
+// two banners stacked over the board is the density the team asked to lose.
+// Posting replaces what stood before; clearing the words takes it down.
+function NoticeEditor({ notice, onSaved }) {
+  const [text, setText] = useState(notice?.text || '')
+  const [at, setAt] = useState(notice?.at || '')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { setText(notice?.text || ''); setAt(notice?.at || '') }, [notice?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const live = !!notice?.text
+  const dirty = text.trim() !== (notice?.text || '') || (at || '') !== (notice?.at || '')
+  const save = async (clear) => {
+    setBusy(true)
+    try {
+      const eff = await api.post('/fields', { notice: clear ? { text: '' } : { text: text.trim(), at: at || null } })
+      onSaved(eff)
+      toast(tx(clear ? 'Notice taken down' : 'Notice posted — everyone sees it on their next page'))
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+  return (
+    <div className="notice-editor">
+      <div className="stat-sub">{live ? tx('Posted — the team sees it until each person dismisses it') : tx('Nothing posted — the team sees no banner')}</div>
+      <div className="notice-row">
+        <input className="input" value={text} maxLength={240}
+          placeholder={tx('e.g. Pay moves to Documents on Monday — nothing else changes')}
+          onChange={(e) => setText(e.target.value)} />
+        <input className="input notice-date" type="date" value={at} onChange={(e) => setAt(e.target.value)}
+          aria-label={tx('From (optional)')} data-tip={tx('From (optional)')} />
+      </div>
+      <div className="notice-actions">
+        <button type="button" className="btn btn-primary" disabled={busy || !text.trim() || !dirty} onClick={() => save(false)}>
+          {live ? tx('Update it') : tx('Post it')}
+        </button>
+        {live && <button type="button" className="btn" disabled={busy} onClick={() => save(true)}>{tx('Take it down')}</button>}
+      </div>
+    </div>
+  )
+}
+
 function SettingsTab() {
   const [fields, setFields] = useState(null)
   const [optDraft, setOptDraft] = useState({})
@@ -1705,7 +1756,7 @@ function SettingsTab() {
   const patchField = (k, part) => {
     const next = { ...fields, [k]: { ...fields[k], ...part } }
     setFields(next)
-    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Task form saved — synced')) })
+    api.post('/fields', next).then((eff) => { setFields((prev) => ({ ...prev, ...eff })); toast(tx('Task form saved — synced')) })
       .catch((e) => { alert(e.message); load() })
   }
   const toggleFieldType = (k, t) => patchField(k, {
@@ -1726,7 +1777,7 @@ function SettingsTab() {
       crew: { ...fields.crew, [hat]: cur.includes(type) ? cur.filter((x) => x !== type) : [...cur, type] },
     }
     setFields(next)
-    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Crew rules saved — synced')) })
+    api.post('/fields', next).then((eff) => { setFields((prev) => ({ ...prev, ...eff })); toast(tx('Crew rules saved — synced')) })
       .catch((e) => { alert(e.message); load() })
   }
 
@@ -1737,13 +1788,35 @@ function SettingsTab() {
     const cur = fields.pages || {}
     const next = { ...fields, pages: { ...cur, [key]: !cur[key] } }
     setFields(next)
-    api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Pages saved — synced')) })
+    api.post('/fields', next).then((eff) => { setFields((prev) => ({ ...prev, ...eff })); toast(tx('Pages saved — synced')) })
+      .catch((e) => { alert(e.message); load() })
+  }
+
+  // And who each page is for. Clearing every chip is not "nobody" — a page
+  // aimed at nobody would be a page with a door that opens for no one, which
+  // is what the On/Off switch above is for. It means "everybody", the state
+  // every page was in before this column existed.
+  const toggleAudience = (key, who) => {
+    const cur = (fields.page_audience || {})[key] || []
+    const nextWho = cur.includes(who) ? cur.filter((x) => x !== who) : [...cur, who]
+    const next = { ...fields, page_audience: { ...(fields.page_audience || {}), [key]: nextWho } }
+    setFields(next)
+    api.post('/fields', next).then((eff) => { setFields((prev) => ({ ...prev, ...eff })); toast(tx('Pages saved — synced')) })
       .catch((e) => { alert(e.message); load() })
   }
 
   if (!fields) return <div className="app-loading"><span className="spinner" /></div>
   return (
     <>
+      {/* ---- the one notice the board may put above everybody's work ---- */}
+      <div className="section-head">
+        <h2>{tx('Planned update')}</h2>
+        <span className="count">· {tx('a heads-up the whole team sees until they dismiss it')}</span>
+      </div>
+      <div className="card">
+        <NoticeEditor notice={fields.notice} onSaved={(eff) => setFields((prev) => ({ ...prev, ...eff }))} />
+      </div>
+
       {/* ---- the pages this board shows ---- */}
       <div className="section-head">
         <h2>{tx('Pages')}</h2>
@@ -1752,11 +1825,12 @@ function SettingsTab() {
       <div className="card table-wrap">
         <table className="tbl pages-tbl">
           <thead>
-            <tr><th>{tx('Page')}</th><th>{tx('Shown to the team')}</th></tr>
+            <tr><th>{tx('Page')}</th><th>{tx('Shown to the team')}</th><th>{tx('Whose page it is')}</th></tr>
           </thead>
           <tbody>
             {PAGE_DEFS.map((pg) => {
               const on = (fields.pages || {})[pg.key] !== false
+              const aimed = (fields.page_audience || {})[pg.key] || []
               return (
                 <tr key={pg.key}>
                   <td>
@@ -1771,6 +1845,24 @@ function SettingsTab() {
                       <span>{on ? tx('On') : tx('Off')}</span>
                     </button>
                   </td>
+                  <td>
+                    {/* A page switched off has no audience to argue about. */}
+                    <div className={'aud-chips' + (on ? '' : ' is-moot')}>
+                      {AUDIENCE_DEFS.map((a) => {
+                        const picked = aimed.includes(a.key)
+                        return (
+                          <label key={a.key} className={'checkbox-chip' + (picked ? ' on' : '')}>
+                            <input type="checkbox" checked={picked} disabled={!on}
+                              onChange={() => toggleAudience(pg.key, a.key)} />
+                            {tx(a.label)}
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <div className="stat-sub">
+                      {aimed.length === 0 ? tx('Everyone') : tx('Admins, and the people ticked')}
+                    </div>
+                  </td>
                 </tr>
               )
             })}
@@ -1778,6 +1870,8 @@ function SettingsTab() {
         </table>
         <div className="stat-sub" style={{ padding: '4px 14px 12px' }}>
           {tx('This is tidying, not permission: a page switched off leaves the sidebar and its own address for everybody, but the work behind it is still on the board and still counted.')}
+          {' '}
+          {tx('Aiming a page works the same way — it decides whose sidebar carries the door, not who the board will answer. Tick nobody and the page is everyone’s; admins always keep every page.')}
         </div>
       </div>
 
@@ -1921,7 +2015,7 @@ function SettingsTab() {
             onSave={(rows) => {
               const next = { ...fields, skip_tiers: rows }
               setFields(next)
-              api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Saved — synced')) })
+              api.post('/fields', next).then((eff) => { setFields((prev) => ({ ...prev, ...eff })); toast(tx('Saved — synced')) })
                 .catch((e) => { alert(e.message); load() })
             }}
           />
@@ -1938,7 +2032,7 @@ function SettingsTab() {
             onSave={(rows) => {
               const next = { ...fields, maker_grades: rows }
               setFields(next)
-              api.post('/fields', next).then((eff) => { setFields(eff); toast(tx('Saved — synced')) })
+              api.post('/fields', next).then((eff) => { setFields((prev) => ({ ...prev, ...eff })); toast(tx('Saved — synced')) })
                 .catch((e) => { alert(e.message); load() })
             }}
           />
@@ -2014,7 +2108,7 @@ function LadderEditor({ title, note, rows, cols, blank, onSave }) {
               </tr>
             ))}
             {draft.length === 0 && (
-              <tr><td colSpan={cols.length + 1} className="empty">{tx('Nothing set')}</td></tr>
+              <tr><td colSpan={cols.length + 1} className="empty">{tx('Not set')}</td></tr>
             )}
           </tbody>
         </table>
@@ -2328,7 +2422,7 @@ function ReportsTab({ channel, setChannel }) {
                   </tr>
                 ))}
                 {work.people.length === 0 && (
-                  <tr><td colSpan={7} className="empty">{tx('Nothing here')}</td></tr>
+                  <tr><td colSpan={7} className="empty">{tx('Nothing sent')}</td></tr>
                 )}
               </tbody>
             </table>
@@ -2580,7 +2674,7 @@ function ReportsTab({ channel, setChannel }) {
                             <span>{it.title}</span>
                             <span className="stat-sub">
                               {byKey[it.channel]?.label || it.channel} · {it.day || (it.done_at ? tashkentDay(it.done_at) : '')}
-                              {it.late && <span className="rp-late" style={{ display: 'inline', marginLeft: 6 }}>late</span>}
+                              {it.late && <Dot tone="late" label={tx('late')} />}
                             </span>
                           </div>
                         ))}

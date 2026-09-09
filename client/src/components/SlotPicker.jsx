@@ -99,7 +99,7 @@ export default function SlotPicker({ userId, excludeId, value, onPick, defaultMi
             {d.busy.length > 0 && (
               <div className="sp-busy">
                 {d.busy.map((b) => (
-                  <span key={b.id} className="sp-taken" title={b.title}>{b.from}–{b.to}</span>
+                  <span key={b.id ?? `${b.from}-${b.to}`} className="sp-taken" title={b.title || undefined}>{b.from}–{b.to}</span>
                 ))}
               </div>
             )}
@@ -122,7 +122,7 @@ export default function SlotPicker({ userId, excludeId, value, onPick, defaultMi
       {data && !anyFree && (
         <div className="sp-note">
           <AlertCircle size={13} />
-          {tx('Nothing that long is free this week — try a shorter shoot, or look at next week.')}
+          {tx('No free slot this week')}
         </div>
       )}
     </div>

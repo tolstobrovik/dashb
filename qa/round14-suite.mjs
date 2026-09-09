@@ -51,7 +51,7 @@ const duo = await req('/content', 'POST', { title: 'r14: two-person task', chann
 ok('a task stores several assignees', duo.status === 201 && (duo.data.assignees || []).length === 2, JSON.stringify(duo.data.assignees))
 ok('the legacy assignee mirrors the first', duo.data.assignee_id === mir.id)
 const tokJas = await login('jas', 'j1234')
-ok('the second assignee sees and works the task too', (await req(`/content/${duo.data.id}`, 'PATCH', { done: true, post_link: 'https://instagram.com/p/qa' }, tokJas)).status === 200)
+ok('the second assignee sees and works the task too', (await req(`/content/${duo.data.id}`, 'PATCH', { done: true, post_link: `https://instagram.com/p/qa-${duo.data.id}` }, tokJas)).status === 200)
 await req(`/content/${duo.data.id}`, 'PATCH', { done: false })
 ok('non-admin cannot multi-assign others', (await req('/content', 'POST', { title: 'r14: sneak', channels: ['instagram_main'], assignee_ids: [mir.id, jas.id] }, tokJas)).status === 403)
 
@@ -66,17 +66,10 @@ const cmTab = async (pg, name) => {
   // whoever does the work on it — it holds the crew, the handovers and the
   // crew's own tick, and which of those you are here for depends on who you
   // are. Either name reaches it.
-  // Round 91 hides a view nobody has been in, behind one "Add details"
-  // control — so reaching one is two presses when it is empty and one when it
-  // is not, exactly as it is for a person.
-  const more = pg.locator('.cm-page-more')
-  for (const pass of [0, 1]) {
-    for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
-      const tab = pg.locator('.cm-page-tab', { hasText: n })
-      if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
-    }
-    if (pass === 0 && await more.count()) { await more.first().click(); await pg.waitForTimeout(250) }
-    else return
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
   }
 }
 
@@ -109,24 +102,21 @@ const ppPick = async (root, name) => {
 
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
+// Round 82 folded the sidebar into hubs that start CLOSED, so a door inside
+// one is not in the DOM to be read. This asks which doors EXIST, so write the
+// "nothing folded" preference before the page loads rather than clicking the
+// chevrons — a click toggles, and two calls would undo each other.
+// (Sidebar.jsx: PREFS_KEY `satashkent_side2_<uid>`, PREFS_V 3; admin is id 1.)
+await page.addInitScript(([id, v]) => {
+  localStorage.setItem(`satashkent_side2_${id}`,
+    JSON.stringify({ order: {}, hidden: [], closed: [], pinned: [], v }))
+}, [1, 3])
 await page.goto(BASE + '/login')
 await page.fill('input[name="username"]', 'admin')
 await page.fill('input[name="password"]', 'admin123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 
-// Round 91 folds Channels, Numbers and People to start with, so what is
-// behind them is a press away rather than in the DOM. Open them all before
-// reading the sidebar as text.
-const unfold = async (pg) => {
-  for (let i = 0; i < 5; i++) {
-    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
-    if (!(await shut.count())) break
-    await shut.first().click(); await pg.waitForTimeout(180)
-  }
-}
-
-await unfold(page)
 ok('the sidebar says Post Production', (await page.locator('.sidebar').textContent()).includes('Post Production'))
 await page.goto(BASE + '/crew')
 await page.waitForSelector('.pp-tabs', { timeout: 10000 })

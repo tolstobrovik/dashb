@@ -42,32 +42,27 @@ const hubs = async (pg) => (await pg.locator('.nav-hub-head').allTextContents())
 const { ctx, page } = await signIn('admin', 'admin123')
 const H = await hubs(page)
 ok('the sidebar is hubs, not one wall of doors', H.length >= 3 && H.length <= 5, H.join(' | '))
-// Round 91 folds every hub but Work to start with, so the doors behind the
-// others are a press away rather than on screen. Open them to count.
-// Re-query each time: clicking one changes the DOM, so a list collected up
-// front goes stale after the first press.
-for (let i = 0; i < 5; i++) {
-  const shut = page.locator('.nav-hub:not(.open) .nav-hub-head')
-  if (!(await shut.count())) break
-  await shut.first().click(); await page.waitForTimeout(200)
-}
-ok('…and every door is still behind one of them', (await page.locator('.nav-item').count()) >= 8,
-  `${await page.locator('.nav-item').count()} doors`)
+// Folded hubs keep their doors behind a count, so a door is either drawn or
+// counted — never gone.
+const doors = (await page.locator('.nav-item').count()) + (await page.locator('.nav-hub-n').allTextContents()).reduce((n, t) => n + (Number(t) || 0), 0)
+ok('…and every door is still behind one of them', doors >= 8, `${doors} doors`)
 
-// ---- folding, and remembering it ----
+// ---- folded by default, and remembering what you open ----
+// Channels, Numbers and People start folded: Work is the day, the rest is a
+// door you open when you need it. Opening one is remembered; so is folding
+// it back. A pin lifts a page you need daily into a strip at the top.
 const numbers = page.locator('.nav-hub').filter({ hasText: /Numbers/ }).first()
-// It was opened just above, so it holds its doors and can be folded again.
-const wasIn = await numbers.locator('.nav-item').count()
-await numbers.locator('.nav-hub-head').click(); await page.waitForTimeout(250)
-ok('a hub you never use folds away', (await numbers.locator('.nav-item').count()) === 0, `held ${wasIn}`)
-ok('…while still saying what is behind it',
-  (await numbers.locator('.nav-hub-n').textContent()) === String(wasIn),
+ok('a hub you never use starts folded', (await numbers.locator('.nav-item').count()) === 0 && (await numbers.locator('.nav-hub-n').count()) === 1,
   await numbers.locator('.nav-hub-head').textContent())
+const behind = Number(await numbers.locator('.nav-hub-n').textContent())
+await numbers.locator('.nav-hub-head').click(); await page.waitForTimeout(250)
+ok('…and unfolds when asked, holding what the count promised', behind > 0 && (await numbers.locator('.nav-item').count()) === behind, `held ${behind}`)
 await page.reload(); await page.waitForTimeout(900)
 const numbers2 = page.locator('.nav-hub').filter({ hasText: /Numbers/ }).first()
-ok('…and is still folded when you come back', (await numbers2.locator('.nav-item').count()) === 0)
+ok('…and is still open when you come back', (await numbers2.locator('.nav-item').count()) === behind)
 await numbers2.locator('.nav-hub-head').click(); await page.waitForTimeout(250)
-ok('…and unfolds when asked', (await numbers2.locator('.nav-item').count()) === wasIn)
+ok('…and folds away again, still saying what is behind it',
+  (await numbers2.locator('.nav-item').count()) === 0 && (await numbers2.locator('.nav-hub-n').textContent()) === String(behind))
 
 // ---- a deep link lands you inside a hub ----
 // /sprints/backlog is not /sprints, and /campaigns/7 is not /projects. Both
@@ -80,6 +75,14 @@ const holding = page.locator('.nav-hub.open').filter({ has: page.locator('.nav-i
 ok('…and the hub holding it is open', (await holding.count()) === 1)
 await holding.first().locator('.nav-hub-head').click(); await page.waitForTimeout(250)
 ok('…and will not fold away under you', (await holding.first().locator('.nav-item.active').count()) === 1)
+
+// ---- pinning the page you are on ----
+await page.locator('.nav-hub.open .nav-row.here .nav-pin').first().click(); await page.waitForTimeout(250)
+ok('the page you are on can be pinned to the top', (await page.locator('.nav-pins .nav-item').count()) === 1)
+await page.reload(); await page.waitForTimeout(900)
+ok('…and the pin is still there when you come back', (await page.locator('.nav-pins .nav-item').count()) === 1)
+await page.locator('.nav-pins .nav-pin').first().click(); await page.waitForTimeout(250)
+ok('…and comes off again', (await page.locator('.nav-pins').count()) === 0)
 
 // ===================== the hand-off =====================
 const piece = (await req('/content', 'POST', {

@@ -140,16 +140,14 @@ ok('round two remembers round one', !!rev2 && rev2.round === 2 &&
   (rev2.history || []).some((h) => h.round === 1 && /сократи интро/.test(h.note) && h.resolved_at))
 ok('…and carries the current file', rev2.ready_link === 'https://drive.google.com/x42v2')
 
-// ---- the digest claims its day — a second cron stays silent ----
+// ---- the nightly tick sends no digest, first call or second ----
 await req(`/content/${task.id}`, 'PATCH', { status_id: sid(/editing/i), release_date: tomorrow })
 await reset()
 const c1 = await (await fetch(BASE + '/api/cron/daily')).json()
 const digests = async () => (await sentList()).filter((s) => /deadlines/i.test(s.text || '')).length
-const afterOne = await digests()
-ok('the first cron of the day sends the digest', c1.reminded >= 1 && afterOne >= 1)
-ok('…written in sections, bold and bulleted', (await sentList()).some((s) => /deadlines/i.test(s.text || '') && /<b>Tomorrow<\/b>/.test(s.text) && /• «x42 &lt;b&gt;&amp;clip» — the release/.test(s.text)))
+ok('the first cron of the day sends no digest', c1.reminded === undefined && (await digests()) === 0, JSON.stringify(c1))
 const c2 = await (await fetch(BASE + '/api/cron/daily')).json()
-ok('the second cron of the same day sends NOTHING', c2.reminded === 0 && (await digests()) === afterOne)
+ok('…and neither does the second', c2.reminded === undefined && (await digests()) === 0)
 
 // ================= the UI half, on the main 4090 stack =================
 const M = api(MAIN)

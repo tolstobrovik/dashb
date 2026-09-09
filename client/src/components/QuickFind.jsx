@@ -7,6 +7,7 @@ import { useChannels } from '../lib/channels.jsx'
 import { typeInfo, onColor } from '../lib/constants.js'
 import ContentModal from './ContentModal.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
+import { StageDot } from './Dot.jsx'
 
 // Ctrl/Cmd-K quick find: one box that reaches anything from anywhere —
 // pages by name, tasks by title. Enter takes the highlighted row; a task
@@ -128,7 +129,7 @@ export default function QuickFind({ onClose }) {
                       <span className={`chip ct-${t.type} qf-type`}>{typeInfo(t.type).label}</span>
                       <span className="qf-title">{t.title}</span>
                       <span className="spacer" />
-                      {st && <span className="chip qf-st" style={{ background: st.color, color: onColor(st.color) }}>{st.label}</span>}
+                      {st && <StageDot status={st} />}
                       {t.channels.slice(0, 2).map((c) => <span key={c} className="chip chip-muted qf-ch">{byKey[c]?.label || c}</span>)}
                       {i === sel && <CornerDownLeft size={13} className="qf-enter" />}
                     </button>

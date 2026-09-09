@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import Boom from './components/Boom.jsx'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './lib/auth.jsx'
 import { usePages } from './lib/pages.jsx'
@@ -68,6 +69,7 @@ function HomeRedirect() {
 export default function App() {
   const { user } = useAuth()
   return (
+    <Boom>
     <Suspense fallback={<Loading />}>
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
@@ -131,5 +133,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
+      </Boom>
   )
 }

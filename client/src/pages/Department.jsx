@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { StageLegend } from '../components/Dot.jsx'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Lock, Plus, Pencil, Trash2, Gauge, CalendarRange, AlertCircle, Pin, PinOff, GripVertical, Minus,
@@ -11,7 +12,7 @@ import { toast, loadFailed } from '../lib/toast.js'
 import { markDone, askForTheLink } from '../lib/finish.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, tashkentDay } from '../lib/constants.js'
+import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, isWritingChannel, WRITING_STAGES, tashkentDay } from '../lib/constants.js'
 import { useFullscreen } from '../lib/useFullscreen.js'
 import Modal from '../components/Modal.jsx'
 import Fold from '../components/Fold.jsx'
@@ -28,6 +29,7 @@ import ProgramsGantt, { PLATFORMS } from '../components/ProgramsGantt.jsx'
 import { rewardIfFinished } from '../lib/reward.js'
 import { useTaskSync } from '../lib/useTaskSync.js'
 import { getPicks, byPicks, bumpPick } from '../lib/picks.js'
+import { stageRankOf } from '../lib/gaps.js'
 import { tr as tx } from '../lib/i18n.jsx'
 
 // The Target team's lens: what platform's work to look at. Tasks and
@@ -162,7 +164,7 @@ export default function Department() {
   // board | release | recording — the last view is remembered per browser.
   // The board is the working view; the calendar is the planning one, and the
   // month is what the rest of the product now opens on. A choice is remembered.
-  const [view, setViewState] = useState(() => localStorage.getItem('satashkent_dept_view') || 'board')
+  const [rawView, setViewState] = useState(() => localStorage.getItem('satashkent_dept_view') || 'board')
   const setView = (v) => { setViewState(v); localStorage.setItem('satashkent_dept_view', v) }
   const [selectedDate, setSelectedDate] = useState(null)
   const [openItem, setOpenItem] = useState(null) // content item or 'new'
@@ -215,7 +217,67 @@ export default function Department() {
     return () => { clearInterval(id); window.removeEventListener('focus', refresh) }
   }, [key, dept, hasAccess, openItem, dragIdx])
 
-  const statusesById = useMemo(() => Object.fromEntries(statuses.map((s) => [s.id, s])), [statuses])
+  // ---- a written channel's three stages ----------------------------------
+  // Telegram work is typed, not filmed, so its board is Idea → Writing →
+  // Published and nothing else. The pipeline underneath is the same six rows
+  // every channel shares — this decides which of them this channel SHOWS and
+  // what it calls them.
+  //
+  // The two stages that have no meaning here (To shoot, and Ready, which is
+  // "cut and waiting to go out") are folded into Writing rather than hidden,
+  // because a column that is not drawn is a task that vanishes: a piece
+  // cross-posted with Instagram can be sitting in either of them, and a board
+  // that quietly loses work is worse than one with a column too many. From a
+  // three-state view they ARE Writing — being worked on, not yet out.
+  //
+  // Deleted stays. It is the graveyard, not a stage (the pipeline ships as
+  // "five working stages and a graveyard"), and hiding it would put binned
+  // Telegram work out of reach of the board that binned it.
+  const writes = isWritingChannel(dept)
+  // The chosen view is remembered per BROWSER rather than per channel, so
+  // somebody who left the Recording calendar open on YouTube would arrive here
+  // on a calendar this channel does not have. Fall back to Releases, which is
+  // the calendar a written channel actually plans on.
+  const view = writes && rawView === 'recording' ? 'release' : rawView
+  const stageView = useMemo(() => {
+    if (!writes) return { columns: statuses, absorb: {}, labels: {} }
+    const columns = []
+    const labels = {}
+    for (const st of WRITING_STAGES) {
+      const row = statuses.find((s) => st.is(s))
+      if (!row) continue
+      // A null label means "keep the admin's word for it" — only the making
+      // stage is renamed, and only it needs translating.
+      const word = st.label ? st.label() : row.label
+      columns.push({ ...row, label: word })
+      if (st.label) labels[row.id] = word
+    }
+    // No making stage to fold INTO means this board has been renamed out from
+    // under us; show the pipeline as it is rather than an empty board.
+    const writing = columns.find((c) => labels[c.id])
+    if (columns.length < 2 || !writing) return { columns: statuses, absorb: {}, labels: {} }
+    const dead = statuses.filter((s) => isDeletedLabel(s.label))
+    const shown = new Set([...columns, ...dead].map((c) => c.id))
+    const absorb = {}
+    for (const s of statuses) if (!shown.has(s.id)) absorb[s.id] = writing.id
+    return { columns: [...columns, ...dead], absorb, labels }
+  }, [statuses, writes])
+
+  // Everything on this page reads the stage through here, so the calendar
+  // pills, the legend, the filters and the board all say the same word.
+  const statusesById = useMemo(() => Object.fromEntries(
+    statuses.map((s) => [s.id, stageView.labels[s.id] ? { ...s, label: stageView.labels[s.id] } : s])),
+  [statuses, stageView])
+
+  // The stages anybody may move a card out of. An idea is a thought nobody
+  // has promised anything about, so it does not need the move_tasks ticket and
+  // does not wait on whoever's name is on it — the server agrees (content.js,
+  // `wasAnIdea`), and this is what lets the card be dragged rather than look
+  // broken until the drop comes back refused.
+  const ideaIds = useMemo(() => {
+    const rank = stageRankOf(statuses)
+    return statuses.filter((s) => rank(s.id) === 'idea').map((s) => s.id)
+  }, [statuses])
 
   // Which column is MINE. Crew hats are declared on the person; review is a
   // permission, because signing work off is an SMM's job rather than a craft.
@@ -260,12 +322,18 @@ export default function Department() {
   }, [key])
   const setFilter = (f) => { setFilterState(f); localStorage.setItem(`satashkent_cfilter_${key}`, JSON.stringify(f)) }
   const filterOn = filterIsOn(filter)
+  // The stage filter answers what the board SHOWS. On a written channel a
+  // piece sitting in To shoot is drawn in the Writing column, so picking
+  // Writing has to find it — otherwise the filter hides a card the board was
+  // showing a moment ago and the stage names stop meaning one thing.
+  const asShown = (t) => (stageView.absorb[t.status_id]
+    ? { ...t, status_id: stageView.absorb[t.status_id] } : t)
   const wsContent = useMemo(
-    () => (filterOn ? lensContent.filter((t) => matchesFilter(t, filter)) : lensContent),
-    [lensContent, filter, filterOn])
+    () => (filterOn ? lensContent.filter((t) => matchesFilter(asShown(t), filter)) : lensContent),
+    [lensContent, filter, filterOn, stageView]) // eslint-disable-line react-hooks/exhaustive-deps
   const wsLive = useMemo(
-    () => (filterOn ? liveContent.filter((t) => matchesFilter(t, filter)) : liveContent),
-    [liveContent, filter, filterOn])
+    () => (filterOn ? liveContent.filter((t) => matchesFilter(asShown(t), filter)) : liveContent),
+    [liveContent, filter, filterOn, stageView]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The calendar's waiting room: open work that has no date on the current
   // calendar yet. Posts aren't filmed, so they never wait for a shoot day.
@@ -476,10 +544,13 @@ export default function Department() {
       </div>
     )
 
+  // Nothing is filmed for a written channel, so the Recording calendar is a
+  // door onto an empty room — and the tray beside it would offer to book a
+  // shoot day for a post that will never have one.
   const VIEWS = [
     { key: 'board', label: tx('Board'), icon: KanbanSquare },
     { key: 'release', label: tx('Releases'), icon: Send },
-    { key: 'recording', label: 'Recording', icon: Clapperboard },
+    ...(writes ? [] : [{ key: 'recording', label: 'Recording', icon: Clapperboard }]),
   ]
 
   const dateOf = (t) => t.release_date || t.recording_date || null
@@ -525,11 +596,15 @@ export default function Department() {
           extra={<span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>}>
           <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="release" />
         </Fold>
-        <Fold id={`dept-${key}-shooting`} title={tx("Shooting")}
-          icon={<Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />}
-          extra={<span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>}>
-          <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="recording" />
-        </Fold>
+        {/* Same reason the Recording calendar is gone: nothing here is filmed,
+            so this fold could only ever open on "nothing this week". */}
+        {!writes && (
+          <Fold id={`dept-${key}-shooting`} title={tx("Shooting")}
+            icon={<Clapperboard size={17} style={{ color: 'var(--brand-500)' }} />}
+            extra={<span className="stat-sub" style={{ fontWeight: 500 }}>{tx("the next 7 days")}</span>}>
+            <DeptTimetable content={liveContent} onOpen={setOpenItem} mode="recording" />
+          </Fold>
+        )}
       </>
     )
     if (k === 'upcoming') return (
@@ -578,36 +653,36 @@ export default function Department() {
 
       <ContentFilters
         filter={filter} onChange={setFilter}
-        items={lensContent} shown={wsContent.length}
-        statuses={statuses} teamById={teamById}
+        items={lensContent.map(asShown)} shown={wsContent.length}
+        statuses={writes ? stageView.columns : statuses} teamById={teamById}
       />
 
-      {/* A day opens OVER the month rather than replacing it. Reading one day
-          is a glance — what is on today, in order — and losing the month you
-          were looking at to take that glance means finding your way back to it
-          afterwards. */}
       {selectedDate && (
-        <Modal title="" onClose={() => setSelectedDate(null)} wide>
-          <DayAgenda
-            date={selectedDate}
-            items={wsLive}
-            statusesById={statusesById}
-            canEdit={manageContent}
-            onOpen={(it) => { setSelectedDate(null); setOpenItem(it) }}
-            onAdd={(iso) => {
-              setSelectedDate(null)
-              setNewDefaults({ channels: [key], [view === 'recording' ? 'recording_date' : 'release_date']: iso })
-              setOpenItem('new')
-            }}
-            onBack={() => setSelectedDate(null)}
-          />
-        </Modal>
+        <DayAgenda
+          date={selectedDate}
+          items={wsLive}
+          statusesById={statusesById}
+          canEdit={manageContent}
+          onOpen={setOpenItem}
+          onAdd={(iso) => {
+            setNewDefaults({ channels: [key], [view === 'recording' ? 'recording_date' : 'release_date']: iso })
+            setOpenItem('new')
+          }}
+          onBack={() => setSelectedDate(null)}
+        />
       )}
       {view === 'board' ? (
-        <ContentBoard items={wsContent} statuses={statuses} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} myStages={myStages}
+        <ContentBoard items={wsContent} statuses={stageView.columns} absorb={stageView.absorb} ideaIds={ideaIds} dept={key} canMove={moveTasks} onMove={moveStatus} onOpen={setOpenItem} myStages={myStages}
           onMenu={cardMenu} isBusy={isBusy}
           onQuickAdd={manageContent ? quickAdd : undefined} campaignsById={campaignsById} teamById={teamById} />
       ) : (
+        <>
+        {/* The legend decodes the colours on the calendar, so it lists the
+            stages this channel actually runs on — a written channel would
+            otherwise advertise two columns its board does not have. */}
+        <StageLegend statusesById={writes
+          ? Object.fromEntries(stageView.columns.map((c) => [c.id, c]))
+          : statusesById} />
         <ContentCalendar
           items={wsContent}
           trayItems={unscheduled}
@@ -622,6 +697,7 @@ export default function Department() {
             setOpenItem('new')
           } : undefined}
         />
+        </>
       )}
 
     </div>

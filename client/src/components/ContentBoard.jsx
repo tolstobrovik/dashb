@@ -14,7 +14,23 @@ import Zoom from './Zoom.jsx'
 // to before that page was removed: open it, tick it off, copy it, bin it.
 // With onQuickAdd, every working column grows a foot input: type a title,
 // Enter — the task lands in that stage without a modal round-trip.
-export default function ContentBoard({ items, statuses, dept, canMove, onMove, onOpen, onMenu, onQuickAdd, campaignsById = {}, teamById = {}, myStages = [], isBusy }) {
+export default function ContentBoard({ items, statuses, absorb = {}, ideaIds = [], dept, canMove, onMove, onOpen, onMenu, onQuickAdd, campaignsById = {}, teamById = {}, myStages = [], isBusy }) {
+  // A board may show fewer columns than the pipeline has stages — a written
+  // channel runs on three. `absorb` says which stage each hidden one is shown
+  // under, so a task in a stage this board does not draw sits in the column
+  // that covers it instead of falling off the board. Dropping a card still
+  // writes the column's OWN stage, so a move is never a surprise.
+  const columnOf = (statusId) => absorb[statusId] ?? statusId
+  // An idea is a thought nobody has promised anything about, so anybody who
+  // can see it may shove it along — no move_tasks, no waiting on the person
+  // whose name happens to be on it. The server says the same (content.js,
+  // `wasAnIdea`); this is only the board agreeing, so the card is draggable
+  // rather than looking broken until the drop is refused.
+  const openStages = new Set(ideaIds)
+  const canDrag = (item) => canMove || openStages.has(item.status_id)
+  // …which means a column has to accept a drop whenever ANY card could be
+  // dragged into it, not only when this person may move everything.
+  const dropOpen = canMove || openStages.size > 0
   const { byKey } = useChannels()
   // Ref = source of truth for the drop (a fast drop must never read a stale
   // state value); state only drives the dimmed styling.
@@ -32,7 +48,9 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
 
   const drop = (statusId) => {
     const item = items.find((i) => i.id === dragRef.current)
-    if (item && item.status_id !== statusId) onMove(item, statusId)
+    // Compare the COLUMN, not the stage: a card absorbed into a column has not
+    // moved when it is dropped back on the column it was already sitting in.
+    if (item && canDrag(item) && columnOf(item.status_id) !== statusId) onMove(item, statusId)
     dragRef.current = null
     setDragId(null)
     setOverCol(null)
@@ -41,15 +59,15 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
   return (
     <div className="board">
       {statuses.map((s) => {
-        const list = items.filter((i) => i.status_id === s.id)
+        const list = items.filter((i) => columnOf(i.status_id) === s.id)
         return (
           <div
             key={s.id}
             className={`board-col${overCol === s.id ? ' over' : ''}${isDeletedLabel(s.label) ? ' dead-col' : ''}${myStages.includes(s.id) ? ' my-col' : ''}`}
             style={{ borderTop: `3px solid ${s.color}`, background: `color-mix(in srgb, ${s.color} 6%, transparent)` }}
-            onDragOver={(e) => { if (canMove) { e.preventDefault(); setOverCol(s.id) } }}
+            onDragOver={(e) => { if (dropOpen) { e.preventDefault(); setOverCol(s.id) } }}
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol((c) => (c === s.id ? null : c)) }}
-            onDrop={() => canMove && drop(s.id)}
+            onDrop={() => dropOpen && drop(s.id)}
           >
             <div className="board-col-head">
               <span className="status-dot" style={{ background: s.color }} />
@@ -67,7 +85,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                     key={item.id}
                     className={`tcard${dragId === item.id ? ' dim' : ''}${isBusy?.(item.id) ? ' tcard-busy' : ''}`}
                     onContextMenu={onMenu ? (e) => onMenu(e, item) : undefined}
-                    draggable={canMove}
+                    draggable={canDrag(item)}
                     onDragStart={(e) => {
                       dragRef.current = item.id
                       setDragId(item.id)
@@ -130,7 +148,7 @@ export default function ContentBoard({ items, statuses, dept, canMove, onMove, o
                   </div>
                 )
               })}
-              {list.length === 0 && <div className="board-empty">{canMove ? 'Drop here' : '—'}</div>}
+              {list.length === 0 && <div className="board-empty">{dropOpen ? 'Drop here' : '—'}</div>}
               {/* You plan work, you don't create it published or deleted. */}
               {onQuickAdd && !isDeletedLabel(s.label) && !s.is_final && (
                 addCol === s.id ? (

@@ -100,6 +100,33 @@ async function userExists(id) {
   await resyncStorage().catch(() => {})
   return !!(await get('SELECT 1 AS x FROM users WHERE id = ?', id))
 }
+// ---- one post, one task ----------------------------------------------------
+// What makes two published addresses "the same post". Case, the www. prefix,
+// a trailing slash and a #fragment are all the same page; the query string is
+// NOT stripped, because on some hosts it IS the address (youtube.com/watch?v=).
+// A string that is not parseable as a URL is compared as typed.
+export const postKey = (url) => {
+  const raw = String(url || '').trim()
+  if (!raw) return ''
+  try {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+    const host = u.hostname.toLowerCase().replace(/^www\./, '')
+    const path = u.pathname.replace(/\/+$/, '') || ''
+    return `${host}${path}${u.search}`.toLowerCase()
+  } catch {
+    return raw.toLowerCase().replace(/\/+$/, '')
+  }
+}
+// The other task already carrying this post, if any. Every recorded address
+// is read and compared in JS rather than in SQL, because the comparison is
+// the normalised one above and the set is small (one row per published piece).
+const postLinkTwin = async (url, exceptId) => {
+  const key = postKey(url)
+  if (!key) return null
+  const rows = await all('SELECT id, title, post_link FROM content WHERE post_link IS NOT NULL AND post_link != ?', '')
+  return rows.find((r) => r.id !== Number(exceptId) && postKey(r.post_link) === key) || null
+}
+
 const isFinal = async (statusId) => !!(await get('SELECT 1 AS x FROM statuses WHERE id = ? AND is_final = 1', statusId))
 // The Deleted stage: killed content that stays on the record. It counts for
 // the planner/operator (their work happened) but never for the editor.
@@ -234,8 +261,8 @@ const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, ass
   face_id, skip_rate, skip_rate_at,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, post_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
-  shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note, shoot_alt,
-  edit_ack, edit_ack_at, edit_ack_by, edit_ack_note, edit_alt,
+  shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note,
+  edit_ack, edit_ack_at, edit_ack_by, edit_ack_note,
   checklist, todo_sort, pinned, ${withThumbs ? 'photo_thumb,' : ''}
   CASE WHEN photo_thumb IS NULL THEN 0 ELSE 1 END AS has_thumb,
   (SELECT COUNT(*) FROM comments WHERE comments.content_id = content.id) AS comment_count,
@@ -347,13 +374,11 @@ async function notifyAssigned(req, contentId, title, roleById, extra = '') {
 const BOOKINGS = {
   shoot: {
     holder: 'operator_id', ack: 'shoot_ack', at: 'shoot_ack_at', by: 'shoot_ack_by', note: 'shoot_ack_note',
-    alt: 'shoot_alt',
     day: 'recording_date', from: 'recording_time', to: 'recording_end',
     what: 'the shoot', role: 'operator',
   },
   edit: {
     holder: 'editor_id', ack: 'edit_ack', at: 'edit_ack_at', by: 'edit_ack_by', note: 'edit_ack_note',
-    alt: 'edit_alt',
     day: 'edit_ready_date', from: null, to: null,
     what: 'the edit deadline', role: 'editor',
   },
@@ -873,6 +898,28 @@ const isIdeaStage = (statusId, resolved) => {
   if (Number.isInteger(shootAt) && shootAt >= 0) return i < shootAt
   return i === 0 || IDEA_LABEL.test(String(ordered[i].label || ''))
 }
+// ---- the stretch where the schedule stops being editable ------------------
+// From the moment a shoot is booked until the work is up for review, the days
+// on a task are other people's plans: an operator has held a morning, an
+// editor has been told when the cut is due, and a release is being counted on.
+// So the deadlines freeze there for everyone but an admin — not "ask and it
+// probably moves", but "this does not move, and an admin answers for it if it
+// has to".
+//
+// Read off the gates rather than off labels, so it stays right when an admin
+// renames a stage: it is the band from the shoot gate up to (not including)
+// review — To shoot and Editing on the pipeline as it ships. A board with no
+// shoot gate has no such band and nothing freezes.
+const datesFrozenAt = (statusId, resolved) => {
+  const ordered = resolved?.ordered || []
+  const i = ordered.findIndex((s) => s.id === statusId)
+  if (i < 0) return false
+  const from = resolved?.gates?.shoot?.index
+  if (!Number.isInteger(from)) return false
+  const until = resolved?.gates?.review?.index
+  return i >= from && (Number.isInteger(until) ? i < until : true)
+}
+
 // What an idea is still held to: the description, if the admin asked for one.
 // A thought somebody cannot read back is not a thought that was written down.
 const ideaRules = (rules) => ({ description: rules.description })
@@ -1815,9 +1862,14 @@ router.patch('/:id', wrap(async (req, res) => {
   // work being made. Nothing in the brief is demanded of a thought — the
   // demands land on the move that leaves the idea stage. Read once here so
   // every rule below gives the same answer.
+  const pipeline = resolveGates(await all('SELECT id, label, sort, is_final FROM statuses'))
   const stillAnIdea = isIdeaStage(
-    req.body?.status_id !== undefined ? req.body.status_id : row.status_id,
-    resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')))
+    req.body?.status_id !== undefined ? req.body.status_id : row.status_id, pipeline)
+  // Where it stands RIGHT NOW, which is a different question and the one the
+  // move rules ask: an idea may be shoved along by anybody, and the schedule
+  // is frozen from the shoot booking until review.
+  const wasAnIdea = isIdeaStage(row.status_id, pipeline)
+  const datesFrozen = datesFrozenAt(row.status_id, pipeline)
   const isAssignee = assigneesOf(row).includes(req.user.id)
   // The task's crew move it through the pipeline themselves — filming,
   // editing and designing ARE stage changes — even with no granular rights.
@@ -1983,7 +2035,10 @@ router.patch('/:id', wrap(async (req, res) => {
     if (body.status_id !== null && !(await get('SELECT 1 AS x FROM statuses WHERE id = ?', body.status_id)))
       return res.status(400).json({ error: 'No such stage' })
     const intoFinal = await isFinal(body.status_id)
-    if (!canOverride && !(intoFinal && canPublish(req.user, row)))
+    // Leaving IDEA needs no ticket. An idea is a thought nobody has promised
+    // anything about, and a column you need a permission to empty is a column
+    // that fills up. Everything past it still needs move_tasks or a tick.
+    if (!canOverride && !wasAnIdea && !(intoFinal && canPublish(req.user, row)))
       return res.status(403).json({ error: 'You can see the stage but can’t move it — use your Shot / Edited tick, or ask an admin' })
     patch.status_id = body.status_id
   }
@@ -2016,14 +2071,31 @@ router.patch('/:id', wrap(async (req, res) => {
   }
 
   // Where the piece went live. Not a crew delivery — nobody holds a "posted"
-  // hat — so it belongs to whoever may edit the task or publish on it, which
-  // is the same set of people who can make the move it gates.
+  // hat — and not a promise either: it is the address of a thing that already
+  // exists. So it is not gated on a right at all. Anybody who can open the
+  // task may write down where it went, because the person who knows is very
+  // often the editor who uploaded it, and they hold no granular right. The
+  // wall it feeds (a card cannot reach Published without one) is still there;
+  // this only makes sure everyone who meets that wall has a pen.
+  //
+  // But one post is one task. The same address on two cards means two
+  // "published" rows for one piece — double-counted views, a person paid twice
+  // for one reel, a report that lies — so a link already recorded on another
+  // task is refused, and the refusal names the task so the twin can be found.
+  // Compared after normalising (see postKey): instagram.com/p/x, its www.
+  // form, its trailing slash and its #fragment are one address.
   if (body.post_link !== undefined) {
-    if (!can(req.user, 'manage_content') && !can(req.user, 'review_publish'))
-      return res.status(403).json({ error: 'You can’t set the published link on this task' })
     const posted = String(body.post_link ?? '').trim().slice(0, 500)
     if (posted && !hasLink(posted))
-      return res.status(400).json({ error: 'That is not a link — it has to start with http:// or https://' })
+      return res.status(400).json({ error: 'That is not a link — it has to start with http:// or https://', needs: 'post_link' })
+    if (posted) {
+      const twin = await postLinkTwin(posted, row.id)
+      if (twin) return res.status(400).json({
+        error: `That link is already on «${twin.title}» — one post lives on one task. Open that one, or paste this piece’s own address.`,
+        needs: 'post_link',
+        twin: { id: twin.id, title: twin.title },
+      })
+    }
     patch.post_link = posted || null
   }
 
@@ -2175,12 +2247,28 @@ router.patch('/:id', wrap(async (req, res) => {
   // The two *_revised dates are exempt: they exist precisely to record a
   // re-promise when a handover lands late, and are already written beside the
   // original rather than over it.
+  //
+  // And once the work is IN PRODUCTION — from the shoot booking until it is up
+  // for review — the days do not move at all for anyone but an admin. Not the
+  // set ones (that was already true) and not the empty ones either: bolting a
+  // fresh deadline onto a piece somebody is already filming or cutting is the
+  // same disruption as moving one, and until now it was the one way round the
+  // rule. An admin still moves them, and the ask below still reaches an admin,
+  // so the work is never actually stuck.
   const LOCKED_DATES = ['recording_date', 'edit_ready_date', 'design_ready_date', 'release_date']
   for (const f of [...LOCKED_DATES, 'edit_due_revised', 'review_due_revised']) {
     if (body[f] !== undefined) {
       if (!can(req.user, 'manage_content') && !can(req.user, 'move_tasks'))
         return res.status(403).json({ error: 'You don’t have permission to move dates' })
       const next = body[f] || null
+      if (LOCKED_DATES.includes(f) && datesFrozen && String(next ?? '') !== String(row[f] ?? '') && !adminHere(req.user, row))
+        return res.status(403).json({
+          error: 'This is being made — the days on it are settled until it is up for review. Ask an admin, and say what happened.',
+          // Only a day that EXISTS can be asked about: the request flow moves
+          // a promise, it does not make one. An empty deadline here is simply
+          // refused, and the form says why rather than offering a dead end.
+          ...(row[f] ? { ask_to_move: { field: f, from: row[f], to: next } } : {}),
+        })
       if (LOCKED_DATES.includes(f) && row[f] && String(next ?? '') !== String(row[f]) && !adminHere(req.user, row))
         return res.status(403).json({
           error: `That day is already promised — ask an admin to move it, and say what happened.`,
@@ -2405,7 +2493,7 @@ router.patch('/:id', wrap(async (req, res) => {
   // admins pass everything. Rules only ever narrow the existing tickets
   // (crew milestones, a member's move_tasks); they never grant new ones.
   if (patch.status_id !== undefined && patch.status_id !== row.status_id && !adminHere(req.user, row) &&
-      !(await isFinal(row.status_id)) && !(await isFinal(nextStatus))) {
+      !wasAnIdea && !(await isFinal(row.status_id)) && !(await isFinal(nextStatus))) {
     const kinds = [
       row.operator_id === req.user.id && 'operator',
       row.editor_id === req.user.id && 'editor',
@@ -2428,8 +2516,12 @@ router.patch('/:id', wrap(async (req, res) => {
   // tick already proved the person holds the hat they are closing. Without
   // this an editor could not mark a cut finished while the card still sat in
   // the shooter's phase — which is exactly when they finish it.
-  if (patch.status_id !== undefined && patch.status_id !== row.status_id && !adminHere(req.user, row) && !body.milestone) {
-    const held = holderOf(row, resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')))
+  // …but nobody HOLDS an idea. The shooter named on a thought has not been
+  // handed anything yet, so they are not somebody the rest of the team has to
+  // go through to move it along.
+  if (patch.status_id !== undefined && patch.status_id !== row.status_id && !adminHere(req.user, row) &&
+      !wasAnIdea && !body.milestone) {
+    const held = holderOf(row, pipeline)
     // Whoever the task itself was handed to holds it as well. A stage owner is
     // the crew hat working it right now; an ASSIGNEE is the person the whole
     // task belongs to, and has been able to move their own work since long
@@ -2855,56 +2947,70 @@ router.post('/:id/confirm', wrap(async (req, res) => {
   const ok = req.body?.ok !== false
   const note = String(req.body?.note ?? '').trim().slice(0, 400)
   if (!ok && !note) return res.status(400).json({ error: 'Say what is in the way — a no with no reason cannot be planned around' })
-
-  // A "no" in three steps, because a bare no leaves the planner exactly where
-  // they were: a day nobody can do, and nothing to do about it.
-  //
-  //   1. the reason      already required above
-  //   2. a day you CAN   optional, and the useful answer most of the time —
-  //                      the planner re-books instead of guessing again
-  //   3. or hand it back  when it is not a date problem at all. The seat is
-  //                      cleared and the piece goes back to the pool for
-  //                      somebody else, rather than sitting on a person who
-  //                      has already said they cannot do it.
-  const alt = String(req.body?.alt ?? '').trim().slice(0, 10)
-  if (alt && !/^\d{4}-\d{2}-\d{2}$/.test(alt)) return res.status(400).json({ error: 'A day is YYYY-MM-DD' })
-  const handBack = !ok && req.body?.release === true
-  if (handBack && alt) return res.status(400).json({ error: 'Either offer another day or hand it back — not both' })
+  // A "no" is not the end of a sentence any more. It says what happens next:
+  // either another time this person CAN do — which becomes a request the
+  // planner answers with one press, like any other moved day — or that they
+  // cannot take this one at all, in which case the seat is emptied on the
+  // spot and the task is back in the pool for somebody else, rather than
+  // sitting under a name that has already said no.
+  const suggest = !ok && req.body?.suggest && typeof req.body.suggest === 'object' ? req.body.suggest : null
+  const release = !ok && req.body?.release === true
+  const suggestDay = suggest ? String(suggest.day || '').slice(0, 10) : null
+  if (suggest && !/^\d{4}-\d{2}-\d{2}$/.test(suggestDay)) return res.status(400).json({ error: 'Suggest a day, or hand the task back' })
+  const suggestFrom = suggest && b.from && /^\d{2}:\d{2}$/.test(String(suggest.from || '')) ? String(suggest.from) : null
+  const suggestTo = suggest && b.to && /^\d{2}:\d{2}$/.test(String(suggest.to || '')) ? String(suggest.to) : null
+  if (suggest && suggestDay === row[b.day] && !suggestFrom) return res.status(400).json({ error: 'That is the day it already has — suggest another, or hand it back' })
 
   const now = new Date().toISOString()
-  if (handBack) {
-    // The seat empties and every trace of the question goes with it: the next
-    // person to hold it is being asked fresh, not inheriting somebody else's
-    // refusal.
+  if (release) {
+    // The seat is emptied; the reason stays on the record so the next
+    // planner reading the task knows why it came back.
     await run(
-      `UPDATE content SET ${b.holder} = NULL, ${b.ack} = '', ${b.at} = NULL, ${b.by} = NULL, ${b.note} = NULL, ${b.alt} = NULL WHERE id = ?`,
-      row.id)
+      `UPDATE content SET ${b.holder} = NULL, ${b.ack} = '', ${b.at} = NULL, ${b.by} = NULL, ${b.note} = ? WHERE id = ?`,
+      note, row.id)
+    await run(...actRow(req.user, row.id, row.title, 'updated', b.holder, req.user.name, null, now))
   } else {
     await run(
-      `UPDATE content SET ${b.ack} = ?, ${b.at} = ?, ${b.by} = ?, ${b.note} = ?, ${b.alt} = ? WHERE id = ?`,
-      ok ? 'yes' : 'no', now, req.user.id, ok ? null : note, ok ? null : (alt || null), row.id)
+      `UPDATE content SET ${b.ack} = ?, ${b.at} = ?, ${b.by} = ?, ${b.note} = ? WHERE id = ?`,
+      ok ? 'yes' : 'no', now, req.user.id, ok ? null : note, row.id)
+    await run(...actRow(req.user, row.id, row.title, 'confirmed', which, row[b.ack] || 'waiting', ok ? 'yes' : 'no', now))
   }
-  await run(...actRow(req.user, row.id, row.title, 'confirmed', which, row[b.ack] || 'waiting', ok ? 'yes' : 'no', now))
+  let askedId = null
+  if (suggest) {
+    // One open ask per deadline: a second is the same conversation.
+    const open = await get("SELECT id FROM date_requests WHERE content_id = ? AND field = ? AND state = 'open'", row.id, b.day)
+    if (!open) {
+      const hours = suggestFrom ? ` (${suggestFrom}${suggestTo ? `–${suggestTo}` : ''})` : ''
+      const info = await run(`
+        INSERT INTO date_requests (content_id, field, from_date, to_date, reason, state, asked_by, asked_name, created_at)
+        VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?)
+      `, row.id, b.day, row[b.day], suggestDay, `${note}${hours}`, req.user.id, req.user.name || '', now)
+      askedId = info.lastInsertRowid
+      await run(...actRow(req.user, row.id, row.title, 'updated', 'date_request', row[b.day], suggestDay, now))
+    }
+  }
 
-  // Whoever booked it hears back. A booking answered into silence is a
-  // booking the planner has to chase, which is the thing this replaces.
-  const tell = [...new Set([row.created_by, ...assigneesOf(row)])].filter((id) => id && id !== req.user.id)
+  // Whoever booked it hears back — and on a hand-back or a suggested day,
+  // every admin too, because any of them can fill the seat or move the day.
+  const admins = (release || suggest) ? (await all("SELECT id FROM users WHERE role = 'admin'")).map((u) => u.id) : []
+  const tell = [...new Set([row.created_by, ...assigneesOf(row), ...admins])].filter((id) => id && id !== req.user.id)
   if (tell.length) {
     const line = ok
       ? `${req.user.name} confirmed ${b.what} — ${slotWords(row, which)}`
-      : handBack
-        ? `${req.user.name} handed back ${b.what} on «${row.title}» — “${note}”. It needs a ${b.role}.`
-        : alt
-          ? `${req.user.name} can't make ${b.what} (${slotWords(row, which)}) — “${note}”. They can do ${alt}.`
+      : release
+        ? `${req.user.name} handed back ${b.what} (${slotWords(row, which)}) — it needs a new ${b.role} — “${note}”`
+        : suggest
+          ? `${req.user.name} can't make ${b.what} (${slotWords(row, which)}) and asks for ${tgDate(suggestDay)}${suggestFrom ? `, ${suggestFrom}${suggestTo ? `-${suggestTo}` : ''}` : ''} — “${note}”`
           : `${req.user.name} can't make ${b.what} (${slotWords(row, which)}) — “${note}”`
+    const kind = ok ? 'confirmed' : suggest ? 'date_request' : 'declined'
     await batch(tell.map((id) => [
       'INSERT INTO notifications (user_id, kind, text, content_id, created_at) VALUES (?, ?, ?, ?, ?)',
-      id, ok ? 'confirmed' : 'declined', `${line} · «${row.title}»`, row.id, now,
+      id, kind, `${line} · «${row.title}»`, row.id, now,
     ]))
     await Promise.allSettled(tell.map((id) => tgMirror([id],
-      `${ok ? '✅' : '⚠️'} <b>«${tgEsc(row.title)}»</b>\n${tgEsc(line)}`, row.id, tgOriginFrom(req))))
+      `${ok ? '✅' : release ? '↩️' : suggest ? '📅' : '⚠️'} <b>«${tgEsc(row.title)}»</b>\n${tgEsc(line)}${suggest ? '\nSay yes or no on the task 👇' : ''}`, row.id, tgOriginFrom(req))))
   }
-  res.json(await listRow(row.id))
+  res.json({ ...(await listRow(row.id)), ...(askedId ? { date_request_id: askedId } : {}), ...(release ? { released: b.holder } : {}) })
 }))
 
 router.get('/:id/handover', wrap(async (req, res) => {

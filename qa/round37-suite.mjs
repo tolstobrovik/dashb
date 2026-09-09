@@ -102,8 +102,7 @@ await req(`/content/${task.id}`, 'PATCH', { release_date: tomorrow })
 await fetch(MOCK + '/__reset', { method: 'POST' })
 const cron = await (await fetch(BASE + '/api/cron/daily')).json()
 sent = await sentList()
-ok('the nightly cron pushes deadline reminders', cron.reminded === 1 && sent.some((s) => String(s.chat_id) === '777' && /deadlines[\s\S]*Tomorrow[\s\S]*x37: bridge video» — the release/.test(s.text || '')))
-
+ok('the nightly cron pushes no deadline digest any more', cron.reminded === undefined && !sent.some((s) => String(s.chat_id) === '777' && /deadlines/i.test(s.text || '')))
 // ---- admin-only webhook activation + test line ----
 ok('setWebhook is the admin’s button', (await req('/telegram/set-webhook', 'POST', {}, MT)).status === 403)
 await fetch(MOCK + '/__reset', { method: 'POST' })

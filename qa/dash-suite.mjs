@@ -120,21 +120,13 @@ await page.waitForSelector('.modal', { timeout: 8000 })
 await page.locator('.modal input.input').first().fill('Instagram Flagship')
 await page.locator('.modal').getByRole('button', { name: 'Save', exact: true }).click()
 await page.waitForTimeout(800)
-// Round 91 folds Channels, Numbers and People to start with, so what is
-// behind them is a press away rather than in the DOM. Open them all before
-// reading the sidebar as text.
-const unfold = async (pg) => {
-  for (let i = 0; i < 5; i++) {
-    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
-    if (!(await shut.count())) break
-    await shut.first().click(); await pg.waitForTimeout(180)
-  }
-}
-
-await unfold(page)
 ok('rename shows in the sidebar', (await page.locator('.sidebar').textContent()).includes('Instagram Flagship'))
 
-// Note delete via UI (project page)
+// Note delete via UI (project page). The note is this suite's own: the step
+// used to delete whatever the seed had left on the project, and on a scratch
+// database that lives across runs each pass took one until none were left —
+// then the wait below timed out and looked like a regression.
+await req(`/projects/${kaz.id}/notes`, 'POST', { text: 'note to delete in the UI' }, JT)
 await page.goto(BASE + '/projects/' + kaz.id)
 await page.waitForSelector('.pc-note', { timeout: 8000 })
 const notesBefore = await page.locator('.pc-note').count()

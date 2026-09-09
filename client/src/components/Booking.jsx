@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarCheck, CalendarX, Clock, Check, X, Hourglass } from 'lucide-react'
+import { CalendarCheck, CalendarX, Clock, Check, X, Hourglass, Undo2 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { toast } from '../lib/toast.js'
 import { tr as tx, locale } from '../lib/i18n.jsx'
@@ -10,12 +10,13 @@ import { todayISO } from '../lib/constants.js'
 // person holding the camera has an afternoon that is either free or not, and
 // the board found out which on the day. Same for an editor handed a deadline.
 //
-// So a booking is a question now, and this is where it is asked and answered.
-// The planner books; the person holding it says yes or no; a "no" carries a
-// reason, because a no with no reason cannot be planned around. Once it is
-// accepted the slot is theirs — moving it is the admin's to do, and doing it
-// asks the question again rather than leaving a tick over a time nobody
-// agreed to.
+// So a booking is a question, and this is where it is asked and answered.
+// The planner books; the person holding it says yes or no. A "no" is strict:
+// it carries a reason, and it says what happens next — another time this
+// person CAN do, which goes to the planner as a request to move the day, or
+// that they cannot take this one at all, in which case the seat is emptied on
+// the spot and the task is back in the pool. A "no" that leaves the task
+// sitting under a name that already said no is the thing this replaces.
 
 const HOURS = (from, to) => {
   if (!from || !to) return ''
@@ -35,12 +36,12 @@ const dayWords = (iso) => {
 
 export default function Booking({ item, which, label, holderName, mine, onAnswered }) {
   const [busy, setBusy] = useState(false)
-  const [saying, setSaying] = useState(null) // null | { note }
+  const [saying, setSaying] = useState(null) // null | { note, mode: 'later'|'release', day, from, to }
   if (!item) return null
 
   const K = which === 'shoot'
-    ? { ack: 'shoot_ack', at: 'shoot_ack_at', note: 'shoot_ack_note', alt: 'shoot_alt', day: 'recording_date', from: 'recording_time', to: 'recording_end' }
-    : { ack: 'edit_ack', at: 'edit_ack_at', note: 'edit_ack_note', alt: 'edit_alt', day: 'edit_ready_date', from: null, to: null }
+    ? { ack: 'shoot_ack', at: 'shoot_ack_at', note: 'shoot_ack_note', day: 'recording_date', from: 'recording_time', to: 'recording_end', role: tx('operator') }
+    : { ack: 'edit_ack', at: 'edit_ack_at', note: 'edit_ack_note', day: 'edit_ready_date', from: null, to: null, role: tx('editor') }
   const day = item[K.day]
   if (!day || !holderName) return null // half a plan owes nobody an answer
 
@@ -48,23 +49,26 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
   const from = K.from ? item[K.from] : null
   const to = K.to ? item[K.to] : null
   const span = HOURS(from, to)
-  // A day that has already gone by is not a question any more. It still says
-  // that nobody ever answered — that is worth knowing — but it stops offering
-  // "I can make it" about an afternoon that is over.
+  // A day that has already gone by is not a question any more.
   const gone = day < todayISO()
 
-  const answer = async (ok, note = '', extra = {}) => {
+  const answer = async (ok, extra = {}) => {
     setBusy(true)
     try {
-      const next = await api.post(`/content/${item.id}/confirm`, { which, ok, note, ...extra })
-      toast(ok
-        ? tx('Confirmed — it is in your day now')
-        : extra.release
-          ? tx('Handed back. It is waiting for somebody else now.')
-          : tx('Said. Whoever booked it has been told.'))
+      const next = await api.post(`/content/${item.id}/confirm`, { which, ok, ...extra })
+      toast(ok ? tx('Confirmed — it is in your day now')
+        : extra.release ? tx('Handed back — it needs a new {role} now', { role: K.role })
+          : tx('Sent — whoever booked it has been asked to move it'))
       setSaying(null)
       onAnswered?.(next)
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+
+  const canSend = saying && saying.note.trim() && (saying.mode === 'release' || (saying.mode === 'later' && saying.day))
+  const send = () => {
+    if (!canSend) return
+    if (saying.mode === 'release') return answer(false, { note: saying.note.trim(), release: true })
+    return answer(false, { note: saying.note.trim(), suggest: { day: saying.day, from: K.from ? saying.from || null : null, to: K.to ? saying.to || null : null } })
   }
 
   const Icon = state === 'yes' ? CalendarCheck : state === 'no' ? CalendarX : Hourglass
@@ -85,10 +89,6 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
           <span className="bk-said bk-no">
             <X size={13} strokeWidth={3} /> {tx('{name} can’t make it', { name: holderName })}
             {item[K.note] ? <i className="bk-why">“{item[K.note]}”</i> : null}
-            {/* The useful half of a no. A bare refusal leaves the planner
-                exactly where they were; a day the person CAN do is the thing
-                that gets re-booked. */}
-            {item[K.alt] ? <b className="bk-alt">{tx('Can do {day}', { day: dayWords(item[K.alt]) })}</b> : null}
           </span>
         )}
         {!state && !gone && <span className="bk-said bk-wait">{tx('Waiting on {name}', { name: holderName })}</span>}
@@ -102,7 +102,7 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
               </button>
             )}
             {state !== 'no' && (
-              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => setSaying({ note: '', alt: '', hand: false })}>
+              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => setSaying({ note: '', mode: 'later', day: '', from: from || '', to: to || '' })}>
                 <X size={13} /> {tx('I can’t')}
               </button>
             )}
@@ -110,37 +110,38 @@ export default function Booking({ item, which, label, holderName, mine, onAnswer
         )}
       </div>
 
-      {/* Saying no, in the three steps that make a no useful.
-          1. what is in the way — a refusal nobody can plan around is a
-             refusal that arrives and stops there
-          2. a day you CAN do — the answer most of the time, and the one that
-             gets it re-booked instead of guessed at again
-          3. or hand it back, when it is not a date problem at all: the seat
-             empties and the piece waits for somebody else, rather than
-             sitting on a person who has already said they cannot do it. */}
       {mine && !gone && saying && (
         <div className="bk-form">
           <textarea className="input" rows={2} autoFocus value={saying.note}
             onChange={(e) => setSaying({ ...saying, note: e.target.value })}
             placeholder={tx('What is in the way? Another shoot, an exam, out of town…')} />
-          <label className="bk-alt-ask">
-            <span className="stat-sub">{tx('A day you could do instead')}</span>
-            <input className="input" type="date" value={saying.alt} min={todayISO()}
-              disabled={saying.hand}
-              onChange={(e) => setSaying({ ...saying, alt: e.target.value })} />
-          </label>
-          <label className="bk-hand">
-            <input type="checkbox" checked={saying.hand}
-              onChange={(e) => setSaying({ ...saying, hand: e.target.checked, alt: '' })} />
-            {tx('I cannot do this one at all — give it to somebody else')}
-          </label>
+          <div className="bk-choice" role="radiogroup">
+            <label className={'bk-opt' + (saying.mode === 'later' ? ' on' : '')}>
+              <input type="radio" name={`bk-${which}-${item.id}`} checked={saying.mode === 'later'} onChange={() => setSaying({ ...saying, mode: 'later' })} />
+              <Clock size={13} /> {tx('I can do it another time')}
+            </label>
+            {saying.mode === 'later' && (
+              <div className="bk-when-pick">
+                <input type="date" className="input" min={todayISO()} value={saying.day} aria-label={tx('Suggest a day')}
+                  onChange={(e) => setSaying({ ...saying, day: e.target.value })} />
+                {K.from && (<>
+                  <span className="stat-sub">{tx('from')}</span>
+                  <input type="time" className="input" value={saying.from} onChange={(e) => setSaying({ ...saying, from: e.target.value })} />
+                  <span className="stat-sub">{tx('to')}</span>
+                  <input type="time" className="input" value={saying.to} onChange={(e) => setSaying({ ...saying, to: e.target.value })} />
+                </>)}
+              </div>
+            )}
+            <label className={'bk-opt' + (saying.mode === 'release' ? ' on' : '')}>
+              <input type="radio" name={`bk-${which}-${item.id}`} checked={saying.mode === 'release'} onChange={() => setSaying({ ...saying, mode: 'release' })} />
+              <Undo2 size={13} /> {tx('I can’t take this one — hand it back')}
+            </label>
+          </div>
           <div className="bk-actions">
-            <span className="stat-sub">{tx('Said now, it can still be moved.')}</span>
+            <span className="stat-sub">{saying.note.trim() ? '' : tx('Say what is in the way first')}</span>
             <button type="button" className="btn btn-sm" onClick={() => setSaying(null)}>{tx('Cancel')}</button>
-            <button type="button" className="btn btn-sm btn-danger" disabled={busy || !saying.note.trim()}
-              onClick={() => answer(false, saying.note.trim(),
-                saying.hand ? { release: true } : (saying.alt ? { alt: saying.alt } : {}))}>
-              {saying.hand ? tx('Give it back to the pool') : tx('Send it')}
+            <button type="button" className={'btn btn-sm ' + (saying.mode === 'release' ? 'btn-danger' : 'btn-primary')} disabled={busy || !canSend} onClick={send}>
+              {tx('Send it')}
             </button>
           </div>
         </div>

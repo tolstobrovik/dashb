@@ -158,19 +158,8 @@ export default function StatsMonth() {
       {err && <div className="form-error">{err}</div>}
       {!data ? <div className="app-loading"><span className="spinner" /></div> : (
         <>
-          {/* THE ANSWER. Everything under this is the working. */}
-          <div className="card st-say">
-            {data.conclusions.map((c, i) => {
-              const Icon = TONE_ICON[c.tone] || Lightbulb
-              return (
-                <div key={i} className={`st-line st-${c.tone}`}>
-                  <Icon size={15} /> <span>{c.text}</span>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* the four numbers the conclusions are drawn from */}
+          {/* The four numbers. They used to come with a paragraph of
+              conclusions drawn from them; the numbers say it shorter. */}
           <div className="st-tiles">
             <div className="card st-tile">
               <span className="st-k">{tx('Plan completion')}</span>

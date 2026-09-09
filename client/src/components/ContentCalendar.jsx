@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clapperboard, Send, Plus } from 'lucide-react'
 import { WEEKDAYS, MONTHS, localISO, todayISO, addDaysISO, typeInfo, onColor, statusIcon, isDeletedLabel } from '../lib/constants.js'
 import { tr as tx, locale } from '../lib/i18n.jsx'
+import { StageDot } from './Dot.jsx'
 
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1)
@@ -29,16 +30,6 @@ const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale(
 //  - Week: seven tall columns with rich cards (type, stage, time) — the
 //    day-to-day working view. Cards drag between days in both scales;
 //    click a card to open it, a day to plan it, + to add straight there.
-// How many pills a day draws before it stops and offers the day instead. A
-// month whose rows are all different heights is a month you cannot scan, and
-// the row height is set by whichever day happens to be busiest.
-// No cap. Round 36 settled this: the month calendar hides nothing, a crowded
-// day grows its row and every piece shows. Round 91 briefly put a "+N more"
-// back — which was never asked for (the brief wanted long tasks CONTAINED in
-// their day and a day you can open, both of which stand) and quietly undid a
-// decision somebody had already made for a reason. A day you can open is the
-// answer to a crowded day; hiding four of its six pieces is not.
-
 export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [], onRange }) {
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
   const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
@@ -264,8 +255,8 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
               return (
                 <div
                   key={it.id}
-                  className={`cal-tray-chip${dragId === it.id ? ' dim' : ''}`}
-                  style={st ? { borderLeftColor: st.color } : undefined}
+                  className={`cal-tray-chip${st ? ' st-tint' : ''}${dragId === it.id ? ' dim' : ''}`}
+                  style={st ? { borderLeftColor: st.color, '--st': st.color } : undefined}
                   onPointerDown={(e) => startDrag(e, it)}
                   onContextMenu={(e) => { if (dragId === it.id) e.preventDefault() }}
                   onClick={() => onOpenItem && onOpenItem(it)}
@@ -323,8 +314,8 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                     return (
                       <div
                         key={it.id}
-                        className={`wk-card${dragId === it.id ? ' dim' : ''}${dead ? ' cal-dead' : ''}`}
-                        style={st ? { borderLeftColor: st.color } : undefined}
+                        className={`wk-card${st ? ' st-tint' : ''}${dragId === it.id ? ' dim' : ''}${dead ? ' cal-dead' : ''}`}
+                        style={st ? { borderLeftColor: st.color, '--st': st.color } : undefined}
                         onPointerDown={(e) => startDrag(e, it)}
                         onContextMenu={(e) => { if (dragId === it.id) e.preventDefault() }}
                         onClick={(e) => { e.stopPropagation(); if (onOpenItem) onOpenItem(it); else onDayClick(iso) }}
@@ -333,7 +324,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                         <div className="wk-title">{it.title}</div>
                         <div className="wk-chips">
                           <span className={`chip ct-${it.type}`}><TIcon size={9} /> {typeInfo(it.type).label}</span>
-                          {st && <span className="chip" style={{ background: st.color, color: onColor(st.color) }}>{SIcon && <SIcon size={9} />} {st.label}</span>}
+                          {st && <StageDot status={st} icon={SIcon} />}
                           {it[timeField] && <span className="chip chip-muted"><Icon size={9} /> {it[timeField]}</span>}
                         </div>
                       </div>
@@ -365,11 +356,6 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   >
                     <div className="cal-daynum">{date.getDate()}</div>
                     <div className="cal-events">
-                      {/* A ceiling, so one busy day cannot make its whole week
-                          row twice the height of the others and push the month
-                          off the screen. What does not fit is not hidden — the
-                          day says how many more it holds, and opens on the
-                          whole list in time order. */}
                       {dayItems.map((it) => {
                         // Every task shows — a crowded day makes its week row
                         // taller instead of hiding work behind a "+N more".

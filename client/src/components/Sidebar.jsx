@@ -1,10 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
-import {
-  Shield, LogOut, Briefcase, LayoutDashboard, Sun, BarChart3, Clapperboard, UsersRound, ScrollText, Send, Palette,
-  SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, Timer, GraduationCap,
-  ChevronRight, Pin,
-} from 'lucide-react'
+import { Shield, LogOut, Briefcase, LayoutDashboard, Sun, BarChart3, Clapperboard, UsersRound, ScrollText, Send, Palette, SlidersHorizontal, GripVertical, Eye, EyeOff, Check, RotateCcw, ChevronUp, ChevronDown, Timer, GraduationCap, ChevronRight, Pin } from 'lucide-react'
 import { LogoLockup } from './Logo.jsx'
 import Avatar from './Avatar.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
@@ -23,9 +19,12 @@ import { BUILD } from '../lib/useAutoUpdate.js'
 // and platform pickers never change, and new channels always appear.
 // "My Day" is the anchor and can't be hidden.
 const PREFS_KEY = (uid) => `satashkent_side2_${uid}`
-// Work is where the day is spent, so it stays open. The rest is where you go
-// when you need something, and a heading is enough to say it is there.
-const SHUT_AT_FIRST = ['channels', 'numbers', 'people']
+// Channels, Numbers and People start folded. Work is the day; the rest is
+// a door you open when you need it, and a pin for the ones you need daily.
+// v3 is the version of that default: prefs saved before it get the new
+// folding once, and whatever the person opens from then on is theirs.
+const DEFAULT_CLOSED = ['channels', 'numbers', 'people']
+const PREFS_V = 3
 const readLegacy = (k) => {
   try { const a = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
 }
@@ -33,11 +32,13 @@ function readPrefs(uid) {
   try {
     const o = JSON.parse(localStorage.getItem(PREFS_KEY(uid)) || 'null')
     if (o && typeof o === 'object') {
+      const closed = Array.isArray(o.closed) ? o.closed : []
       return {
         order: { main: [], channels: [], manage: [], ...(o.order || {}) },
         hidden: Array.isArray(o.hidden) ? o.hidden : [],
-        closed: Array.isArray(o.closed) ? o.closed : [],
-        pins: Array.isArray(o.pins) ? o.pins : [],
+        closed: Number(o.v) >= PREFS_V ? closed : [...new Set([...closed, ...DEFAULT_CLOSED])],
+        pinned: Array.isArray(o.pinned) ? o.pinned : [],
+        v: PREFS_V,
       }
     }
   } catch { /* fall through */ }
@@ -45,12 +46,9 @@ function readPrefs(uid) {
   return {
     order: { main: [], channels: readLegacy('satashkent_side_order'), manage: [] },
     hidden: readLegacy('satashkent_side_hidden'),
-    // Folded to start with. Eleven doors open at once is the wall the hubs
-    // were meant to replace; the hub holding the page you are on opens itself,
-    // so a first run shows your work and three headings rather than
-    // everything anybody could ever reach.
-    closed: SHUT_AT_FIRST,
-    pins: [],
+    closed: [...DEFAULT_CLOSED],
+    pinned: [],
+    v: PREFS_V,
   }
 }
 
@@ -83,8 +81,8 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   const hidden = useMemo(() => new Set(prefs.hidden), [prefs])
   // Folding a hub is a customization too, so somebody who has only folded
   // things still gets the way back to the default sidebar.
-  const customized = prefs.hidden.length > 0 || (prefs.pins || []).length > 0
-    || (prefs.closed || []).join() !== SHUT_AT_FIRST.join()
+  const customized = prefs.hidden.length > 0 || (prefs.pinned || []).length > 0
+    || (prefs.closed || []).some((g) => !DEFAULT_CLOSED.includes(g)) || DEFAULT_CLOSED.some((g) => !(prefs.closed || []).includes(g))
     || Object.values(prefs.order).some((l) => l.length > 0)
 
   const { shows } = usePages()
@@ -97,11 +95,6 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   // The ambassador programme is a job somebody can hold without running the
   // board — see server/routes/ambassadors.js.
   const runsProgramme = !!(user.permissions && user.permissions.manage_ambassadors)
-  // Whose board /design is. A member with no crew hat plans the work and needs
-  // to see it; an editor or an operator does not.
-  const hats = user.crew_roles || []
-  const doesDesign = isAdmin || hats.includes('designer')
-    || !(hats.includes('editor') || hats.includes('operator'))
   // A page the admin switched off in Settings has no door here. Only the ones
   // that ARE switchable are asked; My Day and the channels are the work.
   //
@@ -126,12 +119,8 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       // Every channel at once: what is going out, and what is being filmed.
       shows('releases') && { key: 'releases', to: '/releases', label: t('nav.releases'), icon: Send },
       shows('recordings') && { key: 'recordings', to: '/recordings', label: t('nav.recordings'), icon: Clapperboard },
-      // The designer's own board, beside the work rather than inside a channel
-      // — and only for the people whose board it is. An editor was being shown
-      // a door to somebody else's work: every piece on it is artwork they will
-      // never touch, in a page shaped around a job they do not do. Designers
-      // and whoever runs the board keep it.
-      shows('design') && doesDesign && { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
+      // The designer's own board, beside the work rather than inside a channel.
+      shows('design') && { key: 'design', to: '/design', label: t('nav.design'), icon: Palette },
       shows('sprints') && { key: 'sprints', to: '/sprints', label: t('nav.sprints'), icon: Timer },
       // A campaign lives inside a project, so /campaigns/7 lights Projects up
       // rather than lighting nothing up.
@@ -153,7 +142,7 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       isAdmin && shows('team') && { key: 'team', to: '/team', label: t('nav.team'), icon: UsersRound },
       ...(runsEverything ? [{ key: 'admin', to: '/admin', label: t('nav.admin'), icon: Shield }] : []),
     ].filter(Boolean),
-  }), [isAdmin, runsEverything, runsProgramme, doesDesign, visible, t, shows])
+  }), [isAdmin, runsEverything, runsProgramme, visible, t, shows])
 
   // Which hub holds the page you are on. A deep link drops you INSIDE one —
   // /sprints/backlog, /projects/7, /dept/instagram_main — so the match is on
@@ -178,16 +167,14 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       (pos.has(a.key) ? pos.get(a.key) : 1e9) - (pos.has(b.key) ? pos.get(b.key) : 1e9))
   }
   const closed = useMemo(() => new Set(prefs.closed || []), [prefs])
-  // The three or four doors you actually use, lifted out of their hubs and
-  // put at the top. Everything stays exactly where it was as well — pinning
-  // is a shortcut, not a move, so nothing is ever somewhere you did not
-  // expect and nothing has to be un-pinned to be found again.
-  const pins = useMemo(() => new Set(prefs.pins || []), [prefs])
+  // A pin lifts a page out of its hub into a strip at the top, whatever is
+  // folded. The page stays in its hub too — the strip is a shortcut, not a
+  // move — so folding and counting are untouched.
+  const pinned = useMemo(() => new Set(prefs.pinned || []), [prefs])
   const togglePin = (key) => save({
     ...prefs,
-    pins: pins.has(key) ? (prefs.pins || []).filter((k) => k !== key) : [...(prefs.pins || []), key],
+    pinned: pinned.has(key) ? (prefs.pinned || []).filter((k) => k !== key) : [...(prefs.pinned || []), key],
   })
-  const pinned = HUB_KEYS.flatMap((g) => (groups[g] || []).filter((it) => pins.has(it.key)))
   const toggleFold = (g) => save({
     ...prefs,
     closed: closed.has(g) ? (prefs.closed || []).filter((k) => k !== g) : [...(prefs.closed || []), g],
@@ -218,7 +205,7 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
   // Everything, including the hubs' own names — a reset that left an order
   // saved under a group name this sidebar no longer draws would look like it
   // had not worked.
-  const resetPrefs = () => save({ order: {}, hidden: [], closed: SHUT_AT_FIRST, pins: [] })
+  const resetPrefs = () => save({ order: {}, hidden: [], closed: [...DEFAULT_CLOSED], pinned: [], v: PREFS_V })
 
   const Group = ({ g }) => {
     const items = orderedOf(g)
@@ -227,10 +214,19 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
       <>
         {!editing && items.filter((it) => !hidden.has(it.key)).map((it) => {
           const Icon = it.icon
+          const on = pinned.has(it.key)
           return (
-            <NavLink key={it.key} to={it.to} className={cls} onClick={onNavigate}>
-              <Icon size={18} /> {it.label}
-            </NavLink>
+            <div key={it.key} className={'nav-row' + (isHere(it) ? ' here' : '')}>
+              <NavLink to={it.to} className={cls} onClick={onNavigate}>
+                <Icon size={18} /> {it.label}
+              </NavLink>
+              {!it.locked && (
+                <button type="button" className={'nav-pin' + (on ? ' on' : '')} onClick={() => togglePin(it.key)}
+                  aria-label={on ? tx('Unpin') : tx('Pin this page')} data-tip={on ? tx('Unpin') : tx('Pin this page')} data-tip-left="">
+                  <Pin size={12} />
+                </button>
+              )}
+            </div>
           )
         })}
         {editing && items.map((it) => {
@@ -256,15 +252,6 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
               </button>
               <button className="side-eye" onClick={() => moveBy(g, it.key, +1)} aria-label={`Move ${it.label} down`}>
                 <ChevronDown size={13} />
-              </button>
-              <button
-                className={'side-eye side-pin' + (pins.has(it.key) ? ' on' : '')}
-                onClick={() => togglePin(it.key)}
-                data-tip={pins.has(it.key) ? 'Unpin from the top' : 'Pin to the top'}
-                data-tip-left=""
-                aria-label={pins.has(it.key) ? `Unpin ${it.label}` : `Pin ${it.label}`}
-              >
-                <Pin size={13} />
               </button>
               {it.locked ? (
                 <span className="side-eye locked" data-tip="My Day is home — it always stays" data-tip-left=""><Eye size={14} /></span>
@@ -292,20 +279,26 @@ export default function Sidebar({ user, onNavigate, onLogout }) {
         <LogoLockup />
       </Link>
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
-        {/* Pinned first, with no heading over them: they are not a category,
-            they are the four things this person opens all day. */}
-        {!editing && pinned.length > 0 && (
-          <div className="nav-pins">
-            {pinned.map((it) => {
-              const Icon = it.icon
-              return (
-                <NavLink key={`pin:${it.key}`} to={it.to} className={cls} onClick={onNavigate}>
-                  <Icon size={18} /> {it.label}
-                </NavLink>
-              )
-            })}
-          </div>
-        )}
+        {!editing && (() => {
+          const all = HUB_KEYS.flatMap((g) => orderedOf(g))
+          const pins = (prefs.pinned || []).map((k) => all.find((it) => it.key === k)).filter((it) => it && !hidden.has(it.key))
+          if (!pins.length) return null
+          return (
+            <div className="nav-pins" aria-label={tx('Pinned')}>
+              {pins.map((it) => {
+                const Icon = it.icon
+                return (
+                  <div key={`pin:${it.key}`} className={'nav-row' + (isHere(it) ? ' here' : '')}>
+                    <NavLink to={it.to} className={cls} onClick={onNavigate}><Icon size={18} /> {it.label}</NavLink>
+                    <button type="button" className="nav-pin on" onClick={() => togglePin(it.key)} aria-label={tx('Unpin')} data-tip={tx('Unpin')} data-tip-left="">
+                      <Pin size={12} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
         {HUBS.map(({ g, label }) => {
           // What is actually on screen for THIS person, after their own
           // hiding. A hub everybody's role emptied, or that somebody hid the
