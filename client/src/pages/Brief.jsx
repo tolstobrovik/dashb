@@ -888,7 +888,7 @@ export default function Brief() {
           <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
           <h2 className="brief-title">
             {tx('{name}, today:', { name: firstName })}{' '}
-            {nothingToday ? tx('nothing on the schedule — enjoy the quiet.') : (
+            {nothingToday ? tx('nothing today') : (
               [
                 dueToday.length > 0 && `${dueToday.length} to do`,
                 overdue.length > 0 && `${overdue.length} missing`,
@@ -969,7 +969,7 @@ export default function Brief() {
         <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
         <h2 className="brief-title">
           {tx('{name}, today:', { name: firstName })}{' '}
-          {nothingToday ? tx('nothing on the schedule — enjoy the quiet.') : (
+          {nothingToday ? tx('nothing today') : (
             [
               overdueN > 0 && `${overdueN} overdue`,
               lanes.shoot.today.length > 0 && `${lanes.shoot.today.length} to record`,

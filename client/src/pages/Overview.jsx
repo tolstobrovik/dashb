@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarClock, Check, AlertCircle, Megaphone, Hand } from 'lucide-react'
+import { CalendarClock, Megaphone, Hand } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { rewardIfFinished } from '../lib/reward.js'
 import { useChannels } from '../lib/channels.jsx'
@@ -16,6 +16,7 @@ const DAY_LABEL = {
   design_ready_date: 'the day the artwork is due', release_date: 'the release day',
 }
 import { tr as tx } from '../lib/i18n.jsx'
+import { CountDot } from '../components/Dot.jsx'
 
 // The admin's landing view: every department's process on one screen — the
 // pipeline as a colored strip, open and overdue counts, the campaigns that
@@ -277,15 +278,17 @@ export default function Overview() {
                 <div className="ov-stages"><span className="ov-stage ov-stage-empty">{tx("no open tasks")}</span></div>
               )}
 
+              {/* The same marks the channel register, the missed register and
+                  the crew deck use. This card was the last place still saying
+                  it in words, which meant the one number somebody scans for —
+                  the red one — looked different here than everywhere else.
+                  The "no open tasks" chip above already covers the empty case,
+                  so the second line saying it again is gone. */}
               <div className="ov-counts">
-                <span><b>{open.length}</b>{' '}{tx("open")}</span>
-                <span style={{ color: 'var(--good-ink, #0ca30c)' }}><Check size={12} /> {doneWeek.length}{' '}{tx('done · 7d')}</span>
-                {overdue.length > 0 && (
-                  <span className="pc-red"><AlertCircle size={12} /> {overdue.length} overdue</span>
-                )}
+                <CountDot n={overdue.length} tone="late" />
+                <CountDot n={open.length} tone="open" />
+                <CountDot n={doneWeek.length} tone="done" tip="Finished in the last 7 days" />
               </div>
-
-              {open.length === 0 && <div className="stat-sub">{tx("Nothing in flight.")}</div>}
             </button>
           )
         })}
