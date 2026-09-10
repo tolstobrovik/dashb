@@ -4288,14 +4288,17 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 .cm-page-tab.on { background: var(--brand-50); color: var(--brand-600); }
 /* The one button the other three views hide behind. */
+/* An assist chip: filled, quiet, no outline. The dashed border read as a
+   drop target or a disabled control — Material has no dashed edges, and the
+   one thing this button must not look like is something you cannot press. */
 .cm-add-details, .cm-less-details {
-  flex: none; display: inline-flex; align-items: center; gap: 4px;
-  padding: 8px 13px; min-height: 38px; cursor: pointer;
-  background: none; border: 1px dashed var(--hairline-strong); border-radius: 999px;
-  color: var(--muted); font-size: 13px; font-weight: 700;
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  padding: 8px 15px; min-height: 38px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-pill);
+  color: var(--ink-2); font-size: 13px; font-weight: 700;
+  transition: background 0.15s, color 0.15s;
 }
-.cm-add-details:hover, .cm-less-details:hover { color: var(--brand-600); border-color: var(--brand-200, #e3c3c9); }
-.cm-less-details { border-style: solid; }
+.cm-add-details:hover, .cm-less-details:hover { background: var(--brand-50); color: var(--brand-600); }
 .cm-pages-wrap { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 0 10px 0 0; overflow: hidden; }
 .cm-pages-wrap > .cm-pages { flex: 1 1 auto; min-width: 0; }
 .cm-pages-wrap > .cm-add-details, .cm-pages-wrap > .cm-less-details { flex: none; }
@@ -4908,9 +4911,12 @@ button.blame-person:hover { background: var(--surface-2); }
 .docs-search { display: inline-flex; align-items: center; gap: 6px; }
 .docs-search .input { width: 190px; }
 .doc-preview { display: flex; flex-direction: column; min-height: 340px; }
-.doc-frame { width: 100%; flex: 1; min-height: 60vh; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: #fff; }
+/* The paper itself, presented as a card: rounded, lifted, no ruled edge —
+   the same treatment every other surface got, so a document reads as a thing
+   sitting on the page rather than an embed in a box. */
+.doc-frame { width: 100%; flex: 1; min-height: 60vh; border: 0; border-radius: var(--radius-sm); background: #fff; box-shadow: var(--shadow-sm); }
 .doc-frame-text { background: var(--surface); }
-.doc-img { max-width: 100%; max-height: 70vh; object-fit: contain; align-self: center; }
+.doc-img { max-width: 100%; max-height: 70vh; object-fit: contain; align-self: center; border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
 .doc-noprev { display: flex; flex-direction: column; align-items: center; gap: 8px;
   text-align: center; padding: 44px 20px; color: var(--muted); }
 .doc-noprev b { color: var(--ink); font-size: 14px; }
@@ -5499,8 +5505,8 @@ button.blame-person:hover { background: var(--surface-2); }
    stay clickable and a PDF cannot swallow the scroll. */
 .doc-row-thumbed { align-items: center; gap: 10px; }
 .doc-thumb {
-  flex: none; width: 46px; height: 58px; border-radius: 5px; overflow: hidden;
-  border: 1px solid var(--hairline); background: var(--surface-2);
+  flex: none; width: 46px; height: 58px; border-radius: 10px; overflow: hidden;
+  border: 0; box-shadow: var(--shadow-sm); background: var(--surface-2);
   display: flex; align-items: center; justify-content: center; position: relative;
 }
 .doc-thumb img { width: 100%; height: 100%; object-fit: cover; }
