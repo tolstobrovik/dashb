@@ -5308,6 +5308,14 @@ button.blame-person:hover { background: var(--surface-2); }
 .kpi-reading .input { width: 88px; }
 .kpi-bands td .input { width: 100%; }
 .kpi-bands th { font-size: 11px; }
+/* Where the work has got to, under the title, on every page. */
+.cm-state { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.cm-state-bit { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; background: var(--surface-2); font-size: 11.5px; line-height: 1; white-space: nowrap; }
+.cm-state-bit b { font-weight: 700; color: var(--ink-2); }
+.cm-state-word { font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cm-state-bit.s-late { background: var(--danger-bg); }
+.cm-state-bit.s-late .cm-state-word, .cm-state-bit.s-late b { color: var(--critical); }
+.cm-state-file { color: var(--good-ink, #2e8b57); flex: none; }
 .cdot { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
 .cdot i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .cdot-late i { background: var(--critical); }

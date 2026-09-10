@@ -1,3 +1,5 @@
+// The task sheet: writing one down, and reading one back.
+//
 // Writing an idea down should cost a title and a press.
 //
 // It used to cost a form. The sheet opened with four tabs across the top —
@@ -84,8 +86,40 @@ await page.evaluate(() => { const b = document.querySelector('.cm-add-details');
 await page.waitForTimeout(700)
 ok('a task that EXISTS still has its pages', (await page.locator('.cm-page-tab').count()) >= 3,
   JSON.stringify(await page.locator('.cm-page-tab').allTextContents()))
+
+// ===================== reading one back =====================
+// A reviewer opens a task to answer one question — is it moving, and who is it
+// waiting on — and the answer used to be spread across three tabs: the crew on
+// Execution, the days on Logistics, the files between them. Land on Talk,
+// which is where a comment link puts you, and there was nothing on screen
+// about the work at all.
+const live = (await req('/content', 'POST', {
+  title: `tasksheet ${stamp} live`, type: 'reel', channels: ['instagram_main'], status_id: 3,
+  operator_id: 3, editor_id: 2,
+  recording_date: '2026-09-07', edit_ready_date: '2026-09-16', release_date: '2026-09-17',
+})).data
+await req(`/content/${live.id}`, 'PATCH', { shot_link: 'https://drive.google.com/file/d/TS/view' })
+await page.goto(`${BASE}/brief?task=${live.id}`); await page.waitForTimeout(2200)
+const sheet = page.locator('.modal')
+const strips = await sheet.locator('.cm-page-tab').allTextContents()
+let everywhere = true
+let seen = []
+for (let i = 0; i < strips.length; i++) {
+  await sheet.locator('.cm-page-tab').nth(i).click(); await page.waitForTimeout(450)
+  const bits = (await sheet.locator('.cm-state-bit').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim())
+  if (bits.length < 2) everywhere = false
+  if (i === strips.length - 1) seen = bits
+}
+ok('where the work has got to is on every page', everywhere, JSON.stringify(seen))
+ok('…naming the phase and who holds it', /Shooting/.test(seen.join(' ')) && /Mirabbos/.test(seen.join(' ')), seen.join(' | '))
+ok('…and saying how late the late one is', /3d late/.test(seen.join(' ')), seen.join(' | '))
+ok('…in the colour the rest of the board uses for late',
+  (await sheet.locator('.cm-state-bit.s-late').count()) === 1)
+ok('…while what has not started yet says so, rather than reading as late',
+  (await sheet.locator('.cm-state-bit.s-waiting').count()) >= 1)
 await browser.close()
 
+await req(`/content/${live.id}`, 'DELETE')
 if (made) await req(`/content/${made.id}`, 'DELETE')
-console.log(fails === 0 ? '\nNew-task suite clean.' : `\n${fails} PROBLEMS`)
+console.log(fails === 0 ? '\nTask-sheet suite clean.' : `\n${fails} PROBLEMS`)
 process.exit(fails ? 1 : 0)

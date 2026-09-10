@@ -3,7 +3,7 @@ import { Trash2, Plus, Check, AlertCircle, ImagePlus, X, Clapperboard, Send, Sci
 import Modal from './Modal.jsx'
 import PersonPicker from './PersonPicker.jsx'
 import Avatar from './Avatar.jsx'
-import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor, isWritingChannel } from '../lib/constants.js'
+import { can, todayISO, addDaysISO, CONTENT_TYPES, typeInfo, onColor, isWritingChannel, dateLabel } from '../lib/constants.js'
 import { readText, hasSubstance, hasLink, isSentence, splitDelivery, deliveryHref } from '../lib/text.js'
 import { useT, tr as tx, locale } from '../lib/i18n.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -1486,6 +1486,40 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         onKeyDown={(e) => { if (e.key === 'Enter') save() }}
         placeholder={tx("Task title")}
       />
+
+      {/* Where the work has got to, on every page.
+          A reviewer opens a task to answer one question — is it moving, and
+          who is it waiting on — and the answer was spread across three tabs:
+          the crew on Execution, the days on Logistics, the files somewhere
+          between them. Land on Talk, which is where a comment link puts you,
+          and there was nothing on screen about the work at all.
+          One line under the title now, outside the pages, so it is there
+          whichever page you are on: each phase, who holds it, whether the
+          thing it owes has arrived, and how late it is if it is late. */}
+      {!creating && (item?.phases || []).length > 0 && (
+        <div className="cm-state">
+          {item.phases.map((ph) => {
+            const owner = team.find((u) => u.id === ph.owner_id)
+            const file = { shoot: form.shot_link, edit: form.ready_link }[ph.phase]
+            const tone = ph.state === 'late' ? 'late' : ph.state === 'excused' ? 'wait'
+              : ph.state === 'ok' ? 'ok' : ph.state === 'waiting' ? 'wait' : 'ok'
+            const word = ph.state === 'late' ? tx('{n}d late', { n: ph.days_late })
+              : ph.state === 'ok' ? tx('in')
+              : ph.state === 'waiting' ? tx('waiting')
+              : ph.state === 'excused' ? tx('held up')
+              : dateLabel(ph.due)
+            return (
+              <span key={ph.phase} className={'cm-state-bit s-' + ph.state} data-tip={`${tx(ph.label)} · ${tx('due')} ${dateLabel(ph.due)}`}>
+                <i className={`dot dot-${tone}`} />
+                <b>{tx(ph.label)}</b>
+                <span className="stat-sub">{owner ? owner.name.split(' ')[0] : tx('nobody')}</span>
+                <span className="cm-state-word">{word}</span>
+                {file ? <ExternalLink size={11} className="cm-state-file" /> : null}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       <div className={secCls('brief')} data-sec="brief">
       {!crewViewer && (<>
