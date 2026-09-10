@@ -2276,7 +2276,7 @@ function PipelineTab() {
 const HATS = [
   { key: 'assignee', label: 'Ran it', icon: UserCheck, noun: 'piece', verb: 'published', tip: 'Whose piece it was — the planner who saw it out' },
   { key: 'operator', label: 'Shot it', icon: Video, noun: 'shoot', verb: 'delivered', tip: 'Counted on the day the footage reached the editor' },
-  { key: 'editor', label: 'Cut it', icon: Scissors, noun: 'cut', verb: 'delivered', tip: 'Counted on the day the cut reached review' },
+  { key: 'editor', label: 'Edited it', icon: Scissors, noun: 'cut', verb: 'delivered', tip: 'Counted on the day the cut reached review' },
   { key: 'designer', label: 'Designed it', icon: Palette, noun: 'piece', verb: 'designed', tip: 'Artwork has no handover of its own, so it counts when the piece goes out' },
   { key: 'reviewer', label: 'Signed it off', icon: CheckSquare, noun: 'sign-off', verb: 'given', tip: 'Review is shared — every name on it is counted' },
 ]

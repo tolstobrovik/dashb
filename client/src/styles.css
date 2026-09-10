@@ -5276,6 +5276,11 @@ button.blame-person:hover { background: var(--surface-2); }
 .cal-events:not(:hover) { scrollbar-width: none; }
 .brief-next { font-weight: 800; }
 .brief-next-when { margin-left: 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
+/* The question mark that replaced the legend strip: one small mark beside the
+   heading, rather than a row of named dots across every calendar. */
+.page-help { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: 4px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 50%; flex: none; }
+.page-help:hover { background: var(--surface-2); color: var(--ink); }
+.guide-stages { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .cdot { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
 .cdot i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .cdot-late i { background: var(--critical); }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { StageLegend } from '../components/Dot.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Lock, Plus, Pencil, Trash2, Gauge, CalendarRange, AlertCircle, Pin, PinOff, GripVertical, Minus,
@@ -628,6 +628,7 @@ export default function Department() {
       <div className="section-head">
         <CalendarRange size={17} style={{ color: 'var(--brand-500)' }} />
         <h2>{tx("Content")}</h2>
+        <PageGuide page={view === 'board' ? 'board' : 'schedule'} statusesById={statusesById} />
         <span className="spacer" />
         <div className="pill-group">
           {VIEWS.map((v) => {
@@ -680,9 +681,7 @@ export default function Department() {
         {/* The legend decodes the colours on the calendar, so it lists the
             stages this channel actually runs on — a written channel would
             otherwise advertise two columns its board does not have. */}
-        <StageLegend statusesById={writes
-          ? Object.fromEntries(stageView.columns.map((c) => [c.id, c]))
-          : statusesById} />
+
         <ContentCalendar
           items={wsContent}
           trayItems={unscheduled}

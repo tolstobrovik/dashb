@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { StageLegend } from '../components/Dot.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { useSearchParams } from 'react-router-dom'
 import { Send, Clapperboard, AlertCircle, CalendarDays, Download } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
@@ -266,6 +266,7 @@ export default function Schedule({ mode }) {
         <Icon size={17} style={{ color: 'var(--brand-500)' }} />
         <h2>{M.label}</h2>
         <span className="stat-sub" style={{ fontWeight: 500 }}>{M.lead}</span>
+        <PageGuide page="schedule" statusesById={statusesById} />
         <span className="spacer" />
         <select className="select cf-sel" value={channel} onChange={(e) => setParam('channel', e.target.value)}
           data-tip={tx("One channel only")}>
@@ -346,7 +347,7 @@ export default function Schedule({ mode }) {
         </div>
       ) : (
         <>
-        <StageLegend statusesById={statusesById} />
+
         <ContentCalendar
           items={dated}
           mode={mode}

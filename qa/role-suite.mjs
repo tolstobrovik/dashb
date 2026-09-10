@@ -36,7 +36,15 @@ const foreign = (await req('/content', 'POST', { title: 'Foreign post', channels
 
 const ET = await login('tim', 't1234')
 const mine = (await req('/content', 'GET', null, ET)).data
-ok('editor sees only their videos', mine.some((c) => c.id === vid.id) && !mine.some((c) => c.id === foreign.id), `sees ${mine.length}`)
+// Reading is open across the board now, so that the schedule can be read
+// whole: scoped to your own channels, "who is filming on Thursday" could only
+// be answered by the people who already knew. What is gated is every WRITE,
+// which is what the rest of this suite is about.
+ok('an editor sees their own work', mine.some((c) => c.id === vid.id))
+ok('…and the rest of the board too, because the schedule is shared',
+  mine.some((c) => c.id === foreign.id), `sees ${mine.length}`)
+const foreignEdit = await req(`/content/${foreign.id}`, 'PATCH', { title: 'not yours' }, ET)
+ok('…but may not touch a piece that is not theirs', foreignEdit.status === 403, String(foreignEdit.status))
 ok('editor sees the whole team for names', (await req('/users', 'GET', null, ET)).data.length >= 5)
 // (The fixture used to ask for 'shot', a stage round 82 folded into Editing;
 // sid() answered undefined and the piece was born with NO stage — which the

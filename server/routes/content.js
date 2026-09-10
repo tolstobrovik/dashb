@@ -405,13 +405,18 @@ const addRole = (map, id, role) => {
 // booked, otherwise the release.
 const dateBit = (rec, rel) => (rec ? ` · shoot ${tgDate(rec)}` : rel ? ` · release ${tgDate(rel)}` : '')
 
-const canSee = (user, row) =>
-  adminHere(user, row) ||
-  assigneesOf(row).includes(user.id) ||
-  row.operator_id === user.id || // crew see their work even outside their departments
-  row.editor_id === user.id ||
-  row.designer_id === user.id ||
-  row.channels.some((ch) => (user.departments || []).includes(ch))
+// Who may READ a task. Everybody on the board, now: the schedule is the one
+// thing a marketing team has to be able to read whole. Scoped to your own
+// channels, "who is shooting on Thursday" could only be answered by the people
+// who already knew, and an operator booked on a channel they do not sit in
+// vanished from everybody else's calendar — which is the opposite of what a
+// shared calendar is for.
+//
+// This opens READING only. Every write on this file is gated exactly as it was:
+// who may edit, who may move a promised day, who may take a seat, who may set
+// a delivery link. Seeing that Jaloliddin films on Thursday does not let you
+// change it.
+const canSee = () => true
 
 // Every write answers with the same slim shape the list uses — callers swap
 // the row into their lists, so the full photo must never ride along.
