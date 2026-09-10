@@ -881,7 +881,17 @@ export default function Brief() {
 
   // ============ the simple view: admin & members ============
   if (!isCrew) {
-    const nothingToday = dueToday.length === 0 && overdue.length === 0
+    // A personal task counts. `dueToday` and `overdue` are content only, so a
+    // day holding three things somebody wrote down for themselves reported
+    // "all clear" with those three listed directly underneath it — a headline
+    // arguing with the list it sits on top of.
+    // Counted off the list itself, so the headline and the rows under it can
+    // never disagree — which they did: `dueToday` and `overdue` are content
+    // only, so a day holding three things somebody had written down for
+    // themselves announced "all clear" directly above all three of them.
+    const lateN = priority.filter((r) => r.tier === 'late').length
+    const todayN = priority.filter((r) => r.tier === 'today').length
+    const nothingToday = lateN === 0 && todayN === 0
     // A day with nothing on it is not news, and saying so is a line somebody
     // reads once and then reads past for ever. What is worth a headline on a
     // clear day is the thing that is coming — so the line names the next piece
@@ -904,8 +914,8 @@ export default function Brief() {
               <>{tx('{name}, today:', { name: firstName })}{' '}
                 {nothingToday ? tx('all clear') : (
                   [
-                    overdue.length > 0 && `${overdue.length} missing`,
-                    dueToday.length > 0 && `${dueToday.length} to do`,
+                    lateN > 0 && `${lateN} missing`,
+                    todayN > 0 && `${todayN} to do`,
                   ].filter(Boolean).join(' · ')
                 )}
               </>
