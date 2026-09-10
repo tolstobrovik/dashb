@@ -22,10 +22,12 @@ import { Dot } from './Dot.jsx'
 
 const SHOWN_KEY = (uid) => `satashkent_pay_shown_${uid}`
 
-export default function MyPay() {
+// `startOpen` is for the Payment page, where the breakdown IS the page and
+// folding it away would leave a card with one number on it.
+export default function MyPay({ startOpen = false }) {
   const { user } = useAuth()
   const [pay, setPay] = useState(null)
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(startOpen)
   const [shown, setShown] = useState(() => { try { return localStorage.getItem(SHOWN_KEY(user?.id)) === '1' } catch { return false } })
   const toggle = (e) => {
     e.stopPropagation()

@@ -6,6 +6,7 @@ import { dateLabel } from '../lib/constants.js'
 import Modal from '../components/Modal.jsx'
 import { toast } from '../lib/toast.js'
 import { tr as tx } from '../lib/i18n.jsx'
+import MyPay from '../components/MyPay.jsx'
 
 // Documents is the KPI document.
 //
@@ -189,6 +190,11 @@ export default function Docs() {
   return (
     <div className="page docs-page">
       {err && <div className="form-error">{err}</div>}
+      {/* The paper says what the job is; the card under it says what this month
+          of doing it is worth. They were two pages, and the question people
+          actually arrive with — "what am I on this month, and why that number"
+          — needed both of them open at once. The document first, because it is
+          the thing being measured against. */}
       <div className="card docs-card kpi-doc">
         <div className="docs-sec-head">
           <h2><ScrollText size={17} />{' '}{tx('KPI document')}</h2>
@@ -317,6 +323,7 @@ export default function Docs() {
           </label>
         </Modal>
       )}
+      <MyPay startOpen />
     </div>
   )
 }

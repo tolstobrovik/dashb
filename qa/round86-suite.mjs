@@ -220,7 +220,25 @@ await page.keyboard.press('Escape')
 await page.waitForTimeout(200)
 // The face is not a hat: two seats, whoever else is named on the piece.
 ok('the face box is not counted as a third crew seat', (await page.locator('.modal .crew-field').count()) === 2)
-ok('…and it is there under its own name', (await page.locator('.modal .face-field').count()) === 1)
+// …and on a reel it is not asked at all any more. Who is IN a piece is a
+// question about a paid creative — a target is shot with two or three of them
+// in it and the answer decides what the ad set carries — and on everything
+// else it was a seat nobody filled sitting under the two that matter.
+ok('…and a reel is not asked who is in it', (await page.locator('.modal .face-field').count()) === 0)
+await page.keyboard.press('Escape')
+await page.waitForTimeout(400)
+const tgt = (await req('/content', 'POST', { title: 'r86: a paid creative', channels: ['instagram_main'], type: 'target', status_id: ready.id })).data
+await page.goto(`${BASE}/brief?task=${tgt.id}`)
+await page.waitForSelector('.modal', { timeout: 8000 })
+await page.evaluate(() => { const b = document.querySelector('.cm-add-details'); if (b) b.click() })
+await page.waitForTimeout(600)
+ok('…while a target creative is, and takes as many as are in it',
+  (await page.locator('.modal .face-field').count()) === 1)
+// Put the page back where the rest of this suite expects to find it.
+await page.keyboard.press('Escape')
+await page.goto(BASE + '/dept/instagram_main')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.waitForTimeout(500)
 await page.keyboard.press('Escape')
 await page.waitForTimeout(400)
 

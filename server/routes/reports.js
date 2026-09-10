@@ -350,9 +350,16 @@ router.get('/work/mine', wrap(async (req, res) => {
 // separately, so a half month never drags an average down), and it starts at
 // the person's first delivered piece, so a newcomer's zero months before they
 // joined are not counted against them either.
+// `channels` reaches this from two directions — raw off the row as a JSON
+// string, and already parsed into an array by contributions() — and
+// JSON.parse of an array throws, so parsing blind quietly returned no channels
+// at all. That is what filed a YouTube cut as "other work" and paid it the
+// flat rate: the only kind whose test needs the channel was the only kind that
+// could not see one.
+const chanList = (v) => (Array.isArray(v) ? v : parseList(v))
 const bucketOf = (r) => (r.type === 'reel' ? 'reel'
   : r.type === 'target' ? 'target'
-  : r.type === 'video' && parseList(r.channels).includes('youtube') ? 'youtube'
+  : r.type === 'video' && chanList(r.channels).includes('youtube') ? 'youtube'
   : 'other')
 const PACE_BUCKETS = ['reel', 'youtube', 'target', 'other']
 router.get('/work/mine/pace', wrap(async (req, res) => {
@@ -680,15 +687,38 @@ export const RATE_FIELDS = [
   // are the same month to a piece-rate card, which is why this one counts
   // views too: per thousand, and a target that pays whole when it is reached.
   'per_1k_views', 'views_target', 'views_bonus',
+  // What a piece pays depends on WHAT IT IS, not only on which hat you wore.
+  // A YouTube video is a day's shoot and a week's cut; a reel is an afternoon.
+  // One `per_shoot` for both was the board quietly paying the same for two
+  // different jobs, so shooting and editing are priced per kind of work.
+  // A kind left at 0 falls back to the flat rate above, so a board that has
+  // not set them keeps working exactly as it did and can adopt them one at a
+  // time. "Shot AND edited it" needs no rate of its own: the person wore both
+  // hats, so they are paid for both.
+  'per_shoot_reel', 'per_edit_reel',
+  'per_shoot_youtube', 'per_edit_youtube',
+  'per_shoot_target', 'per_edit_target',
 ]
 const BLANK_RATES = {
   currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0,
   per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0,
   per_1k_views: 0, views_target: 0, views_bonus: 0,
+  per_shoot_reel: 0, per_edit_reel: 0,
+  per_shoot_youtube: 0, per_edit_youtube: 0,
+  per_shoot_target: 0, per_edit_target: 0,
 }
 const HAT_RATE = {
   operator: 'per_shoot', editor: 'per_edit', designer: 'per_design',
   assignee: 'per_publish', reviewer: 'per_review',
+}
+// The kinds of work the board prices apart, and which rate field each one
+// reads for each hat. Only shooting and editing are split: designing, signing
+// off and carrying a piece do not change shape with the format.
+const KINDS = ['reel', 'youtube', 'target']
+const KIND_LABEL = { reel: 'reels', youtube: 'YouTube', target: 'targets', other: 'other work' }
+const KIND_RATE = {
+  operator: { reel: 'per_shoot_reel', youtube: 'per_shoot_youtube', target: 'per_shoot_target' },
+  editor: { reel: 'per_edit_reel', youtube: 'per_edit_youtube', target: 'per_edit_target' },
 }
 
 async function rateCards() {
@@ -715,8 +745,14 @@ async function payRun({ from, to, only }) {
 
   const counted = {}
   for (const c of list) {
-    const e = (counted[c.userId] = counted[c.userId] || { hats: {}, late: 0, done: 0, views: 0, counted: 0, items: [] })
+    const e = (counted[c.userId] = counted[c.userId] || { hats: {}, byKind: {}, late: 0, done: 0, views: 0, counted: 0, items: [] })
     e.hats[c.hat] = (e.hats[c.hat] || 0) + 1
+    // …and again split by what the piece was, which is what the per-kind
+    // rates are priced against. Same classifier the pace report uses, so the
+    // planner's answer and the payslip never disagree about what a reel is.
+    const kind = bucketOf(c.row)
+    e.byKind[c.hat] = e.byKind[c.hat] || {}
+    e.byKind[c.hat][kind] = (e.byKind[c.hat][kind] || 0) + 1
     e.done += 1
     if (c.late) e.late += 1
     // Views belong to the person the piece was FOR — the content maker — and
@@ -730,18 +766,46 @@ async function payRun({ from, to, only }) {
   }
 
   const people = wanted.map((u) => {
-    const e = counted[u.id] || { hats: {}, late: 0, done: 0, views: 0, counted: 0, items: [] }
+    const e = counted[u.id] || { hats: {}, byKind: {}, late: 0, done: 0, views: 0, counted: 0, items: [] }
     const rates = pick(u.id)
     const lines = []
     let piecework = 0
     for (const [hat, field] of Object.entries(HAT_RATE)) {
       const n = e.hats[hat] || 0
-      const rate = rates[field] || 0
-      if (!n && !rate) continue
-      const amount = n * rate
+      const flat = rates[field] || 0
+      // Shooting and editing are priced per kind of work. Where the board has
+      // set those rates the month is billed kind by kind — "3 reels filmed",
+      // "1 YouTube video cut" — and where it has not, the flat rate stands and
+      // the line reads exactly as it always did.
+      const perKind = KIND_RATE[hat]
+      const split = perKind && KINDS.some((k) => rates[perKind[k]] > 0)
+      if (split) {
+        for (const k of KINDS) {
+          const cnt = (e.byKind[hat] || {})[k] || 0
+          const rate = rates[perKind[k]] || flat
+          if (!cnt || !rate) continue
+          const amount = cnt * rate
+          piecework += amount
+          lines.push({ hat, kind: k, label: `${HATS[hat].label} · ${KIND_LABEL[k]}`, count: cnt, rate, amount })
+        }
+        // Work of a kind nobody priced still has to be paid for.
+        const priced = KINDS.reduce((t, k) => t + ((e.byKind[hat] || {})[k] || 0), 0)
+        const rest = n - priced
+        if (rest > 0 && flat) {
+          piecework += rest * flat
+          lines.push({ hat, kind: 'other', label: `${HATS[hat].label} · ${KIND_LABEL.other}`, count: rest, rate: flat, amount: rest * flat })
+        }
+        continue
+      }
+      if (!n && !flat) continue
+      const amount = n * flat
       piecework += amount
-      lines.push({ hat, label: HATS[hat].label, count: n, rate, amount })
+      lines.push({ hat, kind: null, label: HATS[hat].label, count: n, rate: flat, amount })
     }
+    // Nothing that earned nothing is drawn: a line reading "0 edits · 0 UZS"
+    // is a fact about the rate card, not about the person, and it is exactly
+    // the row people scroll past to find the ones that matter.
+    const earning = lines.filter((l) => l.count > 0 && l.amount > 0)
     const onTime = e.done - e.late
     // A share of nothing is not 0% — it is "nothing to judge". Somebody who
     // delivered nothing this month has not failed a punctuality target.
@@ -773,7 +837,7 @@ async function payRun({ from, to, only }) {
       quota, quotaMet, quotaLeft: quota > 0 ? Math.max(0, quota - e.done) : null,
       views, viewsCounted: e.counted, viewsPay, viewsTarget, viewsMet,
       viewsLeft: viewsTarget > 0 ? Math.max(0, viewsTarget - views) : null,
-      lines, base: rates.base || 0, piecework,
+      lines: earning, base: rates.base || 0, piecework,
       onTimeBonus, quotaBonus, viewsBonus, bonus, penalty, total,
       items: e.items.sort((a, b) => String(b.day).localeCompare(String(a.day))),
     }

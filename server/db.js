@@ -1148,6 +1148,16 @@ export async function initSchema() {
       per_1k_views  REAL    NOT NULL DEFAULT 0,    -- paid per thousand views the maker's pieces got
       views_target  REAL    NOT NULL DEFAULT 0,    -- views expected in the period
       views_bonus   REAL    NOT NULL DEFAULT 0,    -- paid whole when the views target is met
+      -- Shooting and editing, priced by what the piece IS. A YouTube video is
+      -- a day's shoot and a week's cut; a reel is an afternoon. Left at 0 the
+      -- flat per_shoot / per_edit above still stands, so a board that has not
+      -- set them is unaffected and can adopt them one kind at a time.
+      per_shoot_reel    REAL NOT NULL DEFAULT 0,
+      per_edit_reel     REAL NOT NULL DEFAULT 0,
+      per_shoot_youtube REAL NOT NULL DEFAULT 0,
+      per_edit_youtube  REAL NOT NULL DEFAULT 0,
+      per_shoot_target  REAL NOT NULL DEFAULT 0,
+      per_edit_target   REAL NOT NULL DEFAULT 0,
       updated_by    INTEGER,
       created_at    TEXT    NOT NULL,
       updated_at    TEXT    NOT NULL
@@ -1599,6 +1609,11 @@ async function migrate() {
     if (!(await hasColumn('pay_rules', 'quota'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'quota_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota_bonus REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'per_1k_views'))) await exec('ALTER TABLE pay_rules ADD COLUMN per_1k_views REAL NOT NULL DEFAULT 0')
+    // Shooting and editing priced by kind of work. Added one at a time so a
+    // board part-way through an earlier migration finishes cleanly.
+    for (const col of ['per_shoot_reel', 'per_edit_reel', 'per_shoot_youtube', 'per_edit_youtube', 'per_shoot_target', 'per_edit_target']) {
+      if (!(await hasColumn('pay_rules', col))) await exec(`ALTER TABLE pay_rules ADD COLUMN ${col} REAL NOT NULL DEFAULT 0`)
+    }
     if (!(await hasColumn('pay_rules', 'views_target'))) await exec('ALTER TABLE pay_rules ADD COLUMN views_target REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'views_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN views_bonus REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('sprint_tasks', 'dropped_at'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_at TEXT')
