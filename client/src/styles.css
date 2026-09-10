@@ -3781,7 +3781,7 @@ button.blame-person:hover { background: var(--surface-2); }
   .cal-head { flex-wrap: wrap; row-gap: 10px; }
   .cal-head h3 { min-width: 0; flex: 1 1 auto; text-align: left; }
   .cal-grid { gap: 3px; }
-  .cal-day { min-height: 56px; padding: 3px; }
+  .cal-day { height: 84px; padding: 3px; }
   .cal-daynum { width: 20px; height: 18px; font-size: 11px; }
   .cal-events { flex-direction: row; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
   .cal-day .cal-ev, .cal-day .rel-ev {
@@ -5252,6 +5252,30 @@ button.blame-person:hover { background: var(--surface-2); }
    one it sat beside the view tabs and "which view" and "which month" read as
    one row of eight buttons. */
 .proj-months { display: flex; width: fit-content; margin: 0 0 10px; flex-wrap: wrap; row-gap: 4px; }
+
+/* ---- every calendar cell the same shape ----------------------------------
+   A day with six things on it used to stretch its whole week row, so a month
+   with one busy Monday read as a ragged column of different-sized boxes and
+   the eye had to re-find the grid on every row. The cell is one height now
+   and the list scrolls inside it: the shape is fixed, but nothing is hidden —
+   the day still opens whole in the sheet, which is where a crowded day was
+   always going to be read anyway. */
+.cal-day { height: 118px; display: flex; flex-direction: column; }
+.cal-events { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.cal-events::-webkit-scrollbar { width: 5px; }
+.cal-events::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
+.rel-ev, .cal-ev { flex: none; }
+/* The title is one line whatever it holds — a long name crops rather than
+   wrapping the pill to two rows and pushing the next one out of sight. */
+.rel-ev .ev-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cal-dayhead { display: flex; align-items: center; gap: 4px; flex: none; }
+.cal-daycount { margin-left: auto; font-size: 10px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* A hint that the list keeps going, so the cropped pill reads as more rather
+   than as a broken one. */
+.cal-events { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 10px), transparent 100%); mask-image: linear-gradient(to bottom, #000 calc(100% - 10px), transparent 100%); }
+.cal-events:not(:hover) { scrollbar-width: none; }
+.brief-next { font-weight: 800; }
+.brief-next-when { margin-left: 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .cdot { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
 .cdot i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .cdot-late i { background: var(--critical); }

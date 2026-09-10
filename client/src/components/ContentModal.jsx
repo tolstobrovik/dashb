@@ -286,7 +286,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     })(),
     ready_link: item?.ready_link || '',
     post_link: item?.post_link || '',
-    face_id: item?.face_id ?? null,
+    face_ids: (() => {
+      try {
+        const l = Array.isArray(item?.faces) ? item.faces : JSON.parse(item?.faces || '[]')
+        return l.length ? l : (item?.face_id ? [item.face_id] : [])
+      } catch { return item?.face_id ? [item.face_id] : [] }
+    })(),
     skip_rate: item?.skip_rate === null || item?.skip_rate === undefined ? '' : String(item.skip_rate),
     shot_link: item?.shot_link || '',
     design_link: item?.design_link || '',
@@ -1179,7 +1184,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       // published link: they were told they may not record views they never
       // typed. What this account cannot write, it does not send.
       if (!(showViews && canCount)) { delete payload.views; delete payload.skip_rate }
-      if (!canEdit) delete payload.face_id
+      if (!canEdit) { delete payload.face_id; delete payload.face_ids }
       // An empty file box is not a named file, and sending it as one is how
       // the link beside it used to be erased (see buildDelivery in
       // routes/content.js). `...form` carries all six boxes whether or not
@@ -2238,19 +2243,41 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               piece, and this is the piece. Offered for anything filmed, and
               always shown once somebody has been named. Its own class on
               purpose: nothing that counts crew-fields may count it. */}
-          {(form.face_id || (fieldRules?.crew?.operator || []).includes(form.type)) && (
+          {(form.face_ids.length > 0 || form.type === 'target') && (
             <div className="face-field">
               <span className="crew-label">
-                {tx('Who is in it')}{' '}<span className="crew-opt">{tx('optional')}</span>
+                {tx('Brand faces')}{' '}<span className="crew-opt">{tx('optional')}</span>
               </span>
-              <PersonPicker
-                disabled={detailsLocked}
-                value={form.face_id ?? null}
-                placeholder={tx('— nobody —')}
-                tip={tx('Whose face carries this piece')}
-                groups={[{ label: '', people: team.map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })) }]}
-                onPick={(id) => setForm({ ...form, face_id: id })}
-              />
+              <div className="rev-picker">
+                {form.face_ids.map((id) => {
+                  const u = team.find((x) => x.id === id)
+                  return (
+                    <span key={id} className="chip assignee-chip">
+                      <Avatar name={u?.name || '…'} color={u?.color} src={u?.avatar} size="xs" />
+                      {u?.name || '…'}
+                      {!detailsLocked && (
+                        <button type="button" className="chip-x" aria-label={tx('Remove')}
+                          onClick={() => setForm({ ...form, face_ids: form.face_ids.filter((x) => x !== id) })}>×</button>
+                      )}
+                    </span>
+                  )
+                })}
+                {!detailsLocked && (
+                  <PersonPicker
+                    className="reviewer-add"
+                    value={null}
+                    clearable={false}
+                    placeholder={form.face_ids.length ? tx('Add person…') : tx('— nobody —')}
+                    tip={tx('Who is in this creative')}
+                    groups={[{
+                      label: '',
+                      people: team.filter((u) => !form.face_ids.includes(u.id))
+                        .map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })),
+                    }]}
+                    onPick={(id) => { if (id && !form.face_ids.includes(id)) setForm({ ...form, face_ids: [...form.face_ids, id] }) }}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>

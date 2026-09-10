@@ -354,7 +354,15 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                     className={`cal-day editable${inMonth ? '' : ' out'}${iso === today ? ' today' : ''}${overCell === iso ? ' over' : ''}`}
                     onClick={() => onDayClick(iso)}
                   >
-                    <div className="cal-daynum">{date.getDate()}</div>
+                    <div className="cal-dayhead">
+                      <span className="cal-daynum">{date.getDate()}</span>
+                      {/* The cell is one height for every day now, so a day
+                          holding more than fits would otherwise end in a pill
+                          sliced in half with nothing saying why. The count
+                          says how many are down there; the list scrolls, and
+                          the day still opens whole. */}
+                      {dayItems.length > 3 && <span className="cal-daycount">{dayItems.length}</span>}
+                    </div>
                     <div className="cal-events">
                       {dayItems.map((it) => {
                         // Every task shows — a crowded day makes its week row

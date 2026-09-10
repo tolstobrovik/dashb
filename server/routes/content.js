@@ -258,7 +258,7 @@ const listColumns = (withThumbs) => `id, title, channels, type, assignee_id, ass
   shot_at, edited_at, edit_due_revised, review_due_revised,
   miss_blame, miss_blame_note, miss_blame_by,
   views, views_at, views_by,
-  face_id, skip_rate, skip_rate_at,
+  face_id, faces, skip_rate, skip_rate_at,
   recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, ready_at, ready_link,
   shot_link, design_link, post_link, reference_text, reference_links, format, rubrika, script, tz, release_date, release_time, description,
   shoot_ack, shoot_ack_at, shoot_ack_by, shoot_ack_note,
@@ -1848,6 +1848,7 @@ router.patch('/:id', wrap(async (req, res) => {
     description: () => asText(body.description) === asText(row.description),
     post_link: () => asText(body.post_link) === asText(row.post_link),
     face_id: () => asNum(body.face_id) === asNum(row.face_id),
+    face_ids: () => JSON.stringify((Array.isArray(body.face_ids) ? body.face_ids : []).map(Number).filter(Boolean)) === String(row.faces || '[]'),
     views: () => asNum(body.views) === asNum(row.views),
     skip_rate: () => asNum(body.skip_rate) === asNum(row.skip_rate),
     // A delivery link and the NAME of the file it stands for are written
@@ -2020,13 +2021,30 @@ router.patch('/:id', wrap(async (req, res) => {
   if (body.face_id !== undefined) {
     if (!can(req.user, 'manage_content'))
       return res.status(403).json({ error: 'You can’t set who is in this' })
-    if (body.face_id === null || body.face_id === '') patch.face_id = null
+    if (body.face_id === null || body.face_id === '') { patch.face_id = null; patch.faces = '[]' }
     else {
       const id = Number(body.face_id)
       if (!Number.isFinite(id) || !(await userExists(id)))
         return res.status(400).json({ error: 'That person is no longer on the team — refresh the page and pick again' })
       patch.face_id = id
+      patch.faces = JSON.stringify([id])
     }
+  }
+  // A paid creative is often shot with two or three of them in it, and the
+  // single seat could only ever name one — so the question is asked as a list
+  // wherever it is asked at all. `face_id` stays as the first of them, the way
+  // assignee_id and reviewer_id mirror their lists, so every report, filter
+  // and old client that reads the single column keeps working untouched.
+  if (body.face_ids !== undefined) {
+    if (!can(req.user, 'manage_content'))
+      return res.status(403).json({ error: 'You can’t set who is in this' })
+    const list = [...new Set((Array.isArray(body.face_ids) ? body.face_ids : []).map(Number).filter(Boolean))]
+    for (const id of list) {
+      if (!(await userExists(id)))
+        return res.status(400).json({ error: 'That person is no longer on the team — refresh the page and pick again' })
+    }
+    patch.faces = JSON.stringify(list)
+    patch.face_id = list[0] ?? null
   }
 
   // Setting the stage directly still needs move_tasks — the crew no longer get

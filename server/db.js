@@ -668,6 +668,7 @@ export async function initSchema() {
       designer_id    INTEGER, -- posts are designed, not shot: one designer hat
       reviewer_id    INTEGER, -- the review owner: answers for a late review
       reviewers      TEXT    NOT NULL DEFAULT '[]', -- review can be shared; reviewer_id mirrors the first
+      faces          TEXT    NOT NULL DEFAULT '[]', -- a target creative can carry several brand faces; face_id mirrors the first
       -- The handover clocks. Each stage's owner is judged from the moment the
       -- work actually reached them to the moment they passed it on, so a stage
       -- that was handed over late never reads as its owner's fault.
@@ -1425,6 +1426,7 @@ export async function initSchema() {
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_code TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS reviewer_id INTEGER')
     await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS reviewers TEXT NOT NULL DEFAULT '[]'")
+    await exec("ALTER TABLE content ADD COLUMN IF NOT EXISTS faces TEXT NOT NULL DEFAULT '[]'")
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS shot_at TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edited_at TEXT')
     await exec('ALTER TABLE content ADD COLUMN IF NOT EXISTS edit_due_revised TEXT')
@@ -1605,6 +1607,7 @@ async function migrate() {
     if (!(await hasColumn('sprint_tasks', 'dropped_sprint_id'))) await exec('ALTER TABLE sprint_tasks ADD COLUMN dropped_sprint_id INTEGER')
     if (!(await hasColumn('content', 'post_link'))) await exec('ALTER TABLE content ADD COLUMN post_link TEXT')
     if (!(await hasColumn('content', 'face_id'))) await exec('ALTER TABLE content ADD COLUMN face_id INTEGER')
+    if (!(await hasColumn('content', 'faces'))) await exec("ALTER TABLE content ADD COLUMN faces TEXT NOT NULL DEFAULT '[]'")
     if (!(await hasColumn('content', 'skip_rate'))) await exec('ALTER TABLE content ADD COLUMN skip_rate REAL')
     if (!(await hasColumn('content', 'skip_rate_at'))) await exec('ALTER TABLE content ADD COLUMN skip_rate_at TEXT')
     if (!(await hasColumn('content', 'paid_month'))) await exec('ALTER TABLE content ADD COLUMN paid_month TEXT')

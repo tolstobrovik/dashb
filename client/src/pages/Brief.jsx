@@ -882,17 +882,33 @@ export default function Brief() {
   // ============ the simple view: admin & members ============
   if (!isCrew) {
     const nothingToday = dueToday.length === 0 && overdue.length === 0
+    // A day with nothing on it is not news, and saying so is a line somebody
+    // reads once and then reads past for ever. What is worth a headline on a
+    // clear day is the thing that is coming — so the line names the next piece
+    // of work and the day it lands, which is the question the empty page was
+    // making people go and look up. Missed work still wins the headline
+    // outright: nothing that is already late is ever displaced by what is next.
+    const nextUp = nothingToday ? priority.find((r) => r.tier === 'soon') : null
+    const nextTitle = nextUp?.t?.title || nextUp?.p?.title || ''
     return (
       <>
         <div className="card card-pad brief-hero">
           <div className="brief-hello"><Sun size={18} /> {niceDate}</div>
           <h2 className="brief-title">
-            {tx('{name}, today:', { name: firstName })}{' '}
-            {nothingToday ? tx('nothing today') : (
-              [
-                dueToday.length > 0 && `${dueToday.length} to do`,
-                overdue.length > 0 && `${overdue.length} missing`,
-              ].filter(Boolean).join(' · ')
+            {nothingToday && nextUp ? (
+              <>{tx('{name}, next:', { name: firstName })}{' '}
+                <span className="brief-next">{nextTitle}</span>
+                {nextUp.when ? <span className="brief-next-when">{dateLabel(nextUp.when)}</span> : null}
+              </>
+            ) : (
+              <>{tx('{name}, today:', { name: firstName })}{' '}
+                {nothingToday ? tx('all clear') : (
+                  [
+                    overdue.length > 0 && `${overdue.length} missing`,
+                    dueToday.length > 0 && `${dueToday.length} to do`,
+                  ].filter(Boolean).join(' · ')
+                )}
+              </>
             )}
           </h2>
         </div>
