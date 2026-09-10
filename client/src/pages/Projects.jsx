@@ -28,6 +28,16 @@ const BOARD_COLS = [
 ]
 
 // Admin's project editor (create + the fields the table needs).
+// Twenty projects in a sitting all run over the same stretch, and typing the
+// same two dates twenty times is how the second one gets left blank. The last
+// range used is remembered in this browser and offered as the starting point
+// for the next NEW project; opening an existing one always shows its own dates.
+const RANGE_KEY = 'satashkent_project_range'
+const lastRange = () => { try { return JSON.parse(localStorage.getItem(RANGE_KEY) || 'null') || {} } catch { return {} } }
+const rememberRange = (start_date, deadline) => {
+  try { localStorage.setItem(RANGE_KEY, JSON.stringify({ start_date: start_date || '', deadline: deadline || '' })) } catch { /* fine */ }
+}
+
 export function ProjectForm({ project, team, metrics, onClose, onSaved, onDeleted, isAdmin = false }) {
   const creating = !project
   const [err, setErr] = useState('')
@@ -36,7 +46,8 @@ export function ProjectForm({ project, team, metrics, onClose, onSaved, onDelete
     owner_id: project?.owner_id ?? '',
     metric: project?.metric || '',
     target: project?.target || '',
-    deadline: project?.deadline || '',
+    start_date: project?.start_date || (project ? '' : lastRange().start_date || ''),
+    deadline: project?.deadline || (project ? '' : lastRange().deadline || ''),
     status: project?.status || 'active',
     description: project?.description || '',
     success: project?.success || '',
@@ -52,11 +63,15 @@ export function ProjectForm({ project, team, metrics, onClose, onSaved, onDelete
         name: form.name.trim(),
         owner_id: form.owner_id || null,
         target: Number(form.target) || 0,
+        start_date: form.start_date || null,
         deadline: form.deadline || null,
         budget: form.budget === '' ? null : Number(form.budget),
         ...(photo.changed ? { photo: photo.photo, photo_thumb: photo.photo_thumb } : {}),
       }
       const saved = creating ? await api.post('/projects', payload) : await api.patch(`/projects/${project.id}`, payload)
+      // Only a NEW project teaches the next one where to start; correcting an
+      // old project's dates should not move everybody else's default.
+      if (creating) rememberRange(form.start_date, form.deadline)
       onSaved(saved)
       onClose()
     } catch (e) { setErr(e.message) }
@@ -105,8 +120,14 @@ export function ProjectForm({ project, team, metrics, onClose, onSaved, onDelete
         <div className="field"><label>Target</label>
           <input className="input" type="number" min="0" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} />
         </div>
-        <div className="field"><label>Deadline</label>
-          <input className="input" type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
+        <div className="field"><label>Runs</label>
+          <div className="proj-range">
+            <input className="input" type="date" aria-label="From" value={form.start_date}
+              onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+            <span className="proj-range-to">→</span>
+            <input className="input" type="date" aria-label="To" value={form.deadline}
+              onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
+          </div>
         </div>
       </div>
       <div className="field"><label>Description <span className="stat-sub">(optional)</span></label>
@@ -197,7 +218,10 @@ export default function Projects() {
   //   closed, undated   the day it was made — the one day it can be placed on
   // Nothing lands outside every month, so nothing can be hidden by this.
   const spanOf = (p) => {
-    const made = String(p.created_at || '').slice(0, 10)
+    // A project that says when it starts is believed. Before there was a start
+    // date the day it was created was the only honest guess at one; now it is
+    // only the fallback.
+    const made = String(p.start_date || p.created_at || '').slice(0, 10)
     if (p.deadline) {
       const from = made && made < p.deadline ? made : p.deadline
       return { from, to: p.deadline > from ? p.deadline : from }
@@ -244,6 +268,21 @@ export default function Projects() {
     HEALTH_RANK[a.health] - HEALTH_RANK[b.health]
     || (a.deadline ? (b.deadline ? a.deadline.localeCompare(b.deadline) : -1) : 1)
     || a.name.localeCompare(b.name)), [inMonth])
+
+  // Ticking a criterion from the list, without opening the project. The card
+  // is a link, so the box stops the click before it navigates; the row is
+  // swapped in place so the tick lands instantly and the fetch catches up.
+  const tickCriterion = async (p, i, done) => {
+    const next = (p.checklist || []).map((c, n) => (n === i ? { ...c, done } : c))
+    setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, checklist: next } : x)))
+    try {
+      const saved = await api.patch(`/projects/${p.id}`, { checklist: next })
+      setProjects((prev) => prev.map((x) => (x.id === p.id ? saved : x)))
+    } catch (e) {
+      setProjects((prev) => prev.map((x) => (x.id === p.id ? p : x)))
+      alert(e.message)
+    }
+  }
 
   const replaceCamp = (saved) => setCamps((prev) => {
     const has = prev.some((c) => c.id === saved.id)
@@ -342,7 +381,9 @@ export default function Projects() {
                       </>
                     )}
                     <span className={'proj-due' + (late ? ' late' : '')}>
-                      {p.deadline ? `${late ? 'was due' : 'due'} ${dateLabel(p.deadline)}` : 'no deadline'}
+                      {p.start_date && p.deadline
+                        ? `${dateLabel(p.start_date)} → ${dateLabel(p.deadline)}`
+                        : p.deadline ? `${late ? 'was due' : 'due'} ${dateLabel(p.deadline)}` : 'no deadline'}
                     </span>
                     <span className="proj-dot">·</span>
                     <span className="proj-camps">
@@ -351,6 +392,27 @@ export default function Projects() {
                         : 'no campaigns yet'}
                     </span>
                   </span>
+                  {/* The success criteria, as things you tick. The paper the
+                      team runs these off lists them as bullets in a column
+                      beside the project, and a bullet you cannot tick is a
+                      list somebody keeps a second copy of. These are the
+                      project's own checklist, so ticking one here and ticking
+                      it on the project page are the same act. */}
+                  {(p.checklist || []).length > 0 && (
+                    <span className="proj-crit">
+                      {(p.checklist || []).slice(0, 4).map((c, i) => (
+                        <span key={i} className={'proj-crit-row' + (c.done ? ' met' : '')}>
+                          <input type="checkbox" checked={!!c.done} aria-label={c.text}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => { e.stopPropagation(); tickCriterion(p, i, e.target.checked) }} />
+                          <span>{c.text}</span>
+                        </span>
+                      ))}
+                      {(p.checklist || []).length > 4 && (
+                        <span className="proj-crit-n">{tx('{n} more', { n: (p.checklist || []).length - 4 })}</span>
+                      )}
+                    </span>
+                  )}
                   {steps && p.progress.pct > 0 && (
                     <span className="proj-bar" data-tip={`${p.progress.steps_done} of ${p.progress.steps_total} steps done`}>
                       <span className="proj-bar-track">

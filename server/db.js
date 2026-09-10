@@ -753,6 +753,7 @@ export async function initSchema() {
       metric        TEXT NOT NULL DEFAULT '',
       target        REAL NOT NULL DEFAULT 0,
       actual        REAL NOT NULL DEFAULT 0,
+      start_date    TEXT,                            -- a project is a stretch, not a due date
       deadline      TEXT,
       status        TEXT NOT NULL DEFAULT 'active',  -- active | paused | closed
       description   TEXT NOT NULL DEFAULT '',
@@ -1609,6 +1610,7 @@ async function migrate() {
     if (!(await hasColumn('pay_rules', 'quota'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'quota_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota_bonus REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'per_1k_views'))) await exec('ALTER TABLE pay_rules ADD COLUMN per_1k_views REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('projects', 'start_date'))) await exec('ALTER TABLE projects ADD COLUMN start_date TEXT')
     // Shooting and editing priced by kind of work. Added one at a time so a
     // board part-way through an earlier migration finishes cleanly.
     for (const col of ['per_shoot_reel', 'per_edit_reel', 'per_shoot_youtube', 'per_edit_youtube', 'per_shoot_target', 'per_edit_target']) {

@@ -80,6 +80,7 @@ function view(p, liveCount, today, camps = []) {
     metric: p.metric || '',
     target: Number(p.target) || 0,
     actual: Number(p.actual) || 0,
+    start_date: p.start_date || null,
     deadline: p.deadline || null,
     status: p.status || 'active',
     description: p.description || '',
@@ -151,14 +152,15 @@ router.post('/', adminOnly, wrap(async (req, res) => {
   if (b.owner_id != null && b.owner_id !== '' && !(await get('SELECT 1 AS x FROM users WHERE id = ?', Number(b.owner_id))))
     return res.status(400).json({ error: 'Owner not found' })
   const info = await run(`
-    INSERT INTO projects (name, owner_id, metric, target, actual, deadline, status, description, success, budget, checklist, photo, photo_thumb, last_activity, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?)
+    INSERT INTO projects (name, owner_id, metric, target, actual, start_date, deadline, status, description, success, budget, checklist, photo, photo_thumb, last_activity, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?)
   `,
     name,
     b.owner_id == null || b.owner_id === '' ? null : Number(b.owner_id),
     String(b.metric || ''),
     Number(b.target) || 0,
     Number(b.actual) || 0,
+    /^\d{4}-\d{2}-\d{2}$/.test(String(b.start_date || '')) ? b.start_date : null,
     /^\d{4}-\d{2}-\d{2}$/.test(String(b.deadline || '')) ? b.deadline : null,
     ['active', 'paused', 'closed'].includes(b.status) ? b.status : 'active',
     String(b.description || '').slice(0, 2000),
@@ -194,6 +196,7 @@ router.patch('/:id', wrap(async (req, res) => {
   if (b.deadline !== undefined) patch.deadline = /^\d{4}-\d{2}-\d{2}$/.test(String(b.deadline || '')) ? b.deadline : null
   if (b.status !== undefined && ['active', 'paused', 'closed'].includes(b.status)) patch.status = b.status
   if (b.description !== undefined) patch.description = String(b.description).slice(0, 2000)
+  if (b.start_date !== undefined) patch.start_date = b.start_date || null
   if (b.success !== undefined) patch.success = String(b.success).slice(0, 1000)
   if (b.photo !== undefined) {
     const ph = cleanPhoto(b.photo)
