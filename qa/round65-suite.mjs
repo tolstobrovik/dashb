@@ -135,8 +135,18 @@ ok('…and clearing a promised day is the same act, so it is refused too', r.sta
 r = await req(`/content/${post.id}`, 'PATCH', { release_date: day(4) }, smmT)
 ok('filling an empty day is still allowed without being an admin', r.status === 200,
   `${r.status} ${r.data.error || ''}`)
+// This post is still an IDEA, and an idea's day never hardens into a promise
+// while it is one. That is a deliberate change of rule, not a slackening: a
+// day on a thought nobody has committed to holds nobody's morning, and the
+// people who write the ideas were being sent to an admin to move their own.
+// The promise rule is asked of `vid` above, which has left the idea stage —
+// that is where it belongs and where it still bites.
 r = await req(`/content/${post.id}`, 'PATCH', { release_date: day(6) }, smmT)
-ok('…but once it is set, it is a promise like any other', r.status === 403, String(r.status))
+ok('…and while it is still an idea it can be moved again, freely', r.status === 200, String(r.status))
+r = await req(`/content/${post.id}`, 'PATCH', { status_id: shootId, operator_id: shooter.id, recording_date: day(3) })
+r = await req(`/content/${post.id}`, 'PATCH', { release_date: day(7) }, smmT)
+ok('…and the moment it stops being one, the day is a promise like any other',
+  r.status === 403, `${r.status} ${r.data.error || ''}`)
 
 // ===================== an answer is an answer =====================
 // The admin demands a description and a reference for posts, then tries the

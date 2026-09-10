@@ -69,6 +69,43 @@ t = await make(published)
 ok('somebody with no date rights is still refused off an idea',
   (await req(`/content/${t.id}`, 'PATCH', { release_date: '2026-11-19' }, P)).status === 403)
 
+// ===================== and the form has to agree =====================
+// The server was opened first and the sheet was not, so a content maker
+// opening an idea still met a read-only picker and the words "only an admin
+// moves it" over a day the API would have taken. A form that refuses what the
+// server accepts is a wall with nothing behind it, and it is invisible to
+// every check that only ever talks to the API — which is why this half is
+// asked in a browser.
+const { chromium } = await import('playwright')
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
+const page = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
+page.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
+await page.goto(BASE + '/login')
+await page.fill('input[name="username"]', `im${stamp}`); await page.fill('input[name="password"]', 'm1234')
+await page.click('button[type="submit"]'); await page.waitForTimeout(2400)
+
+const releaseRow = async (id) => {
+  await page.goto(`${BASE}/brief?task=${id}`); await page.waitForTimeout(2000)
+  const more = page.locator('.cm-add-details')
+  if (await more.count()) { await more.click(); await page.waitForTimeout(700) }
+  return page.evaluate(() => {
+    const row = [...document.querySelectorAll('.modal .drow, .modal .cm-row')].find((x) => /Release/i.test(x.textContent || ''))
+    if (!row) return { found: false }
+    const inp = row.querySelector('input[type="date"]')
+    return { found: true, editable: !!inp && !inp.readOnly && !inp.disabled, promised: /promised|ask an admin/i.test(row.textContent || '') }
+  })
+}
+const anIdea = await make(idea)
+let ui = await releaseRow(anIdea.id)
+ok('the sheet offers an idea’s day to a content maker', ui.found && ui.editable, JSON.stringify(ui))
+ok('…and does not tell them to go and ask an admin', ui.found && !ui.promised, JSON.stringify(ui))
+
+const promisedOne = await make(published)
+ui = await releaseRow(promisedOne.id)
+ok('a promised day is still read-only in the sheet', ui.found && !ui.editable, JSON.stringify(ui))
+ok('…and still says who moves it', ui.found && ui.promised, JSON.stringify(ui))
+await browser.close()
+
 await req(`/users/${plain.id}`, 'DELETE')
 await req(`/users/${mover.id}`, 'DELETE')
 console.log(fails === 0 ? '\nIdea-date suite clean.' : `\n${fails} PROBLEMS`)

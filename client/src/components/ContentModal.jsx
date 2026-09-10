@@ -805,7 +805,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const isAdmin = user.role === 'admin'
   // Promised days are the admin's to move. For everyone else the picker is
   // read-only and the ask is the way through.
-  const datesLocked = !isAdmin
+  //
+  // …except while the task is still an IDEA. A day on a thought nobody has
+  // promised anything about is not a promise: no operator's morning is held
+  // by it and no editor has been told when the cut is due. The server says so
+  // (`wasAnIdea`, routes/content.js), and a form that refuses what the server
+  // would accept is a wall with nothing behind it — which is exactly what a
+  // content maker hit when they tried to move an idea and were told to go and
+  // ask an admin. Judged on the stage the task IS in, the way the freeze
+  // below is, because that is the question the server asks when it saves.
+  const onlyAnIdea = !!item && stageRank(item.status_id) === 'idea'
+  const datesLocked = !isAdmin && !onlyAnIdea
   // …and while it is being made, the days do not move at all: an empty one
   // cannot be filled in either. Judged on the stage the task IS in, not the
   // one the form is about to put it in, because that is the question the
