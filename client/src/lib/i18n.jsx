@@ -3006,6 +3006,11 @@ export const useT = () => useContext(I18n)
 // veneer: the words changed and the machinery underneath did not.
 export const locale = () => ({ en: 'en-GB', ru: 'ru-RU', uz: 'uz-UZ' }[current] || 'en-GB')
 
+// The two-letter code itself, for the places that send the language TO
+// something rather than reading it — the assistant, which has to be told
+// which language to answer in.
+export const lang = () => current
+
 // The same translator, outside React.
 //
 // Toasts, alerts and confirms are fired from plain functions where there is

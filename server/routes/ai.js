@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { authRequired, adminOnly, wrap } from '../auth.js'
-import { translate, simplify, guessLang, configured, probe, cacheSize, clearCache, LANG_NAME, MODEL_KEYS } from '../ai.js'
+import { translate, simplify, review, insight, guessLang, configured, probe, cacheSize, clearCache, LANG_NAME, MODEL_KEYS } from '../ai.js'
 import { saveAiKey, loadAiKeys } from '../db.js'
 
 const router = Router()
@@ -58,6 +58,47 @@ router.post('/simplify', gate, wrap(async (req, res) => {
     res.json(await simplify(text, String(req.body?.lang || 'en')))
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message })
+  }
+}))
+
+// ---- is this brief usable? ----
+// Asked by the task sheet as somebody types, and by nothing else. It ADVISES:
+// there is no status code here that means "refused", because a board that
+// rejects work on a reading is a board that stops working when the reading
+// does.
+//
+// Not rate-limited by the translation gate. The mechanical half costs nothing
+// and runs with no key at all, so a person typing a brief must never be told
+// to come back in a minute — the client is what decides when to ask, and it
+// asks when they stop typing.
+router.post('/review', wrap(async (req, res) => {
+  const text = String(req.body?.text ?? '')
+  if (text.length > MAX) return res.status(413).json({ error: `That is longer than ${MAX} characters` })
+  const kind = /^[a-z_]{1,20}$/.test(String(req.body?.kind || '')) ? String(req.body.kind) : 'video'
+  try {
+    // `tried` names every provider and whether it holds a key. That is the
+    // admin's business (GET /status answers it) and nobody else's, so it is
+    // dropped here rather than handed to every person typing a brief.
+    const { tried: _t, ...out } = await review(text, { lang: String(req.body?.lang || 'en'), kind })
+    res.json(out)
+  } catch (e) {
+    // A reader that fails is not an error the person typing should see.
+    res.json({ verdict: 'ok', flags: [], missing: [], say: '', provider: 'none', error: e.message })
+  }
+}))
+
+// ---- what do these numbers say? ----
+// The digest is built by the server that already computed it and handed
+// straight through, so nothing here decides what the model gets to see.
+router.post('/insight', gate, wrap(async (req, res) => {
+  const digest = req.body?.digest
+  if (!digest || typeof digest !== 'object') return res.status(400).json({ error: 'Nothing to read' })
+  if (JSON.stringify(digest).length > 8000) return res.status(413).json({ error: 'That digest is too big to read' })
+  try {
+    const { tried: _t, ...out } = await insight(digest, { lang: String(req.body?.lang || 'en') })
+    res.json(out)
+  } catch (e) {
+    res.json({ points: [], provider: 'none', error: e.message })
   }
 }))
 
