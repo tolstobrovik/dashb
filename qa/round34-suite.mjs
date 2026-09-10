@@ -18,25 +18,25 @@ await p.goto(BASE + '/login')
 const wash = await p.locator('.login-page').evaluate((el) => getComputedStyle(el).backgroundImage)
 ok('the login page wears the ruby wash', wash.includes('radial-gradient'))
 
-// ---- 2) My Day, your order ----
+// ---- 2) My Day, your order — RETIRED ----
+// "Arrange your day" let somebody reorder and hide My Day's sections. It is
+// not in the product any more: it existed on this branch and never on
+// production, and the round that took production's tree wholesale
+// (ec40760, "Take the production tree: it is the one that is ahead") dropped
+// it. The suite has been failing on it ever since, which is the suite doing
+// its job — a test that keeps passing after its feature is deleted is worth
+// nothing.
+//
+// It is retired rather than repaired because nobody has asked for it back and
+// a panel for reordering the sections of one page is the opposite of what the
+// board is being asked for. If it is wanted again, this block is the
+// specification: seven sections, drag to order, an eye to hide, a Reset, and
+// the arrangement surviving a reload.
+//
+// The three sections around it still describe the product and still run.
 await p.fill('input[name="username"]', 'jas'); await p.fill('input[name="password"]', 'j1234')
 await p.click('button[type="submit"]'); await p.waitForURL(/brief/, { timeout: 15000 })
 await p.waitForTimeout(1200)
-await p.locator('.brief-arrange').click(); await p.waitForTimeout(400)
-ok('Arrange lists all seven sections', (await p.locator('.br-arr-row').count()) === 7)
-for (let i = 0; i < 6; i++) await p.locator('.br-arr-row', { hasText: 'Coming up' }).locator('.side-eye').first().click()
-await p.locator('.br-arr-row', { hasText: 'What you’ve done' }).locator('.side-eye').nth(2).click()
-await p.locator('.br-arr-foot .btn-primary').click(); await p.waitForTimeout(400)
-let heads = await p.locator('.section-head h2').allTextContents()
-ok('Coming up leads once moved', heads[0] === 'Coming up', heads.join(' > '))
-ok('a hidden section leaves the page', !heads.includes('What you’ve done'))
-await p.reload(); await p.waitForTimeout(1400)
-heads = await p.locator('.section-head h2').allTextContents()
-ok('the arrangement survives a reload', heads[0] === 'Coming up' && !heads.includes('What you’ve done'))
-await p.locator('.brief-arrange').click(); await p.waitForTimeout(300)
-await p.locator('.br-arr-foot .btn', { hasText: 'Reset' }).click()
-await p.locator('.br-arr-foot .btn-primary').click(); await p.waitForTimeout(400)
-ok('Reset brings the built-in day back', (await p.locator('.section-head h2').allTextContents()).includes('What you’ve done'))
 
 // ---- 3) filters that remember ----
 await p.goto(BASE + '/missed'); await p.waitForTimeout(1100)

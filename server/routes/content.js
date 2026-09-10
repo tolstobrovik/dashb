@@ -405,18 +405,34 @@ const addRole = (map, id, role) => {
 // booked, otherwise the release.
 const dateBit = (rec, rel) => (rec ? ` · shoot ${tgDate(rec)}` : rel ? ` · release ${tgDate(rel)}` : '')
 
-// Who may READ a task. Everybody on the board, now: the schedule is the one
+// Two questions, and they had been collapsed into one.
+//
+// MAY I SEE THIS ON THE SCHEDULE — everybody, now. The schedule is the one
 // thing a marketing team has to be able to read whole. Scoped to your own
 // channels, "who is shooting on Thursday" could only be answered by the people
 // who already knew, and an operator booked on a channel they do not sit in
-// vanished from everybody else's calendar — which is the opposite of what a
+// vanished from everybody else's calendar, which is the opposite of what a
 // shared calendar is for.
 //
-// This opens READING only. Every write on this file is gated exactly as it was:
-// who may edit, who may move a promised day, who may take a seat, who may set
-// a delivery link. Seeing that Jaloliddin films on Thursday does not let you
-// change it.
+// AM I ON THIS — unchanged, and it has to be, because opening the first
+// question opened everything that was resting on it. When this file had one
+// predicate and it started returning true, it took with it: the task's
+// ATTACHMENTS (list, upload, download, delete — the brief, the ТЗ, the deck),
+// its VOICE NOTES, and three writes — commenting, raising a flag, and undoing
+// somebody else's last move. round52-suite says a stranger to a task gets 404
+// from its paperwork, and it was right to fail.
+//
+// So the schedule is shared and the paperwork is not. Seeing that Jaloliddin
+// films on Thursday does not hand you the brief he is filming from, and it
+// certainly does not let you undo his last move.
 const canSee = () => true
+const worksOn = (user, row) =>
+  adminHere(user, row) ||
+  assigneesOf(row).includes(user.id) ||
+  row.operator_id === user.id || // crew see their work even outside their departments
+  row.editor_id === user.id ||
+  row.designer_id === user.id ||
+  row.channels.some((ch) => (user.departments || []).includes(ch))
 
 // Every write answers with the same slim shape the list uses — callers swap
 // the row into their lists, so the full photo must never ride along.
@@ -580,10 +596,13 @@ const DOC_TYPES = {
 const DOC_COLUMNS = 'id, content_id, name, mime, size, uploaded_by, uploader, created_at'
 const extOf = (name) => String(name || '').split('.').pop().toLowerCase()
 
-// The task a document hangs on, or null when the caller may not see it.
+// The task a document hangs on, or null when the caller has no business with
+// it. `worksOn`, not `canSee`: a document attached to a task is the brief, the
+// ТЗ or the deck, and reading somebody's shoot day off the calendar is not a
+// reason to be handed the paperwork behind it.
 const parentOf = async (user, contentId) => {
   const row = parse(await get('SELECT * FROM content WHERE id = ?', contentId))
-  return row && canSee(user, row) ? row : null
+  return row && worksOn(user, row) ? row : null
 }
 
 // How full each person's day already is, for the pickers. Cheap, read-only,
@@ -754,7 +773,7 @@ router.get('/voice/:vid', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', v.content_id)
   if (!row) return res.status(404).json({ error: 'Not found' })
   const parsed = { ...row, channels: JSON.parse(row.channels || '[]') }
-  if (!canSee(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
+  if (!worksOn(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
   res.json({ id: v.id, mime: v.mime, secs: v.secs, author: v.author, data: v.data })
 }))
 
@@ -765,7 +784,7 @@ router.post('/:id/comments', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
   const parsed = { ...row, channels: JSON.parse(row.channels || '[]') }
-  if (!canSee(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
+  if (!worksOn(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
   const text = String(req.body?.text ?? '').trim().slice(0, 2000)
   // A voice note IS the message; words beside it are optional.
   const voice = await saveVoice(req, row, req.body)
@@ -1631,7 +1650,7 @@ router.post('/:id/flags', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
   const parsed = { ...row, channels: JSON.parse(row.channels || '[]') }
-  if (!canSee(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
+  if (!worksOn(req.user, parsed)) return res.status(404).json({ error: 'Not found' })
   const kind = FLAG_WORDS[req.body?.kind] ? req.body.kind : 'at_risk'
   // The reason IS the flag. "It will be late" without one tells the planner
   // nothing they can act on, which is the same as not being told.
@@ -3158,8 +3177,10 @@ router.get('/:id/handover', wrap(async (req, res) => {
 router.post('/:id/undo', wrap(async (req, res) => {
   const row = await get('SELECT * FROM content WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Not found' })
-  // canSee reads channels as a list, and this row came straight off the table.
-  if (!canSee(req.user, { ...row, channels: JSON.parse(row.channels || '[]') }))
+  // Taking back somebody else's move is a write, and one of the loudest —
+  // it restores a stage, the handover clocks and the hats the move forced.
+  // worksOn reads channels as a list, and this row came straight off the table.
+  if (!worksOn(req.user, { ...row, channels: JSON.parse(row.channels || '[]') }))
     return res.status(403).json({ error: 'Not your channel' })
 
   // The move being taken back may have landed on ANOTHER serverless instance

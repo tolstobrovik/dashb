@@ -120,9 +120,12 @@ await ap.fill('input[name="username"]', 'admin'); await ap.fill('input[name="pas
 await ap.click('button[type="submit"]'); await ap.waitForTimeout(2400)
 await ap.goto(BASE + '/admin'); await ap.waitForTimeout(1800)
 await ap.getByRole('main').getByRole('button', { name: 'Payroll' }).click(); await ap.waitForTimeout(2600)
-const payRow = ap.locator('tr', { hasText: `KPI Suite ${stamp}` })
-ok('the payroll table offers this person a KPI card', (await payRow.count()) === 1)
-await payRow.locator('.icon-btn').first().click(); await ap.waitForTimeout(1800)
+// Round 92 replaced the ten-column payroll table with one row per person, and
+// named the two actions instead of leaving them as icons whose tooltips opened
+// on top of each other.
+const payRow = ap.locator('.pay-row', { hasText: `KPI Suite ${stamp}` })
+ok('the payroll offers this person a KPI card', (await payRow.count()) === 1)
+await payRow.getByRole('button', { name: 'KPI' }).click(); await ap.waitForTimeout(1800)
 ok('…which opens an editor', (await ap.locator('.kpi-edit').count()) === 1)
 ok('…carrying the ladder already on the card', (await ap.locator('.kpi-ladder').count()) >= 1)
 ok('…and showing the reading the board took itself',

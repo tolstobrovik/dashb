@@ -93,10 +93,21 @@ ok('a task that EXISTS still has its pages', (await page.locator('.cm-page-tab')
 // Execution, the days on Logistics, the files between them. Land on Talk,
 // which is where a comment link puts you, and there was nothing on screen
 // about the work at all.
+// Dates built from today, not typed out. These were three absolute days —
+// 2026-09-07, -16, -17 — so the fixture meant "three days late" on exactly
+// one date in history and something else every day after it. A suite that can
+// only pass on the afternoon it was written is a suite that starts lying the
+// next morning. The board keeps a Tashkent day, so the fixture does too.
+const day = (n) => {
+  const d = new Date(Date.now() + 5 * 3600e3)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+const LATE_BY = 3
 const live = (await req('/content', 'POST', {
   title: `tasksheet ${stamp} live`, type: 'reel', channels: ['instagram_main'], status_id: 3,
   operator_id: 3, editor_id: 2,
-  recording_date: '2026-09-07', edit_ready_date: '2026-09-16', release_date: '2026-09-17',
+  recording_date: day(-LATE_BY), edit_ready_date: day(6), release_date: day(7),
 })).data
 await req(`/content/${live.id}`, 'PATCH', { shot_link: 'https://drive.google.com/file/d/TS/view' })
 await page.goto(`${BASE}/brief?task=${live.id}`); await page.waitForTimeout(2200)
@@ -112,7 +123,7 @@ for (let i = 0; i < strips.length; i++) {
 }
 ok('where the work has got to is on every page', everywhere, JSON.stringify(seen))
 ok('…naming the phase and who holds it', /Shooting/.test(seen.join(' ')) && /Mirabbos/.test(seen.join(' ')), seen.join(' | '))
-ok('…and saying how late the late one is', /3d late/.test(seen.join(' ')), seen.join(' | '))
+ok('…and saying how late the late one is', new RegExp(`${LATE_BY}d late`).test(seen.join(' ')), seen.join(' | '))
 ok('…in the colour the rest of the board uses for late',
   (await sheet.locator('.cm-state-bit.s-late').count()) === 1)
 ok('…while what has not started yet says so, rather than reading as late',
