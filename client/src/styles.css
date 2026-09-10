@@ -17,10 +17,13 @@
   --brand-900: #3d0b13;
   --cream:     #ece7e1; /* the logo's light tone */
 
-  /* Surfaces */
-  --page:      #f6f3f1;
+  /* Surfaces. The ground goes a step cooler and lighter — the warm cream
+     read as a tinted page behind white cards, and M3 wants the card to be
+     the only white thing on screen. Cards stay pure white; the second
+     surface is the quiet fill behind chips, inputs and table heads. */
+  --page:      #f5f4f6;
   --surface:   #ffffff;
-  --surface-2: #faf7f5;
+  --surface-2: #f2f0f3;
 
   /* Ink (text tokens — never wear the data colour).
      Kept dark enough to read comfortably — no washed-out grey text. */
@@ -41,12 +44,28 @@
   --serious:  #ec835a;
   --critical: #d03b3b;
 
-  --radius:    16px;
-  --radius-sm: 11px;
-  --radius-xs: 8px;
-  --shadow-sm: 0 1px 2px rgba(28, 21, 24, 0.06);
-  --shadow:    0 1px 2px rgba(28, 21, 24, 0.05), 0 10px 30px rgba(28, 21, 24, 0.07);
-  --shadow-lg: 0 20px 50px rgba(28, 21, 24, 0.18);
+  /* ---- shape ----------------------------------------------------------
+     Material 3 is a rounder language than this board was drawn in. The
+     radii step up rather than double: a 16px card at 24px reads as the same
+     card, better made, where a 32px one reads as a different product. The
+     pill is its own token because buttons, chips and tags all want the same
+     one and "999px" scattered through five thousand lines is how two of
+     them quietly end up at 998. */
+  --radius:    24px;
+  --radius-sm: 16px;
+  --radius-xs: 12px;
+  --radius-pill: 999px;
+
+  /* ---- elevation ------------------------------------------------------
+     M3 separates things with light rather than with lines. These are the
+     Workspace shadows: a tight contact shadow that does the separating and
+     a wide soft one that does the lifting, both nearly colourless so they
+     read as depth and not as a grey box. Where one of these lands, the
+     hairline border comes off — a shadow AND a border is two answers to one
+     question and reads as neither. */
+  --shadow-sm: 0 1px 2px rgba(28, 21, 24, 0.06), 0 1px 3px 1px rgba(28, 21, 24, 0.04);
+  --shadow:    0 1px 3px rgba(28, 21, 24, 0.08), 0 6px 16px -4px rgba(28, 21, 24, 0.10);
+  --shadow-lg: 0 2px 6px rgba(28, 21, 24, 0.10), 0 24px 48px -12px rgba(28, 21, 24, 0.22);
 
   /* Tints that must flip with the theme */
   --track-soft:    #F1EFE8;
@@ -372,9 +391,16 @@ button { font-family: inherit; }
 /* ============================================================
    Reusable atoms
    ============================================================ */
+/* A card is white, round, and separated by light. The hairline goes: a
+   border AND a shadow are two answers to "where does this end", and drawn
+   together they read as neither — the shadow does the whole job, which is
+   what makes a Workspace surface look like it is sitting on the page rather
+   than stamped into it. The transparent border is kept so that everything
+   which sets .card border-color to say something (a health colour, a drag
+   target) still has a border to colour. */
 .card {
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid transparent;
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
 }
@@ -400,42 +426,54 @@ button { font-family: inherit; }
 @media (max-width: 780px) { .grid-hero { grid-template-columns: 1fr; } }
 
 /* buttons */
+/* A button is a pill. The padding grows with the radius — a pill with the
+   old 15px sides has its label sitting on the curve, which is the thing that
+   makes a rounded button look like a mistake rather than a choice. The
+   primary one loses its outline and gains a shadow that lifts on hover: in
+   M3 the filled button IS the elevation, and an outline around a solid fill
+   is a border drawn on top of a border. */
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 15px;
-  border-radius: var(--radius-xs);
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--hairline-strong);
   background: var(--surface);
   color: var(--ink);
   font-weight: 600;
   font-size: 13.5px;
   cursor: pointer;
-  transition: background 0.14s, border-color 0.14s, transform 0.05s;
+  transition: background 0.16s, border-color 0.16s, box-shadow 0.16s, transform 0.05s;
 }
 .btn:hover { background: var(--surface-2); }
 .btn:active { transform: translateY(1px); }
 .btn-primary {
   background: var(--brand-500);
-  border-color: var(--brand-500);
+  border-color: transparent;
   color: #fff;
+  box-shadow: var(--shadow-sm);
 }
-.btn-primary:hover { background: var(--brand-600); }
-.btn-ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+.btn-primary:hover { background: var(--brand-600); box-shadow: var(--shadow); }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--ink-2); box-shadow: none; }
 .btn-ghost:hover { background: var(--brand-50); color: var(--brand-600); }
-.btn-danger { color: var(--critical); border-color: transparent; background: transparent; }
+.btn-danger { color: var(--critical); border-color: transparent; background: transparent; box-shadow: none; }
 .btn-danger:hover { background: var(--danger-bg); }
-.btn-sm { padding: 6px 11px; font-size: 12.5px; }
-.btn-icon { padding: 7px; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-sm { padding: 6px 14px; font-size: 12.5px; }
+/* An icon on its own is a circle, not a stubby pill. */
+.btn-icon { padding: 8px; border-radius: 50%; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 
 /* form fields */
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+/* Fields get the same rounding as everything else. M3 fills a field rather
+   than boxing it, but a filled field inside a white card needs the card to
+   stay the only white thing — so the border stays, softened, and the corner
+   does the work. */
 .input, .select, textarea.input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
   background: var(--surface);
@@ -851,15 +889,15 @@ table.tbl tr:hover td { background: var(--surface-2); }
 
 /* ---- Board ---- */
 .board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; }
-.board-col { flex: 0 0 272px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 12px; transition: background 0.15s, border-color 0.15s; }
+.board-col { flex: 0 0 272px; background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius); padding: 14px; transition: background 0.15s, border-color 0.15s; }
 .board-col.over { background: var(--brand-50); border-color: var(--brand-200); }
 .board-col-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; padding: 2px 4px 12px; }
-.board-col-head .count { margin-left: auto; color: var(--muted); font-weight: 600; background: var(--surface); border: 1px solid var(--hairline); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+.board-col-head .count { margin-left: auto; color: var(--muted); font-weight: 600; background: var(--surface); border: 0; border-radius: var(--radius-pill); padding: 1px 9px; font-size: 12px; }
 .board-col-body { display: flex; flex-direction: column; gap: 10px; min-height: 40px; }
 .board-empty { border: 1.5px dashed var(--hairline-strong); border-radius: var(--radius-sm); color: var(--muted); text-align: center; padding: 14px; font-size: 12.5px; }
 
 /* ---- Card ---- */
-.tcard { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); padding: 12px; cursor: grab; transition: box-shadow 0.15s, transform 0.06s, opacity 0.15s; }
+.tcard { background: var(--surface); border: 1px solid transparent; border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); padding: 13px; cursor: grab; transition: box-shadow 0.15s, transform 0.06s, opacity 0.15s; }
 .tcard:hover { box-shadow: var(--shadow); }
 .tcard:active { cursor: grabbing; }
 .tcard.dim { opacity: 0.4; }
@@ -868,7 +906,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .tcard-flag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.3px; text-transform: uppercase; color: var(--critical); margin-bottom: 6px; }
 .tcard-title { font-weight: 600; font-size: 14px; line-height: 1.35; }
 .tcard-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; background: var(--brand-50); color: var(--brand-600); }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: var(--radius-pill); background: var(--brand-50); color: var(--brand-600); }
 .chip-danger { background: var(--danger-bg); color: var(--critical); }
 .chip-muted { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--hairline); }
 .tcard-sub { margin-top: 10px; }
