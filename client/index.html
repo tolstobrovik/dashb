@@ -18,10 +18,20 @@
          Grotesk has no Cyrillic subset at all, so the moment the board learned
          Russian its own headings fell out of the brand face mid-word.
          Google serves these by unicode-range, so a Latin-only reader never
-         downloads the Cyrillic. -->
+         downloads the Cyrillic.
+
+         A stylesheet in the head blocks the first paint until it answers, and
+         on a phone on mobile data in Tashkent that is somebody looking at a
+         white screen waiting for a font. Both CSS stacks name real system
+         fallbacks, so the board has nothing to wait for: the sheet is fetched
+         at print media, which does not block rendering, and is promoted to
+         all the moment it lands. display=swap then does the changeover. If
+         Google is slow, filtered, or down, the board opens anyway in the
+         machine's own font instead of not opening at all. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Golos+Text:wght@700;800&display=swap" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Golos+Text:wght@700;800&display=swap" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Golos+Text:wght@700;800&display=swap" /></noscript>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
