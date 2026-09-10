@@ -5248,6 +5248,10 @@ button.blame-person:hover { background: var(--surface-2); }
 .sdot i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .sdot svg { flex: none; color: var(--muted); }
 .cdots { display: inline-flex; align-items: center; gap: 10px; }
+/* The month strip gets its own line. .pill-group is inline-flex, so left as
+   one it sat beside the view tabs and "which view" and "which month" read as
+   one row of eight buttons. */
+.proj-months { display: flex; width: fit-content; margin: 0 0 10px; flex-wrap: wrap; row-gap: 4px; }
 .cdot { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
 .cdot i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .cdot-late i { background: var(--critical); }

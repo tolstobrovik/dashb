@@ -542,6 +542,7 @@ const PHRASES = {
     "People": "Люди",
     "The page you are on lives in here": "Здесь находится открытая страница",
     "{name} section": "Раздел {name}",
+    "Nothing this month": "В этом месяце ничего",
     "Finished in the last 7 days": "Готово за последние 7 дней",
     "nothing today": "сегодня ничего",
     // Counts as dots: the digit stays, the noun moves into the tooltip.
@@ -1705,6 +1706,7 @@ const PHRASES = {
     "People": "Odamlar",
     "The page you are on lives in here": "Ochiq sahifa shu yerda",
     "{name} section": "{name} bo‘limi",
+    "Nothing this month": "Bu oyda hech narsa yo‘q",
     "Finished in the last 7 days": "Soʻnggi 7 kunda tayyor",
     "nothing today": "bugun hech narsa",
     // Counts as dots: the digit stays, the noun moves into the tooltip.

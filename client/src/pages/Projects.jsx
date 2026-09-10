@@ -11,7 +11,7 @@ import CampaignGantt from '../components/CampaignGantt.jsx'
 import { HealthPill, StatusBadge, CampaignRow, PC, PhotoField } from '../components/ProjectBits.jsx'
 import { dateLabel, todayISO } from '../lib/constants.js'
 import { loadFailed } from '../lib/toast.js'
-import { tr as tx } from '../lib/i18n.jsx'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 
 const CAMP_FILTERS = [
   { key: 'all', label: 'All' },
@@ -144,6 +144,7 @@ export default function Projects() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [campSort, setCampSort] = useState('start')    // start | end | daysleft
+  const [month, setMonth] = useState(null)              // 'YYYY-MM', or null for every month
   const [projectModal, setProjectModal] = useState(null) // null | 'new' | project
   const [campModal, setCampModal] = useState(null)       // null | 'new' | campaign
   const dragRef = useRef(null)
@@ -177,11 +178,72 @@ export default function Projects() {
   // One order, and it is the useful one: what needs a person is at the top,
   // then the soonest deadline. Four sort buttons over a handful of projects
   // asked people to choose an ordering before they had read anything.
+  // ---- one month at a time -------------------------------------------------
+  // A project is not a day, it is a stretch: started then, due then. So the
+  // month filter asks whether the stretch TOUCHES the month rather than
+  // whether the deadline falls inside it — a project that ran from 20 August
+  // to the middle of September is an August project and a September project,
+  // and it shows up under both. Filtering on the deadline alone would have
+  // dropped it out of August entirely, which is the month most of the work
+  // happened in.
+  //
+  // What the stretch is, from what already exists on a project:
+  //   with a deadline   from when it was started to the day it is due
+  //   open, undated     this month, and only this month. It is live rather
+  //                     than scheduled: stretching it back to the day it was
+  //                     started would put one open-ended project into every
+  //                     month since, and drag months into the strip that hold
+  //                     nothing else at all
+  //   closed, undated   the day it was made — the one day it can be placed on
+  // Nothing lands outside every month, so nothing can be hidden by this.
+  const spanOf = (p) => {
+    const made = String(p.created_at || '').slice(0, 10)
+    if (p.deadline) {
+      const from = made && made < p.deadline ? made : p.deadline
+      return { from, to: p.deadline > from ? p.deadline : from }
+    }
+    if (!made) return null
+    const done = p.health === 'done' || p.status === 'closed'
+    const day = done ? made : todayISO()
+    return { from: day, to: day }
+  }
+  const monthEnd = (ym) => {
+    const [y, m] = ym.split('-').map(Number)
+    return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
+  }
+  // Every month any project touches, newest first — so the strip only ever
+  // offers months that have something in them.
+  const months = useMemo(() => {
+    const seen = new Set()
+    for (const p of projects) {
+      const sp = spanOf(p)
+      if (!sp) continue
+      const d = new Date(`${sp.from.slice(0, 7)}-01T00:00:00Z`)
+      const last = sp.to.slice(0, 7)
+      for (let i = 0; i < 60; i++) {
+        const ym = d.toISOString().slice(0, 7)
+        seen.add(ym)
+        if (ym >= last) break
+        d.setUTCMonth(d.getUTCMonth() + 1)
+      }
+    }
+    return [...seen].sort().reverse()
+  }, [projects])
+  const inMonth = useMemo(() => {
+    if (!month) return projects
+    const from = `${month}-01`
+    const to = monthEnd(month)
+    return projects.filter((p) => {
+      const sp = spanOf(p)
+      return sp && sp.from <= to && sp.to >= from
+    })
+  }, [projects, month])
+
   const HEALTH_RANK = { red: 0, amber: 1, green: 2, idle: 3, done: 4 }
-  const sortedProjects = useMemo(() => [...projects].sort((a, b) =>
+  const sortedProjects = useMemo(() => [...inMonth].sort((a, b) =>
     HEALTH_RANK[a.health] - HEALTH_RANK[b.health]
     || (a.deadline ? (b.deadline ? a.deadline.localeCompare(b.deadline) : -1) : 1)
-    || a.name.localeCompare(b.name)), [projects])
+    || a.name.localeCompare(b.name)), [inMonth])
 
   const replaceCamp = (saved) => setCamps((prev) => {
     const has = prev.some((c) => c.id === saved.id)
@@ -241,6 +303,20 @@ export default function Projects() {
               is on it", and that answer fits on two lines. The order already
               answers the first half — what needs a person is at the top — so
               the four sort buttons went with the columns. */}
+          {/* One row of months, and "All". Only months that actually hold a
+              project are offered, so the strip is as long as the work is and
+              never longer, and a project that straddles two months sits under
+              both. */}
+          {months.length > 1 && (
+            <div className="pill-group proj-months">
+              <button className={'pill' + (month === null ? ' active' : '')} onClick={() => setMonth(null)}>{tx('All')}</button>
+              {months.map((ym) => (
+                <button key={ym} className={'pill' + (month === ym ? ' active' : '')} onClick={() => setMonth(ym)}>
+                  {new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(locale(), { month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="proj-list">
             {sortedProjects.map((p) => {
               const late = p.deadline && p.deadline < todayISO()
@@ -292,6 +368,11 @@ export default function Projects() {
               <Briefcase size={28} />
               <div>No projects yet{isAdmin ? ' — create the first one.' : '.'}</div>
             </div>
+          )}
+          {/* A month can be empty while the board is not. Say so, rather than
+              showing a blank where the list was. */}
+          {projects.length > 0 && sortedProjects.length === 0 && (
+            <div className="card card-pad empty"><div className="stat-sub">{tx('Nothing this month')}</div></div>
           )}
         </>
       )}

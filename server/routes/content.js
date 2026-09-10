@@ -2255,10 +2255,20 @@ router.patch('/:id', wrap(async (req, res) => {
   // same disruption as moving one, and until now it was the one way round the
   // rule. An admin still moves them, and the ask below still reaches an admin,
   // so the work is never actually stuck.
+  //
+  // None of which is true of an IDEA. A day on a thought nobody has promised
+  // anything about is not a promise: no operator's morning is held by it, no
+  // editor has been told when the cut is due, and nothing downstream moves
+  // when it does. The board has always said so about an idea's STAGE — "an
+  // idea may be shoved along by anybody", the same `wasAnIdea` read a few
+  // hundred lines up — and said the opposite about its DAYS, which is how a
+  // member dragging a thought from one square of the calendar to another got
+  // told to go and ask an admin. Both rules step aside while it is an idea,
+  // and both come back the moment it stops being one.
   const LOCKED_DATES = ['recording_date', 'edit_ready_date', 'design_ready_date', 'release_date']
   for (const f of [...LOCKED_DATES, 'edit_due_revised', 'review_due_revised']) {
     if (body[f] !== undefined) {
-      if (!can(req.user, 'manage_content') && !can(req.user, 'move_tasks'))
+      if (!wasAnIdea && !can(req.user, 'manage_content') && !can(req.user, 'move_tasks'))
         return res.status(403).json({ error: 'You don’t have permission to move dates' })
       const next = body[f] || null
       if (LOCKED_DATES.includes(f) && datesFrozen && String(next ?? '') !== String(row[f] ?? '') && !adminHere(req.user, row))
@@ -2269,7 +2279,7 @@ router.patch('/:id', wrap(async (req, res) => {
           // refused, and the form says why rather than offering a dead end.
           ...(row[f] ? { ask_to_move: { field: f, from: row[f], to: next } } : {}),
         })
-      if (LOCKED_DATES.includes(f) && row[f] && String(next ?? '') !== String(row[f]) && !adminHere(req.user, row))
+      if (LOCKED_DATES.includes(f) && !wasAnIdea && row[f] && String(next ?? '') !== String(row[f]) && !adminHere(req.user, row))
         return res.status(403).json({
           error: `That day is already promised — ask an admin to move it, and say what happened.`,
           // What the form needs to offer the ask instead of just refusing:
