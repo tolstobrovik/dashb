@@ -83,9 +83,18 @@ await page.waitForTimeout(500)
 await page.locator('.mob-new').click()
 await page.waitForTimeout(1800)
 ok('the raised button opens the task form', await page.locator('.modal .cm-title').isVisible())
+// A task being WRITTEN DOWN is one page on a phone too: Execution, Logistics
+// and Talk are doors to empty rooms on a piece that does not exist yet, and on
+// a 390px screen they were the first thing between somebody and the title box.
+ok('writing one down is a single page', (await page.locator('.cm-page-tab').count()) === 0)
+// The whole form is one press away for somebody who already knows the rest,
+// and THAT is what the rest of this section measures: every page reachable,
+// none of them a wall.
+await page.locator('button', { hasText: 'I already know the rest' }).click()
+await page.waitForTimeout(400)
 if (await page.locator('.cm-add-details').count()) { await page.locator('.cm-add-details').click(); await page.waitForTimeout(250) }
 const pages = await page.locator('.cm-page-tab').allTextContents()
-ok('the form is dealt into pages', pages.length >= 3, pages.join(' / '))
+ok('…and it is dealt into pages when it arrives', pages.length >= 3, pages.join(' / '))
 // Every page is reachable and none of them is the whole form again.
 let tallest = 0
 for (let i = 0; i < pages.length; i++) {

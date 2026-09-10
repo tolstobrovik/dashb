@@ -3865,11 +3865,10 @@ button.blame-person:hover { background: var(--surface-2); }
 /* A new task is an idea: a name and a couple of sentences. The rest of the
    form is still there, one press away, for whoever already knows it. */
 .cm-sec-later { display: none !important; }
-.cm-idea-note {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 11px 13px; margin: 2px 0 4px;
-  background: var(--surface-2); border-radius: var(--radius-sm);
-}
+/* One button, not a banner. The shaded band was sized around the sentence
+   that used to sit beside it; with the sentence gone it was a full row of
+   colour behind a secondary door on the shortest screen on the board. */
+.cm-idea-note { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 2px; }
 .cm-idea-note .stat-sub { flex: 1 1 220px; line-height: 1.45; }
 
 /* Where this month puts you on the ladder the admin set. */
@@ -5278,7 +5277,10 @@ button.blame-person:hover { background: var(--surface-2); }
 .brief-next-when { margin-left: 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
 /* The question mark that replaced the legend strip: one small mark beside the
    heading, rather than a row of named dots across every calendar. */
-.page-help { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: 4px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 50%; flex: none; }
+/* The mark is small; the thing a thumb has to hit is not. 24px looked right
+   beside a heading and was half the size a finger needs, which is how it
+   shipped past a check that exists precisely for this. */
+.page-help { display: inline-grid; place-items: center; width: 40px; height: 40px; margin-left: 0; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 50%; flex: none; }
 .page-help:hover { background: var(--surface-2); color: var(--ink); }
 .guide-stages { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .proj-range { display: flex; align-items: center; gap: 8px; }

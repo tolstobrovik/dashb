@@ -1317,9 +1317,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       title={creating ? tx('New task') : tx('Task')}
       onClose={tryClose}
       bodyRef={bodyRef}
-      bodyClass={pages.length > 1 ? 'cm-paged' : ''}
-      tall={pages.length > 1}
-      subhead={pages.length > 1 ? (
+      bodyClass={!ideaOnly && pages.length > 1 ? 'cm-paged' : ''}
+      tall={!ideaOnly && pages.length > 1}
+      // An IDEA being written down has one page. Execution, Logistics and Talk
+      // are three doors to empty rooms on a piece that does not exist yet:
+      // nobody has delivered anything, no day has been promised, and there is
+      // nobody to say it to. Offering them is how writing a thought down came
+      // to look like filling in a form, which is how thoughts stop being
+      // written down.
+      //
+      // The moment somebody says they already know the rest, the whole form
+      // arrives and it is dealt into pages again — that is the 2,600 pixel
+      // sheet round 88 broke up, and a phone needs it broken up whether the
+      // task has been saved yet or not.
+      subhead={!ideaOnly && pages.length > 1 ? (
         // The strip scrolls inside its own box and the details button sits
         // beside it, not in it: a fifth element in a scrolling strip made the
         // strip wider than a phone, and that width leaked into the sheet until
@@ -1489,7 +1500,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           {CONTENT_TYPES.map((ct) => <option key={ct.key} value={ct.key}>{ct.label}</option>)}
         </select>
       </div>
-      {(fOn('format') || fOn('rubrika')) && (
+      {/* Format and rubrika are how a piece is CLASSIFIED, which is a question
+          about work that is going to be made. Asked of a thought being jotted
+          down they are two more rows between somebody and the button, and the
+          admin's own rule already says an idea owes nothing but its name. They
+          are one press away behind "I already know the rest". */}
+      {!ideaOnly && (fOn('format') || fOn('rubrika')) && (
         <div className="cm-row">
           <span className="cm-key">{t('task.brief')}</span>
           {/* Own classes on purpose: these are brief fields, not crew hats —
@@ -1801,11 +1817,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
 
       {/* The description sits with the rest of the brief rather than at the
           foot of the form — it is read at the same moment as the reference. */}
+      {/* The door to the full form, and only the door. The sentence that used
+          to sit beside it explained a rule the form already demonstrates by
+          not asking for anything: somebody writing an idea down reads it once
+          and then reads past it for ever, and it was two lines of the shortest
+          screen on the board. */}
       {ideaOnly && (
         <div className="cm-idea-note">
-          <span className="stat-sub">
-            {tx('An idea needs a name and a couple of sentences. Everything else is asked for when it is actually going to be made.')}
-          </span>
           <button type="button" className="btn btn-sm" onClick={() => setFillNow(true)}>
             {tx('I already know the rest')}
           </button>
@@ -2086,9 +2104,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           </div>
         </div>
       ) : (<>
-      {creating && plan && (
-        <div className="cm-hint">Raises the {plan} plan by one — completing the task fills it.</div>
-      )}
+      {/* The sentence that used to sit here explained the plan arithmetic to
+          somebody who had come to write a title down. It is true, it is the
+          same on every task of that type, and it is read once. The plan is on
+          the plan page, where somebody is actually asking about it. */}
 
       {/* The brief: Format (talking head, split screen…) and Rubrika (the
           recurring column). The admin decides which types carry them and
