@@ -1180,6 +1180,13 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
       // typed. What this account cannot write, it does not send.
       if (!(showViews && canCount)) { delete payload.views; delete payload.skip_rate }
       if (!canEdit) delete payload.face_id
+      // An empty file box is not a named file, and sending it as one is how
+      // the link beside it used to be erased (see buildDelivery in
+      // routes/content.js). `...form` carries all six boxes whether or not
+      // anybody typed in them, so the blank ones are dropped here.
+      for (const k of ['ready_file', 'shot_file', 'design_file']) {
+        if (!String(payload[k] ?? '').trim()) delete payload[k]
+      }
       // Don't re-upload an unchanged photo — it can be hundreds of KB.
       if (!creating && form.photo === initialPhoto) {
         delete payload.photo

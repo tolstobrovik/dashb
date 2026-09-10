@@ -673,8 +673,14 @@ router.get('/:id', wrap(async (req, res) => {
 // a folder on its own points at everything the channel has ever made.
 async function buildDelivery(req, row, body, fileKey, what) {
   const folder = await folderFor(chansOf(row))
+  // A file has to actually be NAMED to win. The key arriving empty is not a
+  // naming — it is a form that carries every box it holds, filled or not — and
+  // treating it as one meant an empty `shot_file` sitting beside a perfectly
+  // good `shot_link` returned null and wiped the link on the way past. That is
+  // what ate every delivery link pasted by anyone who was not the crew member
+  // who owned the box: the value went up in the request and came back gone.
   const raw = body[fileKey]
-  if (raw !== undefined) {
+  if (raw !== undefined && String(raw ?? '').trim()) {
     const label = cleanFileLabel(raw)
     if (!label) return { value: null }
     if (!folder)
