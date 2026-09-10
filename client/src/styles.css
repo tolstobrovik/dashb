@@ -1217,10 +1217,20 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .seg-btn.seg-high.on { color: var(--critical); }
 .seg-btn.seg-low.on { color: var(--muted); }
 .seg-btn:disabled { cursor: not-allowed; opacity: 0.6; }
-.drow { display: grid; grid-template-columns: 86px 1fr 96px auto; gap: 8px; align-items: center; }
-.drow-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+/* A four-column grid for a row that sometimes has six children.
+   Every date row is label + date + time + quick buttons, which fits — except
+   the SHOOT row, which also carries an end time and the dash between them.
+   Those two extra children had nowhere to go, so they wrapped onto an
+   implicit second row: the end time orphaned on its own line with the dash
+   stranded at the end of the first. The one row where it broke is the one
+   row that books somebody's afternoon.
+   Flex, so the row lays out from what is actually in it. */
+.drow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.drow-label { flex: 0 0 86px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
 .drow .input { padding: 8px 10px; font-size: 13px; }
-.drow-quick { display: inline-flex; gap: 4px; }
+.drow .input[type="date"] { flex: 1 1 150px; min-width: 0; }
+.drow .input[type="time"] { flex: 0 0 96px; min-width: 0; }
+.drow-quick { display: inline-flex; gap: 4px; margin-left: auto; }
 .qbtn { border: 1px solid var(--hairline); background: var(--surface); border-radius: 7px; padding: 4px 8px; font-size: 11px; font-weight: 600; color: var(--ink-2); cursor: pointer; font-family: inherit; }
 .qbtn:hover { border-color: var(--brand-300); color: var(--brand-600); background: var(--brand-50); }
 .extra-btns { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1233,10 +1243,9 @@ table.tbl tr:hover td { background: var(--surface-2); }
 @media (max-width: 620px) {
   /* Date rows become a wrapping line on phones: the label takes its own row,
      the date/time inputs share the next one, nothing ever clips off-screen. */
-  .drow { display: flex; flex-wrap: wrap; }
   .drow-label { flex: 1 0 100%; }
-  .drow .input { flex: 1 1 110px; min-width: 0; width: auto; }
-  .drow-quick { flex: 1 0 100%; }
+  .drow .input, .drow .input[type="date"], .drow .input[type="time"] { flex: 1 1 110px; min-width: 0; width: auto; }
+  .drow-quick { flex: 1 0 100%; margin-left: 0; }
   /* A 74px label column left the chips and inputs beside it about 200px to
      live in, so a row of six stage chips became five lines. The label takes
      its own line and the control gets the whole width. */
@@ -4854,43 +4863,54 @@ button.blame-person:hover { background: var(--surface-2); }
 .sp-empty { flex-direction: row; align-items: center; gap: 8px; padding: 10px 12px;
   border: 1px dashed var(--hairline-strong); border-radius: var(--radius-sm); color: var(--muted); }
 .sp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
-.sp-len { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
-.sp-len .pill-group { flex: 0 1 auto; min-width: 0; }
-.sp-nav { display: inline-flex; gap: 2px; flex: none; }
+.sp-len { flex: 0 1 auto; min-width: 0; }
 .sp-note { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted);
   background: var(--surface-2); border-radius: var(--radius-xs); padding: 8px 10px; }
 .sp-note svg { flex: none; color: var(--warn, #d59a2b); }
 .sp-load { display: grid; place-items: center; padding: 24px; color: var(--muted); }
 
-.sp-week { max-height: 340px; overflow-y: auto; display: grid; grid-template-columns: repeat(7, minmax(62px, 1fr)); gap: 5px; overflow-x: auto; }
-.sp-day { display: flex; flex-direction: column; gap: 5px; min-width: 0;
-  background: var(--surface-2); border-radius: var(--radius-sm); padding: 7px 6px; }
-.sp-day.sp-off { opacity: 0.55; }
-.sp-day.sp-today { outline: 1.5px solid var(--brand-400); outline-offset: -1.5px; }
-.sp-day-h { display: flex; flex-direction: column; line-height: 1.2; padding: 0 2px 2px; }
-.sp-day-h b { font-size: 11.5px; }
-.sp-day-h .stat-sub { font-size: 10.5px; }
-.sp-busy { display: flex; flex-direction: column; gap: 3px; }
-.sp-taken { font-size: 10.5px; color: var(--muted); background: var(--surface);
-  border-radius: var(--radius-xs); padding: 2px 5px; text-decoration: line-through; }
-.sp-slots { display: flex; flex-direction: column; gap: 4px; }
-.sp-none { font-size: 11px; padding: 2px; }
-.sp-slot {
-  border: 1px solid var(--hairline-strong); background: var(--surface); color: var(--ink);
-  border-radius: var(--radius-xs); padding: 5px 2px; font-size: 11.5px; font-weight: 700;
-  cursor: pointer; min-height: 30px;
+/* A list of times, not a grid of them. Each day offers a morning and an
+   afternoon — what a person offers out loud — with the exact half-hours one
+   press behind "another time". A working week went from about a hundred
+   buttons to fourteen. */
+.sp-list { display: grid; gap: 2px; max-height: 320px; overflow-y: auto; }
+.sp-row { display: flex; align-items: center; gap: 14px; padding: 7px 2px; flex-wrap: wrap; }
+.sp-row + .sp-row { border-top: 1px solid var(--hairline); }
+.sp-row-day {
+  flex: 0 0 168px; font-size: 13px; font-weight: 600; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sp-slot:hover { border-color: var(--brand-400); color: var(--brand-600); }
-.sp-slot.on { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+.sp-row-times { display: flex; flex-wrap: wrap; gap: 7px; flex: 1; min-width: 0; }
+.sp-slot {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 40px;
+  border: 1px solid transparent; background: var(--surface-2); color: var(--ink);
+  border-radius: var(--radius-pill); padding: 0 15px; font-size: 13px; font-weight: 600;
+  cursor: pointer; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.sp-slot em { font-style: normal; font-weight: 500; font-size: 11.5px; color: var(--muted); }
+.sp-slot:hover { background: var(--brand-50); color: var(--brand-600); }
+.sp-slot:hover em { color: var(--brand-600); }
+.sp-slot.on { background: var(--brand-500); color: #fff; }
+.sp-slot.on em { color: rgba(255, 255, 255, 0.8); }
+.sp-more, .sp-further {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 40px;
+  padding: 0 13px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted);
+  border-radius: var(--radius-pill);
+}
+.sp-more:hover, .sp-further:hover { color: var(--brand-600); background: var(--brand-50); }
+.sp-further { align-self: flex-start; }
+
 .cm-slot-wrap { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .cm-slot-toggle { align-self: flex-start; }
 
 @media (max-width: 640px) {
-  /* One column at a time, snapping — the same shape the kanban uses. */
-  .sp-week { grid-auto-flow: column; grid-auto-columns: 43%; grid-template-columns: none;
-    scroll-snap-type: x mandatory; }
-  .sp-day { scroll-snap-align: start; }
-  .sp-slot { min-height: 38px; font-size: 13px; }
+  /* A list already fits a phone. The day goes above its times rather than
+     beside them, so neither is squeezed. */
+  .sp-row { flex-direction: column; align-items: stretch; gap: 6px; }
+  .sp-row-day { flex: none; }
+  .sp-len { width: 100%; }
+  .sp-len .seg-btn { flex: 1; padding: 6px 4px; }
 }
 
 /* ---------- the designer's board ---------- */
@@ -5700,3 +5720,62 @@ button.blame-person:hover { background: var(--surface-2); }
 .brief-check ul { margin: 5px 0 0; padding-left: 16px; display: grid; gap: 2px; }
 .brief-check li { font-weight: 400; }
 .bc-by { display: block; margin-top: 5px; opacity: 0.75; font-size: 11.5px; }
+
+/* ---- Projects ---------------------------------------------------------- */
+/* Beating the target is the good news on the page — it gets the good colour
+   rather than looking like any other percentage. */
+.pc-pct-beat { color: var(--good-ink); }
+/* The deadline, under the bar it belongs to rather than at the far right of
+   the number row, where the eye that just read the number never travels. */
+.pc-deadline { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.pc-deadline.late { color: var(--critical); font-weight: 600; }
+/* A project that is open, started, and has nothing running. Amber: it needs
+   somebody, but nothing has failed. */
+.pc-stalled { background: var(--tint-warn); color: var(--warn-ink); font-weight: 600; }
+
+/* ---- Payroll ----------------------------------------------------------
+   Rows, not a ten-column table. The bar under each name IS base + piecework
+   + bonus in proportion, and the terms are written beneath it in the same
+   colours — so the sum is shown rather than explained in a legend card
+   above the table. */
+.pay-rows { display: grid; gap: 10px; margin-top: 14px; }
+.pay-row {
+  display: grid; gap: 6px 20px; align-items: start; padding: 16px 20px;
+  grid-template-columns: minmax(180px, 1.1fr) minmax(200px, 1.2fr) minmax(190px, 1fr) auto;
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.pay-row-unset { background: var(--surface-2); box-shadow: none; }
+.pay-row-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pay-row-who b { display: block; font-size: 14px; }
+.pay-row-who .stat-sub { display: block; font-size: 12px; }
+
+.pay-row-sum { display: grid; gap: 6px; min-width: 0; }
+.pay-row-sum > b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.pay-parts { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 11.5px; color: var(--muted); }
+.pay-part { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pay-part i { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.pay-part-base i  { background: var(--brand-400); }
+.pay-part-piece i { background: var(--hairline-strong); }
+.pay-part-bonus i { background: var(--good); }
+.pay-part-late    { color: var(--critical); }
+.pay-part-late i  { background: var(--critical); }
+
+.pay-row-facts { display: grid; gap: 3px; font-size: 12.5px; color: var(--ink-2); min-width: 0; }
+.pay-row-facts b { font-variant-numeric: tabular-nums; }
+.pay-row-facts em { font-style: normal; color: var(--muted); font-size: 11.5px; }
+.pay-row-do { display: flex; gap: 8px; align-items: center; flex: none; }
+
+@media (max-width: 1000px) {
+  .pay-row { grid-template-columns: 1fr 1fr; }
+  .pay-row-do { grid-column: 1 / -1; }
+}
+@media (max-width: 620px) {
+  .pay-row { grid-template-columns: 1fr; padding: 14px 15px; }
+  .pay-row-do > .btn { flex: 1; justify-content: center; }
+}
+/* A call to action in a data cell is a button, not a bar: it takes the width
+   of its words. */
+.pay-row-sum > .btn { justify-self: start; }
+/* A label beside a block as tall as a week's free times belongs at the top
+   of it, not floating in the middle. */
+.cm-slots { align-items: start; }
