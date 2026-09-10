@@ -34,15 +34,25 @@ export default function MyPay({ startOpen = false }) {
     setShown((v) => { try { localStorage.setItem(SHOWN_KEY(user?.id), v ? '' : '1') } catch { /* ok */ } return !v })
   }
 
+  const [kpi, setKpi] = useState(null)
   useEffect(() => {
     const t = todayISO()
     const from = t.slice(0, 8) + '01'
     api.get(`/reports/pay/mine?from=${from}&to=${t}`).then(setPay).catch(() => setPay(null))
+    // The month's KPI card, if an admin has set one. Nothing is shown when
+    // there is none: an empty ladder is a statement about the setup rather
+    // than about the person.
+    api.get('/reports/kpi/mine').then((d) => setKpi(d?.card || null)).catch(() => setKpi(null))
   }, [])
 
-  if (!pay || pay.source === 'none') return null
-  const cur = pay.currency
-  const earning = pay.lines.filter((l) => l.count > 0)
+  // A KPI card stands on its own. Somebody paid a fixed salary against a set
+  // of grades has no piece rates at all, and bailing out on the rate card left
+  // them looking at a page with nothing on it about their own month.
+  const hasRates = !!pay && pay.source !== 'none'
+  const hasKpi = !!kpi && (kpi.ladders.length > 0 || kpi.fixed > 0)
+  if (!hasRates && !hasKpi) return null
+  const cur = (hasRates ? pay.currency : kpi?.currency) || 'UZS'
+  const earning = hasRates ? pay.lines.filter((l) => l.count > 0) : []
   const amt = (n) => (shown ? money(n, cur) : '••••••')
 
   return (
@@ -50,7 +60,7 @@ export default function MyPay({ startOpen = false }) {
       <button type="button" className="my-pay-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <Wallet size={17} />
         <span className="my-pay-sum">
-          <b>{amt(pay.total)}</b>
+          <b>{amt((hasRates ? pay.total : 0) + (hasKpi ? kpi.total : 0))}</b>
           <span className="stat-sub">{tx('expected this month')}</span>
         </span>
         <span role="button" tabIndex={0} className="icon-btn my-pay-eye" onClick={toggle}
@@ -59,6 +69,7 @@ export default function MyPay({ startOpen = false }) {
           {shown ? <EyeOff size={15} /> : <Eye size={15} />}
         </span>
         <span className="my-pay-facts">
+          {hasRates && <>
           <span><b>{pay.delivered}</b>{pay.quota > 0 ? ` / ${pay.quota}` : ''} {tx('delivered')}</span>
           {pay.onTimePct !== null && (
             <span className={pay.onTimePct >= (pay.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>
@@ -71,6 +82,7 @@ export default function MyPay({ startOpen = false }) {
               {pay.viewsTarget > 0 ? ` / ${pay.viewsTarget.toLocaleString()}` : ''} {tx('views')}
             </span>
           )}
+          </>}
         </span>
         <ChevronDown size={16} className={'my-pay-caret' + (open ? ' open' : '')} />
       </button>
@@ -78,6 +90,7 @@ export default function MyPay({ startOpen = false }) {
       {open && (
         <div className="my-pay-lines">
           {!shown && <div className="stat-sub my-pay-veil">{tx('Amounts are hidden — press the eye to show them')}</div>}
+          {hasRates && <>
           {pay.base > 0 && (
             <div className="my-pay-line"><span>{tx('Base')}</span><span /><b>{amt(pay.base)}</b></div>
           )}
@@ -172,11 +185,42 @@ export default function MyPay({ startOpen = false }) {
             </details>
           )}
 
-          <div className="cm-hint">
-            {tx('Counted on the day your part was delivered. Work that reached you after its own day had gone is not counted against you.')}
-          </div>
+          </>}
 
-          <SalaryPlanner pay={pay} />
+          {/* The KPI card for the month: every ladder the admin set, the reading
+              it was graded on, the grade it reached and what that band pays.
+              A ladder nobody took a reading for says so instead of grading a D
+              against a number that was never taken, and a bonus held behind a
+              floor says which floor rather than showing a bare nought. */}
+          {kpi && (kpi.ladders.length > 0 || kpi.fixed > 0) && (
+            <div className="kpi-card">
+              <div className="section-head"><h3>{tx('This month’s KPI')}</h3></div>
+              {kpi.fixed > 0 && (
+                <div className="my-pay-line"><span>{tx('Fixed')}</span><span /><b>{amt(kpi.fixed)}</b></div>
+              )}
+              {kpi.ladders.map((l) => (
+                <div className="my-pay-line kpi-line" key={l.key}>
+                  <span>{tx(l.label)}{l.grade ? <b className="kpi-grade">{l.grade}</b> : null}</span>
+                  <span className="stat-sub">
+                    {l.value === null
+                      ? tx('no reading yet')
+                      : `${l.value}${l.unit || ''}`}
+                    {l.gated ? ` · ${tx('needs {n} to qualify', { n: l.gated.need })}` : ''}
+                  </span>
+                  {l.pays > 0 ? <b className="pay-good">+{amt(l.pays)}</b> : <span className="stat-sub">{amt(0)}</span>}
+                </div>
+              ))}
+              <div className="my-pay-line my-pay-total">
+                <span>{tx('KPI this month')}</span><span /><b>{amt(kpi.total)}</b>
+              </div>
+            </div>
+          )}
+
+          {hasRates && <div className="cm-hint">
+            {tx('Counted on the day your part was delivered. Work that reached you after its own day had gone is not counted against you.')}
+          </div>}
+
+          {hasRates && <SalaryPlanner pay={pay} />}
         </div>
       )}
     </div>

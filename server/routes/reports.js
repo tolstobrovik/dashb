@@ -1,3 +1,4 @@
+import { gradeCard, METRICS } from '../kpi.js'
 import { Router } from 'express'
 import { all, get, run, publicUser, tashkentDay, dayISO, getSkipTiers, tierFor, getMakerGrades, gradeFor } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
@@ -53,7 +54,7 @@ export async function contributions({ from, to, channel, type }) {
   const rows = (await all(`
     SELECT id, title, channels, type, status_id, assignee_id, operator_id, editor_id, designer_id,
            reviewer_id, reviewers, recording_date, edit_ready_date, design_ready_date, release_date,
-           edit_due_revised, review_due_revised, shot_at, edited_at, done_at, views
+           edit_due_revised, review_due_revised, shot_at, edited_at, done_at, views, skip_rate
     FROM content
   `)).map((r) => ({ ...r, channels: parseList(r.channels) }))
 
@@ -282,6 +283,31 @@ router.get('/stats', wrap(async (req, res) => {
   })
 }))
 
+
+// ---- the KPI card ----------------------------------------------------------
+// One person, one month, a set of ladders. What each band pays is the admin's
+// and lives in the row; this file grades a month against it and never carries
+// a number of its own.
+const monthOf = (v) => (/^\d{4}-\d{2}$/.test(String(v || '')) ? String(v) : new Date().toISOString().slice(0, 7))
+const cardFor = async (userId, month) =>
+  (await get('SELECT * FROM kpi_cards WHERE user_id = ? AND month = ?', userId, month)) || null
+
+// The month a card is graded against, measured off the same pay run the
+// payslip uses, so the two can never disagree about how many pieces were late.
+const statsFor = async (userId, month) => {
+  const from = `${month}-01`
+  const to = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10)
+  const { people } = await payRun({ from, to, only: userId })
+  const me = (people || []).find((p) => p.id === Number(userId))
+  return me?.stats || {}
+}
+
+router.get('/kpi/mine', wrap(async (req, res) => {
+  const month = monthOf(req.query.month)
+  const card = await cardFor(req.user.id, month)
+  if (!card) return res.json({ month, card: null })
+  res.json({ month, card: gradeCard(card, await statsFor(req.user.id, month)) })
+}))
 
 // ---- what one person earned -------------------------------------------------
 // Declared BEFORE the admin gate below, deliberately: a person may see their
@@ -745,7 +771,7 @@ async function payRun({ from, to, only }) {
 
   const counted = {}
   for (const c of list) {
-    const e = (counted[c.userId] = counted[c.userId] || { hats: {}, byKind: {}, late: 0, done: 0, views: 0, counted: 0, items: [] })
+    const e = (counted[c.userId] = counted[c.userId] || { hats: {}, byKind: {}, late: 0, done: 0, views: 0, counted: 0, items: [], skipSum: 0, skipN: 0, seenSkip: new Set() })
     e.hats[c.hat] = (e.hats[c.hat] || 0) + 1
     // …and again split by what the piece was, which is what the per-kind
     // rates are priced against. Same classifier the pace report uses, so the
@@ -762,11 +788,16 @@ async function payRun({ from, to, only }) {
       e.views += Number(c.row.views)
       e.counted += 1
     }
+    // The skip rate is a fact about the PIECE, so it is averaged once per
+    // piece however many hats this person wore on it.
+    if (!e.seenSkip.has(c.row.id) && c.row.skip_rate !== null && c.row.skip_rate !== undefined && Number.isFinite(Number(c.row.skip_rate))) {
+      e.seenSkip.add(c.row.id); e.skipSum += Number(c.row.skip_rate); e.skipN += 1
+    }
     e.items.push({ id: c.row.id, title: c.row.title, hat: c.hat, day: c.day, late: c.late, views: c.row.views ?? null })
   }
 
   const people = wanted.map((u) => {
-    const e = counted[u.id] || { hats: {}, byKind: {}, late: 0, done: 0, views: 0, counted: 0, items: [] }
+    const e = counted[u.id] || { hats: {}, byKind: {}, late: 0, done: 0, views: 0, counted: 0, items: [], skipSum: 0, skipN: 0, seenSkip: new Set() }
     const rates = pick(u.id)
     const lines = []
     let piecework = 0
@@ -837,6 +868,16 @@ async function payRun({ from, to, only }) {
       quota, quotaMet, quotaLeft: quota > 0 ? Math.max(0, quota - e.done) : null,
       views, viewsCounted: e.counted, viewsPay, viewsTarget, viewsMet,
       viewsLeft: viewsTarget > 0 ? Math.max(0, viewsTarget - views) : null,
+      // What the month MEASURED, keyed the way a KPI ladder names it. A metric
+      // nobody took a reading for is null rather than 0: an average skip rate
+      // over no reels is not a skip rate of nothing.
+      stats: {
+        delivered: e.done,
+        late: e.late,
+        on_time_pct: onTimePct,
+        views: e.counted > 0 ? e.views : null,
+        skip_rate: e.skipN > 0 ? Math.round((e.skipSum / e.skipN) * 10) / 10 : null,
+      },
       lines: earning, base: rates.base || 0, piecework,
       onTimeBonus, quotaBonus, viewsBonus, bonus, penalty, total,
       items: e.items.sort((a, b) => String(b.day).localeCompare(String(a.day))),
@@ -856,6 +897,56 @@ router.get('/pay', wrap(async (req, res) => {
   out.people = out.people.filter((p) => p.source !== 'none' || p.delivered > 0)
   out.people.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
   res.json({ ...out, hasDefault, currency: out.people[0]?.currency || 'UZS' })
+}))
+
+router.get('/kpi/:userId', adminOnly, wrap(async (req, res) => {
+  const month = monthOf(req.query.month)
+  const userId = Number(req.params.userId)
+  const card = await cardFor(userId, month)
+  res.json({
+    month,
+    stats: await statsFor(userId, month),
+    // The admin edits the shape, so they get it raw as well as graded.
+    raw: card ? { ...card, ladders: JSON.parse(card.ladders || '[]'), readings: JSON.parse(card.readings || '{}') } : null,
+    card: card ? gradeCard(card, await statsFor(userId, month)) : null,
+  })
+}))
+
+router.put('/kpi/:userId/:month', adminOnly, wrap(async (req, res) => {
+  const userId = Number(req.params.userId)
+  const month = monthOf(req.params.month)
+  if (!(await get('SELECT 1 AS x FROM users WHERE id = ?', userId))) return res.status(404).json({ error: 'No such person' })
+  const b = req.body || {}
+  const ladders = Array.isArray(b.ladders) ? b.ladders : []
+  for (const l of ladders) {
+    if (!l || !l.key) return res.status(400).json({ error: 'Every ladder needs a key' })
+    if (!METRICS[l.metric] && l.metric !== 'manual') return res.status(400).json({ error: `No such metric: ${l.metric}` })
+    if (!Array.isArray(l.bands) || !l.bands.length) return res.status(400).json({ error: `«${l.key}» has no bands` })
+    for (const band of l.bands) {
+      if (band.pays !== undefined && !Number.isFinite(Number(band.pays)))
+        return res.status(400).json({ error: 'A band pays a number, or nothing' })
+    }
+  }
+  const fixed = Number(b.fixed) || 0
+  if (fixed < 0) return res.status(400).json({ error: 'Fixed pay is zero or more' })
+  const now = new Date().toISOString()
+  const existing = await cardFor(userId, month)
+  const vals = [
+    String(b.currency || existing?.currency || 'UZS').slice(0, 8),
+    fixed,
+    JSON.stringify(ladders),
+    JSON.stringify(b.readings && typeof b.readings === 'object' ? b.readings : {}),
+    String(b.note || '').slice(0, 2000),
+    req.user.id, now,
+  ]
+  if (existing) {
+    await run('UPDATE kpi_cards SET currency=?, fixed=?, ladders=?, readings=?, note=?, updated_by=?, updated_at=? WHERE id=?', ...vals, existing.id)
+  } else {
+    await run(`INSERT INTO kpi_cards (user_id, month, currency, fixed, ladders, readings, note, updated_by, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, userId, month, ...vals.slice(0, 5), req.user.id, now, now)
+  }
+  const saved = await cardFor(userId, month)
+  res.json({ month, card: gradeCard(saved, await statsFor(userId, month)) })
 }))
 
 router.get('/pay/rules', wrap(async (_req, res) => {

@@ -1131,6 +1131,38 @@ export async function initSchema() {
     -- with a user_id overrides it for that person. Everything is per period:
     -- the base per month, the rest per piece delivered. The arithmetic lives
     -- in server/routes/reports.js.
+    -- ---- the KPI card: one person, one month, a set of ladders ------------
+    -- Every KPI sheet this team runs on has the same shape and no two of them
+    -- have the same contents: a metric, five bands from A+ to D, and what each
+    -- band pays. Skip rate for the person who films and cuts, quality leads
+    -- for the commercial manager, channel growth and forwards for the
+    -- copywriter, deadline misses and plan shipped for operations. Some are
+    -- gated: a bonus that pays nothing at all until a floor is cleared.
+    --
+    -- So the board stores the SHAPE and not the numbers. A card is a month, a
+    -- fixed salary and a list of ladders; the amounts are the admin's, set in
+    -- the last five days of the month the way the sheets say, and none of them
+    -- is written into this code.
+    --
+    -- A metric is either one the board already measures — how many pieces were
+    -- late, what the skip rate averaged, how many views the month got — or one
+    -- nobody here can see, like leads or forwards, which is typed in for the
+    -- month. Both end up in the same ladder and are read the same way.
+    CREATE TABLE IF NOT EXISTS kpi_cards (
+      id          ${ID},
+      user_id     INTEGER NOT NULL,
+      month       TEXT    NOT NULL,           -- 'YYYY-MM'
+      currency    TEXT    NOT NULL DEFAULT 'UZS',
+      fixed       REAL    NOT NULL DEFAULT 0, -- the salary floor, paid whatever the grades
+      ladders     TEXT    NOT NULL DEFAULT '[]',
+      readings    TEXT    NOT NULL DEFAULT '{}', -- hand-entered values, per ladder key
+      note        TEXT    NOT NULL DEFAULT '',
+      updated_by  INTEGER,
+      created_at  TEXT    NOT NULL,
+      updated_at  TEXT    NOT NULL,
+      UNIQUE (user_id, month)
+    );
+
     CREATE TABLE IF NOT EXISTS pay_rules (
       id            ${ID},
       user_id       INTEGER,                       -- NULL = the default card
