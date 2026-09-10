@@ -80,7 +80,14 @@ const ytTask = (await req('/content', 'POST', { title: 'r70 a YouTube piece', ..
 // ===================== what they can see =====================
 const seen = (await req('/content', 'GET', null, ytT)).data.map((t) => t.title)
 ok('a channel admin sees their own channel’s work', seen.includes('r70 a YouTube piece'), JSON.stringify(seen))
-ok('…and not the other channel’s', !seen.includes('r70 an Instagram piece'), JSON.stringify(seen))
+// Round 90 opened the schedule across the board: an operator booked on a
+// channel they do not sit in was vanishing from everybody else's calendar.
+// Round 92 kept the paperwork scoped. So the question this asks changed —
+// not "can they see it" but "what can they do with it".
+ok('…and the other channel’s too, because the schedule is shared',
+  seen.includes('r70 an Instagram piece'), JSON.stringify(seen))
+ok('…but its paperwork stays shut',
+  (await req(`/content/${igTask.id}/files`, 'GET', null, ytT)).status === 404)
 ok('an admin of the whole board still sees both',
   (await req('/content', 'GET', null, allT)).data.length >= 2)
 
