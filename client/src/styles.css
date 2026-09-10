@@ -5295,6 +5295,17 @@ button.blame-person:hover { background: var(--surface-2); }
 .kpi-card { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--hairline); }
 .kpi-card .section-head h3 { font-size: 13px; margin: 0; }
 .kpi-grade { margin-left: 8px; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font-size: 11px; font-weight: 800; }
+.kpi-edit { display: flex; flex-direction: column; gap: 12px; }
+.kpi-edit-top { display: flex; gap: 12px; }
+.kpi-edit-top .field { flex: 1 1 0; min-width: 0; }
+.kpi-ladder { border: 1px solid var(--hairline); border-radius: var(--radius-xs); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.kpi-ladder-head { display: flex; gap: 8px; align-items: center; }
+.kpi-ladder-head .input { flex: 1 1 0; min-width: 0; }
+.kpi-reading { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.kpi-reading label { display: inline-flex; align-items: center; gap: 6px; }
+.kpi-reading .input { width: 88px; }
+.kpi-bands td .input { width: 100%; }
+.kpi-bands th { font-size: 11px; }
 .cdot { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
 .cdot i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .cdot-late i { background: var(--critical); }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
-  X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Palette, UserCheck, RotateCcw, Languages, Loader2,
+  X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Gauge, Palette, UserCheck, RotateCcw, Languages, Loader2,
   SlidersHorizontal, Activity,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
@@ -21,6 +21,7 @@ import Whiteboard from '../components/Whiteboard.jsx'
 import { activityLine } from '../lib/activity.js'
 import { tr as tx } from '../lib/i18n.jsx'
 import { StageDot, Dot, Dots } from '../components/Dot.jsx'
+import KpiCard from '../components/KpiCard.jsx'
 
 // Distinct hues so member avatars/chips are tellable apart (matches Profile).
 const SWATCHES = ['#a32234', '#2a78d6', '#1D9E75', '#BA7517', '#7b5ad6', '#0e8f8f', '#d6499b', '#5a6b7a']
@@ -1047,6 +1048,7 @@ function PayTab() {
   const [data, setData] = useState(null)
   const [rules, setRules] = useState([])
   const [card, setCard] = useState(null) // { userId | 'default', name, form }
+  const [kpiFor, setKpiFor] = useState(null) // { id, name } — whose month is open
   const [plan, setPlan] = useState(null) // null | { job, monthly, quota } — the calculator
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -1249,6 +1251,12 @@ function PayTab() {
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>
+                      {/* Two different things get paid here and they are set
+                          apart: the RATES are what a piece is worth and change
+                          rarely; the KPI card is this month's grades and is
+                          rewritten in the last five days of every month. */}
+                      <button className="icon-btn" onClick={() => setKpiFor({ id: p.id, name: p.name })}
+                        data-tip={`${p.name}'s KPI this month`} data-tip-left=""><Gauge size={14} /></button>
                       <button className="icon-btn" onClick={() => openCard(p.id, p.name)}
                         data-tip={`${p.name}'s rates`} data-tip-left=""><Pencil size={14} /></button>
                     </td>
@@ -1260,6 +1268,10 @@ function PayTab() {
               </tbody>
             </table>
           </div>
+          {kpiFor && (
+            <KpiCard userId={kpiFor.id} name={kpiFor.name} month={range.to.slice(0, 7)}
+              onClose={(saved) => { setKpiFor(null); if (saved) load() }} />
+          )}
         </>
       )}
 

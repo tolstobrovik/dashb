@@ -29,7 +29,7 @@ const statuses = (await req('/statuses')).data
 const published = statuses.find((s) => s.is_final && !/deleted/i.test(s.label)).id
 
 const who = (await req('/users', 'POST', {
-  name: 'KPI Suite', username: `kpi${stamp}`, password: 'k1234',
+  name: `KPI Suite ${stamp}`, username: `kpi${stamp}`, password: 'k1234',
   departments: ['instagram_main'], crew_roles: ['operator', 'editor'],
 })).data
 const ME = await login(`kpi${stamp}`, 'k1234')
@@ -109,6 +109,33 @@ const before = (await page.locator('.kpi-line').first().textContent())
 ok('…and the amount hidden until it is asked for', /•/.test(before), before)
 await page.locator('.my-pay-eye').first().click(); await page.waitForTimeout(700)
 ok('…which the eye reveals', /300/.test(await page.locator('.kpi-line').first().textContent()))
+
+// ===================== and an admin can set one without curl =====================
+// A card that can only be written through the API is a feature nobody on this
+// team can use: the numbers are theirs and are rewritten every month.
+const ap = await (await browser.newContext({ viewport: { width: 1500, height: 1000 } })).newPage()
+ap.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
+await ap.goto(BASE + '/login')
+await ap.fill('input[name="username"]', 'admin'); await ap.fill('input[name="password"]', 'admin123')
+await ap.click('button[type="submit"]'); await ap.waitForTimeout(2400)
+await ap.goto(BASE + '/admin'); await ap.waitForTimeout(1800)
+await ap.getByRole('main').getByRole('button', { name: 'Payroll' }).click(); await ap.waitForTimeout(2600)
+const payRow = ap.locator('tr', { hasText: `KPI Suite ${stamp}` })
+ok('the payroll table offers this person a KPI card', (await payRow.count()) === 1)
+await payRow.locator('.icon-btn').first().click(); await ap.waitForTimeout(1800)
+ok('…which opens an editor', (await ap.locator('.kpi-edit').count()) === 1)
+ok('…carrying the ladder already on the card', (await ap.locator('.kpi-ladder').count()) >= 1)
+ok('…and showing the reading the board took itself',
+  /34/.test(await ap.locator('.kpi-reading').first().textContent()))
+ok('…with a row per grade', (await ap.locator('.kpi-ladder').first().locator('.kpi-bands tbody tr').count()) === 5)
+await ap.locator('.kpi-edit-top .input').first().fill('555')
+await ap.locator('.kpi-ladder').first().locator('.kpi-bands tbody tr').first().locator('.input').last().fill('777')
+await ap.evaluate(() => { const x = [...document.querySelectorAll('button')].find((e) => /^Save$/.test((e.textContent || '').trim())); if (x) x.click() })
+await ap.waitForTimeout(2200)
+const after = (await req(`/reports/kpi/${who.id}?month=${MONTH}`)).data.card
+ok('what the editor saved is what the month is graded on',
+  after.fixed === 555 && after.ladders.find((l) => l.key === 'skip')?.pays === 777,
+  `${after.fixed} / ${after.ladders.find((l) => l.key === 'skip')?.pays}`)
 await browser.close()
 
 await req(`/users/${who.id}`, 'DELETE')
