@@ -3,7 +3,7 @@ import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
   X, CheckSquare, Scissors, Video, History, Eye, EyeOff, Wallet, Gauge, Palette, UserCheck, RotateCcw, Languages, Loader2,
-  SlidersHorizontal, Activity,
+  SlidersHorizontal, Activity, Banknote, CheckCircle2, Undo2,
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { rewardIfFinished } from '../lib/reward.js'
@@ -19,7 +19,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import Whiteboard from '../components/Whiteboard.jsx'
 import { activityLine } from '../lib/activity.js'
-import { tr as tx } from '../lib/i18n.jsx'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 import { StageDot, Dot, Dots } from '../components/Dot.jsx'
 import KpiCard from '../components/KpiCard.jsx'
 
@@ -1050,6 +1050,7 @@ function PayTab() {
   const [card, setCard] = useState(null) // { userId | 'default', name, form }
   const [kpiFor, setKpiFor] = useState(null) // { id, name } — whose month is open
   const [plan, setPlan] = useState(null) // null | { job, monthly, quota } — the calculator
+  const [closing, setClosing] = useState(null) // { month, paid_at, note } — the month being recorded as paid
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -1090,6 +1091,37 @@ function PayTab() {
 
   const total = (data?.people || []).reduce((a, p) => a + p.total, 0)
   const cur = data?.currency || 'UZS'
+  // The month the range sits in, and whether it has already been closed.
+  // Everything above this line is a CALCULATOR; closing a month is the only
+  // thing on the page that writes down what actually went out.
+  const month = data?.month || range.to.slice(0, 7)
+  const settled = (data?.people || []).filter((p) => p.payout)
+  const allSettled = settled.length > 0 && settled.length === (data?.people || []).length
+  const monthOver = month < todayISO().slice(0, 7)
+
+  // "2026-09" is a filename, not a month. Anything a person reads says
+  // September.
+  const monthWords = (m) => new Date(`${m}-01T00:00:00Z`)
+    .toLocaleDateString(locale(), { month: 'long', year: 'numeric', timeZone: 'UTC' })
+
+  const closeMonth = async () => {
+    if (!closing) return
+    setBusy(true); setErr('')
+    try {
+      const out = await api.post('/reports/pay/payouts', {
+        month: closing.month, paid_at: closing.paid_at, note: closing.note,
+      })
+      setClosing(null)
+      toast(tx('{n} people recorded as paid for {month}', { n: out.recorded, month: closing.month }))
+      load()
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const reopenMonth = async () => {
+    if (!confirm(tx('Re-open {month}? The recorded figures are deleted and the month goes back to being worked out live.', { month: monthWords(month) }))) return
+    setBusy(true)
+    try { await api.del(`/reports/pay/payouts/${month}/all`); toast(tx('{month} re-opened', { month: monthWords(month) })); load() }
+    catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
 
   return (
     <>
@@ -1098,7 +1130,7 @@ function PayTab() {
         <span className="count">· worked out from what was delivered</span>
         <span className="spacer" />
         <button className="btn btn-sm" onClick={() => openCard('default', 'everybody')}>
-          <Wallet size={14} /> Default rates
+          <Wallet size={14} /> {tx('Default rates')}
         </button>
         <div className="pill-group" style={{ marginLeft: 10 }}>
           {PRESETS.map((p) => (
@@ -1132,13 +1164,39 @@ function PayTab() {
               and the card above already makes it — so the total waits until
               there is one. */}
           {data.hasDefault && (
-            <div className="card card-pad rp-head">
+            <div className={'card card-pad rp-head' + (allSettled ? ' rp-head-settled' : '')}>
               <div className="rp-big">
-                <b>{money(total, cur)}</b>
+                <b>{money(allSettled ? data.settledTotal : total, cur)}</b>
                 <span className="rp-big-label">
-                  the whole payroll for the period
+                  {allSettled ? tx('paid for {month}', { month: monthWords(month) }) : tx('the whole payroll for the period')}
                   <br /><span className="stat-sub">{range.from} → {range.to}</span>
                 </span>
+              </div>
+              {/* Closing a month is the one thing on this page that writes
+                  down what actually went out. Everything else re-derives
+                  itself for ever, which is why editing an old task used to
+                  quietly rewrite a payslip somebody had already been paid
+                  against. */}
+              <div className="rp-close">
+                {settled.length > 0 && (
+                  <span className="rp-closed-note">
+                    <CheckCircle2 size={14} />
+                    {allSettled
+                      ? tx('Recorded as paid')
+                      : tx('{n} of {total} recorded as paid', { n: settled.length, total: data.people.length })}
+                  </span>
+                )}
+                {!allSettled && (
+                  <button className="btn btn-sm btn-primary" disabled={busy || data.people.length === 0}
+                    onClick={() => setClosing({ month, paid_at: todayISO(), note: '' })}>
+                    <Banknote size={14} /> {tx('Record as paid')}
+                  </button>
+                )}
+                {settled.length > 0 && (
+                  <button className="btn btn-sm" onClick={reopenMonth} disabled={busy}>
+                    <Undo2 size={14} /> {tx('Re-open')}
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1164,7 +1222,7 @@ function PayTab() {
                 ['bonus', tx('Bonus'), p.bonus],
               ].filter(([, , v]) => v > 0)
               return (
-                <div className={'pay-row' + (noRates ? ' pay-row-unset' : '')} key={p.id}>
+                <div className={'pay-row' + (noRates ? ' pay-row-unset' : '') + (p.payout ? ' pay-row-paid' : '')} key={p.id}>
                   <div className="pay-row-who">
                     <Avatar name={p.name} color={p.color} src={p.avatar} size="sm" />
                     <div>
@@ -1182,7 +1240,12 @@ function PayTab() {
                     {noRates
                       ? <button className="btn btn-sm" onClick={() => openCard(p.id, p.name)}>{tx('Set their rates')}</button>
                       : <>
-                          <b>{money(p.total, p.currency)}</b>
+                          <b>{money(p.payout ? p.payout.total : p.total, p.currency)}</b>
+                          {p.payout && (
+                            <span className="pay-paid-tag" data-tip={p.payout.paid_at ? tx('Paid {day}', { day: dateLabel(p.payout.paid_at) }) : undefined}>
+                              <CheckCircle2 size={12} /> {tx('paid')}
+                            </span>
+                          )}
                           {parts.length > 0 && (
                             <>
                               <span className="pay-bar">
@@ -1253,6 +1316,47 @@ function PayTab() {
               onClose={(saved) => { setKpiFor(null); if (saved) load() }} />
           )}
         </>
+      )}
+
+      {/* Recording a month as paid. Deliberately a confirmation rather than a
+          single press: it freezes figures somebody is going to be paid
+          against, and the day it says the money went out is the day that will
+          be on the record for ever. */}
+      {closing && (
+        <Modal
+          title={tx('Record {month} as paid', { month: monthWords(closing.month) })}
+          onClose={() => setClosing(null)}
+          footer={<>
+            <span className="foot-gap" />
+            <button className="btn" onClick={() => setClosing(null)}>{tx('Cancel')}</button>
+            <button className="btn btn-primary" onClick={closeMonth} disabled={busy}>
+              <Banknote size={14} /> {tx('Record as paid')}
+            </button>
+          </>}
+        >
+          {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
+          <div className="cm-hint" style={{ marginBottom: 12 }}>
+            {tx('{n} people, {amount} in total. The figures are written down as they stand now and stop being re-worked-out — so editing an old task later cannot change a payslip somebody has already been paid against. Re-opening the month undoes it.', {
+              n: data?.people?.length || 0, amount: money(total, cur),
+            })}
+          </div>
+          <label className="field">
+            <span className="label">{tx('The day the money went out')}</span>
+            <input className="input" type="date" style={{ maxWidth: 200 }} value={closing.paid_at}
+              onChange={(e) => setClosing({ ...closing, paid_at: e.target.value })} />
+          </label>
+          <label className="field">
+            <span className="label">{tx('Note')} <span className="stat-sub">{tx('optional')}</span></span>
+            <input className="input" value={closing.note} placeholder={tx('e.g. paid by transfer, 2 people in cash')}
+              onChange={(e) => setClosing({ ...closing, note: e.target.value })} />
+          </label>
+          {!monthOver && (
+            <div className="cm-hint">
+              <AlertCircle size={13} style={{ verticalAlign: -2 }} />{' '}
+              {tx('{month} has not finished yet — anything delivered after today will not be in these figures.', { month: monthWords(closing.month) })}
+            </div>
+          )}
+        </Modal>
       )}
 
       {card && (

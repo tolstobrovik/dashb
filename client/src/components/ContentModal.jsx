@@ -246,6 +246,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   }, [shownPages, sec])
   const secCls = (k) => 'cm-sec' + (tabOf(k) === sec ? ' on' : '') + (ideaOnly && k !== 'brief' ? ' cm-sec-later' : '')
   const [tools, setTools] = useState(false)
+  // Escape belongs to the innermost thing that is open. The sheet closes on
+  // Escape, and losing a half-typed brief because you were dismissing a menu
+  // is not a trade anybody would make on purpose.
+  useEffect(() => {
+    if (!tools) return
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      setTools(false)
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [tools])
   // What the booking cards read. The FORM holds what is being typed; a
   // booking is about what is actually saved, and answering one sends back the
   // fresh row rather than making the whole sheet reload.
@@ -1369,33 +1382,35 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         </div>
       ) : null}
       footer={<>
-        {/* On a phone these five put three rows of secondary buttons under the
-            form — 290px of a 790px sheet spent on things you are mostly not
-            doing. Behind one button they are still one tap away, and Save gets
-            the room instead. */}
-        {phone && !creating && (
+        {/* These five put three rows of secondary buttons under the form on a
+            phone — 290px of a 790px sheet spent on things you are mostly not
+            doing — and on a desk they were four bare glyphs beside a loud red
+            Delete. Behind one button they are one press away on either, with
+            room to say what they are, and Save gets the space instead. */}
+        {!creating && (
           <button type="button" className={'btn btn-ghost btn-icon cm-more-btn' + (tools ? ' on' : '')}
-            onClick={() => setTools((v) => !v)} aria-label={tx('More actions')} aria-expanded={tools}>
+            onClick={() => setTools((v) => !v)} aria-label={tx('More actions')} aria-expanded={tools}
+            aria-haspopup="menu">
             <MoreHorizontal size={18} />
           </button>
         )}
-        <div className={'cm-tools' + (phone ? ' cm-tools-pop' : '') + (tools ? ' open' : '')}
-          onClick={() => phone && setTools(false)}>
-        {!creating && canEdit && <button className="btn btn-danger" onClick={del}><Trash2 size={15} />{' '}{tx("Delete")}</button>}
+        {/* Anywhere else closes it. Without this the only way out of an opened
+            menu is the button that opened it, which nobody looks for. */}
+        {tools && <button type="button" className="cm-tools-scrim" tabIndex={-1}
+          aria-hidden="true" onClick={() => setTools(false)} />}
+        <div className={'cm-tools cm-tools-pop' + (tools ? ' open' : '')} role="menu"
+          onClick={() => setTools(false)}>
+        {!creating && canEdit && <button className="btn btn-danger" role="menuitem" onClick={del}><Trash2 size={15} />{' '}{tx("Delete")}</button>}
         {!creating && canEdit && !crewViewer && (
-          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')} onClick={duplicate} disabled={busy}
-            data-tip={tx("A fresh copy: brief, crew and platforms kept — dates and stage cleared")}
-            aria-label={t('task.duplicate')}>
-            <CopyPlus size={15} />{phone ? <> {t('task.duplicate')}</> : null}
+          <button className="btn btn-ghost" onClick={duplicate} disabled={busy} role="menuitem"
+            data-tip={tx("A fresh copy: brief, crew and platforms kept — dates and stage cleared")}>
+            <CopyPlus size={15} /> {t('task.duplicate')}
           </button>
         )}
         {!creating && (
-          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')} onClick={copyLink}
-            data-tip={tx("Copy a link to this task")} aria-label={tx("Copy link")}>
-            {/* In the footer it is an icon among icons and the tooltip names
-                it. In the menu there are no tooltips and no neighbours to
-                explain it, so it says what it is. */}
-            <Link2 size={15} />{phone ? <> {tx('Copy link')}</> : null}
+          <button className="btn btn-ghost" onClick={copyLink} role="menuitem"
+            data-tip={tx("Copy a link to this task")}>
+            <Link2 size={15} /> {tx('Copy link')}
           </button>
         )}
         {/* Standing where the crew stand. The people who plan the work ran the
@@ -1407,7 +1422,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               <Eye size={15} /> {tx('Back to the full task')}
             </button>
           ) : (
-            <span className="crew-peek">
+            <span className="crew-peek" onClick={(e) => e.stopPropagation()}>
               <Eye size={15} />
               <select className="select" value="" data-tip={tx("See this task the way the person doing it sees it")}
                 onChange={(e) => e.target.value && setAsCrew(e.target.value)}>
@@ -1420,17 +1435,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           )
         )}
         {canRaise && !raising && openFlags.length === 0 && (
-          <button className={'btn btn-ghost' + (phone ? '' : ' btn-icon')}
+          <button className="btn btn-ghost" role="menuitem"
             onClick={() => setRaising({ kind: 'at_risk', reason: '' })}
-            data-tip={tx("Say early that this is in trouble")} aria-label={tx('Raise a hand')}>
-            <Hand size={15} />{phone ? <> {tx('Raise a hand')}</> : null}
+            data-tip={tx("Say early that this is in trouble")}>
+            <Hand size={15} /> {tx('Raise a hand')}
           </button>
         )}
         </div>
-        {/* The gap is a line break on a phone so a row of tools cannot shove
-            Save off the screen. With the tools behind one button there is
-            nothing left to break for, and the row fits on one line. */}
-        <span className={'foot-gap' + (phone ? ' foot-gap-tight' : '')} />
+        {/* The gap used to become a line break on a phone so a row of tools
+            could not shove Save off the screen. With the tools behind one
+            button there is nothing left to break for. */}
+        <span className="foot-gap foot-gap-tight" />
         <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
         {!readOnly && (
           <button className="btn btn-primary" onClick={() => save()} disabled={busy || !form.title.trim()}>

@@ -3,6 +3,7 @@ import { Router } from 'express'
 import { all, get, run, publicUser, tashkentDay, dayISO, getSkipTiers, tierFor, getMakerGrades, gradeFor } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 import { resolveGates, phasesOf, phasePassed } from '../deadlines.js'
+import { goalsOf, periodOf } from '../paygoals.js'
 
 const router = Router()
 
@@ -321,7 +322,25 @@ router.get('/pay/mine', wrap(async (req, res) => {
   const { pick } = await rateCards()
   if (pick(req.user.id).source === 'none') return res.json({ source: 'none' })
   const runOut = await payRun({ from, to, only: req.user.id })
-  res.json(runOut.people[0] || null)
+  const me = runOut.people[0] || null
+  if (!me) return res.json(null)
+  // Whether this month has been closed and paid, or is still being worked out.
+  const month = String(to || dayISO()).slice(0, 7)
+  const row = await get('SELECT * FROM payouts WHERE user_id = ? AND month = ?', req.user.id, month)
+  res.json({ ...me, payout: row ? publicPayout(row) : null })
+}))
+
+// ---- a person's own track record -------------------------------------------
+// One number, once a month, told nobody anything about whether they were
+// doing better than last time. Six months of it is a shape — and a shape is
+// the thing that makes somebody want to beat it.
+//
+// A CLOSED month is read from what was written down when it closed; an open
+// one is worked out live. Those are different kinds of fact and the answer
+// says which is which, because a figure that can still move should never be
+// drawn as though it were settled.
+router.get('/pay/mine/history', wrap(async (req, res) => {
+  res.json(await payHistory(req.user.id, Number(req.query.months) || 6))
 }))
 
 // A person's own numbers, and where this month puts them on the ladder.
@@ -863,8 +882,72 @@ async function rateCards() {
 
 // One person's month, or everybody's. `only` restricts it to one id, which is
 // how a person sees their own pay without seeing the payroll.
-async function payRun({ from, to, only }) {
-  const list = await contributions({ from, to })
+// ---- a closed month --------------------------------------------------------
+// Rows come back with the frozen figures unpacked, so a caller never has to
+// know that the breakdown rides as text.
+function publicPayout(row) {
+  let breakdown = {}
+  try { breakdown = JSON.parse(row.breakdown || '{}') } catch { breakdown = {} }
+  return {
+    user_id: row.user_id, month: row.month, currency: row.currency || 'UZS',
+    total: Number(row.total) || 0, note: row.note || '',
+    paid_at: row.paid_at || null, marked_by: row.marked_by || null,
+    closed_at: row.created_at, breakdown,
+  }
+}
+
+const monthStartOf = (m) => `${m}-01`
+const monthEndOf = (m) => {
+  const d = new Date(`${m}-01T00:00:00Z`)
+  d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0)
+  return d.toISOString().slice(0, 10)
+}
+const monthsBack = (n, from = dayISO()) => {
+  const out = []
+  const d = new Date(`${from.slice(0, 7)}-01T00:00:00Z`)
+  for (let i = 0; i < n; i++) { out.unshift(d.toISOString().slice(0, 7)); d.setUTCMonth(d.getUTCMonth() - 1) }
+  return out
+}
+
+// The last n months for one person. One pass over the board covers all of
+// them: contributions are dated, so the whole span is fetched once and each
+// month takes the slice that belongs to it.
+async function payHistory(userId, n = 6) {
+  const months = monthsBack(Math.max(1, Math.min(24, n)))
+  const spanFrom = monthStartOf(months[0])
+  const today = dayISO()
+  const spanTo = today
+  const list = await contributions({ from: spanFrom, to: spanTo })
+  const closed = await all('SELECT * FROM payouts WHERE user_id = ?', userId)
+  const byMonth = new Map(closed.map((r) => [r.month, publicPayout(r)]))
+  const out = []
+  for (const m of months) {
+    const from = monthStartOf(m)
+    const to = monthEndOf(m) < today ? monthEndOf(m) : today
+    const paid = byMonth.get(m) || null
+    if (paid) { out.push({ month: m, total: paid.total, currency: paid.currency, settled: true, payout: paid }); continue }
+    const slice = list.filter((c) => String(c.day).slice(0, 7) === m)
+    const run = await payRun({ from, to, only: userId, list: slice })
+    const p = run.people[0]
+    // A base salary is paid "whatever the count", so the calculator happily
+    // reports a full month's base for a month this person has no record of
+    // working at all — including months before they joined. That figure is
+    // not a lie about the rate card; it would be a lie about the month. So it
+    // is marked as assumed, and drawn hollow rather than as a bar somebody
+    // could read as money they were once paid.
+    const delivered = p?.delivered || 0
+    out.push({
+      month: m, total: p ? Math.round(p.total) : 0, currency: p?.currency || 'UZS',
+      settled: false, payout: null, delivered,
+      assumed: delivered === 0 && !!p && p.total > 0,
+      running: m === today.slice(0, 7),
+    })
+  }
+  return { months: out, currency: out.find((m) => m.total > 0)?.currency || 'UZS' }
+}
+
+async function payRun({ from, to, only, list: given }) {
+  const list = given || await contributions({ from, to })
   const { pick } = await rateCards()
   const users = (await all('SELECT * FROM users')).map(publicUser)
   const wanted = only ? users.filter((u) => u.id === Number(only)) : users
@@ -980,6 +1063,12 @@ async function payRun({ from, to, only }) {
       },
       lines: earning, base: rates.base || 0, piecework,
       onTimeBonus, quotaBonus, viewsBonus, bonus, penalty, total,
+      // What is still winnable, and what it would take — worked out here so
+      // the browser only has to draw it, and so none of it can be nudged by
+      // anything a browser sends.
+      ...(from && to
+        ? goalsOf({ rates, delivered: e.done, late: e.late, onTime, views, from, to })
+        : { period: null, goals: [] }),
       items: e.items.sort((a, b) => String(b.day).localeCompare(String(a.day))),
     }
   })
@@ -996,7 +1085,17 @@ router.get('/pay', wrap(async (req, res) => {
   // the payroll; that is the whole of the rule now.
   out.people = out.people.filter((p) => p.source !== 'none' || p.delivered > 0)
   out.people.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
-  res.json({ ...out, hasDefault, currency: out.people[0]?.currency || 'UZS' })
+  // Which of these have already been paid for the month the range sits in.
+  // A payroll that cannot tell you what has gone out is a spreadsheet.
+  const month = String(to || dayISO()).slice(0, 7)
+  const closed = (await all('SELECT * FROM payouts WHERE month = ?', month)).map(publicPayout)
+  const byUser = new Map(closed.map((r) => [r.user_id, r]))
+  out.people = out.people.map((p) => ({ ...p, payout: byUser.get(p.id) || null }))
+  res.json({
+    ...out, hasDefault, month,
+    settled: closed.length, settledTotal: closed.reduce((a, r) => a + r.total, 0),
+    currency: out.people[0]?.currency || 'UZS',
+  })
 }))
 
 router.get('/kpi/:userId', adminOnly, wrap(async (req, res) => {
@@ -1094,6 +1193,85 @@ router.delete('/pay/rules/:userId', wrap(async (req, res) => {
   if (req.params.userId === 'default') return res.status(400).json({ error: 'The default card cannot be removed — set it to zero instead' })
   await run('DELETE FROM pay_rules WHERE user_id = ?', Number(req.params.userId))
   res.json({ ok: true })
+}))
+
+// ---- closing a month --------------------------------------------------------
+// Admin only, and past this point in the file everything is.
+//
+// Recording a month as paid does two things at once, and they are worth
+// naming apart. It answers "was I paid for August?" — which nothing on this
+// board could answer before. And it FREEZES August: from then on the figures
+// come from the row rather than from a fresh sweep of the tasks, so editing an
+// old task in October no longer quietly rewrites a payslip somebody has
+// already been paid against.
+//
+// Idempotent per person per month, so two admins pressing it at the same
+// moment record one payment, not two.
+
+const MONTH_RE = /^\d{4}-\d{2}$/
+
+router.get('/pay/payouts', wrap(async (req, res) => {
+  const month = MONTH_RE.test(String(req.query.month || '')) ? String(req.query.month) : dayISO().slice(0, 7)
+  const rows = await all('SELECT * FROM payouts WHERE month = ?', month)
+  res.json({ month, payouts: rows.map(publicPayout) })
+}))
+
+router.post('/pay/payouts', wrap(async (req, res) => {
+  const body = req.body || {}
+  const month = MONTH_RE.test(String(body.month || '')) ? String(body.month) : null
+  if (!month) return res.status(400).json({ error: 'A month, as YYYY-MM' })
+  const today = dayISO()
+  if (month > today.slice(0, 7)) return res.status(400).json({ error: 'That month has not happened yet' })
+  const paidAt = /^\d{4}-\d{2}-\d{2}$/.test(String(body.paid_at || '')) ? String(body.paid_at) : today
+  const note = String(body.note || '').slice(0, 400)
+
+  const from = monthStartOf(month)
+  const end = monthEndOf(month)
+  const to = end < today ? end : today
+  const run_ = await payRun({ from, to })
+  // Only people the payroll actually pays. Somebody with no rate card and
+  // nothing delivered is not a payment of zero — they are not a payment.
+  let people = run_.people.filter((p) => p.source !== 'none' && (p.total !== 0 || p.delivered > 0))
+  if (Array.isArray(body.user_ids) && body.user_ids.length) {
+    const want = new Set(body.user_ids.map(Number))
+    people = people.filter((p) => want.has(p.id))
+  }
+  const now = new Date().toISOString()
+  const written = []
+  for (const p of people) {
+    const breakdown = JSON.stringify({
+      base: p.base, piecework: p.piecework, viewsPay: p.viewsPay, bonus: p.bonus,
+      quotaBonus: p.quotaBonus, onTimeBonus: p.onTimeBonus, viewsBonus: p.viewsBonus,
+      penalty: p.penalty, delivered: p.delivered, late: p.late, onTimePct: p.onTimePct,
+      views: p.views, quota: p.quota, lines: p.lines,
+    })
+    const existing = await get('SELECT id FROM payouts WHERE user_id = ? AND month = ?', p.id, month)
+    if (existing) {
+      await run('UPDATE payouts SET currency=?, total=?, breakdown=?, note=?, paid_at=?, marked_by=?, updated_at=? WHERE id=?',
+        p.currency, Math.round(p.total), breakdown, note, paidAt, req.user.id, now, existing.id)
+    } else {
+      await run(`INSERT INTO payouts (user_id, month, currency, total, breakdown, note, paid_at, marked_by, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        p.id, month, p.currency, Math.round(p.total), breakdown, note, paidAt, req.user.id, now, now)
+    }
+    written.push(p.id)
+  }
+  const rows = await all('SELECT * FROM payouts WHERE month = ?', month)
+  res.status(201).json({ month, paid_at: paidAt, recorded: written.length, payouts: rows.map(publicPayout) })
+}))
+
+// Re-opening a month. The row goes and the calculator takes over again — the
+// only honest way back, because a frozen figure that can be edited in place is
+// a figure nobody can trust.
+router.delete('/pay/payouts/:month/:userId', wrap(async (req, res) => {
+  const month = String(req.params.month)
+  if (!MONTH_RE.test(month)) return res.status(400).json({ error: 'A month, as YYYY-MM' })
+  if (req.params.userId === 'all') {
+    await run('DELETE FROM payouts WHERE month = ?', month)
+    return res.json({ ok: true, month })
+  }
+  await run('DELETE FROM payouts WHERE month = ? AND user_id = ?', month, Number(req.params.userId))
+  res.json({ ok: true, month })
 }))
 
 export default router

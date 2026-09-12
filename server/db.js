@@ -1196,6 +1196,34 @@ export async function initSchema() {
       updated_at    TEXT    NOT NULL
     );
 
+    -- What was actually paid, and when.
+    --
+    -- Everything above this line is a CALCULATOR: it reads the month off the
+    -- board and works out what the month is worth. It has never been able to
+    -- answer the only question anybody asks out loud — "was I paid for
+    -- August?" — because nothing recorded that the money went out, and the
+    -- figure re-derived itself for ever. Edit a task from August in October
+    -- and August's payslip quietly changed.
+    --
+    -- So closing a month FREEZES it. The figures as they stood are written
+    -- down whole, and from then on the month is read from this row rather
+    -- than recomputed. Re-opening it deletes the row and the calculator takes
+    -- over again, which is the only honest way back.
+    CREATE TABLE IF NOT EXISTS payouts (
+      id         ${ID},
+      user_id    INTEGER NOT NULL,
+      month      TEXT    NOT NULL,                 -- 'YYYY-MM'
+      currency   TEXT    NOT NULL DEFAULT 'UZS',
+      total      REAL    NOT NULL DEFAULT 0,
+      breakdown  TEXT    NOT NULL DEFAULT '{}',    -- the figures as they stood
+      note       TEXT    NOT NULL DEFAULT '',
+      paid_at    TEXT,                             -- the day the money went out
+      marked_by  INTEGER,
+      created_at TEXT    NOT NULL,
+      updated_at TEXT    NOT NULL,
+      UNIQUE (user_id, month)
+    );
+
     -- Raising a hand. The crew could always deliver late; they had no way to
     -- say so in advance, so the first anybody knew was the deadline passing.
     -- A flag is the cheap early word: "I cannot take this" or "this will be
@@ -1533,6 +1561,12 @@ export async function initSchema() {
     -- Postgres both treat NULLs as distinct in a unique index, so the single
     -- default row is kept by the route rather than by the index.
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_rules_user ON pay_rules(user_id);
+
+    -- A month is closed for a person once. Two admins pressing "record as
+    -- paid" at the same moment would otherwise write two rows, and the
+    -- history would show the month twice.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_payout_user_month ON payouts(user_id, month);
+    CREATE INDEX IF NOT EXISTS idx_payout_month ON payouts(month);
 
     -- Sprints. The unique pairs are the honest ones: a task is in a week
     -- once and assigned to a person once, and saying so here means a double

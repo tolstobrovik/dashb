@@ -1724,6 +1724,24 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .rp-big { display: flex; align-items: center; gap: 14px; }
 .rp-big > b { font-size: 46px; font-weight: 800; line-height: 1; }
 .rp-big-label { font-size: 14.5px; font-weight: 600; color: var(--ink-2); }
+/* Closing a month. It sits on the right of the big total because that is the
+   number it settles, and a month already recorded says so rather than
+   offering the button again. */
+.rp-close { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rp-closed-note {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 600; color: var(--good-ink);
+}
+.rp-head-settled .rp-big > b { color: var(--good-ink); }
+.pay-row-paid { border-left: 3px solid var(--good); }
+.pay-paid-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--good-ink);
+}
+@media (max-width: 640px) {
+  .rp-close { margin-left: 0; width: 100%; }
+}
 .rp-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
 .rp-chan { border: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; padding: 4px 10px; }
 .rp-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; }
@@ -3693,6 +3711,121 @@ button.blame-person:hover { background: var(--surface-2); }
   border-top: 1px solid var(--hairline);
 }
 .my-pay-lines .cm-hint { margin-top: 10px; }
+.my-pay-head .stat-sub svg { vertical-align: -2px; margin-right: 3px; }
+.my-pay-settled .my-pay-head .stat-sub { color: var(--good-ink); }
+
+/* ---- what is still on the table ----------------------------------------
+   A bonus used to be a grey line reading "5 more to go" — a fact with no
+   sense of scale. Here it is a ring somebody can watch themselves move
+   around, the money on the end of it, and one sentence naming the number and
+   the verb. Five states, and only one of them is red. */
+.pay-goals {
+  margin: 2px 0 14px; padding: 12px 14px;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.pg-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.pg-head > svg { color: var(--warn-ink); flex: 0 0 auto; }
+.pg-head b { font-size: 13.5px; }
+.pg-purse {
+  font-weight: 700; font-size: 13.5px; font-variant-numeric: tabular-nums;
+  color: var(--good-ink);
+}
+.pg-days { margin-left: auto; font-size: 12px; }
+
+.pg-warn {
+  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px;
+  padding: 8px 10px; border-radius: var(--radius-xs);
+  background: var(--danger-bg); color: var(--critical);
+  font-size: 12.5px; line-height: 1.45;
+}
+.pg-warn svg { flex: 0 0 auto; margin-top: 1px; }
+
+.pg-list { display: grid; gap: 4px; }
+.pg-goal {
+  display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 12px;
+  padding: 8px 10px; border-radius: var(--radius-xs);
+  background: var(--surface);
+}
+.pg-goal-body { min-width: 0; display: grid; gap: 2px; }
+.pg-goal-name {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.pg-goal-name > svg { color: var(--muted); flex: 0 0 auto; }
+.pg-goal-say { font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+.pg-goal-pays {
+  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--muted); white-space: nowrap;
+}
+.pg-flame {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-style: normal; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+  color: var(--warn-ink);
+}
+
+/* The ring. The track is always the same faint grey; only the arc carries
+   the state, so a card of five goals reads as one object rather than five. */
+.pg-ring { flex: 0 0 auto; }
+.pg-ring-track { stroke: var(--hairline-strong); }
+.pg-ring-on { stroke: var(--muted); transition: stroke-dasharray .4s ease; }
+.pg-ring-pct { font-size: 12px; font-weight: 700; fill: var(--ink-2); }
+.pg-ring-tick { stroke: var(--good-ink); }
+.pg-ring.pg-won .pg-ring-on     { stroke: var(--good); }
+.pg-ring.pg-close .pg-ring-on   { stroke: var(--warning); }
+.pg-ring.pg-open .pg-ring-on    { stroke: var(--chart-1); }
+.pg-ring.pg-behind .pg-ring-on  { stroke: var(--critical); }
+.pg-ring.pg-lost .pg-ring-on    { stroke: var(--hairline-strong); }
+.pg-goal.pg-won .pg-goal-pays   { color: var(--good-ink); }
+.pg-goal.pg-won .pg-goal-say    { color: var(--good-ink); }
+.pg-goal.pg-behind .pg-goal-say { color: var(--critical); }
+.pg-goal.pg-lost                { opacity: .55; }
+
+/* ---- the months behind this one ---------------------------------------- */
+.pay-hist { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.ph-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.ph-head > svg { color: var(--muted); flex: 0 0 auto; }
+.ph-head b { font-size: 13.5px; }
+.ph-last { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--good-ink); }
+.ph-bars {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  gap: 8px; align-items: end;
+}
+.ph-col { display: grid; gap: 4px; justify-items: center; min-width: 0; }
+.ph-amount {
+  font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.ph-bar-box { height: 68px; width: 100%; display: flex; align-items: flex-end; }
+.ph-bar {
+  width: 100%; border-radius: var(--radius-xs) var(--radius-xs) 4px 4px;
+  background: var(--chart-1); min-height: 4px;
+}
+.ph-month { font-size: 11.5px; color: var(--ink-2); }
+.ph-state { font-size: 10px; color: var(--muted); height: 13px; display: flex; align-items: center; }
+.ph-settled .ph-bar { background: var(--good); }
+.ph-settled .ph-state { color: var(--good-ink); }
+.ph-settled .ph-amount { color: var(--ink); font-weight: 600; }
+/* Striped: this month is not a result yet. */
+.ph-running .ph-bar {
+  background: repeating-linear-gradient(135deg,
+    var(--chart-1) 0 6px, color-mix(in srgb, var(--chart-1) 55%, transparent) 6px 12px);
+}
+/* No bar at all: a month the board has no record of this person working. The
+   calculator would report a full base salary for it — including months before
+   they joined — and drawn as a bar that phantom sets the scale for the real
+   months beside it. A dashed floor says "nothing here" and takes no space in
+   the comparison. */
+.ph-assumed .ph-bar-box { border-bottom: 1px dashed var(--hairline-strong); }
+.ph-assumed .ph-month, .ph-assumed .ph-state { color: var(--muted); opacity: .75; }
+.ph-note { margin-top: 10px; }
+@media (max-width: 640px) {
+  .ph-amount { font-size: 9.5px; }
+  .ph-bar-box { height: 52px; }
+  .pg-goal { gap: 9px; padding: 8px; }
+  .pg-goal-pays { font-size: 12px; }
+}
 
 .my-late { border-left: 3px solid #A32D2D; display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .my-late-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
@@ -4518,24 +4651,42 @@ button.blame-person:hover { background: var(--surface-2); }
    mostly not doing, with Save pushed to the bottom of them. On a desk they
    stay exactly where they were — the wrapper is `display: contents`, so the
    footer is the same flex row it always was. */
-.cm-tools { display: contents; }
+/* The secondary tools, behind one button — on every screen, not only a
+   phone. On a desk they were four bare icons and a loud red Delete: the one
+   destructive action was the only thing in the footer wearing a word, and
+   the three that were safe were glyphs you had to hover to name. Nobody
+   learns a toolbar by hovering it. In a menu they have room to say what they
+   are, and the footer is left with the two things somebody came to press. */
+.cm-tools { display: none; }
+.cm-tools.open { display: flex; }
+.cm-tools.cm-tools-pop {
+  position: absolute; left: 10px; bottom: calc(100% + 8px); min-width: 240px;
+  flex-direction: column; gap: 4px; z-index: 5;
+  background: var(--surface); border-radius: var(--radius-sm); padding: 8px;
+  box-shadow: var(--shadow-lg);
+}
+.cm-tools-pop > * { width: 100%; }
+.cm-tools-pop .btn {
+  flex: none; justify-content: flex-start; font-size: 13.5px; padding: 9px 12px;
+  border-radius: var(--radius-xs); background: none; border-color: transparent;
+}
+.cm-tools-pop .btn:hover { background: var(--surface-2); }
+.cm-tools-pop .btn-danger { color: var(--critical); }
+.cm-tools-pop .btn-danger:hover { background: var(--danger-bg); }
+.cm-tools-pop .crew-peek { display: flex; align-items: center; gap: 8px; padding: 2px 4px; }
+.cm-tools-pop .crew-peek .select { flex: 1 1 auto; max-width: none; }
+.cm-more-btn { flex: 0 0 auto; }
+/* Above the scrim, so the button that opened the menu is still the button
+   that closes it. Under the scrim it stayed a toggle only by accident — the
+   scrim swallowed the press and closed the menu itself, which looks the same
+   until something tries to press it twice. */
+.cm-more-btn { position: relative; z-index: 5; }
+.cm-tools-scrim { position: fixed; inset: 0; z-index: 4; background: none; border: 0; padding: 0; cursor: default; }
+.cm-more-btn.on { background: var(--surface-2); color: var(--ink); }
 @media (max-width: 640px) {
-  .cm-tools.cm-tools-pop {
-    display: none;
-    position: absolute; left: 10px; right: 10px; bottom: calc(100% + 8px);
-    flex-direction: column; gap: 6px;
-    background: var(--surface); border: 1px solid var(--hairline);
-    border-radius: 16px; padding: 8px;
-    box-shadow: var(--shadow-lg);
-  }
-  .cm-tools.cm-tools-pop.open { display: flex; }
-  .cm-tools-pop > * { width: 100%; }
-  .cm-tools-pop .btn { flex: none; justify-content: flex-start; font-size: 14px; padding: 10px 12px; }
-  .cm-tools-pop .crew-peek { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
-  .cm-tools-pop .crew-peek .select { flex: 1 1 auto; max-width: none; }
-  .cm-more-btn { flex: 0 0 auto; }
+  .cm-tools.cm-tools-pop { right: 10px; left: 10px; min-width: 0; }
+  .cm-tools-pop .btn { font-size: 14px; padding: 10px 12px; }
   .modal-foot > .foot-gap-tight { flex: 1 1 0; flex-basis: 0; height: auto; }
-  .cm-more-btn.on { background: var(--surface-2); color: var(--ink); }
 }
 
 /* Quick find on a phone: the "esc" chip names a key the device has not got.

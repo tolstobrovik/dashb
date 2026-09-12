@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Wallet, ChevronDown, Eye, EyeOff } from 'lucide-react'
+import { Wallet, ChevronDown, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { todayISO } from '../lib/constants.js'
 import { useAuth } from '../lib/auth.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
 import SalaryPlanner, { money } from './SalaryPlanner.jsx'
+import PayGoals from './PayGoals.jsx'
+import PayHistory from './PayHistory.jsx'
 import { Dot } from './Dot.jsx'
 
 // What this month is worth to the person looking at it — and, under it, what
@@ -55,13 +57,23 @@ export default function MyPay({ startOpen = false }) {
   const earning = hasRates ? pay.lines.filter((l) => l.count > 0) : []
   const amt = (n) => (shown ? money(n, cur) : '••••••')
 
+  // A month somebody has been paid for is not an estimate any more, and the
+  // card should stop calling it one. "Expected" over a figure that has already
+  // reached a bank account is the kind of small wrongness that makes people
+  // stop believing the rest of the page.
+  const settled = hasRates ? pay.payout : null
+
   return (
-    <div className={'card card-pad my-pay' + (shown ? '' : ' my-pay-hidden')}>
+    <div className={'card card-pad my-pay' + (shown ? '' : ' my-pay-hidden') + (settled ? ' my-pay-settled' : '')}>
       <button type="button" className="my-pay-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <Wallet size={17} />
         <span className="my-pay-sum">
-          <b>{amt((hasRates ? pay.total : 0) + (hasKpi ? kpi.total : 0))}</b>
-          <span className="stat-sub">{tx('expected this month')}</span>
+          <b>{amt(settled ? settled.total : (hasRates ? pay.total : 0) + (hasKpi ? kpi.total : 0))}</b>
+          <span className="stat-sub">
+            {settled
+              ? <><CheckCircle2 size={12} /> {tx('paid this month')}</>
+              : tx('expected this month')}
+          </span>
         </span>
         <span role="button" tabIndex={0} className="icon-btn my-pay-eye" onClick={toggle}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggle(e) }}
@@ -78,8 +90,8 @@ export default function MyPay({ startOpen = false }) {
           )}
           {(pay.views > 0 || pay.viewsTarget > 0 || pay.rates.per_1k_views > 0) && (
             <span className={pay.viewsTarget > 0 && pay.viewsMet ? 'pay-good' : undefined}>
-              <b>{(pay.views || 0).toLocaleString()}</b>
-              {pay.viewsTarget > 0 ? ` / ${pay.viewsTarget.toLocaleString()}` : ''} {tx('views')}
+              <b>{money(pay.views || 0, '')}</b>
+              {pay.viewsTarget > 0 ? ` / ${money(pay.viewsTarget, '')}` : ''} {tx('views')}
             </span>
           )}
           </>}
@@ -90,6 +102,15 @@ export default function MyPay({ startOpen = false }) {
       {open && (
         <div className="my-pay-lines">
           {!shown && <div className="stat-sub my-pay-veil">{tx('Amounts are hidden — press the eye to show them')}</div>}
+          {/* What is still winnable, before the accounting of what already is.
+              The lines below answer "what did I earn"; this answers "what can
+              I still do about it", which is the question with a week left in
+              the month. A month that has been closed and paid has nothing
+              left on the table, so it says nothing. */}
+          {hasRates && !settled && (
+            <PayGoals goals={pay.goals} period={pay.period} currency={cur}
+              userId={user?.id} month={(pay.period?.to || '').slice(0, 7)} shown={shown} />
+          )}
           {hasRates && <>
           {pay.base > 0 && (
             <div className="my-pay-line"><span>{tx('Base')}</span><span /><b>{amt(pay.base)}</b></div>
@@ -104,22 +125,15 @@ export default function MyPay({ startOpen = false }) {
           {pay.viewsPay > 0 && (
             <div className="my-pay-line">
               <span>{tx('On views')}</span>
-              <span className="stat-sub">{(pay.views || 0).toLocaleString()} × {amt(pay.rates.per_1k_views)} / 1 000</span>
+              <span className="stat-sub">{money(pay.views || 0, '')} × {amt(pay.rates.per_1k_views)} / 1 000</span>
               <b>{amt(pay.viewsPay)}</b>
             </div>
           )}
           {pay.viewsBonus > 0 && (
             <div className="my-pay-line">
               <span>{tx('Views bonus')}</span>
-              <span className="stat-sub">{pay.viewsTarget.toLocaleString()} {tx('in the month')}</span>
+              <span className="stat-sub">{money(pay.viewsTarget, '')} {tx('in the month')}</span>
               <b className="pay-good">+{amt(pay.viewsBonus)}</b>
-            </div>
-          )}
-          {!pay.viewsBonus && pay.rates.views_bonus > 0 && pay.viewsLeft > 0 && (
-            <div className="my-pay-line">
-              <span className="stat-sub">{tx('Views bonus')}</span>
-              <span className="stat-sub">{tx('{n} more views to go', { n: pay.viewsLeft.toLocaleString() })}</span>
-              <span className="stat-sub">{amt(pay.rates.views_bonus)}</span>
             </div>
           )}
           {pay.viewsCounted > 0 && pay.viewsCounted < pay.delivered && (
@@ -136,25 +150,11 @@ export default function MyPay({ startOpen = false }) {
               <b className="pay-good">+{amt(pay.quotaBonus)}</b>
             </div>
           )}
-          {!pay.quotaBonus && pay.rates.quota_bonus > 0 && pay.quotaLeft > 0 && (
-            <div className="my-pay-line">
-              <span className="stat-sub">{tx('Quota bonus')}</span>
-              <span className="stat-sub">{tx('{n} more to go', { n: pay.quotaLeft })}</span>
-              <span className="stat-sub">{amt(pay.rates.quota_bonus)}</span>
-            </div>
-          )}
           {pay.onTimeBonus > 0 && (
             <div className="my-pay-line">
               <span>{tx('On-time bonus')}</span>
               <span className="stat-sub">{tx('{target}% or better', { target: pay.rates.ontime_target })}</span>
               <b className="pay-good">+{amt(pay.onTimeBonus)}</b>
-            </div>
-          )}
-          {!pay.onTimeBonus && pay.rates.ontime_bonus > 0 && pay.onTimePct !== null && (
-            <div className="my-pay-line">
-              <span className="stat-sub">{tx('On-time bonus')}</span>
-              <span className="stat-sub">{tx('needs {target}% — you are on {pct}%', { target: pay.rates.ontime_target, pct: pay.onTimePct })}</span>
-              <span className="stat-sub">{amt(pay.rates.ontime_bonus)}</span>
             </div>
           )}
           {pay.penalty > 0 && (
@@ -219,6 +219,8 @@ export default function MyPay({ startOpen = false }) {
           {hasRates && <div className="cm-hint">
             {tx('Counted on the day your part was delivered. Work that reached you after its own day had gone is not counted against you.')}
           </div>}
+
+          <PayHistory shown={shown} />
 
           {hasRates && <SalaryPlanner pay={pay} />}
         </div>

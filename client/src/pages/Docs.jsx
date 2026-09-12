@@ -190,11 +190,16 @@ export default function Docs() {
   return (
     <div className="page docs-page">
       {err && <div className="form-error">{err}</div>}
-      {/* The paper says what the job is; the card under it says what this month
-          of doing it is worth. They were two pages, and the question people
-          actually arrive with — "what am I on this month, and why that number"
-          — needed both of them open at once. The document first, because it is
-          the thing being measured against. */}
+      {/* MONEY FIRST.
+          This page is called Payment in every language the board speaks, and
+          it opened on a document shelf with the pay card at the very bottom,
+          under a preview pane tall enough that on a laptop you had to scroll
+          past the whole KPI paper to reach the one thing the page is named
+          after. The paper is not unimportant — it is what the month is
+          measured against, and it stays — but it is the REFERENCE, and a
+          reference goes under the answer rather than in front of it. */}
+      <MyPay startOpen />
+
       <div className="card docs-card kpi-doc">
         <div className="docs-sec-head">
           <h2><ScrollText size={17} />{' '}{tx('KPI document')}</h2>
@@ -323,7 +328,6 @@ export default function Docs() {
           </label>
         </Modal>
       )}
-      <MyPay startOpen />
     </div>
   )
 }
