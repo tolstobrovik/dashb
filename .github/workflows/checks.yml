@@ -155,6 +155,14 @@ jobs:
           DASHB_ROOT: ${{ github.workspace }}
         run: node qa/round74-suite.mjs
 
+      # Pay: the goals, and the invariant the payout record exists for — a
+      # closed month does not move when the board is edited underneath it.
+      # Boots its own API on 4127, so it runs anywhere in this job.
+      - name: Payment suite
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: node qa/pay-suite.mjs
+
       # The Telegram bridge: these boot their own API and their own bot mock.
       - name: Notification suites
         env:
