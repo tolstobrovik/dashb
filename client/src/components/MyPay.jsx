@@ -54,7 +54,6 @@ export default function MyPay({ startOpen = false }) {
   const hasKpi = !!kpi && (kpi.ladders.length > 0 || kpi.fixed > 0)
   if (!hasRates && !hasKpi) return null
   const cur = (hasRates ? pay.currency : kpi?.currency) || 'UZS'
-  const earning = hasRates ? pay.lines.filter((l) => l.count > 0) : []
   const amt = (n) => (shown ? money(n, cur) : '••••••')
 
   // A month somebody has been paid for is not an estimate any more, and the
@@ -62,13 +61,27 @@ export default function MyPay({ startOpen = false }) {
   // reached a bank account is the kind of small wrongness that makes people
   // stop believing the rest of the page.
   const settled = hasRates ? pay.payout : null
+  // …and neither is anything under it. The first cut put the frozen total
+  // above a breakdown the calculator re-derived on every load: a number that
+  // cannot move, itemised by numbers that can. They agree the day the month
+  // closes, and stop agreeing the first time somebody edits an old task. So a
+  // settled month is READ from the record, whole — lines, rates, counts and
+  // the pieces it was paid for.
+  const frozen = settled?.breakdown && Object.keys(settled.breakdown).length ? settled.breakdown : null
+  const view = frozen
+    ? { ...pay, ...frozen, total: settled.total, rates: frozen.rates || pay.rates,
+        lines: frozen.lines || [], items: frozen.items || [],
+        quotaLeft: null, viewsLeft: null,
+        quotaMet: (frozen.quotaBonus || 0) > 0, viewsMet: (frozen.viewsBonus || 0) > 0 }
+    : pay
+  const earning = hasRates ? (view.lines || []).filter((l) => l.count > 0) : []
 
   return (
     <div className={'card card-pad my-pay' + (shown ? '' : ' my-pay-hidden') + (settled ? ' my-pay-settled' : '')}>
       <button type="button" className="my-pay-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <Wallet size={17} />
         <span className="my-pay-sum">
-          <b>{amt(settled ? settled.total : (hasRates ? pay.total : 0) + (hasKpi ? kpi.total : 0))}</b>
+          <b>{amt(settled ? view.total : (hasRates ? pay.total : 0) + (hasKpi ? kpi.total : 0))}</b>
           <span className="stat-sub">
             {settled
               ? <><CheckCircle2 size={12} /> {tx('paid this month')}</>
@@ -82,16 +95,16 @@ export default function MyPay({ startOpen = false }) {
         </span>
         <span className="my-pay-facts">
           {hasRates && <>
-          <span><b>{pay.delivered}</b>{pay.quota > 0 ? ` / ${pay.quota}` : ''} {tx('delivered')}</span>
-          {pay.onTimePct !== null && (
-            <span className={pay.onTimePct >= (pay.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>
-              <b>{pay.onTimePct}%</b> {tx('on time')}
+          <span><b>{view.delivered}</b>{view.quota > 0 ? ` / ${view.quota}` : ''} {tx('delivered')}</span>
+          {view.onTimePct !== null && (
+            <span className={view.onTimePct >= (view.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>
+              <b>{view.onTimePct}%</b> {tx('on time')}
             </span>
           )}
-          {(pay.views > 0 || pay.viewsTarget > 0 || pay.rates.per_1k_views > 0) && (
-            <span className={pay.viewsTarget > 0 && pay.viewsMet ? 'pay-good' : undefined}>
-              <b>{money(pay.views || 0, '')}</b>
-              {pay.viewsTarget > 0 ? ` / ${money(pay.viewsTarget, '')}` : ''} {tx('views')}
+          {(view.views > 0 || view.viewsTarget > 0 || view.rates.per_1k_views > 0) && (
+            <span className={view.viewsTarget > 0 && view.viewsMet ? 'pay-good' : undefined}>
+              <b>{money(view.views || 0, '')}</b>
+              {view.viewsTarget > 0 ? ` / ${money(view.viewsTarget, '')}` : ''} {tx('views')}
             </span>
           )}
           </>}
@@ -119,8 +132,8 @@ export default function MyPay({ startOpen = false }) {
               userId={user?.id} month={(pay.period?.to || '').slice(0, 7)} shown={shown} />
           )}
           {hasRates && <>
-          {pay.base > 0 && (
-            <div className="my-pay-line"><span>{tx('Base')}</span><span /><b>{amt(pay.base)}</b></div>
+          {view.base > 0 && (
+            <div className="my-pay-line"><span>{tx('Base')}</span><span /><b>{amt(view.base)}</b></div>
           )}
           {earning.map((l) => (
             <div className="my-pay-line" key={l.hat}>
@@ -129,59 +142,59 @@ export default function MyPay({ startOpen = false }) {
               <b>{amt(l.amount)}</b>
             </div>
           ))}
-          {pay.viewsPay > 0 && (
+          {view.viewsPay > 0 && (
             <div className="my-pay-line">
               <span>{tx('On views')}</span>
-              <span className="stat-sub">{money(pay.views || 0, '')} × {amt(pay.rates.per_1k_views)} / 1 000</span>
-              <b>{amt(pay.viewsPay)}</b>
+              <span className="stat-sub">{money(view.views || 0, '')} × {amt(view.rates.per_1k_views)} / 1 000</span>
+              <b>{amt(view.viewsPay)}</b>
             </div>
           )}
-          {pay.viewsBonus > 0 && (
+          {view.viewsBonus > 0 && (
             <div className="my-pay-line">
               <span>{tx('Views bonus')}</span>
-              <span className="stat-sub">{money(pay.viewsTarget, '')} {tx('in the month')}</span>
-              <b className="pay-good">+{amt(pay.viewsBonus)}</b>
+              <span className="stat-sub">{money(view.viewsTarget, '')} {tx('in the month')}</span>
+              <b className="pay-good">+{amt(view.viewsBonus)}</b>
             </div>
           )}
-          {pay.viewsCounted > 0 && pay.viewsCounted < pay.delivered && (
+          {view.viewsCounted > 0 && view.viewsCounted < view.delivered && (
             <div className="my-pay-line">
               <span className="stat-sub">{tx('Counted so far')}</span>
-              <span className="stat-sub">{tx('{counted} of {delivered} pieces have a number on them', { counted: pay.viewsCounted, delivered: pay.delivered })}</span>
+              <span className="stat-sub">{tx('{counted} of {delivered} pieces have a number on them', { counted: view.viewsCounted, delivered: view.delivered })}</span>
               <span />
             </div>
           )}
-          {pay.quotaBonus > 0 && (
+          {view.quotaBonus > 0 && (
             <div className="my-pay-line">
               <span>{tx('Quota bonus')}</span>
-              <span className="stat-sub">{pay.quota} {tx('in the month')}</span>
-              <b className="pay-good">+{amt(pay.quotaBonus)}</b>
+              <span className="stat-sub">{view.quota} {tx('in the month')}</span>
+              <b className="pay-good">+{amt(view.quotaBonus)}</b>
             </div>
           )}
-          {pay.onTimeBonus > 0 && (
+          {view.onTimeBonus > 0 && (
             <div className="my-pay-line">
               <span>{tx('On-time bonus')}</span>
-              <span className="stat-sub">{tx('{target}% or better', { target: pay.rates.ontime_target })}</span>
-              <b className="pay-good">+{amt(pay.onTimeBonus)}</b>
+              <span className="stat-sub">{tx('{target}% or better', { target: view.rates.ontime_target })}</span>
+              <b className="pay-good">+{amt(view.onTimeBonus)}</b>
             </div>
           )}
-          {pay.penalty > 0 && (
+          {view.penalty > 0 && (
             <div className="my-pay-line">
               <span>{tx('Late')}</span>
-              <span className="stat-sub">{pay.late} × {amt(pay.rates.late_penalty)}</span>
-              <b className="pay-bad">−{amt(pay.penalty)}</b>
+              <span className="stat-sub">{view.late} × {amt(view.rates.late_penalty)}</span>
+              <b className="pay-bad">−{amt(view.penalty)}</b>
             </div>
           )}
           <div className="my-pay-line my-pay-total">
-            <span>{tx('Expected this month')}</span><span /><b>{amt(pay.total)}</b>
+            <span>{settled ? tx('Paid this month') : tx('Expected this month')}</span><span /><b>{amt(view.total)}</b>
           </div>
 
-          {(pay.items || []).length > 0 && (
+          {(view.items || []).length > 0 && (
             <details className="my-pay-items">
               <summary className="stat-sub">
-                {tx('{n} delivered', { n: pay.items.length })}{pay.late > 0 ? ` · ${tx('{n} late', { n: pay.late })}` : ''}
+                {tx('{n} delivered', { n: view.items.length })}{view.late > 0 ? ` · ${tx('{n} late', { n: view.late })}` : ''}
               </summary>
               <div>
-                {pay.items.map((it) => (
+                {view.items.map((it) => (
                   <div key={`${it.hat}${it.id}`} className="my-pay-item">
                     <span>{it.title}</span>
                     <span className="stat-sub">{it.day}</span>

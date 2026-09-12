@@ -203,6 +203,28 @@ ok('C5', '…and the history reads the settled month from the record',
   (await req('/reports/pay/mine/history?months=2', 'GET', null, await tokenOf('Cy')))
     .data.months.find((m) => m.month === month)?.total === Math.round(before),
   JSON.stringify({ was: before }))
+// The same invariant one level down. Freezing the TOTAL and leaving its
+// itemisation to a live re-derivation is the worst of both worlds: a number
+// that cannot move, broken down by numbers that can, which stop adding up to
+// it the first time anybody edits an old task. The record has to carry the
+// whole payslip — what it was paid on, and which pieces.
+const snap = afterEdit.payout?.breakdown || {}
+ok('C8', 'the record carries the whole payslip, not just the total',
+  ['base', 'piecework', 'bonus', 'delivered', 'lines'].every((k) => k in snap),
+  JSON.stringify(Object.keys(snap)))
+ok('C9', '…including the rate card it was worked out on',
+  !!snap.rates && typeof snap.rates.quota === 'number',
+  JSON.stringify(snap.rates && { quota: snap.rates.quota }))
+ok('C10', '…and the pieces it was paid for', Array.isArray(snap.items),
+  `${(snap.items || []).length} — "which work was I paid for" is the other half of a payslip`)
+ok('C11', '…and those counts do not move either when the board is edited',
+  snap.delivered === afterClose.payout.breakdown.delivered,
+  JSON.stringify({ now: snap.delivered, frozen: afterClose.payout.breakdown.delivered }))
+ok('C12', '…and the frozen parts still add up to the frozen total',
+  Math.round((snap.base || 0) + (snap.piecework || 0) + (snap.viewsPay || 0)
+    + (snap.bonus || 0) - (snap.penalty || 0)) === Math.round(afterEdit.payout.total),
+  JSON.stringify({ parts: (snap.base || 0) + (snap.piecework || 0) + (snap.viewsPay || 0) + (snap.bonus || 0) - (snap.penalty || 0), total: afterEdit.payout.total }))
+
 // Re-opening is the only way back, and it gives the calculator its job back.
 const reopened = await req(`/reports/pay/payouts/${month}/${cy.id}`, 'DELETE')
 const afterReopen = await mineFor(cy)

@@ -1239,11 +1239,20 @@ router.post('/pay/payouts', wrap(async (req, res) => {
   const now = new Date().toISOString()
   const written = []
   for (const p of people) {
+    // The WHOLE payslip, not the total and half the reasons for it. Freezing
+    // a figure and leaving its itemisation to a live re-derivation is the
+    // worst of both: a number that cannot move, broken down by numbers that
+    // can, which stop adding up to it the first time anybody edits an old
+    // task — the exact failure the freeze exists to prevent, reintroduced one
+    // level down. The rates ride along, so a card rewritten in November
+    // cannot relabel what September was paid on, and so do the pieces,
+    // because "which work was I paid for" is the other half of a payslip.
     const breakdown = JSON.stringify({
       base: p.base, piecework: p.piecework, viewsPay: p.viewsPay, bonus: p.bonus,
       quotaBonus: p.quotaBonus, onTimeBonus: p.onTimeBonus, viewsBonus: p.viewsBonus,
       penalty: p.penalty, delivered: p.delivered, late: p.late, onTimePct: p.onTimePct,
-      views: p.views, quota: p.quota, lines: p.lines,
+      views: p.views, viewsCounted: p.viewsCounted, viewsTarget: p.viewsTarget,
+      quota: p.quota, rates: p.rates, lines: p.lines, items: p.items,
     })
     const existing = await get('SELECT id FROM payouts WHERE user_id = ? AND month = ?', p.id, month)
     if (existing) {
