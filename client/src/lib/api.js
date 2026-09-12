@@ -1,3 +1,5 @@
+import { dataIsFresh } from './toast.js'
+
 const TOKEN_KEY = 'satashkent_token'
 
 // ---- little comfort cookies (login prefill, remember-me choice) ----
@@ -69,7 +71,10 @@ async function request(path, { method = 'GET', body } = {}) {
     let data = {}
     let readable = true
     if (text) { try { data = JSON.parse(text) } catch { readable = false } }
-    if (res.ok && readable) return data
+    // Anything reaching the server takes down the stale-data warning. Doing it
+    // here rather than in each page's load means nothing has to remember to,
+    // and a board that is talking to the server again stops saying it is not.
+    if (res.ok && readable) { dataIsFresh(); return data }
     if (res.ok) {
       if (attempt < RETRY_WAITS.length) {
         await new Promise((r) => setTimeout(r, RETRY_WAITS[attempt]))

@@ -17,12 +17,23 @@ export default function Toasts() {
   const [, tick] = useState(0)
 
   useEffect(() => {
-    registerToasts((text, kind, action) => {
+    registerToasts((text, kind, action, sticky) => {
+      // A sticky toast is a STATE, not an event — "the data on screen is old"
+      // stays true until it is not, and a warning about that which dismisses
+      // itself after 2.6 seconds is a board that looks healthy again while
+      // still showing yesterday. It carries its own id, so three pages failing
+      // at once raise it once, and it leaves only when it is taken down.
+      if (sticky) {
+        setList((prev) => (prev.some((t) => t.id === sticky)
+          ? prev
+          : [...prev.slice(-2), { id: sticky, text, kind, action, sticky: true }]))
+        return
+      }
       const id = `${Date.now()}-${Math.random()}`
       const life = action ? ACTION_MS : PLAIN_MS
       setList((prev) => [...prev.slice(-2), { id, text, kind, action, until: Date.now() + life }])
       setTimeout(() => setList((prev) => prev.filter((t) => t.id !== id)), life)
-    })
+    }, (id) => setList((prev) => prev.filter((t) => t.id !== id)))
     return () => registerToasts(null)
   }, [])
 

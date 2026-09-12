@@ -32,14 +32,20 @@ await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout
 // ---- 1) the pasteable task link ----
 await p.goto(BASE + `/brief?task=${src.id}`); await p.waitForTimeout(1400)
 ok('a pasted link opens its task', (await p.locator('.modal .cm-title').inputValue().catch(() => '')) === 'x29: rubric video')
-await p.locator('.modal button[aria-label="Copy link"]').click(); await p.waitForTimeout(400)
+// The five secondary tools fold behind one button on every screen now, not
+// only on a phone — on a desk they were four bare glyphs beside a loud red
+// Delete, the one destructive action being the only thing wearing a word. So
+// the tool is opened for, and picked by the words it now prints: a button
+// whose accessible name IS its visible text needs no aria-label, and is
+// better off without one — two names for one control is how they drift.
+await p.locator('.modal .cm-more-btn').click(); await p.waitForTimeout(350)
+await p.locator('.modal .cm-tools.open .btn', { hasText: /^Copy link$/ }).click(); await p.waitForTimeout(400)
 const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '')
 ok('Copy link writes the task URL', clip.includes(`/brief?task=${src.id}`))
 
 // ---- 2) Duplicate from the modal ----
-// On a desk the tool is an icon named by its tooltip, so it is picked by the
-// name it carries for a screen reader rather than by printed text.
-await p.locator('.modal .btn-ghost[aria-label="Duplicate"]').click(); await p.waitForTimeout(900)
+await p.locator('.modal .cm-more-btn').click(); await p.waitForTimeout(350)
+await p.locator('.modal .cm-tools.open .btn', { hasText: /^Duplicate$/ }).click(); await p.waitForTimeout(900)
 // Round 78 renamed what a duplicate is called. "(copy)" was one name however
 // many copies you made, so a second press produced a second row with the same
 // title as the first; it is "Duplicate 1", "Duplicate 2" now, numbered by the
