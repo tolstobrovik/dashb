@@ -1739,6 +1739,15 @@ table.tbl tr:hover td { background: var(--surface-2); }
   font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
   color: var(--good-ink);
 }
+/* The manager's half of the warning: the row already says "2 / 20 delivered",
+   which is a count. This says the month is running out, which is the half
+   somebody can still do something about. */
+.pay-slip-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--critical);
+}
+.rp-note-plain { color: var(--muted); font-weight: 400; max-width: 280px; line-height: 1.4; }
 @media (max-width: 640px) {
   .rp-close { margin-left: 0; width: 100%; }
 }
@@ -3861,8 +3870,13 @@ button.blame-person:hover { background: var(--surface-2); }
 .ph-best .ph-state { color: var(--warn-ink); gap: 3px; font-weight: 600; }
 .ph-note { margin-top: 10px; }
 @media (max-width: 640px) {
-  .ph-amount { font-size: 9.5px; }
+  .ph-amount { font-size: 10px; }
   .ph-bar-box { height: 52px; }
+  .ph-bars { gap: 6px; }
+  /* "no record" over two lines under a column 60px wide crowds every
+     neighbour. One word does the same job. */
+  .ph-assumed .ph-state { font-size: 9.5px; }
+  .ph-state { height: auto; min-height: 13px; text-align: center; }
   .pg-goal { gap: 9px; padding: 8px; }
   .pg-goal-pays { font-size: 12px; }
 }

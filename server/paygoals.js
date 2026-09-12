@@ -59,11 +59,27 @@ function countGoal({ key, label, unit, pays, have, need, period, dailyCap = 3 })
   if (period.days_left <= 0) return { ...base, state: 'lost' }
   const reachable = period.days_left * dailyCap
   if (left > reachable) return { ...base, state: 'lost', note: 'more than the days left can carry' }
-  // The pace the month has actually been run at, against the pace it needs.
-  const expected = need * period.through
   const perDay = left / Math.max(1, period.days_left)
-  if (left <= Math.max(1, Math.round(need * 0.1)) || period.days_left >= left * 3) return { ...base, state: 'close', per_day: perDay }
-  if (have < expected * 0.8) return { ...base, state: 'behind', per_day: perDay }
+
+  // NEARLY has to mean nearly. The first cut of this said a tenth of the
+  // target, OR three days left for every one still owed — and five of twenty
+  // with eighteen days to run came back as "nearly", with a flame on it. Five
+  // is a comfortable fortnight, not an afternoon, and a board that calls it
+  // nearly is a board whose "nearly" nobody reads twice.
+  if (left <= Math.max(1, Math.round(need * 0.15))) return { ...base, state: 'close', per_day: perDay }
+  if (left <= 3 && period.days_left >= left * 2) return { ...base, state: 'close', per_day: perDay }
+
+  // BEHIND is a claim about pace, and pace needs a run to read. The first cut
+  // compared the count against the fraction of the month elapsed, which on the
+  // FIRST MORNING of every month declared everybody behind: nothing delivered
+  // against a twentieth of a day's worth expected. Being told you are slipping
+  // before you could possibly have done anything is the exact opposite of what
+  // this is for, so nothing is called behind until a quarter of the period has
+  // run, and not then unless the shortfall is a whole piece of work.
+  const expected = need * period.through
+  if (period.through >= 0.25 && expected - have >= 1 && have < expected * 0.8) {
+    return { ...base, state: 'behind', per_day: perDay }
+  }
   return { ...base, state: 'open', per_day: perDay }
 }
 

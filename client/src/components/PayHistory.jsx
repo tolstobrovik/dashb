@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Crown, History } from 'lucide-react'
 import { api } from '../lib/api.js'
+import { useIsPhone } from '../lib/usePhone.js'
 import { money } from './SalaryPlanner.jsx'
 import { tr as tx, locale } from '../lib/i18n.jsx'
 
@@ -28,11 +29,17 @@ const monthWords = (m) =>
 const dayWords = (iso) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString(locale(), { day: 'numeric', month: 'short', timeZone: 'UTC' })
 
-export default function PayHistory({ shown = true, months = 6 }) {
+export default function PayHistory({ shown = true, months }) {
+  // Six columns need about 55px each on a phone, and a month of UZS is seven
+  // digits — so six months came back as "3 140 0…" over a bar too narrow to
+  // compare with anything. Four months on a phone is the same shape with room
+  // to read it, which is what a chart is for.
+  const phone = useIsPhone()
+  const want = months || (phone ? 4 : 6)
   const [data, setData] = useState(null)
   useEffect(() => {
-    api.get(`/reports/pay/mine/history?months=${months}`).then(setData).catch(() => setData(null))
-  }, [months])
+    api.get(`/reports/pay/mine/history?months=${want}`).then(setData).catch(() => setData(null))
+  }, [want])
 
   if (!data || !data.months?.length) return null
   const rows = data.months

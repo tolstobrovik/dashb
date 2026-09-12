@@ -1113,6 +1113,15 @@ function PayTab() {
   const settled = (data?.people || []).filter((p) => p.payout)
   const allSettled = settled.length > 0 && settled.length === (data?.people || []).length
   const monthOver = month < todayISO().slice(0, 7)
+  // A payment is recorded against a MONTH — that is what the row is keyed on,
+  // and what somebody is asked "was I paid for August?" about. Both presets
+  // are whole months, so the button is there where it belongs; a hand-typed
+  // range that is not one would put the range's total in front of somebody
+  // and write the month's down, which is two different numbers and only one
+  // of them on screen.
+  const monthEnd = new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).toISOString().slice(0, 10)
+  const wholeMonth = range.from === `${month}-01`
+    && (range.to === monthEnd || range.to === todayISO())
 
   // "2026-09" is a filename, not a month. Anything a person reads says
   // September.
@@ -1201,11 +1210,16 @@ function PayTab() {
                       : tx('{n} of {total} recorded as paid', { n: settled.length, total: data.people.length })}
                   </span>
                 )}
-                {!allSettled && (
+                {!allSettled && wholeMonth && (
                   <button className="btn btn-sm btn-primary" disabled={busy || data.people.length === 0}
                     onClick={() => setClosing({ month, paid_at: todayISO(), note: '' })}>
                     <Banknote size={14} /> {tx('Record as paid')}
                   </button>
+                )}
+                {!allSettled && !wholeMonth && (
+                  <span className="stat-sub rp-closed-note rp-note-plain">
+                    {tx('Pick a whole month to record a payment — a payment is recorded against a month.')}
+                  </span>
                 )}
                 {settled.length > 0 && (
                   <button className="btn btn-sm" onClick={reopenMonth} disabled={busy}>
@@ -1256,6 +1270,12 @@ function PayTab() {
                       ? <button className="btn btn-sm" onClick={() => openCard(p.id, p.name)}>{tx('Set their rates')}</button>
                       : <>
                           <b>{money(p.payout ? p.payout.total : p.total, p.currency)}</b>
+                          {!p.payout && (p.goals || []).some((g) => g.state === 'behind') && (
+                            <span className="pay-slip-tag"
+                              data-tip={tx('At this pace the month ends short of a bonus they could still reach')}>
+                              <AlertCircle size={12} /> {tx('slipping')}
+                            </span>
+                          )}
                           {p.payout && (
                             <span className="pay-paid-tag" data-tip={p.payout.paid_at ? tx('Paid {day}', { day: dateLabel(p.payout.paid_at) }) : undefined}>
                               <CheckCircle2 size={12} /> {tx('paid')}

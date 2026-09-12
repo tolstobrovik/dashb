@@ -88,7 +88,12 @@ function words(g) {
     return tx('{n} more views to go', { n: num(g.left || 0) })
   }
   // The quota, which is the one people plan their week around.
-  if (g.state === 'behind') return tx('{n} to go in {d} days — that is {r} a day', { n: g.left, d, r: Math.ceil((g.per_day || 0) * 10) / 10 })
+  if (g.state === 'behind') {
+    const rate = g.per_day || 0
+    return rate <= 1
+      ? tx('{n} to go in {d} days — about one a day', { n: g.left, d })
+      : tx('{n} to go in {d} days — that is {r} a day', { n: g.left, d, r: Math.ceil(rate) })
+  }
   if (g.state === 'close') return g.left === 1 ? tx('One more and it is yours') : tx('{n} more and it is yours', { n: g.left })
   return tx('{n} to go, {d} days left', { n: g.left, d })
 }
