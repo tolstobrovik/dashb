@@ -50,8 +50,10 @@ await page.click('button[type="submit"]')
 await page.waitForURL(/overview/, { timeout: 15000 })
 
 // 2. Gantt is bigger
+// The view is called "Timeline" since round 92 — "Gantt" is a word for a
+// chart, not for what somebody wants from one. The bars are the same bars.
 await page.goto(BASE + '/projects')
-await page.getByRole('button', { name: 'Gantt', exact: true }).click()
+await page.getByRole('button', { name: 'Timeline', exact: true }).click()
 await page.waitForSelector('.gantt-bar', { timeout: 8000 })
 const barH = await page.locator('.gantt-bar').first().evaluate((el) => el.getBoundingClientRect().height)
 const nameF = await page.locator('.gantt-name').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize))

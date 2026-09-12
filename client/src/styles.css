@@ -2748,14 +2748,7 @@ button.cb-toggle:hover { color: var(--ink); }
 
 /* ============ Round 34: your order, remembered filters, design lift ============ */
 .brief-hero { position: relative; }
-.brief-arrange { position: absolute; top: 12px; right: 12px; color: var(--muted); }
-.brief-arrange.on, .brief-arrange:hover { color: var(--brand-600); }
-.br-arrange { margin-bottom: 4px; }
-.br-arr-row { display: flex; align-items: center; gap: 6px; padding: 6px 2px; border-bottom: 1px solid var(--hairline); }
-.br-arr-row:last-of-type { border-bottom: none; }
-.br-arr-row.off .br-arr-name { opacity: 0.45; text-decoration: line-through; }
-.br-arr-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; }
-.br-arr-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; }
+/* The Arrange panel's styles went with the panel (see round34-suite). */
 /* The front door wears the brand: two quiet ruby washes behind the card. */
 .login-page {
   background-color: var(--bg);

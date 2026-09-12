@@ -77,7 +77,20 @@ ok('the admin’s trims are still theirs', !(await p.locator('.sidebar nav').tex
 // ---- reset leaves no trace ----
 await p.locator('.side-edit-btn', { hasText: /Personalize/ }).click()
 await p.locator('.side-edit-btn', { hasText: 'Reset' }).click()
+// Round 91 folds Channels, Numbers and People to start with, so what is
+// behind them is a press away rather than in the DOM. Open them all before
+// reading the sidebar — the way somebody would. Six suites were taught this
+// at the time; these two were missed, and have been reading half a sidebar
+// ever since.
+const unfold = async (pg) => {
+  for (let i = 0; i < 5; i++) {
+    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
+    if (!(await shut.count())) break
+    await shut.first().click(); await pg.waitForTimeout(180)
+  }
+}
 await p.locator('.side-edit-btn', { hasText: 'Done' }).click()
+await unfold(p)
 const navReset = await p.locator('.sidebar nav').textContent()
 ok('reset restores the full sidebar', navReset.includes('Sprints') && navReset.includes('Post Production'))
 

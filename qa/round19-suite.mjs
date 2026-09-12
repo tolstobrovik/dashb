@@ -33,7 +33,20 @@ await p.locator('.side-edit-row.grp-channels', { hasText: hideA.label }).locator
 await p.locator('.side-edit-row.grp-channels', { hasText: hideB.label }).locator('.side-eye').last().click()
 // drag YouTube to the top
 await p.locator('.side-edit-row.grp-channels', { hasText: dragMe.label }).dragTo(p.locator('.side-edit-row.grp-channels').first())
+// Round 91 folds Channels, Numbers and People to start with, so what is
+// behind them is a press away rather than in the DOM. Open them all before
+// reading the sidebar — the way somebody would. Six suites were taught this
+// at the time; these two were missed, and have been reading half a sidebar
+// ever since.
+const unfold = async (pg) => {
+  for (let i = 0; i < 5; i++) {
+    const shut = pg.locator('.nav-hub:not(.open) .nav-hub-head')
+    if (!(await shut.count())) break
+    await shut.first().click(); await pg.waitForTimeout(180)
+  }
+}
 await p.locator('.side-edit-btn', { hasText: 'Done' }).click()
+await unfold(p)
 const side1 = await p.locator('.sidebar nav').textContent()
 ok('hidden channels left the sidebar', !side1.includes(hideA.label) && !side1.includes(hideB.label))
 ok('badge shows how many are hidden', side1.includes('2 hidden'))

@@ -98,7 +98,10 @@ await q.goto(BASE + '/login')
 await q.fill('input[name="username"]', 'x23quiet'); await q.fill('input[name="password"]', 'x23pass')
 await q.click('button[type="submit"]'); await q.waitForURL(/brief/, { timeout: 15000 })
 await q.waitForTimeout(1000)
-ok('the hero admits the day is clear', (await q.locator('.brief-hero', { hasText: 'nothing on the schedule' }).count()) === 1)
+// The empty day used to read "nothing on the schedule". It says "all clear"
+// now — round 89 made the headline agree with the list underneath it, and the
+// two headings were saying different things about the same empty day.
+ok('the hero admits the day is clear', (await q.locator('.brief-hero', { hasText: 'all clear' }).count()) === 1)
 ok('no empty To-do-today section', (await q.locator('h2', { hasText: 'To do today' }).count()) === 0)
 ok('no “what you’ve done · nothing” stub', (await q.locator('h2', { hasText: 'What you’ve done' }).count()) === 0)
 // The custom-date fold went with the tiered sections: My Day is one flat
