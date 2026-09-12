@@ -66,8 +66,9 @@ function Ring({ pct, state }) {
 }
 
 // What to say about a goal, in one line somebody can act on. Every branch
-// names a NUMBER and a VERB — "3 more to go", "one more late piece loses it" —
-// because "you are behind" is a mood, not an instruction.
+// names a NUMBER and a VERB — "3 more delivered on time and it is yours",
+// "15 to go in 18 days" — because "you are behind" is a mood, not an
+// instruction, and a mood is not something anybody can do anything about.
 function words(g) {
   const d = g.days_left
   if (g.state === 'won') return tx('Earned — {amount} is in your total', { amount: money(g.pays, '') })
