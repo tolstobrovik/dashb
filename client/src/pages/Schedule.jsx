@@ -12,6 +12,7 @@ import ContentModal from '../components/ContentModal.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
 import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn, assigneesOf } from '../components/ContentFilters.jsx'
+import { stageRankOf } from '../lib/gaps.js'
 import { tr as tx } from '../lib/i18n.jsx'
 
 // How many overdue chips the strip shows before it stops being a strip.
@@ -200,6 +201,18 @@ export default function Schedule({ mode }) {
   // the server's own ten-second undo only photographs stage moves, and this is
   // the client putting a date it already knows straight back.
   const canMove = can(user, 'move_tasks')
+  // An idea is a thought nobody has promised anything about, so anybody who
+  // can see it may move its day — no move_tasks, no asking an admin. The
+  // server has said so since the idea carve-out went in (content.js,
+  // `wasAnIdea`) and the kanban agrees; the calendar was the last surface
+  // where an idea would not budge, which reads as the board being broken
+  // rather than as a rule.
+  const ideaIds = useMemo(() => {
+    const rank = stageRankOf(statuses)
+    return new Set(statuses.filter((st) => rank(st.id) === 'idea').map((st) => st.id))
+  }, [statuses])
+  const mayMoveDay = useCallback(
+    (t) => canMove || ideaIds.has(t.status_id), [canMove, ideaIds])
   const manageContent = can(user, 'manage_content')
   const setDay = async (t, field, iso, back) => {
     const before = t[field] || null
@@ -351,7 +364,7 @@ export default function Schedule({ mode }) {
         <ContentCalendar
           items={dated}
           mode={mode}
-          canMove={canMove}
+          canMove={mayMoveDay}
           onMoveDate={moveDate}
           onDayClick={setSelectedDate}
           onOpenItem={setOpenItem}
