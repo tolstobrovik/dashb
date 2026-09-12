@@ -408,6 +408,177 @@ export async function simplify(text, lang = 'en', { useCache = true } = {}) {
   return { text: plainVersion(src, lang), provider: 'plain', cached: false, tried }
 }
 
+// ---- asking for an answer with a shape --------------------------------------
+// Translation returns prose, so any string is a valid answer. These two jobs
+// return a judgement, and a judgement the client has to parse needs a shape it
+// can rely on. Models fence their JSON, apologise before it, and occasionally
+// hand back the schema instead of an instance — so the parse is defensive and
+// a reply that will not parse counts as that provider failing, which sends it
+// on to the next one rather than to the user.
+const readJSON = (raw) => {
+  const t = String(raw || '').trim()
+  const fenced = t.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const body = (fenced ? fenced[1] : t).trim()
+  const at = body.indexOf('{')
+  const to = body.lastIndexOf('}')
+  if (at < 0 || to <= at) throw new Error('no object in reply')
+  return JSON.parse(body.slice(at, to + 1))
+}
+async function askJSON(prompt, text, tried) {
+  for (const name of orderFromEnv()) {
+    try {
+      const out = readJSON(await ask[name](`${prompt}\nReply with JSON only. No prose, no code fence.`, text))
+      return { data: out, provider: name }
+    } catch (e) { tried.push(`${name}: ${e.message}`) }
+  }
+  return null
+}
+
+// ---- is this brief actually usable? -----------------------------------------
+// The board has walls: a video cannot be booked for a shoot without a script,
+// cannot leave editing without a cut attached, and so on. Every one of those
+// walls asks whether a FIELD IS EMPTY, which is the only question a database
+// can answer — and so every one of them is passed by typing a full stop.
+//
+// That is not a hypothetical. A required box with "asdf" in it satisfies the
+// server, clears the stage gate, and reaches the person who has to do the work
+// with nothing in it they can act on; they find out on the day. The gap
+// between "there is text here" and "there is a brief here" is exactly the gap
+// a reader closes and a NOT NULL cannot.
+//
+// So this reads it. Two layers, and the first one runs whether or not anybody
+// has set a key:
+//
+//   the mechanical pass   too short to be an instruction, a placeholder, a
+//                         bare link with no words around it, the same
+//                         character typed forty times. Deterministic, free,
+//                         and it catches most of what actually gets typed.
+//   the reading pass      a model, asked the three questions a person would
+//                         ask: what is being made, when, and what does done
+//                         look like.
+//
+// It ADVISES. Nothing here refuses a save — a board that rejects work on a
+// model's opinion is a board that stops when the model does, and the person
+// who wrote a perfectly good brief in shorthand nobody else uses should not
+// have to argue with it.
+const PLACEHOLDER = /^(?:tbd|todo|n\/?a|-+|\.+|test|asap|asdf|qwerty|xxx+|\?+|тз|потом|скоро|later)$/i
+
+export function mechanicalReview(text) {
+  const src = String(text || '').trim()
+  const flags = []
+  if (!src) return { flags: [{ code: 'empty', level: 'bad', say: 'There is nothing here.' }], words: 0 }
+
+  const words = src.split(/\s+/).filter(Boolean).length
+  const letters = src.replace(/[^\p{L}\p{N}]/gu, '')
+  const links = src.match(/https?:\/\/\S+/g) || []
+
+  if (PLACEHOLDER.test(src)) {
+    flags.push({ code: 'placeholder', level: 'bad', say: 'This is a placeholder, not a brief.' })
+  } else if (words < 4) {
+    flags.push({ code: 'tooshort', level: 'bad', say: 'Four words is not an instruction anybody can follow.' })
+  } else if (words < 12) {
+    flags.push({ code: 'thin', level: 'warn', say: 'Short enough that whoever picks this up will have to ask.' })
+  }
+  // A link on its own is a place, not a task. What is being done with it?
+  if (links.length && words - links.length < 4) {
+    flags.push({ code: 'barelink', level: 'warn', say: 'A link with no words around it does not say what to do with it.' })
+  }
+  // Forty of the same character is somebody getting past a required field.
+  if (letters.length > 8 && new Set(letters.toLowerCase()).size <= 2) {
+    flags.push({ code: 'mash', level: 'bad', say: 'This looks like keyboard mash rather than a brief.' })
+  }
+  return { flags, words }
+}
+
+const LEVEL_RANK = { bad: 0, warn: 1, ok: 2 }
+export async function review(text, { lang = 'en', kind = 'video', useCache = true } = {}) {
+  const src = String(text || '').trim()
+  const mech = mechanicalReview(src)
+  const base = {
+    flags: mech.flags,
+    words: mech.words,
+    verdict: mech.flags.some((f) => f.level === 'bad') ? 'bad'
+      : mech.flags.length ? 'warn' : 'ok',
+    provider: 'rules',
+  }
+  // Nothing there to read, or already plainly broken — a model is not going
+  // to change the answer and there is no reason to spend a call on it.
+  if (!src || base.verdict === 'bad') return base
+  if (useCache) {
+    const hit = await cached(`r:${kind}:${lang}`, lang, src)
+    if (hit) { try { return { ...JSON.parse(hit.text), provider: hit.provider, cached: true } } catch { /* fall through */ } }
+  }
+
+  const tried = []
+  const prompt = `You are checking a work brief for a marketing team that makes ${kind}s. `
+    + 'Decide only whether somebody could DO this work from what is written. '
+    + 'Judge the brief, never the idea, and never rewrite it. '
+    + 'Missing detail is worth saying; style is not. '
+    + 'Answer in this shape: '
+    + '{"verdict":"ok"|"warn"|"bad","missing":["what a person still needs to know",...],"say":"one sentence"}. '
+    + `Write "missing" and "say" in ${LANG_NAME[lang] || 'English'}. At most three items in "missing".`
+  const got = await askJSON(prompt, src, tried)
+  if (!got) return { ...base, tried }
+
+  const d = got.data || {}
+  const verdict = ['ok', 'warn', 'bad'].includes(d.verdict) ? d.verdict : 'ok'
+  const out = {
+    // The rules already found something? Then the answer is at least as bad
+    // as they said. A model that reads "asdf" as a fine brief does not get to
+    // overrule a regular expression that can see it is four letters.
+    verdict: LEVEL_RANK[verdict] < LEVEL_RANK[base.verdict] ? verdict : base.verdict,
+    flags: mech.flags,
+    words: mech.words,
+    missing: Array.isArray(d.missing) ? d.missing.slice(0, 3).map((x) => String(x).slice(0, 160)) : [],
+    say: d.say ? String(d.say).slice(0, 240) : '',
+    provider: got.provider,
+  }
+  await remember(`r:${kind}:${lang}`, lang, src, JSON.stringify(out), got.provider)
+  return out
+}
+
+// ---- reading the month ------------------------------------------------------
+// The statistics page reaches its own conclusions in arithmetic — which step
+// the month was lost at, which side the delay sits on. Those are true and
+// they are narrow, because arithmetic can only conclude what it was told to
+// look for. What it cannot do is notice the thing nobody wrote a rule for:
+// that everything ships on Fridays, that one person is carrying four hats,
+// that the quiet fortnight lines up with the shoot that never got booked.
+//
+// So the numbers get read. It is given a compact digest — never the tasks
+// themselves, never a name it does not need — and asked for what it sees.
+// The answer is advisory and labelled as such: the figures on the page are
+// the record, and this sits under them as a reading of the record.
+export async function insight(digest, { lang = 'en', useCache = true } = {}) {
+  const body = JSON.stringify(digest ?? {})
+  if (body.length < 3) return { points: [], provider: 'none' }
+  if (useCache) {
+    const hit = await cached(`i:${lang}`, lang, body)
+    if (hit) { try { return { ...JSON.parse(hit.text), provider: hit.provider, cached: true } } catch { /* fall through */ } }
+  }
+  const tried = []
+  const prompt = 'You are reading a marketing team\'s own numbers for a period. '
+    + 'Say what somebody running the team would notice and could act on this week. '
+    + 'Ground every point in a figure that is actually in the data — never invent one, '
+    + 'and if the data is too thin to conclude anything, say that instead of guessing. '
+    + 'No praise, no filler, no restating a number without saying what it means. '
+    + 'Answer in this shape: {"points":[{"say":"one sentence","tone":"good"|"warn"|"flat"},...]}. '
+    + `At most three points, in ${LANG_NAME[lang] || 'English'}.`
+  const got = await askJSON(prompt, body, tried)
+  if (!got) return { points: [], provider: 'none', tried }
+
+  const points = (Array.isArray(got.data?.points) ? got.data.points : [])
+    .slice(0, 3)
+    .map((p) => ({
+      say: String(p?.say || '').slice(0, 240),
+      tone: ['good', 'warn', 'flat'].includes(p?.tone) ? p.tone : 'flat',
+    }))
+    .filter((p) => p.say)
+  const out = { points, provider: got.provider }
+  if (points.length) await remember(`i:${lang}`, lang, body, JSON.stringify(out), got.provider)
+  return out
+}
+
 // ---- what is actually available --------------------------------------------
 // An admin should not have to read the source to find out whether this costs
 // anything, or whether the free path is reachable from wherever the board is

@@ -20,6 +20,7 @@ import { saveDraft, readDraft, clearDraft, draftBeatsRow } from '../lib/draft.js
 import { activityLine } from '../lib/activity.js'
 import { rewardFinish } from '../lib/reward.js'
 import TextHelp from './TextHelp.jsx'
+import BriefCheck from './BriefCheck.jsx'
 import { VoiceRecorder, VoicePlayer, canRecord } from './VoiceNote.jsx'
 import Zoom from './Zoom.jsx'
 
@@ -1809,6 +1810,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <textarea className="input cm-script" rows={6} disabled={detailsLocked}
               placeholder={tx("The script / shot plan the crew works by…")}
               value={form.script} onChange={(e) => setForm({ ...form, script: e.target.value })} />
+            {!detailsLocked && <BriefCheck text={form.script} kind={form.type || 'video'} />}
             {!creating && <TextHelp text={item?.script} label={t('task.script')} />}
           </div>
         </div>
@@ -1824,6 +1826,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <textarea className="input cm-script" rows={5} disabled={detailsLocked}
               placeholder={tx('What the editor is asked to make — length, cuts, captions, music…')}
               value={form.tz} onChange={(e) => setForm({ ...form, tz: e.target.value })} />
+            {!detailsLocked && <BriefCheck text={form.tz} kind={form.type || 'video'} />}
             {!creating && <TextHelp text={item?.tz} label={tx('ТЗ')} />}
           </div>
         </div>
@@ -1844,7 +1847,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <div className="crew-script">{form.script}</div>
             {/* The shooter who cannot read the brief is exactly who this is
                 for, and this is the screen they read it on. */}
-            <TextHelp text={form.script} label={t('task.script')} />
+            <TextHelp text={form.script} />
           </div>
         </div>
       )}
@@ -1899,6 +1902,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           <div>
             <textarea className="input" rows={2} disabled={detailsLocked} value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={tx("References, links, notes…")} />
+            {!detailsLocked && <BriefCheck text={form.description} kind={form.type || 'video'} />}
             {!creating && <TextHelp text={item?.description} label={t('task.description')} />}
           </div>
         </div>

@@ -440,6 +440,106 @@ router.get('/work/mine/pace', wrap(async (req, res) => {
   })
 }))
 
+// ---- when the team actually works ------------------------------------------
+// Every number on the statistics page is a total for a month, and a total for
+// a month cannot answer the question people keep asking out loud: when are we
+// flat out, and when is nothing happening. Twenty pieces in a month is a
+// steady four a week or it is nineteen in the last three days, and those are
+// different teams with different problems — but they are the same twenty.
+//
+// So this returns the work as a series of DAYS: one reading per day per
+// craft, counted the same way the payroll counts it, so the picture and the
+// money can never disagree about what happened.
+//
+// A craft with nothing in the window is left out rather than drawn as a flat
+// line along the floor. An empty band in a stack is a band you have to read
+// the legend to dismiss.
+const CRAFT = {
+  operator: { key: 'filmed',    label: 'Filmed',    color: 'var(--chart-1)' },
+  editor:   { key: 'edited',    label: 'Edited',    color: 'var(--chart-2)' },
+  designer: { key: 'designed',  label: 'Designed',  color: 'var(--chart-3)' },
+  assignee: { key: 'published', label: 'Published', color: 'var(--chart-4)' },
+}
+const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+router.get('/activity', wrap(async (req, res) => {
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to || '') ? String(req.query.to) : dayISO()
+  const span = Math.max(7, Math.min(365, Number(req.query.days) || 90))
+  const start = new Date(`${to}T00:00:00Z`)
+  start.setUTCDate(start.getUTCDate() - (span - 1))
+  const from = start.toISOString().slice(0, 10)
+  const channel = req.query.channel && req.query.channel !== 'all' ? String(req.query.channel) : null
+
+  // Every day in the window, including the empty ones. A chart drawn only
+  // from the days that had work in them puts Monday next to Friday and calls
+  // the gap between them a straight line.
+  const days = []
+  for (let d = new Date(`${from}T00:00:00Z`); d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 1)) {
+    days.push(d.toISOString().slice(0, 10))
+  }
+  const slot = Object.fromEntries(days.map((d, i) => [d, i]))
+
+  const list = await contributions({ from, to, channel })
+  const counts = {}
+  const weekday = Array(7).fill(0)
+  const byPerson = new Map()
+  let late = 0
+  for (const c of list) {
+    const craft = CRAFT[c.hat]
+    if (!craft) continue
+    const i = slot[c.day]
+    if (i === undefined) continue
+    ;(counts[craft.key] ||= Array(days.length).fill(0))[i] += 1
+    weekday[new Date(`${c.day}T00:00:00Z`).getUTCDay()] += 1
+    byPerson.set(c.userId, (byPerson.get(c.userId) || 0) + 1)
+    if (c.late) late += 1
+  }
+
+  const series = Object.values(CRAFT)
+    .filter((c) => counts[c.key]?.some((n) => n > 0))
+    .map((c) => ({ key: c.key, label: c.label, color: c.color, values: counts[c.key] }))
+
+  const totals = days.map((_, i) => series.reduce((a, s) => a + s.values[i], 0))
+  const done = totals.reduce((a, b) => a + b, 0)
+  // The busiest day, and the longest run of days with nothing on them. Both
+  // are the shape of the month rather than its size, which is the half a
+  // total never says.
+  let peak = null
+  totals.forEach((n, i) => { if (n > 0 && (!peak || n > peak.n)) peak = { day: days[i], n } })
+  // A quiet stretch only means something when there is a rhythm to break.
+  // Four pieces all delivered on one day gives an eighty-nine day "quiet
+  // stretch", which is arithmetically true and tells nobody anything.
+  const activeDays = totals.filter((n) => n > 0).length
+  let quiet = 0, run = 0
+  if (activeDays >= 3) {
+    for (const n of totals) { run = n === 0 ? run + 1 : 0; if (run > quiet) quiet = run }
+  }
+
+  const users = Object.fromEntries((await all('SELECT * FROM users')).map((u) => [u.id, publicUser(u)]))
+  const people = [...byPerson.entries()]
+    .map(([id, n]) => ({ id, name: users[id]?.name || `#${id}`, color: users[id]?.color || null, n }))
+    .sort((a, b) => b.n - a.n)
+
+  res.json({
+    from, to, days, series, totals,
+    done, late,
+    active_days: activeDays,
+    // Below one a day the figure rounds to nought and reads as "nothing
+    // happened", so the rate is reported in the unit it is actually legible
+    // in. The client is told which unit rather than guessing from the size.
+    rate: done === 0 ? null
+      : done / days.length >= 1
+        ? { n: Math.round((done / days.length) * 10) / 10, per: 'day' }
+        : done / days.length >= 1 / 7
+          ? { n: Math.round((done / days.length) * 70) / 10, per: 'week' }
+          : { n: Math.round((done / days.length) * 300) / 10, per: 'month' },
+    peak,
+    quiet_run: quiet,
+    weekday: weekday.map((n, i) => ({ key: String(i), label: WEEKDAY[i], value: n })),
+    people,
+  })
+}))
+
 router.use(adminOnly)
 
 router.get('/', wrap(async (req, res) => {

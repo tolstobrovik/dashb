@@ -44,6 +44,19 @@
   --serious:  #ec835a;
   --critical: #d03b3b;
 
+  /* ---- data ------------------------------------------------------------
+     A chart series is not an accent and not a status. The brand crimson
+     belongs to the one primary action on a screen and red belongs to
+     failure — a band on a chart wearing either would be read as "this is
+     the important one" or "this one is wrong", when all it means is "this
+     is the editing". So the data palette is its own: four hues nobody else
+     on this board uses, distinguishable from each other and from the two
+     colours that already mean something. */
+  --chart-1: #4f7fd4;
+  --chart-2: #23a08a;
+  --chart-3: #d99b34;
+  --chart-4: #8064c4;
+
   /* ---- shape ----------------------------------------------------------
      Material 3 is a rounder language than this board was drawn in. The
      radii step up rather than double: a 16px card at 24px reads as the same
@@ -156,6 +169,13 @@
   --brand-500: #cb4b60;
   --brand-600: #e2758a;
   --brand-700: #f0a2b1;
+
+  /* The data palette lifts for night — the same four hues, taken up until
+     they hold their own against a dark surface at 2px of stroke. */
+  --chart-1: #7ba4ee;
+  --chart-2: #3fc4ab;
+  --chart-3: #eab558;
+  --chart-4: #a189e0;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow:    0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.45);
@@ -1563,12 +1583,15 @@ table.tbl tr:hover td { background: var(--surface-2); }
 
 /* ---- Admin overview: every department on one screen ---- */
 .ov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+/* The 4px coloured cap is gone. Twelve cards each with a different bright
+   line along the top is twelve accents on one screen, and the channel's
+   colour is already on its icon two centimetres below — said twice, it
+   reads as two facts rather than one. */
 .ov-card {
   text-align: left; font: inherit; color: inherit; cursor: pointer;
-  padding: 14px 16px; border-top: 4px solid var(--brand-500);
-  transition: box-shadow 0.12s, transform 0.12s;
+  padding: 16px 18px; transition: box-shadow 0.14s, transform 0.14s;
 }
-.ov-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.09); transform: translateY(-2px); }
+.ov-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 .ov-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .ov-icon { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; }
 .ov-name { font-weight: 800; font-size: 14.5px; }
@@ -1954,9 +1977,14 @@ table.tbl tr:hover td { background: var(--surface-2); }
    ============================================================ */
 
 /* channels without a head — the admin's "where to focus" flag */
+/* An unowned channel is a gap to fill, not an emergency. In solid critical
+   red at 800 weight it was the loudest thing on the Overview — four of them
+   shouted over the one channel that actually had late work on it. Red is
+   for failure; this is an amber note, and it says the same thing. */
 .no-owner-badge {
-  border-radius: 999px; padding: 3px 10px; font-size: 10.5px; font-weight: 800;
-  text-transform: uppercase; letter-spacing: 0.3px; color: #fff; background: var(--critical); white-space: nowrap;
+  border-radius: var(--radius-pill); padding: 3px 10px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap;
+  color: var(--warn-ink); background: var(--tint-warn);
 }
 
 /* projects: success criteria + earned progress */
@@ -2021,7 +2049,7 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .team-tbl-duty { max-width: 300px; font-size: 12.5px; color: var(--ink-2); }
 
 /* night pins for the new solids */
-[data-theme="dark"] .no-owner-badge { background: #b23a3a; }
+[data-theme="dark"] .no-owner-badge { background: var(--tint-warn); color: var(--warn-ink); }
 [data-theme="dark"] .miss-person-row.on { background: var(--brand-50); }
 
 /* ============================================================
@@ -5531,3 +5559,144 @@ button.blame-person:hover { background: var(--surface-2); }
 .cm-row.cm-revs { grid-template-columns: 1fr; align-items: start; gap: 8px; }
 .cm-row.cm-history > .cm-key,
 .cm-row.cm-revs > .cm-key { padding-top: 2px; }
+
+/* ============================================================
+   Charts
+   Everything that is not data is turned down until the data is the only
+   thing on the card with contrast: no chart border, no axis lines, rules
+   at 6% ink, labels at 11px in the muted tone. The colour belongs to the
+   series and to nothing else.
+   ============================================================ */
+.chart { position: relative; width: 100%; }
+.chart-svg { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+.chart-rule { stroke: var(--hairline); stroke-width: 1; }
+.chart-axis { fill: var(--muted); font-size: 11px; font-weight: 500; font-family: var(--font); }
+.chart-guide line { stroke: var(--hairline-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+
+/* The tooltip is a card, not a black box: the same surface, radius and
+   shadow as everything else, so it reads as part of the page. */
+.chart-tip {
+  position: absolute; top: 4px; transform: translateX(-50%);
+  background: var(--surface); border-radius: var(--radius-xs);
+  box-shadow: var(--shadow); padding: 8px 10px; pointer-events: none;
+  font-size: 12px; min-width: 128px; z-index: 3; display: grid; gap: 3px;
+}
+.chart-tip > b { font-size: 12px; color: var(--ink); }
+.chart-tip-row { display: flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.chart-tip-row > i { width: 8px; height: 8px; border-radius: 3px; flex: none; }
+.chart-tip-row > b { margin-left: auto; color: var(--ink); font-variant-numeric: tabular-nums; }
+.chart-tip-total { border-top: 1px solid var(--hairline); margin-top: 2px; padding-top: 4px; }
+
+.chart-legend {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px;
+  margin-top: 10px; font-size: 12px; color: var(--muted); font-weight: 500;
+}
+.chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.chart-legend i { width: 8px; height: 8px; border-radius: 3px; }
+
+.chart-empty {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 13px; border-radius: var(--radius-sm);
+  background: var(--surface-2); width: 100%;
+}
+.chart-empty-sm { height: 76px; }
+
+.chart-card { padding: 20px 22px 18px; }
+.chart-card-head {
+  display: flex; align-items: flex-start; gap: 16px; margin-bottom: 18px;
+}
+.chart-card-head > div { min-width: 0; flex: 1; }
+.chart-card-head h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.chart-card-head p { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
+.chart-range { flex: none; }
+
+/* Horizontal bars: a name, a track, a number. The track is the quiet
+   surface rather than a tinted one, so a row with nothing in it still
+   reads as a row. */
+.hbars { display: grid; gap: 7px; }
+.hbar { display: flex; align-items: center; gap: 10px; }
+.hbar-name {
+  flex: 0 0 34%; max-width: 190px; font-size: 13px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hbar-track { flex: 1; height: 8px; border-radius: var(--radius-pill); background: var(--surface-2); overflow: hidden; }
+.hbar-fill { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--chart-1); transition: width 0.3s ease; }
+.hbar-late { background: var(--critical); }
+.hbar-good { background: var(--good); }
+.hbar-warn { background: var(--warning); }
+.hbar-val { flex: none; min-width: 42px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink); }
+
+.spark { display: block; overflow: visible; }
+
+@media (max-width: 640px) {
+  .chart-card { padding: 16px 14px 14px; }
+  .chart-card-head { flex-direction: column; gap: 10px; }
+  .chart-range { align-self: stretch; }
+  .chart-range .seg-btn { flex: 1; padding: 6px 8px; }
+  .hbar-name { flex-basis: 40%; }
+}
+
+/* A row of figures. No card border and no shadow: they are one object read
+   across, and four boxes with four shadows read as four things. The rule
+   between them does the separating. */
+.stat-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); overflow: hidden; margin-bottom: var(--gap-group);
+}
+.stat-card { padding: 18px 20px; display: grid; gap: 4px; align-content: start; border-left: 1px solid var(--hairline); }
+.stat-card:first-child { border-left: 0; }
+.stat-card-label { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.01em; }
+.stat-card-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.stat-card-value { font-size: 26px; font-weight: 700; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stat-card-sub { font-size: 12px; color: var(--muted); }
+.stat-late .stat-card-value { color: var(--critical); }
+.stat-good .stat-card-value { color: var(--good-ink); }
+@media (max-width: 700px) {
+  .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .stat-card { padding: 14px 15px; border-top: 1px solid var(--hairline); }
+  .stat-card:nth-child(-n+2) { border-top: 0; }
+  .stat-card:nth-child(odd) { border-left: 0; }
+  .stat-card-value { font-size: 22px; }
+}
+
+/* ---- Overview -------------------------------------------------------- */
+.ov-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: var(--gap-group); }
+.chart-note { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); }
+.ov-chan-head { margin: var(--gap-group) 0 12px; }
+
+/* The channels with nothing on them: one line, and chips behind it. */
+.ov-quiet { margin-top: 14px; }
+.ov-quiet-head {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px;
+  padding: 0 4px; background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--muted);
+}
+.ov-quiet-head:hover { color: var(--ink-2); }
+.ov-quiet-head svg { transition: transform 0.15s; }
+.ov-quiet-head svg.open { transform: rotate(180deg); }
+.ov-quiet-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 4px 0; }
+.ov-quiet-chip {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 40px;
+  padding: 0 14px 0 8px; border-radius: var(--radius-pill);
+  background: var(--surface-2); border: 1px solid transparent;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--ink-2); cursor: pointer;
+}
+.ov-quiet-chip:hover { background: var(--brand-50); color: var(--brand-600); }
+.ov-quiet-icon { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; flex: none; }
+
+@media (max-width: 900px) { .ov-two { grid-template-columns: 1fr; } }
+
+/* The brief reader's note. It sits under the box it is about, quiet enough
+   that a warning does not read as a refusal — nothing here blocks a save. */
+.brief-check {
+  display: flex; gap: 9px; align-items: flex-start; margin-top: 8px;
+  padding: 9px 12px; border-radius: var(--radius-xs);
+  background: var(--tint-warn); font-size: 12.5px; color: var(--warn-ink);
+}
+.brief-check.bc-bad { background: var(--danger-bg); color: var(--critical); }
+.bc-mark { flex: none; margin-top: 1px; }
+.brief-check b { font-weight: 600; display: block; }
+.brief-check ul { margin: 5px 0 0; padding-left: 16px; display: grid; gap: 2px; }
+.brief-check li { font-weight: 400; }
+.bc-by { display: block; margin-top: 5px; opacity: 0.75; font-size: 11.5px; }
