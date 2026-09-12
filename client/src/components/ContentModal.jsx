@@ -251,7 +251,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // fresh row rather than making the whole sheet reload.
   const [booked, setBooked] = useState(() => item || null)
   // The operator's week, folded away until asked for.
-  const [slotsOpen, setSlotsOpen] = useState(false)
+  // Open by default: the free times are the answer this row exists to give,
+  // and a shoot that is already booked folds them away with one press.
+  const [slotsOpen, setSlotsOpen] = useState(true)
   const [busy, setBusy] = useState(false)
 
 
@@ -2455,6 +2457,37 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           }
           const at = (k) => ({ ...shared, bad: badField === k })
           return (<>
+            {/* Who films it, on the page where WHEN is decided.
+                Booking is one decision — a person and a time — and the form
+                had it as two, on two different tabs: the operator seat lives
+                with the rest of the crew on Execution, and the days live
+                here. So giving a task meant picking a name, crossing to this
+                page to find the free times had appeared, and crossing back
+                when the answer was "not that week". The same state, so there
+                is no second source of truth: this picker and the crew seat
+                are two windows on one field. */}
+            {!textOnly && !crewViewer && (
+              <div className={'cm-row cm-shoot-who' + (badField === 'operator_id' ? ' field-bad' : '')} data-field="operator_id">
+                <span className="cm-key">
+                  <Clapperboard size={13} style={{ verticalAlign: -2 }} /> {tx('Who films it')}
+                </span>
+                <div>
+                  <PersonPicker
+                    disabled={detailsLocked}
+                    value={form.operator_id ?? null}
+                    placeholder={needsOperator ? tx('— pick the operator —') : tx('— nobody —')}
+                    tip={tx('Who films / shoots this')}
+                    groups={[
+                      { label: tx('Operators'), people: team.filter((u) => (u.crew_roles || []).includes('operator'))
+                        .map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })) },
+                      { label: tx('Everyone else — one-time duty'), people: team.filter((u) => !(u.crew_roles || []).includes('operator'))
+                        .map((u) => ({ id: u.id, name: u.name, color: u.color, avatar: u.avatar })) },
+                    ].filter((g) => g.people.length > 0)}
+                    onPick={(id) => setForm({ ...form, operator_id: id })}
+                  />
+                </div>
+              </div>
+            )}
             <DateRow icon={Clapperboard} label="Shoot" dateKey="recording_date" timeKey="recording_time" endKey="recording_end" {...at('recording_date')} />
             {/* …or pick the time out of the operator's actual week. Typing a
                 date and a time was guessing at somebody else's diary and
@@ -2462,15 +2495,20 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 and then offers only the times that exist. Folded away by
                 default — the boxes above are still the fast path for a
                 planner who already agreed the time in the corridor. */}
+            {/* Open, once somebody is in the seat.
+                It hid behind "Find a free slot", which is a button asking
+                whether you would like to know the one thing you came to this
+                row to find out. A planner who already agreed the time in the
+                corridor still has the boxes above and can ignore this; a
+                planner who has not is shown the answer instead of a button
+                that admits it exists. Still foldable, because a booked shoot
+                does not need its alternatives on screen for ever. */}
             {!detailsLocked && form.operator_id && (
               <div className="cm-row cm-slots">
                 <span className="cm-key">
                   <CalendarClock size={13} style={{ verticalAlign: -2 }} /> {tx('Free times')}
                 </span>
                 <div className="cm-slot-wrap">
-                  <button type="button" className="btn btn-sm cm-slot-toggle" onClick={() => setSlotsOpen((v) => !v)}>
-                    {slotsOpen ? tx('Hide the calendar') : tx('Find a free slot')}
-                  </button>
                   {slotsOpen && (
                     <SlotPicker
                       userId={Number(form.operator_id) || null}
@@ -2479,9 +2517,19 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                         ? { date: form.recording_date, from: form.recording_time } : null}
                       onPick={({ date, from, to }) => {
                         setForm((f) => ({ ...f, recording_date: date, recording_time: from, recording_end: to }))
+                        // Answered. A list of the times somebody COULD have
+                        // been booked for is half a screen of alternatives to
+                        // a question just settled, and it was pushing the cut
+                        // and release deadlines below the fold — so the chain
+                        // this page exists to show could not be read at once.
+                        // One press reopens it if the answer changes.
+                        setSlotsOpen(false)
                       }}
                     />
                   )}
+                  <button type="button" className="cm-slot-toggle sp-further" onClick={() => setSlotsOpen((v) => !v)}>
+                    {slotsOpen ? tx('Hide the free times') : tx('Show the free times')}
+                  </button>
                 </div>
               </div>
             )}
@@ -2499,7 +2547,15 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
                 holderName={team.find((u) => u.id === booked?.editor_id)?.name?.split(' ')[0]}
                 mine={booked?.editor_id === user.id} onAnswered={setBooked} />
             )}
-            {(!crewViewer || myHats.designer || !!item?.designer_id) && (
+            {/* A deadline for a craft this task does not have.
+                The crew seats offer an Operator and an Editor and nothing
+                else — the designer hat came off the picker in round 78 — but
+                this row was gated on WHO IS LOOKING rather than on whether
+                there is a designer, so every reel asked for a day the
+                artwork was due when no artwork was coming and nobody could
+                be assigned to make it. It follows the seat now, the same way
+                the delivery boxes do. */}
+            {(!!form.designer_id || !!item?.designer_id || !!form.design_ready_date) && (
               <DateRow icon={Palette} label="Design ready" dateKey="design_ready_date" {...at('design_ready_date')} />
             )}
             {!crewViewer && <DateRow icon={Send} label="Release" dateKey="release_date" timeKey="release_time" {...at('release_date')} />}

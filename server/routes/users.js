@@ -271,8 +271,17 @@ router.patch('/:id', wrap(async (req, res) => {
   const { name, username, email, role, crew_roles, departments, permissions, color, password } = req.body || {}
   if (!ROLES.includes(role ?? row.role)) return res.status(400).json({ error: 'Unknown role' })
   // crew_roles alone may also change the role (multi-select chips).
+  // Keeping the capabilities somebody already holds is right when they HAVE
+  // some — a designer promoted to "crew" keeps designing. It is wrong when
+  // they have none: a member has an empty list by definition, so promoting one
+  // straight to operator handed roleFields an EXPLICITLY empty list, which it
+  // correctly reads as a mistake, and the answer was "Pick at least one crew
+  // capability" to somebody who had just picked one by name. Undefined means
+  // "work it out from the role", which is what is wanted here.
+  const inherited = isCrewRole(role ?? row.role) ? crewRolesOf(row) : undefined
   const rf = role !== undefined || crew_roles !== undefined
-    ? roleFields(role ?? row.role, crew_roles !== undefined ? crew_roles : (isCrewRole(role ?? row.role) ? crewRolesOf(row) : undefined))
+    ? roleFields(role ?? row.role,
+      crew_roles !== undefined ? crew_roles : (inherited?.length ? inherited : undefined))
     : { role: row.role, crew_roles: row.crew_roles || '[]' }
   if (!rf) return res.status(400).json({ error: 'Pick at least one crew capability' })
   const nextRole = rf.role

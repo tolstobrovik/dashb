@@ -155,6 +155,52 @@ ok('Z2', '…and the refusal says what to ask for instead of just saying no',
   !!refused.data.ask_to_move || /admin|permission/i.test(refused.data.error || ''),
   JSON.stringify(refused.data).slice(0, 160))
 
+console.log('\n=== AA. booking an operator is one decision ===')
+// The content team's actual job: pick who films it, and a time that person
+// really has. Both halves have to be true at once — a picker that offers a
+// time the operator is already booked for is worse than no picker.
+const op = (await req('/users', 'POST', {
+  name: `Book Op ${stamp}`, username: `bop${stamp}`, password: 'probe-only-123', role: 'operator' })).data
+ok('AA1', 'somebody can be made an operator in one call',
+  op.role === 'operator' && (op.crew_roles || []).includes('operator'),
+  JSON.stringify({ role: op.role, caps: op.crew_roles }))
+await req(`/users/${op.id}`, 'PATCH', { work_start: '10:00', work_end: '18:00', work_days: [1, 2, 3, 4, 5] })
+
+const firstWorkday = (() => {
+  for (let n = 1; n < 9; n++) {
+    const d = new Date(`${day(n)}T00:00:00Z`)
+    if (d.getUTCDay() >= 1 && d.getUTCDay() <= 5) return day(n)
+  }
+  return day(1)
+})()
+// Book the middle of that day, then ask what is left.
+await req('/content', 'POST', { title: `AA held ${stamp}`, channels: [ch], type: 'reel',
+  status_id: stages.find((x) => /to\s*shoot/i.test(x.label)).id, operator_id: op.id,
+  recording_date: firstWorkday, recording_time: '12:00', recording_end: '14:00',
+  reference_links: ['https://example.com/r'], script: 'Something to film' })
+
+const free = (await req(`/users/${op.id}/slots?days=7&mins=120`)).data
+const thatDay = (free.calendar || []).find((d) => d.day === firstWorkday)
+ok('AA2', 'the board knows the hours they set',
+  free.hours?.from === '10:00' && free.hours?.to === '18:00', JSON.stringify(free.hours))
+ok('AA3', 'the day they are booked still offers its free half',
+  (thatDay?.slots || []).length > 0, JSON.stringify((thatDay?.slots || []).map((s) => s.from)))
+ok('AA4', '…and never offers a time that overlaps the booking',
+  (thatDay?.slots || []).every((s) => s.to <= '12:00' || s.from >= '14:00'),
+  JSON.stringify((thatDay?.slots || []).map((s) => `${s.from}-${s.to}`)))
+ok('AA5', '…and never offers a time outside their working hours',
+  (thatDay?.slots || []).every((s) => s.from >= '10:00' && s.to <= '18:00'),
+  JSON.stringify((thatDay?.slots || []).map((s) => `${s.from}-${s.to}`)))
+const weekend = (free.calendar || []).find((d) => !d.working)
+ok('AA6', 'a day they do not work offers nothing',
+  !weekend || (weekend.slots || []).length === 0, JSON.stringify({ day: weekend?.day, n: weekend?.slots?.length }))
+// A longer shoot than the gap that is left cannot be offered on that day.
+const long = (await req(`/users/${op.id}/slots?days=7&mins=240`)).data
+const longDay = (long.calendar || []).find((d) => d.day === firstWorkday)
+ok('AA7', 'a half-day shoot is not offered into a two-hour gap',
+  (longDay?.slots || []).every((s) => s.to <= '12:00' || s.from >= '14:00'),
+  JSON.stringify((longDay?.slots || []).map((s) => `${s.from}-${s.to}`)))
+
 console.log(`\n${'='.repeat(58)}`)
 if (found.length) {
   console.log(`${found.length} FINDING(S):`)

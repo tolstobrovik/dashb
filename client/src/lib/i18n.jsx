@@ -3050,6 +3050,13 @@ const guess = () => {
 // module that translates imports this one, so this line runs first.
 let current = guess()
 
+// The BCP-47 tag per language. One table: the document declares it, dates and
+// numbers are formatted with it, and a native date input takes its field order
+// from it. Declared above everything that reads it rather than below, because
+// a const in the temporal dead zone works here only by the accident of an
+// effect running late.
+const LOCALE_TAG = { en: 'en-GB', ru: 'ru-RU', uz: 'uz-UZ' }
+
 export function I18nProvider({ children }) {
   const [lang, setLangState] = useState(current)
   const setLang = (next) => {
@@ -3068,7 +3075,14 @@ export function I18nProvider({ children }) {
     // does not reach has already changed by the time it lands.
     setTimeout(() => { try { window.location.reload() } catch { /* fine */ } }, 60)
   }
-  useEffect(() => { document.documentElement.lang = lang }, [lang])
+  // The FULL tag, not the bare two letters. A native <input type="date">
+  // takes its format from the document's language, and "en" means American
+  // English to every browser — so a board built for Tashkent was asking its
+  // team for mm/dd/yyyy. "en-GB" is the same English with the day first,
+  // which is the order everybody reading this board writes dates in. The
+  // tag the rest of the app already formats with, so a date typed into a box
+  // and a date printed beside it cannot disagree.
+  useEffect(() => { document.documentElement.lang = LOCALE_TAG[lang] || lang }, [lang])
 
   const value = useMemo(() => ({
     lang,
@@ -3100,7 +3114,7 @@ export const useT = () => useContext(I18n)
 // too. The board greeted a Russian speaker with "Sunday 23 August" in
 // Russian-labelled chrome, which is the giveaway that a translation is a
 // veneer: the words changed and the machinery underneath did not.
-export const locale = () => ({ en: 'en-GB', ru: 'ru-RU', uz: 'uz-UZ' }[current] || 'en-GB')
+export const locale = () => LOCALE_TAG[current] || 'en-GB'
 
 // The two-letter code itself, for the places that send the language TO
 // something rather than reading it — the assistant, which has to be told

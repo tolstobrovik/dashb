@@ -4866,7 +4866,10 @@ button.blame-person:hover { background: var(--surface-2); }
    afternoon — what a person offers out loud — with the exact half-hours one
    press behind "another time". A working week went from about a hundred
    buttons to fourteen. */
-.sp-list { display: grid; gap: 2px; max-height: 320px; overflow-y: auto; }
+/* Three days at a glance, the rest by scrolling. Taller than this and the
+   cut and release deadlines below it fall off the screen, which is the one
+   thing this page has to show together. */
+.sp-list { display: grid; gap: 2px; max-height: 232px; overflow-y: auto; }
 .sp-row { display: flex; align-items: center; gap: 14px; padding: 7px 2px; flex-wrap: wrap; }
 .sp-row + .sp-row { border-top: 1px solid var(--hairline); }
 .sp-row-day {
@@ -4893,6 +4896,7 @@ button.blame-person:hover { background: var(--surface-2); }
 }
 .sp-more:hover, .sp-further:hover { color: var(--brand-600); background: var(--brand-50); }
 .sp-further { align-self: flex-start; }
+.cm-slot-wrap { flex-direction: column; align-items: flex-start; }
 
 .cm-slot-wrap { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 .cm-slot-toggle { align-self: flex-start; }
@@ -5772,3 +5776,9 @@ button.blame-person:hover { background: var(--surface-2); }
 /* A label beside a block as tall as a week's free times belongs at the top
    of it, not floating in the middle. */
 .cm-slots { align-items: start; }
+
+/* ---- booking: who films it, next to when ---------------------------------
+   Booking is one decision — a person and a time — so the operator sits with
+   the days rather than a tab away with the rest of the crew. */
+.cm-shoot-who { align-items: center; }
+.cm-shoot-who .pp-btn, .cm-shoot-who .person-pick { max-width: 280px; }
