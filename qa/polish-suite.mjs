@@ -89,7 +89,14 @@ await page.locator('.tcard', { hasText: 'Crew on a post' }).first().click()
 await page.waitForSelector('.modal', { timeout: 8000 })
 await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
-const hats = await page.locator('.modal .crew-label').allTextContents()
+// `.crew-label` is not "a crew hat" — the delivery boxes wear it too, for
+// their heading. That selector was only ever unique because the delivery
+// boxes were hidden behind a button; round 92 shows one the moment a seat is
+// filled, and this task has an editor in its seat, so the count went to
+// three. The class this actually means is the one the form itself names, and
+// which ContentModal twice warns about in comments: "nothing that counts
+// crew-fields may count these".
+const hats = await page.locator('.modal .crew-field .crew-label').allTextContents()
 ok('a post carries the two hats with a stage', hats.length === 2, hats.join(' / '))
 ok('the designer hat is not offered', !hats.some((h) => /designer/i.test(h)), hats.join(' / '))
 ok('marked optional', (await page.locator('.modal').textContent()).includes('optional'))
