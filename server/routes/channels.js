@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, batch } from '../db.js'
+import { all, get, run, batch, taskChildDeletes } from '../db.js'
 import { authRequired, adminOnly, can, wrap } from '../auth.js'
 
 const router = Router()
@@ -10,7 +10,7 @@ const slugify = (s) =>
 
 // Sections a channel dashboard can show, in any order. The client renders
 // exactly this set — keep the two lists in step.
-export const DASH_WIDGETS = ['programs', 'metrics', 'growth', 'campaigns', 'timetable', 'upcoming', 'done', 'content']
+export const DASH_WIDGETS = ['programs', 'campaigns', 'timetable', 'upcoming', 'done', 'content']
 
 // The head of each department rides along (live name/avatar for the UI).
 router.get('/', wrap(async (req, res) => {
@@ -33,6 +33,13 @@ router.post('/', adminOnly, wrap(async (req, res) => {
   if (!label || !String(label).trim()) return res.status(400).json({ error: 'Name is required' })
   let head
   try { head = await cleanHead(head_id) } catch (e) { return res.status(400).json({ error: e.message }) }
+  // A channel made without a head is not an ownerless channel — it is one
+  // whose owner has not been typed in yet. It used to be born wearing a red
+  // NO OWNER badge, which then sat on the board until somebody noticed it,
+  // and everybody who could not fix it got to look at the alarm meanwhile.
+  // Whoever made it owns it until they say otherwise; that is true, it is one
+  // less form to fill in, and the badge means something when it does appear.
+  if (head == null) head = req.user.id
   let key = slugify(label)
   let n = 1
   while (await get('SELECT 1 AS x FROM channels WHERE key = ?', key)) key = `${slugify(label)}_${++n}`
@@ -45,13 +52,34 @@ router.post('/', adminOnly, wrap(async (req, res) => {
 router.patch('/:id', adminOnly, wrap(async (req, res) => {
   const row = await get('SELECT * FROM channels WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Channel not found' })
-  const { label, icon, head_id } = req.body || {}
+  const { label, icon, head_id, drive_url, daily_ad_cap } = req.body || {}
   let head = row.head_id
   if (head_id !== undefined) {
     try { head = await cleanHead(head_id) } catch (e) { return res.status(400).json({ error: e.message }) }
   }
-  await run('UPDATE channels SET label = ?, icon = ?, head_id = ? WHERE id = ?',
-    label !== undefined ? String(label).trim() : row.label, icon ?? row.icon, head, row.id)
+  // The channel's shared Drive folder. Cleared with an empty string; anything
+  // else has to be a real address, because every delivery on this channel is
+  // about to be built on top of it.
+  let drive = row.drive_url || ''
+  if (drive_url !== undefined) {
+    const next = String(drive_url || '').trim()
+    if (next && !/^https?:\/\//i.test(next))
+      return res.status(400).json({ error: 'The folder is a link — paste the full https://… address of the Drive folder' })
+    drive = next
+  }
+  // How many video ads this channel may run on one day. Ads are bought a
+  // month at a time and burn their audience if they land in a heap, so the
+  // ceiling belongs to the channel. 0 = none, which is what it was before.
+  let adCap = row.daily_ad_cap || 0
+  if (daily_ad_cap !== undefined) {
+    const n = Math.round(Number(daily_ad_cap))
+    if (!Number.isFinite(n) || n < 0 || n > 50) {
+      return res.status(400).json({ error: 'Ads a day is a whole number from 0 to 50 — 0 means no limit' })
+    }
+    adCap = n
+  }
+  await run('UPDATE channels SET label = ?, icon = ?, head_id = ?, drive_url = ?, daily_ad_cap = ? WHERE id = ?',
+    label !== undefined ? String(label).trim() : row.label, icon ?? row.icon, head, drive, adCap, row.id)
   res.json(await get('SELECT * FROM channels WHERE id = ?', row.id))
 }))
 
@@ -93,9 +121,14 @@ router.delete('/:id', adminOnly, wrap(async (req, res) => {
     const chs = JSON.parse(c.channels || '[]')
     if (!chs.includes(row.key)) continue
     const left = chs.filter((k) => k !== row.key)
-    stmts.push(left.length
-      ? ['UPDATE content SET channels = ? WHERE id = ?', JSON.stringify(left), c.id]
-      : ['DELETE FROM content WHERE id = ?', c.id])
+    if (left.length) {
+      stmts.push(['UPDATE content SET channels = ? WHERE id = ?', JSON.stringify(left), c.id])
+    } else {
+      // The task had nowhere else to live, so it goes — and everything it was
+      // carrying goes with it, the same way a task deleted by hand does.
+      stmts.push(...taskChildDeletes(c.id))
+      stmts.push(['DELETE FROM content WHERE id = ?', c.id])
+    }
   }
   for (const u of await all('SELECT id, departments FROM users')) {
     const depts = JSON.parse(u.departments || '[]')

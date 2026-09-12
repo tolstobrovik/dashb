@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Clapperboard, Send, Plus } from 'lucide-react'
 import { WEEKDAYS, MONTHS, localISO, todayISO, addDaysISO, typeInfo, onColor, statusIcon, isDeletedLabel } from '../lib/constants.js'
+import { tr as tx, locale } from '../lib/i18n.jsx'
+import { StageDot } from './Dot.jsx'
 
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1)
@@ -20,7 +22,7 @@ function mondayOf(iso) {
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
   return localISO(d)
 }
-const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 
 // The content calendar, used for both date fields: mode 'release' reads
 // release_date, mode 'recording' reads recording_date. Two scales:
@@ -28,11 +30,30 @@ const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US'
 //  - Week: seven tall columns with rich cards (type, stage, time) — the
 //    day-to-day working view. Cards drag between days in both scales;
 //    click a card to open it, a day to plan it, + to add straight there.
+// `canMove` is a boolean OR a predicate on the item. It has to be per-item
+// because of ideas: a thought nobody has promised anything about may be
+// shoved around by anybody who can see it, with no move_tasks permission and
+// no waiting on whoever's name is on it. The server already says so
+// (content.js, `wasAnIdea`) and the kanban already agrees (ContentBoard's
+// canDrag) — the calendar was the one surface left where an idea sat still,
+// which reads as the board being broken rather than as a rule.
 export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [], onRange }) {
+  const mayMove = typeof canMove === 'function' ? canMove : () => !!canMove
+  // Day cells and the tray carry data-drop unconditionally and always did, so
+  // unlike the kanban there is no second gate to widen here — deciding at
+  // pick-up is the whole of it.
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
   const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()))
-  // The last used scale is remembered — most people live in one of them.
+  // The last used scale is remembered — most people live in one of them. On a
+  // phone the first answer is the week, not the month: a month of seven
+  // columns on a 390px screen can only show a dot per piece of work, and the
+  // day-to-day question is "what is on this week", which the week view answers
+  // with the titles still readable. A choice, once made, is still remembered.
+  // The month is the default everywhere now, a phone included. A week is a
+  // horizon you check; a month is the one you PLAN in, and the planning is
+  // what people open a calendar for. The week is still one press away and,
+  // once chosen, is still remembered.
   const [scale, setScaleState] = useState(() => localStorage.getItem('satashkent_cal_scale') || 'month')
   const setScale = (s) => { setScaleState(s); localStorage.setItem('satashkent_cal_scale', s) }
   const today = todayISO()
@@ -52,7 +73,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
   const [overCell, setOverCell] = useState(null) // a day's iso | 'tray' | null
   const [ghost, setGhost] = useState(null) // { x, y, title } under the pointer
   const ctx = useRef({})
-  ctx.current = { items, trayItems, dateField, canMove, onMoveDate }
+  ctx.current = { items, trayItems, dateField, mayMove, onMoveDate }
   const dnd = useRef(null)
   if (!dnd.current) {
     // Built once; everything mutable lives on this object or in ctx, so the
@@ -155,7 +176,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
       d.cleanup()
     }
     d.start = (e, item) => {
-      if (!ctx.current.canMove) return
+      if (!ctx.current.mayMove(item)) return
       if (d.press) return // a second finger never steals the gesture
       if (e.button !== undefined && e.button !== 0) return
       const touch = e.pointerType === 'touch'
@@ -219,13 +240,13 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
   return (
     <div className="card cal">
       <div className="cal-head">
-        <button className="icon-btn" onClick={() => shift(-1)} data-tip="Previous" aria-label="Previous"><ChevronLeft size={18} /></button>
+        <button className="icon-btn" onClick={() => shift(-1)} data-tip={tx("Previous")} aria-label={tx("Previous")}><ChevronLeft size={18} /></button>
         <h3>{title}</h3>
-        <button className="icon-btn" onClick={() => shift(1)} data-tip="Next" aria-label="Next"><ChevronRight size={18} /></button>
-        <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={goToday} data-tip="Jump back to today">Today</button>
+        <button className="icon-btn" onClick={() => shift(1)} data-tip={tx("Next")} aria-label={tx("Next")}><ChevronRight size={18} /></button>
+        <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={goToday} data-tip={tx("Jump back to today")}>{tx("Today")}</button>
         <div className="pill-group cal-scale">
-          <button className={'pill' + (scale === 'month' ? ' active' : '')} onClick={() => setScale('month')} data-tip="Whole month at a glance">Month</button>
-          <button className={'pill' + (scale === 'week' ? ' active' : '')} onClick={() => setScale('week')} data-tip="One week with full task cards">Week</button>
+          <button className={'pill' + (scale === 'month' ? ' active' : '')} onClick={() => setScale('month')} data-tip={tx("Whole month at a glance")}>{tx("Month")}</button>
+          <button className={'pill' + (scale === 'week' ? ' active' : '')} onClick={() => setScale('week')} data-tip={tx("One week with full task cards")}>{tx("Week")}</button>
         </div>
 
       </div>
@@ -245,28 +266,28 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
               return (
                 <div
                   key={it.id}
-                  className={`cal-tray-chip${dragId === it.id ? ' dim' : ''}`}
-                  style={st ? { borderLeftColor: st.color } : undefined}
+                  className={`cal-tray-chip${st ? ' st-tint' : ''}${dragId === it.id ? ' dim' : ''}`}
+                  style={st ? { borderLeftColor: st.color, '--st': st.color } : undefined}
                   onPointerDown={(e) => startDrag(e, it)}
                   onContextMenu={(e) => { if (dragId === it.id) e.preventDefault() }}
                   onClick={() => onOpenItem && onOpenItem(it)}
-                  title={canMove ? `${it.title} — drag onto a day to schedule, click to open` : it.title}
+                  title={mayMove(it) ? `${it.title} — drag onto a day to schedule, click to open` : it.title}
                 >
                   <Icon size={10} style={{ flexShrink: 0 }} />
                   <span className="ev-txt">{it.title}</span>
                   <span className={`chip ct-${it.type} tray-type`}>{typeInfo(it.type).label}</span>
-                  {canMove && (
+                  {mayMove(it) && (
                     <span className="tray-quick">
-                      <button type="button" className="qbtn" data-tip="Schedule for today"
-                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, todayISO()) }}>Today</button>
-                      <button type="button" className="qbtn" data-tip="Schedule for tomorrow"
-                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, addDaysISO(todayISO(), 1)) }}>Tmrw</button>
+                      <button type="button" className="qbtn" data-tip={tx("Schedule for today")}
+                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, todayISO()) }}>{tx("Today")}</button>
+                      <button type="button" className="qbtn" data-tip={tx("Schedule for tomorrow")}
+                        onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, addDaysISO(todayISO(), 1)) }}>{tx("Tmrw")}</button>
                     </span>
                   )}
                 </div>
               )
             })}
-            {trayItems.length === 0 && <span className="tt-none">drop here to unschedule</span>}
+            {trayItems.length === 0 && <span className="tt-none">{tx("drop here to unschedule")}</span>}
           </div>
         </div>
       )}
@@ -289,7 +310,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   {dayItems.length > 0 && <span className="wk-count">{dayItems.length}</span>}
                   <span style={{ flex: 1 }} />
                   {onAddAt && (
-                    <button className="icon-btn wk-add" data-tip="New task on this day" aria-label="New task on this day"
+                    <button className="icon-btn wk-add" data-tip={tx("New task on this day")} aria-label={tx("New task on this day")}
                       onClick={(e) => { e.stopPropagation(); onAddAt(iso) }}>
                       <Plus size={14} />
                     </button>
@@ -304,8 +325,8 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                     return (
                       <div
                         key={it.id}
-                        className={`wk-card${dragId === it.id ? ' dim' : ''}${dead ? ' cal-dead' : ''}`}
-                        style={st ? { borderLeftColor: st.color } : undefined}
+                        className={`wk-card${st ? ' st-tint' : ''}${dragId === it.id ? ' dim' : ''}${dead ? ' cal-dead' : ''}`}
+                        style={st ? { borderLeftColor: st.color, '--st': st.color } : undefined}
                         onPointerDown={(e) => startDrag(e, it)}
                         onContextMenu={(e) => { if (dragId === it.id) e.preventDefault() }}
                         onClick={(e) => { e.stopPropagation(); if (onOpenItem) onOpenItem(it); else onDayClick(iso) }}
@@ -314,7 +335,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                         <div className="wk-title">{it.title}</div>
                         <div className="wk-chips">
                           <span className={`chip ct-${it.type}`}><TIcon size={9} /> {typeInfo(it.type).label}</span>
-                          {st && <span className="chip" style={{ background: st.color, color: onColor(st.color) }}>{SIcon && <SIcon size={9} />} {st.label}</span>}
+                          {st && <StageDot status={st} icon={SIcon} />}
                           {it[timeField] && <span className="chip chip-muted"><Icon size={9} /> {it[timeField]}</span>}
                         </div>
                       </div>
@@ -344,7 +365,15 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                     className={`cal-day editable${inMonth ? '' : ' out'}${iso === today ? ' today' : ''}${overCell === iso ? ' over' : ''}`}
                     onClick={() => onDayClick(iso)}
                   >
-                    <div className="cal-daynum">{date.getDate()}</div>
+                    <div className="cal-dayhead">
+                      <span className="cal-daynum">{date.getDate()}</span>
+                      {/* The cell is one height for every day now, so a day
+                          holding more than fits would otherwise end in a pill
+                          sliced in half with nothing saying why. The count
+                          says how many are down there; the list scrolls, and
+                          the day still opens whole. */}
+                      {dayItems.length > 3 && <span className="cal-daycount">{dayItems.length}</span>}
+                    </div>
                     <div className="cal-events">
                       {dayItems.map((it) => {
                         // Every task shows — a crowded day makes its week row

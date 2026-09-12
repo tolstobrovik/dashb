@@ -7,6 +7,7 @@
 // names, notes) walks through tgEsc before joining a message.
 import { createHash } from 'crypto'
 import { all, get, run, dayISO } from './db.js'
+import { resolveGates, phasePassed } from './deadlines.js'
 // Namespace import on purpose: config.js may or may not export the token
 // (the public mirror's placeholder doesn't) — a missing name reads as
 // undefined instead of breaking the module graph.
@@ -127,7 +128,7 @@ export async function tgMirror(userIds, text, contentId = null, fallbackOrigin =
   let line = text
   if (contentId) {
     const origin = (await tgPublicUrl().catch(() => '')) || fallbackOrigin
-    if (origin) line += `\n<a href="${origin}/todo?task=${contentId}">Open the task ↗</a>`
+    if (origin) line += `\n<a href="${origin}/brief?task=${contentId}">Open the task ↗</a>`
   }
   await Promise.allSettled([...new Set(userIds)].map((id) => tgSendTo(id, line)))
 }
@@ -199,86 +200,3 @@ export async function tgRunSchedules() {
   return sent
 }
 
-// The nightly half of the bell, pushed instead of waited for: deadlines
-// standing exactly a day and exactly a week away (Tashkent days), per the hat
-// each linked member holds — the same rules the in-app reminders use.
-// The day is claimed in meta before anything goes out, so a retried cron, a
-// second server instance or a curious visitor on the cron URL can never make
-// the team's phones ring twice.
-// How many overdue items are named before the rest become a count.
-const LATE_SHOWN = 6
-export async function tgDailyReminders() {
-  if (!tgEnabled()) return 0
-  const today = dayISO(0)
-  const claimed = await run("INSERT INTO meta (key, value) VALUES ('digest_day', ?) ON CONFLICT(key) DO NOTHING", today)
-  if (!claimed?.changes) {
-    const turn = await run("UPDATE meta SET value = ? WHERE key = 'digest_day' AND value <> ?", today, today)
-    if (!turn?.changes) return 0 // today's digest already went out
-  }
-  const linked = await all('SELECT id, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL')
-  if (linked.length === 0) return 0
-  const tomorrow = dayISO(1)
-  const week = dayISO(7)
-  const statuses = await all('SELECT id, label FROM statuses')
-  const dead = new Set(statuses.filter((s) => /^deleted$/i.test(s.label || '')).map((s) => s.id))
-  const rows = await all(`SELECT id, title, assignee_id, assignees, operator_id, editor_id, designer_id,
-    recording_date, edit_ready_date, design_ready_date, release_date, status_id FROM content WHERE done_at IS NULL`)
-  const origin = await tgPublicUrl().catch(() => '')
-  const link = (t) => (origin ? ` · <a href="${origin}/todo?task=${t.id}">open ↗</a>` : '')
-  const daysAgo = (iso) =>
-    Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${iso}T12:00:00Z`)) / 86400000)
-  let sent = 0
-  for (const u of linked) {
-    // TODAY was missing: a deadline you were handed this morning, or one moved
-    // onto today, was never mentioned at all — yesterday's digest is the only
-    // place it had ever appeared. LATE was missing too, which mattered more:
-    // the message ended with "Nothing is late yet" no matter how much was, so
-    // the one line people would actually act on was the one line that lied.
-    const soon = { [today]: [], [tomorrow]: [], [week]: [] }
-    const late = []
-    const push = (t, date, what) => {
-      if (!date) return
-      if (soon[date]) soon[date].push({ t, what })
-      else if (date < today) late.push({ t, what, date })
-    }
-    for (const t of rows) {
-      if (dead.has(t.status_id)) continue
-      let assignees = []
-      try { assignees = JSON.parse(t.assignees || '[]') } catch { assignees = [] }
-      const owns = assignees.includes(u.id) || t.assignee_id === u.id
-      // Plain nouns, because each one has to read in both directions now:
-      // "— the cut" ahead of time, "— the cut, 3 days late" after.
-      if ((owns || t.operator_id === u.id) && t.recording_date) push(t, t.recording_date, 'the shoot')
-      if (t.editor_id === u.id && t.edit_ready_date) push(t, t.edit_ready_date, 'the cut')
-      if (t.designer_id === u.id && t.design_ready_date) push(t, t.design_ready_date, 'the artwork')
-      if (owns && t.release_date) push(t, t.release_date, 'the release')
-    }
-    const lines = []
-    for (const [label, list] of [['Today', soon[today]], ['Tomorrow', soon[tomorrow]], ['In a week', soon[week]]]) {
-      if (!list.length) continue
-      lines.push(`<b>${label}</b>`)
-      for (const { t, what } of list) lines.push(`• «${tgEsc(t.title)}» — ${what}${link(t)}`)
-    }
-    if (late.length) {
-      // Oldest first — the thing that has been waiting longest is the thing
-      // most likely to have been forgotten. Long lists are capped rather than
-      // sent whole: a wall of overdue work is read as noise and scrolled past,
-      // which is the same as not sending it.
-      late.sort((a, b) => a.date.localeCompare(b.date))
-      lines.push('<b>Late</b>')
-      for (const { t, what, date } of late.slice(0, LATE_SHOWN)) {
-        const d = daysAgo(date)
-        lines.push(`• «${tgEsc(t.title)}» — ${what}, ${d === 1 ? 'a day' : `${d} days`} late${link(t)}`)
-      }
-      if (late.length > LATE_SHOWN) lines.push(`…and ${late.length - LATE_SHOWN} more`)
-    }
-    if (lines.length) {
-      const head = late.length ? 'Your deadlines — and what has slipped' : 'A friendly heads-up on your deadlines'
-      // The cheerful sign-off is a claim, so it is only made when it is true.
-      const close = late.length ? '' : '\n\nNothing is late — a good moment to get ahead of it 💪'
-      await tgSendTo(u.id, `⏰ ${head}\n${lines.join('\n')}${close}`)
-      sent++
-    }
-  }
-  return sent
-}

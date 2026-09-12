@@ -154,12 +154,24 @@ statement replay so concurrent instances can't lose each other's changes;
 and the nightly job compacts the data branch so the repo never grows. Two
 things to know:
 
-- **Keep the repository private** — the token and the data live in it.
+- **Put the token in the deployment's environment, not in the repository.**
+  `GITHUB_DATA_TOKEN` wins over `server/config.js`, and it is the place the
+  app is built to read it from: a token in the environment never enters git
+  history, and it can be replaced in a minute without a commit or a redeploy.
+  `/api/health` reports `token_from` — `environment` or `config.js` — so you
+  can see at a glance which one this deployment is actually holding.
+- **Keep the repository private** — the data lives in it, and so does the
+  token if you leave it in `server/config.js`.
 - **The token can expire** (fine-grained tokens have an expiry date). When it
   does, writes start failing (`/api/health` shows `flushError`): generate a
   new token (Contents read & write on this repo — or a classic token with
   `repo` scope and *No expiration*, which never needs replacing) and update
-  `server/config.js`.
+  `GITHUB_DATA_TOKEN`.
+- **Set `JWT_SECRET` explicitly if you use GitHub storage.** With no
+  `JWT_SECRET`, sessions are signed with a secret *derived from the storage
+  token* — convenient, but it means rotating that token signs everybody out.
+  An explicit `JWT_SECRET` decouples the two, so a rotation is invisible to
+  the team. (`render.yaml` already generates one; on Vercel, set it yourself.)
 
 **Optional upgrade for heavier use:** paste a Postgres connection string into
 `DATABASE_URL` in `server/config.js` (e.g. a free [neon.tech](https://neon.tech)
@@ -217,6 +229,9 @@ Environment variables (all optional):
 | `TURSO_AUTH_TOKEN`   | *(unset)*                         | Auth token for the remote database             |
 | `DATA_DIR`           | `./data` (`/tmp` on serverless)   | Where the SQLite file lives in file mode       |
 | `TELEGRAM_BOT_TOKEN` | *(unset — bridge off)*            | Bot token from @BotFather; mirrors the bell to Telegram |
+| `GITHUB_DATA_TOKEN`  | *(falls back to `server/config.js`)* | **The storage token in GitHub-storage mode.** Set this and the repo never has to hold the credential; it also rotates in a minute instead of a commit + redeploy. `GH_DATA_TOKEN` is accepted as an alias. |
+| `GITHUB_DATA_REPO`   | *(from `server/config.js`)*       | `owner/name` of the repository holding the data branch |
+| `GITHUB_DATA_BRANCH` | *(from `server/config.js`)*       | The data branch (default `appdata`)            |
 
 ```bash
 JWT_SECRET="a-long-random-string" PORT=8080 npm start

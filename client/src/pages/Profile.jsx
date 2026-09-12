@@ -6,8 +6,10 @@ import Avatar from '../components/Avatar.jsx'
 import { WORK_DAYS } from '../lib/constants.js'
 import { TEXT_SIZES, getTextSize, applyTextSize } from '../lib/textSize.js'
 import { THEMES, getTheme, applyTheme } from '../lib/theme.js'
+import { LANGS, useT } from '../lib/i18n.jsx'
 import { soundsOn, setSounds, playDone } from '../lib/sound.js'
-import { Moon } from 'lucide-react'
+import { Moon, Languages } from 'lucide-react'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Distinct hues, not seven shades of brand red — avatars and chips must be
 // tellable apart at a glance.
@@ -38,7 +40,7 @@ function WarningRecord() {
         ) : (
           <>
             <p className="muted" style={{ marginTop: 0 }}>
-              {warnings.length} missed {warnings.length === 1 ? 'deadline' : 'deadlines'}
+              {warnings.length} missed {warnings.length === 1 ? 'deadline' : tx('deadlines')}
               {open > 0 && <> · <b>{open}</b> still running</>}. Delays caused by someone
               handing work over late are not counted here.
             </p>
@@ -96,6 +98,7 @@ export default function Profile() {
       setTimeout(() => setSchedSaved(false), 2500)
     } catch (e) { setSchedErr(e.message) }
   }
+  const { lang, setLang, t } = useT()
   const [textSize, setTextSize] = useState(getTextSize())
   const [theme, setTheme] = useState(getTheme())
   const [snd, setSnd] = useState(soundsOn())
@@ -261,11 +264,11 @@ export default function Profile() {
 
       <WarningRecord />
 
-      <div className="section-head" style={{ marginTop: 22 }}><h2><Clock size={16} style={{ verticalAlign: -2 }} /> Working schedule</h2></div>
+      <div className="section-head" style={{ marginTop: 22 }}><h2><Clock size={16} style={{ verticalAlign: -2 }} /> {tx('My working hours')}</h2></div>
       <div className="card card-pad">
         {schedErr && <div className="form-error"><AlertCircle size={16} /> {schedErr}</div>}
         <div className="stat-sub" style={{ marginBottom: 10 }}>
-          Shoots are booked only inside these hours — plan yours honestly.
+          {tx('The days and hours you can be booked for. The board offers only these when somebody plans a shoot with you.')}
         </div>
         <div className="wd-row">
           {WORK_DAYS.map((d) => (
@@ -276,10 +279,10 @@ export default function Profile() {
           ))}
         </div>
         <div className="sched-hours">
-          <label className="sched-field">from
+          <label className="sched-field">{tx('From')}
             <input className="input" type="time" value={wStart} onChange={(e) => setWStart(e.target.value)} />
           </label>
-          <label className="sched-field">to
+          <label className="sched-field">{tx('To')}
             <input className="input" type="time" value={wEnd} onChange={(e) => setWEnd(e.target.value)} />
           </label>
         </div>
@@ -351,6 +354,23 @@ export default function Profile() {
             onClick={() => { setSounds(true); setSnd(true); playDone() }}>Sounds on</button>
           <button type="button" className={'seg-btn' + (!snd ? ' on' : '')}
             onClick={() => { setSounds(false); setSnd(false) }}>Off</button>
+        </div>
+      </div>
+
+      <div className="section-head" style={{ marginTop: 22 }}><h2><Languages size={16} style={{ verticalAlign: -2 }} /> {t('common.language')}</h2></div>
+      <div className="card card-pad">
+        <div className="stat-sub" style={{ marginBottom: 10 }}>
+          The buttons, menus and headings on this device. What you and everybody
+          else TYPE — titles, scripts, comments — is never translated.
+        </div>
+        <div className="seg">
+          {LANGS.map((l) => (
+            <button key={l.key} type="button"
+              className={'seg-btn' + (lang === l.key ? ' on' : '')}
+              onClick={() => setLang(l.key)}>
+              {l.native}
+            </button>
+          ))}
         </div>
       </div>
 

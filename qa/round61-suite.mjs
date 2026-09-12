@@ -67,7 +67,7 @@ const mkUser = async (name, username, role) => (await api('/users', 'POST', {
 const anvar = await mkUser(`${tag} Anvar`, `${tag}anvar`, 'operator')
 const dilnoza = await mkUser(`${tag} Dilnoza`, `${tag}dil`, 'editor')
 const mk = (over) => api('/content', 'POST', {
-  channels: ['instagram_main'], type: 'video', status_id: sid(/to shoot/i), assignee_ids: [], ...over,
+  channels: ['instagram_main'], type: 'video', status_id: sid(/^editing$/i), assignee_ids: [], ...over,
 }, T).then((r) => r.data)
 
 const late = await mk({ title: `${tag} overdue release`, release_date: day(-3), operator_id: anvar.id })
@@ -82,6 +82,18 @@ ok('fixtures exist', [late, soon, quoted, orphan, onYt, undated].every((t) => t?
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true })
 const page = await ctx.newPage()
+
+// The person filter is a searchable picker rather than a <select>: a select's
+// type-ahead jumps to the first match and forgets the letter, and this one
+// narrows the list instead. Driven the way a person drives it.
+const ppPick = async (root, name) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
 const errs = []
 page.on('pageerror', (e) => errs.push(e.message))
 const signIn = async (pg, u, pw) => {
@@ -113,12 +125,28 @@ ok('…and a task sits in its own day',
 
 // ==================== moving a day is one drag ====================
 // The grid's own pointer drag: press the pill, slide to the target day, drop.
+//
+// Aims at the CENTRE and checks what is under the cursor before letting go —
+// see the long note on the same helper in round62-suite.mjs. Eight pixels
+// above the bottom of a cell read before the press is a coordinate that
+// belongs to the day next door as soon as a full calendar reflows.
 const dragTo = async (pill, iso, pg = page) => {
+  const target = pg.locator(`[data-drop="${iso}"]`)
+  await target.scrollIntoViewIfNeeded()
+  await pg.waitForTimeout(250)
   const from = await pill.boundingBox()
-  const cell = await pg.locator(`[data-drop="${iso}"]`).boundingBox()
   await pg.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
   await pg.mouse.down()
-  await pg.mouse.move(cell.x + cell.width / 2, cell.y + cell.height - 8, { steps: 12 })
+  for (let tries = 0; tries < 3; tries++) {
+    const cell = await target.boundingBox()
+    if (!cell) break
+    const x = cell.x + cell.width / 2
+    const y = cell.y + cell.height / 2
+    await pg.mouse.move(x, y, { steps: 12 })
+    const under = await pg.evaluate(([px, py]) =>
+      document.elementFromPoint(px, py)?.closest?.('[data-drop]')?.getAttribute('data-drop') || null, [x, y])
+    if (under === iso) break
+  }
   await pg.mouse.up()
   await pg.waitForTimeout(1400)
 }
@@ -187,7 +215,7 @@ await crewCtx.close()
 
 // ===================== the same view, as a spreadsheet =====================
 await openPage(page, '/releases')
-await page.locator('.cf-bar .cf-sel').first().selectOption(String(anvar.id))
+await ppPick(page.locator('.cf-bar .cf-person .pp-field'), anvar.name)
 await page.waitForTimeout(900)
 
 // What the page should be exporting: this person's work inside the drawn
@@ -240,11 +268,20 @@ const mErrs = []
 mp.on('pageerror', (e) => mErrs.push(e.message))
 await signIn(mp, 'admin', 'admin123')
 await openPage(mp, '/releases')
-ok('the phone gets the calendar too', await mp.locator('.cal-day').count() === 42)
+// Round 77 opened a phone on the WEEK, where titles are readable; round 82
+// asked for the month to be the default in every view, a phone included — a
+// week is a horizon you check, a month is the one you plan in. So the phone
+// opens on the month now, and the week is the tap away instead.
+ok('the phone gets the calendar too, opened on the month',
+  (await mp.locator('.cal-day').count()) === 42,
+  String(await mp.locator('.cal-day').count()))
+await mp.locator('.cal-scale .pill', { hasText: 'Week' }).click()
+await mp.waitForTimeout(800)
+ok('…and the week is one press away, all seven columns', await mp.locator('.wk-col').count() === 7,
+  String(await mp.locator('.wk-col').count()))
 ok('…and the page never scrolls sideways',
   !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)))
-// The grid is wider than a phone and scrolls inside its own box — but the
-// controls above it must not be dragged off with it.
+// The controls above the grid must be reachable without a sideways scroll.
 const reach = await mp.evaluate(() => {
   const seen = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.left >= -1 && r.right <= window.innerWidth + 1 }
   return { today: seen(document.querySelector('.cal-head .btn')), scale: seen(document.querySelector('.cal-scale')) }

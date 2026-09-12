@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import PageGuide from '../components/PageGuide.jsx'
 import { useSearchParams } from 'react-router-dom'
 import { Send, Clapperboard, AlertCircle, CalendarDays, Download } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
+import { rewardIfFinished } from '../lib/reward.js'
 import { toast, loadFailed } from '../lib/toast.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -9,7 +11,13 @@ import { can, todayISO, dateLabel, typeInfo, isDeletedLabel } from '../lib/const
 import ContentModal from '../components/ContentModal.jsx'
 import ContentCalendar from '../components/ContentCalendar.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
-import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../components/ContentFilters.jsx'
+import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn, assigneesOf } from '../components/ContentFilters.jsx'
+import { stageRankOf } from '../lib/gaps.js'
+import { cascadeDates, LABELS } from '../lib/formState.js'
+import { tr as tx } from '../lib/i18n.jsx'
+
+// How many overdue chips the strip shows before it stops being a strip.
+const LATE_SHOWN = 8
 
 // Everything that comes OUT, and everything that gets SHOT — across every
 // channel at once. The channel pages answer "what is happening on Instagram
@@ -28,17 +36,17 @@ import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn } from '../comp
 
 const MODES = {
   release: {
-    label: 'Releases', icon: Send, dateField: 'release_date', timeField: 'release_time',
-    lead: 'everything going out, every channel',
-    empty: 'Nothing is scheduled to go out yet.',
+    label: tx('Releases'), icon: Send, dateField: 'release_date', timeField: 'release_time',
+    lead: tx('everything going out, every channel'),
+    empty: tx('Nothing is scheduled to go out yet.'),
     file: 'releases',
     // A post is written, not filmed — but everything gets released.
     applies: () => true,
   },
   recording: {
-    label: 'Recordings', icon: Clapperboard, dateField: 'recording_date', timeField: 'recording_time',
-    lead: 'every shoot on the books, every channel',
-    empty: 'No shoots are booked yet.',
+    label: tx('Recordings'), icon: Clapperboard, dateField: 'recording_date', timeField: 'recording_time',
+    lead: tx('every shoot on the books, every channel'),
+    empty: tx('No shoots are booked yet.'),
     file: 'recordings',
     applies: (t) => t.type !== 'post',
   },
@@ -49,7 +57,7 @@ const MODES = {
 // leading BOM is what makes Excel read a Cyrillic title as Cyrillic instead of
 // mojibake, and the file name stays ASCII because Chromium silently drops a
 // non-ASCII one from <a download>.
-const CSV_HEAD = ['Date', 'Time', 'Title', 'Type', 'Channels', 'Stage', 'Operator', 'Editor', 'Designer', 'Assignees']
+const CSV_HEAD = ['Date', 'Time', 'Title', 'Type', 'Channels', 'Stage', tx('Operator'), tx('Editor'), tx('Designer'), 'Assignees']
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
 const csvOf = (rows) => '\uFEFF' + [CSV_HEAD, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n')
 const saveText = (name, text, type) => {
@@ -155,12 +163,27 @@ export default function Schedule({ mode }) {
   // into Recordings, and every shoot into Releases. The channel pages keep the
   // unscheduled tray, where it is scoped to one channel and means something.
   const dated = useMemo(() => shown.filter((t) => t[M.dateField]), [shown, M])
+  // The strip shows the nearest handful. It used to show every overdue piece
+  // the board had ever accumulated — fifty chips going back a month, which is
+  // not a strip, it is a backlog, and dragging them back one at a time was the
+  // wrong person doing the wrong job. The rest are on their owners' My Day.
+  const [allLate, setAllLate] = useState(false)
+  // Only Releases carries the strip. A shoot day that has passed is not a
+  // decision waiting to be made — the day happened or it did not, and the
+  // piece has moved on down the pipeline either way; the strip on Recordings
+  // was a list of dates in the past asking to be dragged into the future.
+  // What actually matters about a late shoot — that the work behind it is
+  // running late — is on the owner's My Day and in the statistics.
   const late = useMemo(
-    () => dated.filter((t) => !t.done_at && t[M.dateField] < today).sort(byWhen),
+    () => (M.dateField === 'recording_date' ? [] : dated.filter((t) => {
+      if (t.done_at || t[M.dateField] >= today) return false
+      return true
+    }).sort(byWhen)),
     [dated, today, byWhen, M])
 
   const updateContent = async (item, payload) => {
     const c = await api.patch(`/content/${item.id}`, payload)
+    rewardIfFinished(item, c)
     setItems((prev) => prev.map((x) => (x.id === item.id ? c : x)))
   }
   const deleteContent = async (item) => {
@@ -179,27 +202,75 @@ export default function Schedule({ mode }) {
   // the server's own ten-second undo only photographs stage moves, and this is
   // the client putting a date it already knows straight back.
   const canMove = can(user, 'move_tasks')
+  // An idea is a thought nobody has promised anything about, so anybody who
+  // can see it may move its day — no move_tasks, no asking an admin. The
+  // server has said so since the idea carve-out went in (content.js,
+  // `wasAnIdea`) and the kanban agrees; the calendar was the last surface
+  // where an idea would not budge, which reads as the board being broken
+  // rather than as a rule.
+  const ideaIds = useMemo(() => {
+    const rank = stageRankOf(statuses)
+    return new Set(statuses.filter((st) => rank(st.id) === 'idea').map((st) => st.id))
+  }, [statuses])
+  const mayMoveDay = useCallback(
+    (t) => canMove || ideaIds.has(t.status_id), [canMove, ideaIds])
   const manageContent = can(user, 'manage_content')
-  const setDay = async (t, field, iso, back) => {
+  const setDay = async (t, field, iso) => {
     const before = t[field] || null
     if ((iso || null) === before) return
-    setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, [field]: iso } : x)))
+    // The three dates are a chain: shoot, then cut, then out. The task form
+    // has always known this — moving the shoot past the cut leaves the cut due
+    // before the footage exists, a promise nobody can keep — and it cascades
+    // the days after it, keeping the gaps the plan had.
+    //
+    // The CALENDAR did not. It sent the one day it was given, so a card
+    // dragged four days to the right left its cut stranded in the past, and
+    // the board showed a plan it would refuse if you typed it into the form.
+    // Same rule, enforced on one path and forgotten on its neighbour. It uses
+    // the form's own helper now, so there is one implementation of the chain
+    // rather than two that can drift, and it says what it moved — a deadline
+    // that shifts under somebody in silence is worse than one that does not
+    // shift at all.
+    const { moved } = cascadeDates(t, field, iso)
+    const payload = { [field]: iso }
+    for (const m of moved) payload[m.key] = m.to
+    // What every touched day was, kept out here because both the undo button
+    // and the failure path put it back.
+    const wasBefore = { [field]: before }
+    for (const m of moved) wasBefore[m.key] = m.from
+    setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, ...payload } : x)))
     try {
-      const c = await api.patch(`/content/${t.id}`, { [field]: iso })
+      const c = await api.patch(`/content/${t.id}`, payload)
       setItems((prev) => prev.map((x) => (x.id === t.id ? c : x)))
       const where = iso ? dateLabel(iso) : 'off the calendar'
-      const undo = { label: 'Undo', onClick: () => setDay({ ...t, [field]: iso }, field, before, true) }
-      // `iso` is where it is going, `before` is where it came from — and an
-      // undo has to name the DESTINATION, same as any other move. Naming
-      // `before` here told you it had gone back to the day it just left.
-      if (back) toast(`${t.title} · back to ${iso ? dateLabel(iso) : 'no day'}`)
-      else toast(iso ? `${t.title} → ${where}` : `${t.title} · taken ${where}`, 'ok', undo)
+      // An undo puts back everything the move touched, not just the day that
+      // was dragged: a cascade that could not be undone whole would be a
+      // button that half works.
+      const undoAll = async () => {
+        setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, ...wasBefore } : x)))
+        try {
+          const r = await api.patch(`/content/${t.id}`, wasBefore)
+          setItems((prev) => prev.map((x) => (x.id === t.id ? r : x)))
+          toast(`${t.title} · back to ${before ? dateLabel(before) : 'no day'}`)
+        } catch (e2) { toast(e2.message, 'err') }
+      }
+      const undo = { label: 'Undo', onClick: undoAll }
+      if (moved.length) {
+        toast(tx('{what} moved with it — {days}', {
+          what: moved.map((m) => tx(LABELS[m.key])).join(tx(' and ')),
+          days: moved.map((m) => dateLabel(m.to)).join(', '),
+        }))
+      }
+      toast(iso ? `${t.title} → ${where}` : `${t.title} · taken ${where}`, 'ok', undo)
     } catch (e) {
-      setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, [field]: before } : x)))
+      // Put back every day the optimistic update touched, not only the one
+      // that was dragged — a half-rolled-back cascade leaves the board
+      // showing a plan the server rejected.
+      setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, ...wasBefore } : x)))
       toast(e.message, 'err')
     }
   }
-  const moveDate = (t, field, iso) => setDay(t, field, iso, false)
+  const moveDate = (t, field, iso) => setDay(t, field, iso)
 
   // What you can see is what you get. The calendar owns where it is parked, so
   // it reports its span up here; the export carries that span plus the late
@@ -215,7 +286,7 @@ export default function Schedule({ mode }) {
   }, [dated, late, span, byWhen, M])
 
   const exportCsv = () => {
-    if (exportRows.length === 0) { toast('Nothing to export yet', 'err'); return }
+    if (exportRows.length === 0) { toast(tx('Nothing to export yet'), 'err'); return }
     saveText(`${M.file}-${today}.csv`, csvOf(exportRows.map((t) => [
       t[M.dateField], t[M.timeField] || '', t.title, typeInfo(t.type).label,
       (t.channels || []).map((c) => byKey[c]?.label || c).join(' / '),
@@ -223,7 +294,7 @@ export default function Schedule({ mode }) {
       teamById[t.operator_id]?.name || '',
       teamById[t.editor_id]?.name || '',
       teamById[t.designer_id]?.name || '',
-      (t.assignee_ids || []).map((id) => teamById[id]?.name || `#${id}`).join(' / '),
+      assigneesOf(t).map((id) => teamById[id]?.name || `#${id}`).join(' / '),
     ])), 'text/csv;charset=utf-8')
     toast(`${exportRows.length} ${exportRows.length === 1 ? 'row' : 'rows'} saved as a spreadsheet`)
   }
@@ -245,13 +316,14 @@ export default function Schedule({ mode }) {
         <Icon size={17} style={{ color: 'var(--brand-500)' }} />
         <h2>{M.label}</h2>
         <span className="stat-sub" style={{ fontWeight: 500 }}>{M.lead}</span>
+        <PageGuide page="schedule" statusesById={statusesById} />
         <span className="spacer" />
         <select className="select cf-sel" value={channel} onChange={(e) => setParam('channel', e.target.value)}
-          data-tip="One channel only">
-          <option value="">All channels</option>
+          data-tip={tx("One channel only")}>
+          <option value="">{tx("All channels")}</option>
           {channelList.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
-        <button className="btn btn-sm sch-export" onClick={exportCsv} data-tip="Download exactly what is shown">
+        <button className="btn btn-sm sch-export" onClick={exportCsv} data-tip={tx("Download exactly what is shown")}>
           <Download size={13} /> CSV
         </button>
       </div>
@@ -270,9 +342,14 @@ export default function Schedule({ mode }) {
         <div className="cal-tray sch-late">
           <span className="cal-tray-label">
             <AlertCircle size={12} /> Late<b> · {late.length}</b>
+            {late.length > LATE_SHOWN && (
+              <button type="button" className="qbtn" onClick={() => setAllLate((v) => !v)}>
+                {allLate ? 'show fewer' : `show all ${late.length}`}
+              </button>
+            )}
           </span>
           <div className="cal-tray-items">
-            {late.map((t) => {
+            {(allLate ? late : late.slice(0, LATE_SHOWN)).map((t) => {
               const st = statusesById[t.status_id]
               return (
                 <div
@@ -286,18 +363,23 @@ export default function Schedule({ mode }) {
                   <span className="ev-txt">{t.title}</span>
                   {canMove && (
                     <span className="tray-quick">
-                      <button type="button" className="qbtn" data-tip="Move to today"
-                        onClick={(e) => { e.stopPropagation(); setDay(t, M.dateField, today, false) }}>Today</button>
+                      <button type="button" className="qbtn" data-tip={tx("Move to today")}
+                        onClick={(e) => { e.stopPropagation(); setDay(t, M.dateField, today, false) }}>{tx("Today")}</button>
                     </span>
                   )}
                 </div>
               )
             })}
+            {!allLate && late.length > LATE_SHOWN && (
+              <button type="button" className="cal-tray-chip late-more" onClick={() => setAllLate(true)}>
+                …and {late.length - LATE_SHOWN} more
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {selectedDate ? (
+      {selectedDate && (
         <DayAgenda
           date={selectedDate}
           items={shown}
@@ -307,16 +389,19 @@ export default function Schedule({ mode }) {
           onAdd={addAt}
           onBack={() => setSelectedDate(null)}
         />
-      ) : dated.length === 0 ? (
+      )}
+      {dated.length === 0 ? (
         <div className="card card-pad empty">
           <CalendarDays size={28} />
           <div>{M.empty}</div>
         </div>
       ) : (
+        <>
+
         <ContentCalendar
           items={dated}
           mode={mode}
-          canMove={canMove}
+          canMove={mayMoveDay}
           onMoveDate={moveDate}
           onDayClick={setSelectedDate}
           onOpenItem={setOpenItem}
@@ -324,10 +409,11 @@ export default function Schedule({ mode }) {
           onRange={onRange}
           statusesById={statusesById}
         />
+        </>
       )}
 
       {openItem && (
-        <ContentModal
+        <ContentModal key={openItem?.id || 'new'}
           item={openItem === 'new' ? null : openItem}
           defaults={newDefaults || undefined}
           statuses={statuses}

@@ -1,3 +1,5 @@
+import { dataIsFresh } from './toast.js'
+
 const TOKEN_KEY = 'satashkent_token'
 
 // ---- little comfort cookies (login prefill, remember-me choice) ----
@@ -69,7 +71,10 @@ async function request(path, { method = 'GET', body } = {}) {
     let data = {}
     let readable = true
     if (text) { try { data = JSON.parse(text) } catch { readable = false } }
-    if (res.ok && readable) return data
+    // Anything reaching the server takes down the stale-data warning. Doing it
+    // here rather than in each page's load means nothing has to remember to,
+    // and a board that is talking to the server again stops saying it is not.
+    if (res.ok && readable) { dataIsFresh(); return data }
     if (res.ok) {
       if (attempt < RETRY_WAITS.length) {
         await new Promise((r) => setTimeout(r, RETRY_WAITS[attempt]))
@@ -115,9 +120,22 @@ const dropMemo = (path) => {
 const RECENT_GRACE = 45000
 const recentWrites = new Map() // `${base}:${id}` → { at, row|null }
 const baseOf = (p) => '/' + p.split('?')[0].split('/').filter(Boolean)[0]
+// Sub-resource writes that answer with the PARENT row (content.js hands back
+// listRow for each of these), so their answer really can stand in for it.
+const SELF_ANSWERING = new Set(['duplicate', 'revisions', 'confirm', 'undo'])
 const noteWrite = (p, row) => {
-  if (row && typeof row === 'object' && row.id != null && !Array.isArray(row))
-    recentWrites.set(`${baseOf(p)}:${row.id}`, { at: Date.now(), row })
+  if (!row || typeof row !== 'object' || row.id == null || Array.isArray(row)) return
+  // Only a write that answers with the resource ITSELF may be remembered as
+  // it. POST /content/5/comments answers with a comment — an object with an
+  // id and no channels, no status, no title. Remembered under /content, it
+  // was spliced into the next poll's list as if it were a task, and the first
+  // page to touch `.channels` on it (Overview, Admin → Content) went blank
+  // until reload, for 45 seconds after every comment. Flags, date requests
+  // and file uploads did the same. Depth is the tell: /content and
+  // /content/5 are the thing; /content/5/anything is about the thing.
+  const parts = p.split('?')[0].split('/').filter(Boolean)
+  if (parts.length > 2 && !SELF_ANSWERING.has(parts[2])) return
+  recentWrites.set(`${baseOf(p)}:${row.id}`, { at: Date.now(), row })
 }
 const noteDelete = (p) => {
   const parts = p.split('?')[0].split('/').filter(Boolean)
@@ -178,7 +196,14 @@ export const api = {
   cached: cachedGet,
   post: async (p, body) => { dropMemo(p); const r = await request(p, { method: 'POST', body }); noteWrite(p, r); return r },
   patch: async (p, body) => { dropMemo(p); const r = await request(p, { method: 'PATCH', body }); noteWrite(p, r); return r },
-  del: async (p) => { dropMemo(p); const r = await request(p, { method: 'DELETE' }); noteDelete(p); return r },
+  // A whole-record replace. Not folded into the recent-write merge: what PUT
+  // is used for here (a rate card) is not a row in any list the client polls,
+  // and splicing it into one would be wrong.
+  put: async (p, body) => { dropMemo(p); return request(p, { method: 'PUT', body }) },
+  // A body on a DELETE is unusual but right where the removal itself needs
+  // saying — a sprint task is dropped WITH a reason, and asking for the reason
+  // in a second request would leave the two apart if the second one failed.
+  del: async (p, body) => { dropMemo(p); const r = await request(p, { method: 'DELETE', body }); noteDelete(p); return r },
   poll,
   pollView,
 }

@@ -66,6 +66,11 @@ await p2.click('button[type="submit"]')
 await p2.waitForURL(/brief/, { timeout: 15000 }).catch(() => {})
 ok('member also lands on the brief', p2.url().includes('/brief'))
 await p2.waitForSelector('.sidebar', { timeout: 8000 })
+// Channels starts folded, so its doors are behind a count until it is opened.
+// Opening it is what a person does; the pin here is what is INSIDE, which is
+// the thing that matters — their channels and nobody else's.
+const chanHub = p2.locator('.nav-hub').filter({ hasText: /Channels/ }).first()
+if (await chanHub.locator('.nav-hub-n').count()) { await chanHub.locator('.nav-hub-head').click(); await p2.waitForTimeout(300) }
 const side = await p2.locator('.sidebar').textContent()
 ok('member sidebar: no Projects', !side.includes('Projects'))
 const chans = (await req('/channels')).data

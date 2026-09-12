@@ -1,3 +1,4 @@
+import { tr as tx, locale } from './i18n.jsx'
 import {
   Instagram, Send, Youtube, Target, Camera, Clapperboard, Megaphone,
   Star, BarChart3, Globe, Music2, PenTool, Image as ImageIcon, Film, CirclePlay, Video, FileText,
@@ -31,6 +32,8 @@ export const PERMISSIONS = [
   { key: 'review_publish',  label: 'Review & publish',          desc: 'Move Ready tasks to Published, on your channels' },
   { key: 'request_changes', label: 'Request changes (Pravki)',  desc: 'Send a Ready task back to the crew with notes' },
   { key: 'deliver_work',    label: 'Deliver / re-deliver work', desc: 'Update a stage’s delivery link and mark fixes done' },
+  { key: 'manage_ambassadors', label: 'Run the ambassador programme',
+    desc: 'Check students’ posts, set their terms, and sign new ones up' },
 ]
 
 export const can = (user, perm) =>
@@ -43,6 +46,40 @@ export const isDeletedLabel = (label) => /^deleted$/i.test(label || '')
 // The Idea stage: a thought, not a commitment — no crew or dates expected yet,
 // so planning views don't count its blanks as gaps.
 export const isIdeaLabel = (label) => /idea/i.test(label || '')
+
+// ---- channels where the work is WRITTEN rather than filmed ----------------
+// A Telegram post is typed. Nobody books an operator for it, nobody hands over
+// footage, and nobody waits on a cut — so the pipeline the rest of the board
+// runs on (Idea → To shoot → Editing → Ready → Published) asks a Telegram
+// channel four questions it does not have answers to, and gives it a Recording
+// calendar that is permanently empty.
+//
+// Such a channel has three states and only three: not started, being written,
+// out. Matched on the channel the way the platform lens already is — the icon
+// an admin picks when they create it, or the key it got from its name — so a
+// second Telegram channel is one without anybody wiring it up.
+export const isWritingChannel = (ch) =>
+  ch?.icon === 'telegram' || /telegram/i.test(ch?.key || '')
+
+// The three stages such a channel runs on. Idea and the making stage are
+// matched on the pipeline's own labels, the way the stage rules are; the last
+// one is matched on is_final instead, because "the stage that means it is out"
+// is a fact the pipeline records about itself and an admin is free to rename.
+//
+// "Writing" is the making stage under the name the work actually has here — the
+// same column an Instagram reel calls Editing, because it IS the same column in
+// the same pipeline. Nothing is renamed in the database and no task changes
+// stage; only the word above the column does.
+//
+// It is the one word here the BOARD supplies rather than the admin, so it is
+// the one that gets translated: the other two columns keep the label the admin
+// typed, already in their own language. Read through a function so a language
+// switch moves it, the way every other tx() string moves.
+export const WRITING_STAGES = [
+  { key: 'idea', is: (s) => /idea/i.test(s.label || ''), label: null },
+  { key: 'writing', is: (s) => /editing|montaj/i.test(s.label || ''), label: () => tx('Writing') },
+  { key: 'published', is: (s) => !!s.is_final, label: null },
+]
 
 // The little glyph a pipeline stage wears on calendar pills and chips —
 // matched by label so custom stages still land on something sensible.
@@ -99,7 +136,9 @@ export const CONTENT_TYPES = [
   { key: 'reel',  label: 'Reel',  plan: 'Reels',   icon: Film },
   { key: 'story', label: 'Story', plan: 'Stories', icon: CirclePlay },
   { key: 'video', label: 'Video', plan: 'Videos',  icon: Video },
-  { key: 'other', label: 'Other', plan: null,      icon: FileText },
+  // Paid promotion: a creative made for an ad set rather than for the feed.
+  { key: 'target', label: 'Target', plan: 'Target', icon: Target },
+  { key: 'other', label: tx('Other'), plan: null,      icon: FileText },
 ]
 export const typeInfo = (key) => CONTENT_TYPES.find((t) => t.key === key) || CONTENT_TYPES[CONTENT_TYPES.length - 1]
 
@@ -130,7 +169,7 @@ export function dateLabel(iso) {
   if (iso === t) return 'Today'
   if (iso === addDaysISO(t, 1)) return 'Tomorrow'
   if (iso === addDaysISO(t, -1)) return 'Yesterday'
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 }
 
 // Distinct solid colors for departments — the admin overview and timeline
@@ -161,3 +200,11 @@ export function initials(name = '') {
     .map((w) => w[0]?.toUpperCase() || '')
     .join('')
 }
+
+// ---- what counts as an answer ----------------------------------------------
+// The form asks these BEFORE the save so the message lands next to the field
+// rather than arriving as a refusal. The rules themselves live in one place —
+// lib/text.js, mirroring server/text.js — because "is this a link" and "is
+// this a sentence" are two different questions and were being answered by the
+// same blunt check. The server is still the one that decides.
+export { readText, hasSubstance, hasLink, isSentence, isBareLink, MIN_SENTENCE_WORDS } from './text.js'

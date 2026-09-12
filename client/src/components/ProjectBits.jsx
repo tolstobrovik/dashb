@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { playTick } from '../lib/sound.js'
 import { Check, X, Plus, ImagePlus } from 'lucide-react'
 import { dateLabel, todayISO } from '../lib/constants.js'
+import Zoom from './Zoom.jsx'
 
 // Browser-side downscale for cover photos: main ≤1000px, thumbnail ≤160px.
 export function scalePhoto(file, maxW, quality) {
@@ -76,11 +77,25 @@ export function StatusBadge({ status }) {
   )
 }
 
-export function HealthPill({ health, reason }) {
+// A colour on its own makes you hover to find out what is wrong, and a word
+// like "red" only names the colour again. The state is said in words, and the
+// reason stands next to it — that sentence is the entire point of the column.
+const HEALTH_WORD = {
+  red: 'Needs you', amber: 'Slipping', green: 'On track', done: 'Done', idle: 'Not started',
+}
+export function HealthPill({ health, reason, withReason = false }) {
+  const word = HEALTH_WORD[health] || health
+  const pill = (
+    <span className={`pc-badge pc-badge-${health}`} style={{ background: PC[health] || PC.red }}
+      {...(reason && !withReason ? { 'data-tip': reason, 'data-tip-left': '' } : {})}>
+      {word}
+    </span>
+  )
+  if (!withReason) return pill
   return (
-    <span className="pc-badge" style={{ background: PC[health] || PC.red }}
-      {...(reason ? { 'data-tip': reason, 'data-tip-left': '' } : {})}>
-      {health}
+    <span className="pc-health">
+      {pill}
+      {reason && <span className="pc-health-why">{reason}</span>}
     </span>
   )
 }
@@ -263,7 +278,7 @@ export function CampaignRow({ c, byKey, onOpen }) {
   const startsIn = c.status === 'incoming' && c.start_date ? daysUntil(c.start_date) : null
   return (
     <button className="pc-camp-row" onClick={() => onOpen(c)}>
-      {c.photo_thumb && <img className="pc-row-thumb" src={c.photo_thumb} alt="" />}
+      {c.photo_thumb && <Zoom className="pc-row-thumb" src={c.photo_thumb} full={c.photo || c.photo_thumb} alt={c.title || ''} />}
       <div className="pc-row-body">
       <div className="pc-camp-top">
         <span className="pc-camp-name">{c.name}</span>

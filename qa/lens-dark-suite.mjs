@@ -42,7 +42,12 @@ await page.waitForTimeout(500)
 ok('lens pills present on Target', (await page.locator('.pill', { hasText: 'Instagram' }).count()) >= 1 && (await page.locator('.pill', { hasText: 'Telegram' }).count()) >= 1)
 ok('All lens: 3 program bars', (await page.locator('.gantt-bar').count()) === 3)
 ok('platform tags ride the labels', (await page.locator('.prog-pf', { hasText: 'IG' }).count()) >= 1)
-ok('runway: next month is already on the axis', (await page.locator('.gantt-month').allTextContents()).some((m) => m.includes('Aug')), (await page.locator('.gantt-month').allTextContents()).join(','))
+// The axis runs a month and a half past today whatever the programs say, so
+// next month's name is always on it — worked out from today rather than
+// written in, which is how this check came to fail in a September that was
+// nothing to do with the code.
+const nextMonth = (() => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + 1); return d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }) })()
+ok('runway: next month is already on the axis', (await page.locator('.gantt-month').allTextContents()).some((m) => m.includes(nextMonth)), `${nextMonth} in ${(await page.locator('.gantt-month').allTextContents()).join(',')}`)
 await page.locator('.pill', { hasText: 'Instagram' }).first().click()
 await page.waitForTimeout(400)
 ok('Instagram lens: TG-only program hidden', (await page.locator('.gantt-bar').count()) === 2
@@ -81,7 +86,7 @@ await page.waitForSelector('.gantt-bar', { timeout: 10000 })
 await page.waitForTimeout(400)
 await page.screenshot({ path: 'dark-target.png', fullPage: true })
 await page.goto(BASE + '/overview')
-await page.waitForSelector('.ov-camps, .grid', { timeout: 10000 })
+await page.waitForSelector('.ov-grid', { timeout: 10000 })
 await page.waitForTimeout(500)
 await page.screenshot({ path: 'dark-overview.png', fullPage: true })
 // sidebar quick toggle flips back to light

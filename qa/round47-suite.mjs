@@ -79,11 +79,13 @@ const sts = (await req('/statuses')).data
 const stage = (re) => sts.find((x) => re.test(x.label)).id
 const task = (await req('/content', 'POST', {
   title: 'x47: blocked-chat clip', channels: [chKey], type: 'video',
-  assignee_ids: [m1.id], editor_id: m2.id, status_id: stage(/to shoot/i),
+  assignee_ids: [m1.id], editor_id: m2.id, status_id: stage(/^editing$/i),
 })).data
 await block(['702'])
 await reset()
-await req(`/content/${task.id}`, 'PATCH', { status_id: stage(/editing/i) })
+// A real move, not a stage set to the one it is already on: the piece goes
+// back to the drawing board, which is a plain stage bell for both chats.
+await req(`/content/${task.id}`, 'PATCH', { status_id: stage(/^idea$/i) })
 s = await sentList()
 ok('one blocked chat does not silence the others', s.some((x) => String(x.chat_id) === '701' && !x.rejected),
   `delivered to ${s.filter((x) => !x.rejected).map((x) => x.chat_id).join(',') || 'nobody'}`)

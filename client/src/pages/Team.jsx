@@ -7,11 +7,13 @@ import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
 import { scheduleLabel, WORK_DAYS, PERMISSIONS, dateLabel } from '../lib/constants.js'
 import Avatar from '../components/Avatar.jsx'
+import Fold from '../components/Fold.jsx'
 import Modal from '../components/Modal.jsx'
 import { playDone } from '../lib/sound.js'
 import { useContextMenu } from '../components/ContextMenu.jsx'
 import RolePicker from '../components/RolePicker.jsx'
 import { toast, loadFailed } from '../lib/toast.js'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // The team in one place: who we have, how to reach them, when they work and
 // what they answer for — plus the hiring board for the roles we still need.
@@ -27,11 +29,11 @@ const roleWord = (u) => {
 
 // The candidate pipeline, plain and readable.
 const STAGES = [
-  { key: 'new', label: 'Considering', color: '#2a78d6' },
-  { key: 'interview', label: 'Interview', color: '#BA7517' },
-  { key: 'offer', label: 'Offer', color: '#7b5ad6' },
-  { key: 'hired', label: 'Hired', color: '#1D9E75' },
-  { key: 'declined', label: 'Declined', color: '#6d6a70' },
+  { key: 'new', label: tx('Considering'), color: '#2a78d6' },
+  { key: 'interview', label: tx('Interview'), color: '#BA7517' },
+  { key: 'offer', label: tx('Offer'), color: '#7b5ad6' },
+  { key: 'hired', label: tx('Hired'), color: '#1D9E75' },
+  { key: 'declined', label: tx('Declined'), color: '#6d6a70' },
 ]
 const stageOf = (k) => STAGES.find((x) => x.key === k) || STAGES[0]
 
@@ -64,36 +66,36 @@ function CandidateModal({ candidate, positions, onClose, onSaved, onDeleted }) {
   }
   const del = async () => {
     if (!confirm(`Remove ${candidate.name} from the candidates?`)) return
-    try { await api.del(`/candidates/${candidate.id}`); toast('Candidate removed'); onDeleted(candidate); onClose() } catch (e) { setErr(e.message) }
+    try { await api.del(`/candidates/${candidate.id}`); toast(tx('Candidate removed')); onDeleted(candidate); onClose() } catch (e) { setErr(e.message) }
   }
   return (
     <Modal title={creating ? 'New candidate' : form.name} onClose={onClose}
       footer={<>
-        {!creating && <button className="btn btn-danger" onClick={del}><Trash2 size={15} /> Remove</button>}
-        <div style={{ flex: 1 }} />
-        <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={save} disabled={!form.name.trim()}><Check size={15} /> Save</button>
+        {!creating && <button className="btn btn-danger" onClick={del}><Trash2 size={15} />{' '}{tx("Remove")}</button>}
+        <span className="foot-gap" />
+        <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
+        <button className="btn btn-primary" onClick={save} disabled={!form.name.trim()}><Check size={15} />{' '}{tx("Save")}</button>
       </>}>
       {err && <div className="form-error">{err}</div>}
       <div className="grid grid-2" style={{ gap: 12 }}>
-        <div className="field"><label>Name</label>
-          <input className="input" autoFocus value={form.name} placeholder="Full name"
+        <div className="field"><label>{tx("Name")}</label>
+          <input className="input" autoFocus value={form.name} placeholder={tx("Full name")}
             onChange={(e) => set({ name: e.target.value })} />
         </div>
-        <div className="field"><label>Contacts</label>
+        <div className="field"><label>{tx("Contacts")}</label>
           <input className="input" value={form.contacts} placeholder="+998 …, @telegram, email"
             onChange={(e) => set({ contacts: e.target.value })} />
         </div>
       </div>
       <div className="grid grid-2" style={{ gap: 12 }}>
-        <div className="field"><label>Considering for</label>
-          <input className="input" list="cand-positions" value={form.position} placeholder="Position — e.g. YouTube manager"
+        <div className="field"><label>{tx("Considering for")}</label>
+          <input className="input" list="cand-positions" value={form.position} placeholder={tx("Position — e.g. YouTube manager")}
             onChange={(e) => set({ position: e.target.value })} />
           <datalist id="cand-positions">
             {positions.map((t) => <option key={t} value={t} />)}
           </datalist>
         </div>
-        <div className="field"><label>Expected salary</label>
+        <div className="field"><label>{tx("Expected salary")}</label>
           <input className="input" value={form.salary} placeholder="e.g. $600 / 7 mln UZS"
             onChange={(e) => set({ salary: e.target.value })} />
         </div>
@@ -102,15 +104,15 @@ function CandidateModal({ candidate, positions, onClose, onSaved, onDeleted }) {
         <input className="input" value={form.portfolio} placeholder="https://…"
           onChange={(e) => set({ portfolio: e.target.value })} />
       </div>
-      <div className="field"><label>Experience</label>
-        <textarea className="input" rows={2} value={form.experience} placeholder="Years, places, what they've shipped…"
+      <div className="field"><label>{tx("Experience")}</label>
+        <textarea className="input" rows={2} value={form.experience} placeholder={tx("Years, places, what they've shipped…")}
           onChange={(e) => set({ experience: e.target.value })} />
       </div>
-      <div className="field"><label>Notes</label>
-        <textarea className="input" rows={2} value={form.notes} placeholder="Impressions, next steps…"
+      <div className="field"><label>{tx("Notes")}</label>
+        <textarea className="input" rows={2} value={form.notes} placeholder={tx("Impressions, next steps…")}
           onChange={(e) => set({ notes: e.target.value })} />
       </div>
-      <div className="field"><label>Stage</label>
+      <div className="field"><label>{tx("Stage")}</label>
         <div className="prog-states">
           {STAGES.map((st) => (
             <button key={st.key} type="button"
@@ -167,7 +169,7 @@ function MemberModal({ member, channels, onClose, onSaved }) {
         work_end: form.work_end || null,
         work_days: form.work_days.length ? form.work_days : null,
       })
-      toast('Member saved — synced')
+      toast(tx('Member saved — synced'))
       onSaved(u)
       onClose()
     } catch (e) { setErr(e.message) }
@@ -175,17 +177,17 @@ function MemberModal({ member, channels, onClose, onSaved }) {
   return (
     <Modal title={member.name} wide onClose={onClose}
       footer={<>
-        <span className="stat-sub">Passwords are changed in Admin → People.</span>
-        <div style={{ flex: 1 }} />
-        <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={save} disabled={!form.name.trim() || !form.username.trim()}><Check size={15} /> Save</button>
+        <span className="stat-sub">{tx("Passwords are changed in Admin → People.")}</span>
+        <span className="foot-gap" />
+        <button className="btn" onClick={onClose}>{tx("Cancel")}</button>
+        <button className="btn btn-primary" onClick={save} disabled={!form.name.trim() || !form.username.trim()}><Check size={15} />{' '}{tx("Save")}</button>
       </>}>
       {err && <div className="form-error">{err}</div>}
       <div className="grid grid-2" style={{ gap: 12 }}>
-        <div className="field"><label>Name</label>
+        <div className="field"><label>{tx("Name")}</label>
           <input className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} />
         </div>
-        <div className="field"><label>Username</label>
+        <div className="field"><label>{tx("Username")}</label>
           <input className="input" autoCapitalize="none" autoCorrect="off" value={form.username} onChange={(e) => set({ username: e.target.value })} />
         </div>
       </div>
@@ -193,14 +195,14 @@ function MemberModal({ member, channels, onClose, onSaved }) {
         <div className="field"><label>Email <span className="stat-sub">(optional)</span></label>
           <input className="input" type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} />
         </div>
-        <div className="field"><label>Role</label>
+        <div className="field"><label>{tx("Role")}</label>
           <RolePicker role={form.role} crewRoles={form.crew_roles}
             onChange={(role, crew_roles) => set({ role, crew_roles })} />
         </div>
       </div>
       {form.role === 'member' && (
         <>
-          <div className="field"><label>Channels</label>
+          <div className="field"><label>{tx("Channels")}</label>
             <div className="checkbox-row">
               {channels.map((c) => (
                 <label key={c.key} className={'checkbox-chip' + (form.departments.includes(c.key) ? ' on' : '')}>
@@ -210,7 +212,7 @@ function MemberModal({ member, channels, onClose, onSaved }) {
               ))}
             </div>
           </div>
-          <div className="field"><label>Permissions</label>
+          <div className="field"><label>{tx("Permissions")}</label>
             <div className="perm-list">
               {PERMISSIONS.map((p) => (
                 <button key={p.key} type="button" className={'perm-row' + (form.permissions[p.key] ? ' on' : '')} onClick={() => togglePerm(p.key)}>
@@ -226,17 +228,17 @@ function MemberModal({ member, channels, onClose, onSaved }) {
         </>
       )}
       <div className="grid grid-2" style={{ gap: 12 }}>
-        <div className="field"><label>Position</label>
-          <input className="input" value={form.position} placeholder="Videographer, SMM manager…" onChange={(e) => set({ position: e.target.value })} />
+        <div className="field"><label>{tx("Position")}</label>
+          <input className="input" value={form.position} placeholder={tx("Videographer, SMM manager…")} onChange={(e) => set({ position: e.target.value })} />
         </div>
-        <div className="field"><label>Phone</label>
+        <div className="field"><label>{tx("Phone")}</label>
           <input className="input" type="tel" value={form.phone} placeholder="+998 90 123 45 67" onChange={(e) => set({ phone: e.target.value })} />
         </div>
       </div>
-      <div className="field"><label>Responsibilities</label>
-        <textarea className="input" rows={2} value={form.duties} placeholder="What this person answers for…" onChange={(e) => set({ duties: e.target.value })} />
+      <div className="field"><label>{tx("Responsibilities")}</label>
+        <textarea className="input" rows={2} value={form.duties} placeholder={tx("What this person answers for…")} onChange={(e) => set({ duties: e.target.value })} />
       </div>
-      <div className="field"><label>Working schedule</label>
+      <div className="field"><label>{tx("Working schedule")}</label>
         <div className="wd-row">
           {WORK_DAYS.map((d) => (
             <button key={d.n} type="button" className={'wd-chip' + (form.work_days.includes(d.n) ? ' on' : '')} onClick={() => toggleDay(d.n)}>
@@ -296,9 +298,9 @@ export default function Team() {
   const gaps = useMemo(() => {
     const out = []
     const has = (r) => users.some((u) => (u.crew_roles || []).includes(r))
-    if (!has('operator')) out.push({ key: 'op', title: 'Operator', note: 'Nobody on the team can shoot — every video waits on this.' })
-    if (!has('editor')) out.push({ key: 'ed', title: 'Editor', note: 'Nobody on the team edits video.' })
-    if (!has('designer')) out.push({ key: 'de', title: 'Designer', note: 'Nobody designs posts — every artwork waits on this.' })
+    if (!has('operator')) out.push({ key: 'op', title: tx('Operator'), note: 'Nobody on the team can shoot — every video waits on this.' })
+    if (!has('editor')) out.push({ key: 'ed', title: tx('Editor'), note: 'Nobody on the team edits video.' })
+    if (!has('designer')) out.push({ key: 'de', title: tx('Designer'), note: 'Nobody designs posts — every artwork waits on this.' })
     for (const c of channels) {
       const covered = users.some((u) => u.role === 'admin' ? false : (u.departments || []).includes(c.key))
       if (!covered) out.push({ key: `ch-${c.key}`, title: `${c.label} lead`, note: `Nobody covers the ${c.label} channel.` })
@@ -314,7 +316,7 @@ export default function Team() {
     try {
       const created = await api.post('/hiring', { title: name, note: n, priority: p })
       setNeeds((prev) => [created, ...prev])
-      toast('Position added — synced')
+      toast(tx('Position added — synced'))
       setTitle(''); setNote(''); setPriority(false)
     } catch (e) { setErr(e.message) }
   }
@@ -322,13 +324,13 @@ export default function Team() {
     playDone()
     const u = await api.patch(`/hiring/${need.id}`, { status: 'hired' })
     setNeeds((prev) => prev.map((x) => (x.id === need.id ? u : x)))
-    toast('Marked as hired — synced')
+    toast(tx('Marked as hired — synced'))
   }
   const removeNeed = async (need) => {
     if (!confirm(`Remove “${need.title}” from the hiring board?`)) return
     await api.del(`/hiring/${need.id}`)
     setNeeds((prev) => prev.filter((x) => x.id !== need.id))
-    toast('Removed')
+    toast(tx('Removed'))
   }
 
   // Right-click: cards answer directly.
@@ -357,7 +359,7 @@ export default function Team() {
   }
   const removeCand = async (c) => {
     if (!confirm(`Remove ${c.name} from the candidates?`)) return
-    try { await api.del(`/candidates/${c.id}`); setCands((prev) => prev.filter((x) => x.id !== c.id)); toast('Candidate removed') }
+    try { await api.del(`/candidates/${c.id}`); setCands((prev) => prev.filter((x) => x.id !== c.id)); toast(tx('Candidate removed')) }
     catch (e) { alert(e.message) }
   }
   const candMenu = (e, c) => openMenu(e, [
@@ -385,33 +387,33 @@ export default function Team() {
     <>
       {/* The one-line state of the team */}
       <div className="miss-stats" style={{ marginTop: 0 }}>
-        <div className="miss-stat"><b>{team.length}</b><span>on the team</span></div>
-        <div className="miss-stat"><b>{crewCount}</b><span>video crew</span></div>
+        <div className="miss-stat"><b>{team.length}</b><span>{tx("on the team")}</span></div>
+        <div className="miss-stat"><b>{crewCount}</b><span>{tx("video crew")}</span></div>
         <div className={'miss-stat' + (open.length ? ' miss-stat-bad' : ' miss-stat-ok')}>
-          <b>{open.length}</b><span>position{open.length === 1 ? '' : 's'} to fill</span>
+          <b>{open.length}</b><span>{open.length === 1 ? tx('position to fill') : tx('positions to fill')}</span>
         </div>
         <div className="miss-stat">
-          <b>{inPlay}</b><span>candidate{inPlay === 1 ? '' : 's'} in play</span>
+          <b>{inPlay}</b><span>{inPlay === 1 ? tx('candidate in play') : tx('candidates in play')}</span>
         </div>
       </div>
 
       {/* ---- who we need ---- */}
-      <div className="section-head">
-        <UserRoundPlus size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Hiring — who we need</h2>
-        <span className="count">· {open.length}</span>
-      </div>
+      {/* Hiring and the candidate pipeline are a season's work, not a day's,
+          and they sit above the team everybody actually came to look at. Both
+          fold, and stay folded for whoever folds them. */}
+      <Fold id="team-hiring" title={tx("Hiring — who we need")} count={open.length}
+        icon={<UserRoundPlus size={17} style={{ color: 'var(--brand-500)' }} />}>
       {err && <div className="form-error">{err}</div>}
       <div className="hire-add card">
-        <input className="input" value={title} placeholder="Position — e.g. Mobile videographer"
+        <input className="input" value={title} placeholder={tx("Position — e.g. Mobile videographer")}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') addNeed() }} />
-        <input className="input" value={note} placeholder="What they'll own (optional)"
+        <input className="input" value={note} placeholder={tx("What they'll own (optional)")}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') addNeed() }} />
         <button type="button" className={'wd-chip hire-flame' + (priority ? ' on' : '')}
-          data-tip="Urgent — mark it hot" onClick={() => setPriority(!priority)}>
-          <Flame size={14} /> Urgent
+          data-tip={tx("Urgent — mark it hot")} onClick={() => setPriority(!priority)}>
+          <Flame size={14} />{' '}{tx('Urgent')}
         </button>
         <button className="btn btn-primary" onClick={() => addNeed()} disabled={!title.trim()}>
           <Plus size={15} /> Add
@@ -420,7 +422,7 @@ export default function Team() {
 
       {gaps.length > 0 && (
         <div className="hire-gaps">
-          <span className="hire-gaps-label"><Sparkles size={13} /> Gaps we can see:</span>
+          <span className="hire-gaps-label"><Sparkles size={13} />{' '}{tx("Gaps we can see:")}</span>
           {gaps.map((g) => (
             <button key={g.key} className="hire-gap" data-tip={g.note} onClick={() => addNeed(g.title, g.note, false)}>
               <Plus size={12} /> {g.title}
@@ -430,7 +432,7 @@ export default function Team() {
       )}
 
       {open.length === 0 ? (
-        <div className="card card-pad empty">No open positions — the team is complete.</div>
+        <div className="card card-pad empty">{tx("No open positions — the team is complete.")}</div>
       ) : (
         <div className="hire-grid">
           {open.map((n) => (
@@ -442,8 +444,8 @@ export default function Team() {
               <div className="hire-foot">
                 <span className="stat-sub">since {dateLabel(n.created_at.slice(0, 10))}</span>
                 <span className="spacer" />
-                <button className="btn btn-sm" onClick={() => markHired(n)}><BadgeCheck size={14} /> Hired</button>
-                <button className="icon-btn del-btn" data-tip="Remove" data-tip-left="" aria-label="Remove"
+                <button className="btn btn-sm" onClick={() => markHired(n)}><BadgeCheck size={14} />{' '}{tx("Hired")}</button>
+                <button className="icon-btn del-btn" data-tip={tx("Remove")} data-tip-left="" aria-label={tx("Remove")}
                   onClick={() => removeNeed(n)}><Trash2 size={14} /></button>
               </div>
             </div>
@@ -456,14 +458,15 @@ export default function Team() {
         </div>
       )}
 
+      </Fold>
+
       {/* ---- candidates: whom we're considering ---- */}
-      <div className="section-head" style={{ marginTop: 20 }}>
-        <UserSearch size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>Candidates</h2>
-        <span className="count">· {inPlay} in play</span>
+      <Fold id="team-candidates" title={tx("Candidates")} count={`${inPlay} in play`}
+        icon={<UserSearch size={17} style={{ color: 'var(--brand-500)' }} />}
+        extra={<>
         <span className="spacer" />
         <div className="pill-group">
-          <button className={'pill' + (candStage === 'all' ? ' active' : '')} onClick={() => setCandStage('all')}>In play</button>
+          <button className={'pill' + (candStage === 'all' ? ' active' : '')} onClick={() => setCandStage('all')}>{tx("In play")}</button>
           {STAGES.map((st) => (
             <button key={st.key} className={'pill' + (candStage === st.key ? ' active' : '') + (candCounts[st.key] ? '' : ' pill-zero')}
               onClick={() => setCandStage(candStage === st.key ? 'all' : st.key)}>
@@ -471,11 +474,11 @@ export default function Team() {
             </button>
           ))}
         </div>
-        <button className="btn btn-primary btn-sm" onClick={() => setCandModal('new')}><Plus size={15} /> Add candidate</button>
-      </div>
+        <button className="btn btn-primary btn-sm" onClick={() => setCandModal('new')}><Plus size={15} />{' '}{tx("Add candidate")}</button>
+        </>}>
       {candList.length === 0 ? (
         <div className="card card-pad empty">
-          {cands.length === 0 ? 'Nobody under consideration yet — add the first candidate.' : 'Nobody in this stage.'}
+          {cands.length === 0 ? tx('Nobody under consideration yet — add the first candidate.') : 'Nobody in this stage.'}
         </div>
       ) : (
         <div className="cand-grid">
@@ -494,7 +497,7 @@ export default function Team() {
                   {c.salary && <span className="team-row"><Banknote size={12} /> expects {c.salary}</span>}
                   {c.portfolio && (
                     /^https?:\/\//.test(c.portfolio)
-                      ? <a className="team-row cand-link" href={c.portfolio} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><LinkIcon size={12} /> portfolio</a>
+                      ? <a className="team-row cand-link" href={c.portfolio} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><LinkIcon size={12} />{' '}{tx("portfolio")}</a>
                       : <span className="team-row"><LinkIcon size={12} /> {c.portfolio}</span>
                   )}
                 </div>
@@ -506,17 +509,19 @@ export default function Team() {
         </div>
       )}
 
+      </Fold>
+
       {/* ---- the team we have ---- */}
       <div className="section-head" style={{ marginTop: 20 }}>
         <UsersRound size={17} style={{ color: 'var(--brand-500)' }} />
-        <h2>The team now</h2>
+        <h2>{tx("The team now")}</h2>
         <span className="count">· {team.length}</span>
         <span className="spacer" />
         <div className="pill-group">
-          <button className={'pill' + (view === 'cards' ? ' active' : '')} onClick={() => setView('cards')}><LayoutGrid size={14} /> Cards</button>
-          <button className={'pill' + (view === 'table' ? ' active' : '')} onClick={() => setView('table')}><Rows3 size={14} /> Table</button>
-          <button className={'pill' + (view === 'board' ? ' active' : '')} onClick={() => setView('board')}><KanbanSquare size={14} /> Board</button>
-          <button className={'pill' + (view === 'dash' ? ' active' : '')} onClick={() => setView('dash')}><Gauge size={14} /> Dashboard</button>
+          <button className={'pill' + (view === 'cards' ? ' active' : '')} onClick={() => setView('cards')}><LayoutGrid size={14} />{' '}{tx("Cards")}</button>
+          <button className={'pill' + (view === 'table' ? ' active' : '')} onClick={() => setView('table')}><Rows3 size={14} />{' '}{tx("Table")}</button>
+          <button className={'pill' + (view === 'board' ? ' active' : '')} onClick={() => setView('board')}><KanbanSquare size={14} />{' '}{tx("Board")}</button>
+          <button className={'pill' + (view === 'dash' ? ' active' : '')} onClick={() => setView('dash')}><Gauge size={14} />{' '}{tx("Dashboard")}</button>
         </div>
       </div>
 
@@ -534,21 +539,21 @@ export default function Team() {
                     <span className="team-pos">{u.position || roleWord(u)}</span>
                   </div>
                   <span className={'role-badge rb-' + u.role}>{roleWord(u)}</span>
-                  <button className="icon-btn" data-tip="Edit card" data-tip-left="" aria-label="Edit"
+                  <button className="icon-btn" data-tip={tx("Edit card")} data-tip-left="" aria-label={tx("Edit")}
                     onClick={() => setEditing(u)}><Pencil size={14} /></button>
                 </div>
                 <div className="team-rows">
                   <span className="team-row">
                     <Phone size={13} />
-                    {u.phone ? <a href={`tel:${u.phone.replace(/[^+\d]/g, '')}`}>{u.phone}</a> : <i>no phone yet</i>}
+                    {u.phone ? <a href={`tel:${u.phone.replace(/[^+\d]/g, '')}`}>{u.phone}</a> : <i>{tx("no phone yet")}</i>}
                   </span>
                   <span className="team-row">
                     <Clock size={13} />
-                    {sched || <i>no schedule set</i>}
+                    {sched || <i>{tx("no schedule set")}</i>}
                   </span>
                 </div>
                 <div className="team-duty">
-                  {u.duties || (u.role === 'admin' ? 'Runs the whole marketing team.'
+                  {u.duties || (u.role === 'admin' ? tx('Runs the whole marketing team.')
                     : depts.length ? `Channels: ${depts.join(', ')}`
                     : u.role !== 'member' ? 'Cross-channel video work — shoots and edits ride the task crew.' : 'No responsibilities written yet.')}
                 </div>
@@ -561,7 +566,7 @@ export default function Team() {
       {view === 'table' && (
         <div className="card table-wrap">
           <table className="tbl">
-            <thead><tr><th>Member</th><th>Role</th><th>Phone</th><th>Working hours</th><th>Responsibilities</th><th /></tr></thead>
+            <thead><tr><th>{tx("Member")}</th><th>{tx("Role")}</th><th>{tx("Phone")}</th><th>{tx("Working hours")}</th><th>{tx("Responsibilities")}</th><th /></tr></thead>
             <tbody>
               {team.map((u) => {
                 const sched = scheduleLabel(u)
@@ -582,7 +587,7 @@ export default function Team() {
                     <td>{sched || <span className="stat-sub">—</span>}</td>
                     <td className="team-tbl-duty">{u.duties || (depts.length ? depts.join(', ') : '—')}</td>
                     <td style={{ textAlign: 'right' }}>
-                      <button className="icon-btn" data-tip="Edit" data-tip-left="" aria-label="Edit" onClick={() => setEditing(u)}><Pencil size={14} /></button>
+                      <button className="icon-btn" data-tip={tx("Edit")} data-tip-left="" aria-label={tx("Edit")} onClick={() => setEditing(u)}><Pencil size={14} /></button>
                     </td>
                   </tr>
                 )
@@ -599,7 +604,7 @@ export default function Team() {
             { label: 'Members', match: (u) => u.role === 'member' },
             { label: 'Operators', match: (u) => (u.crew_roles || []).includes('operator') },
             { label: 'Editors', match: (u) => (u.crew_roles || []).includes('editor') },
-            { label: 'Designers', match: (u) => (u.crew_roles || []).includes('designer') },
+            { label: tx('Designers'), match: (u) => (u.crew_roles || []).includes('designer') },
           ].map((col) => {
             const list = team.filter(col.match)
             return (
@@ -630,25 +635,25 @@ export default function Team() {
           { label: 'Members', n: team.filter((u) => u.role === 'member').length, color: '#5a6b7a' },
           { label: 'Operators', n: team.filter((u) => (u.crew_roles || []).includes('operator')).length, color: '#2a78d6' },
           { label: 'Editors', n: team.filter((u) => (u.crew_roles || []).includes('editor')).length, color: '#7b5ad6' },
-          { label: 'Designers', n: team.filter((u) => (u.crew_roles || []).includes('designer')).length, color: '#0e8a6d' },
+          { label: tx('Designers'), n: team.filter((u) => (u.crew_roles || []).includes('designer')).length, color: '#0e8a6d' },
         ].filter((r) => r.n > 0)
         return (
           <div className="team-dash">
             <div className="card card-pad">
-              <div className="pc-check-head"><h3>Roles</h3><span className="stat-sub">{team.length} people</span></div>
+              <div className="pc-check-head"><h3>{tx("Roles")}</h3><span className="stat-sub">{team.length} people</span></div>
               <div className="ov-stages" style={{ margin: 0 }}>
                 {roleRows.map((r) => (
                   <span key={r.label} className="ov-stage" style={{ background: r.color, color: '#fff' }}>{r.label} <b>{r.n}</b></span>
                 ))}
               </div>
-              <div className="stat-sub" style={{ marginTop: 12 }}>Profile completeness</div>
+              <div className="stat-sub" style={{ marginTop: 12 }}>{tx("Profile completeness")}</div>
               <div className="crew-nums" style={{ marginTop: 6 }}>
                 <span className="crew-num"><Phone size={13} /> {phones}/{team.length} phones set</span>
                 <span className="crew-num"><Clock size={13} /> {scheds}/{team.length} schedules set</span>
               </div>
             </div>
             <div className="card card-pad">
-              <div className="pc-check-head"><h3>Channel coverage</h3><span className="stat-sub">owner + people per channel</span></div>
+              <div className="pc-check-head"><h3>{tx("Channel coverage")}</h3><span className="stat-sub">{tx("owner + people per channel")}</span></div>
               {channels.map((c) => {
                 const heads = users.find((u) => u.id === c.head_id)
                 const members = users.filter((u) => (u.departments || []).includes(c.key))
@@ -657,7 +662,7 @@ export default function Team() {
                     <span className="cover-name">{c.label}</span>
                     {heads
                       ? <span className="tt-who" style={{ gap: 6 }}><Avatar name={heads.name} color={heads.color} src={heads.avatar} size="xs" /> <b style={{ fontSize: 12.5 }}>{heads.name.split(' ')[0]}</b></span>
-                      : <span className="no-owner-badge">no owner</span>}
+                      : <span className="no-owner-badge">{tx("no owner")}</span>}
                     <span className="spacer" />
                     <span className="stat-sub">{members.length} member{members.length === 1 ? '' : 's'}</span>
                   </div>
@@ -665,7 +670,7 @@ export default function Team() {
               })}
             </div>
             <div className="card card-pad">
-              <div className="pc-check-head"><h3>Hiring pipeline</h3><span className="stat-sub">{open.length} open · {inPlay} in play</span></div>
+              <div className="pc-check-head"><h3>{tx("Hiring pipeline")}</h3><span className="stat-sub">{open.length} open · {inPlay} in play</span></div>
               <div className="ov-stages" style={{ margin: 0 }}>
                 {STAGES.map((st) => (
                   <span key={st.key} className="ov-stage" style={{ background: st.color, color: '#fff', opacity: candCounts[st.key] ? 1 : 0.45 }}>

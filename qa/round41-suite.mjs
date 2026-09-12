@@ -63,12 +63,16 @@ for (const [tok, chat] of [[T1, 111], [T2, 222]]) {
 }
 
 // ---- creating with hats rings every hat-holder, with the hat named ----
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// Fixtures park on Shot, not To shoot: since round 66 the shooting stage is a
+// BOOKING and demands a crew, three days and a brief. Shot is the same thing
+// this suite actually wants — real work, past the Idea stage — without
+// pretending to book a shoot these tests are not about.
+const shotId = (await req('/statuses')).data.find((s) => /^editing$/i.test(s.label)).id
 const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + 864e5))
 await reset()
 const task = (await req('/content', 'POST', {
   title: 'x41: handed video', channels: [chKey], type: 'video',
-  assignee_ids: [m1.id], editor_id: m2.id, status_id: shootId, recording_date: tomorrow,
+  assignee_ids: [m1.id], editor_id: m2.id, status_id: shotId, recording_date: tomorrow,
 })).data
 let sent = await sentList()
 const to1 = sent.find((s) => String(s.chat_id) === '111' && /📌/.test(s.text || ''))
@@ -77,7 +81,7 @@ ok('the owner hears about the fresh task', !!to1 && /you're the owner/.test(to1.
 ok('…the editor too, with THEIR hat named', !!to2 && /you're the editor/.test(to2.text))
 const humanDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 ok('…the shoot day rides along, human-sized', !!to2 && to2.text.includes(`shoot ${humanDate(tomorrow)}`))
-ok('…and the task link', !!to2 && to2.text.includes(`/todo?task=${task.id}`))
+ok('…and the task link', !!to2 && to2.text.includes(`/brief?task=${task.id}`))
 const bell1 = (await req('/notifications', 'GET', undefined, T1)).data.events
 ok('the in-app bell carries the assignment too', bell1.some((e) => e.kind === 'assigned' && /x41: handed video.*owner/.test(e.text)))
 
@@ -102,7 +106,7 @@ ok('…the previous holder is not pinged', !sent.some((s) => String(s.chat_id) =
 
 // ---- self-assignment is silent ----
 await reset()
-await req('/content', 'POST', { title: 'x41: my own post', channels: [chKey], type: 'post', status_id: shootId }, T1)
+await req('/content', 'POST', { title: 'x41: my own post', channels: [chKey], type: 'post', status_id: shotId }, T1)
 ok('creating for yourself rings nobody', !(await sentList()).some((s) => /📌/.test(s.text || '')))
 
 // ---- Pravki carries the note to the one who owes the fix ----
@@ -113,7 +117,7 @@ await req(`/content/${task.id}/revisions`, 'POST', { note: 'перезаписа
 sent = await sentList()
 const fix = sent.find((s) => String(s.chat_id) === '111' && /🔧/.test(s.text || ''))
 ok('the fixer gets the Pravki with the note', !!fix && /перезаписать звук с 00:40/.test(fix.text))
-ok('…and the task link', !!fix && fix.text.includes(`/todo?task=${task.id}`))
+ok('…and the task link', !!fix && fix.text.includes(`/brief?task=${task.id}`))
 const bellFix = (await req('/notifications', 'GET', undefined, T1)).data.events
 ok('the bell carries the Pravki note too', bellFix.some((e) => e.kind === 'pravki' && /перезаписать звук/.test(e.text)))
 

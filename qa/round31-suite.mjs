@@ -24,7 +24,7 @@ const users = (await req('/users')).data
 const jas = users.find((u) => u.username === 'jas')
 const statuses = (await req('/statuses')).data
 const delSt = statuses.find((s) => /^deleted$/i.test(s.label))
-const shotSt = statuses.find((s) => /^shot$/i.test(s.label))
+const shotSt = statuses.find((s) => /^editing$/i.test(s.label))
 
 // ---- 1) the API: events + computed reminders ----
 const moving = (await req('/content', 'POST', { title: 'x31: moving video', channels: ['instagram_main'], type: 'video', editor_id: jas.id })).data
@@ -33,7 +33,7 @@ await req('/content', 'POST', { title: 'x31: due tomorrow', channels: ['instagra
 await req('/content', 'POST', { title: 'x31: due in a week', channels: ['instagram_main'], type: 'post', assignee_ids: [jas.id], release_date: iso(7) })
 const jasT = await login('jas', 'j1234')
 let notif = (await req('/notifications', 'GET', null, jasT)).data
-ok('a status move writes the event for the crew', notif.events.some((e) => /x31: moving video.*Shot.*Admin/.test(e.text)))
+ok('a status move writes the event for the crew', notif.events.some((e) => /x31: moving video.*Editing.*Admin/.test(e.text)), notif.events.map((e) => e.text).join(' | ').slice(0, 200))
 ok('the mover gets no echo', !(await req('/notifications')).data.events.some((e) => /x31: moving video/.test(e.text)))
 ok('the day-before reminder is computed', notif.reminders.some((r) => /x31: due tomorrow.*tomorrow/.test(r.text)))
 ok('…and the week-before one', notif.reminders.some((r) => /x31: due in a week.*in a week/.test(r.text)))
@@ -53,7 +53,10 @@ ok('the badge counts the fresh reminders', Number(await p.locator('.notif-badge'
 await p.locator('.notif-wrap button').first().click(); await p.waitForTimeout(400)
 ok('the panel lists them', (await p.locator('.notif-row').count()) >= 2)
 await p.locator('.notif-row', { hasText: 'x31: due tomorrow' }).first().click()
-await p.waitForURL(/todo\?task=/, { timeout: 8000 }); await p.waitForTimeout(1200)
+// The bell's rows pointed at /todo?task=; round 82 removed that page and the
+// links land on My Day, which fetches a task that is not already in your list
+// instead of refusing it.
+await p.waitForURL(/brief\?task=/, { timeout: 8000 }); await p.waitForTimeout(1400)
 ok('a row opens its task', (await p.locator('.modal .cm-title').inputValue().catch(() => '')).includes('x31: due tomorrow'))
 await p.keyboard.press('Escape')
 await p.close()

@@ -51,14 +51,66 @@ const duo = await req('/content', 'POST', { title: 'r14: two-person task', chann
 ok('a task stores several assignees', duo.status === 201 && (duo.data.assignees || []).length === 2, JSON.stringify(duo.data.assignees))
 ok('the legacy assignee mirrors the first', duo.data.assignee_id === mir.id)
 const tokJas = await login('jas', 'j1234')
-ok('the second assignee sees and works the task too', (await req(`/content/${duo.data.id}`, 'PATCH', { done: true }, tokJas)).status === 200)
+ok('the second assignee sees and works the task too', (await req(`/content/${duo.data.id}`, 'PATCH', { done: true, post_link: `https://instagram.com/p/qa-${duo.data.id}` }, tokJas)).status === 200)
 await req(`/content/${duo.data.id}`, 'PATCH', { done: false })
 ok('non-admin cannot multi-assign others', (await req('/content', 'POST', { title: 'r14: sneak', channels: ['instagram_main'], assignee_ids: [mir.id, jas.id] }, tokJas)).status === 403)
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const page = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
+// ---- driving the person pickers ------------------------------------------
+// The crew seats and the assignee box are searchable pickers now rather than
+// <select> elements: a select's type-ahead jumps to the first matching name
+// instead of narrowing the list, which is exactly what was wrong with it. The
+// suites drive them the way a person does — open, type, press the row.
+const ppOpen = async (root) => {
+  await root.click()
+  await page.waitForSelector('.pp-pop', { timeout: 8000 })
+}
+const ppNames = async (root, group = null) => {
+  await ppOpen(root)
+  const sel = group
+    ? `.pp-pop .pp-group:text-is("${group}") ~ .pp-row`
+    : '.pp-pop .pp-row'
+  const names = await page.locator(sel).allTextContents()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(150)
+  return names
+}
+const ppPick = async (root, name) => {
+  await ppOpen(root)
+  await page.fill('.pp-pop .pp-search .input', name)
+  await page.waitForTimeout(200)
+  await page.locator('.pp-pop .pp-row', { hasText: name }).first().click()
+  await page.waitForTimeout(250)
+}
+
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
 page.on('dialog', (d) => d.accept())
+// Round 82 folded the sidebar into hubs that start CLOSED, so a door inside
+// one is not in the DOM to be read. This asks which doors EXIST, so write the
+// "nothing folded" preference before the page loads rather than clicking the
+// chevrons — a click toggles, and two calls would undo each other.
+// (Sidebar.jsx: PREFS_KEY `satashkent_side2_<uid>`, PREFS_V 3; admin is id 1.)
+await page.addInitScript(([id, v]) => {
+  localStorage.setItem(`satashkent_side2_${id}`,
+    JSON.stringify({ order: {}, hidden: [], closed: [], pinned: [], v }))
+}, [1, 3])
 await page.goto(BASE + '/login')
 await page.fill('input[name="username"]', 'admin')
 await page.fill('input[name="password"]', 'admin123')
@@ -88,26 +140,31 @@ ok('timetable blocks say the channel', (await page.locator('.crew-tt .tt-ch').co
   && (await page.locator('.crew-tt').textContent()).includes(igLabel))
 await page.screenshot({ path: 'r14-timetable.png' })
 
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-await page.locator('.todo-row', { hasText: 'r14: launch video' }).locator('.todo-main').click()
+// The fixture lives on YouTube, and a channel board shows its own channel —
+// the To-Do page this replaced listed every channel at once.
+await page.goto(BASE + '/dept/youtube')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+await page.locator('.tcard', { hasText: 'r14: launch video' }).first().click()
+await page.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(page, 'Execution')
 await page.waitForSelector('.modal .crew-field', { timeout: 8000 })
 const labels = await page.locator('.modal .crew-field .crew-label').allTextContents()
-ok('a video offers Operator, Editor and Designer hats', labels.length === 3
-  && /Operator/.test(labels[0]) && /Editor/.test(labels[1]) && /Designer/.test(labels[2]), labels.join(' | '))
+// Round 78 took the designer hat off the picker — this board runs
+// idea → shoot → edit and a designer has no stage in it. The design-ready
+// deadline below is untouched, and so is the column: what changed is that
+// the form no longer offers a hat nobody was picking.
+ok('a video offers the Operator and Editor hats', labels.length === 2
+  && /Operator/.test(labels[0]) && /Editor/.test(labels[1]), labels.join(' | '))
 // Round 27: specialists lead their optgroup; everyone else is offered below
 // for one-time duty — so the check is on who LEADS, not who appears.
-const edSpecial = await page.locator('.modal .crew-field select').nth(1).locator('optgroup[label="Editors"] option').allTextContents()
-const dzSpecial = await page.locator('.modal .crew-field select').nth(2).locator('optgroup[label="Designers"] option').allTextContents()
+const edSpecial = await ppNames(page.locator('.modal .crew-field .pp-field').nth(1), 'Editors')
 ok('the editor specialists lead their list', edSpecial.some((o) => o.includes('Malika')) && !edSpecial.some((o) => o.includes('Otkir')))
-ok('the designer specialists lead theirs', dzSpecial.some((o) => o.includes('Malika')) && !dzSpecial.some((o) => o.includes('Otkir')), dzSpecial.join(' | '))
 ok('both deadline rows present', /Edit ready/.test(await page.locator('.modal .dates-block').textContent())
   && /Design ready/.test(await page.locator('.modal .dates-block').textContent()))
 
-const addSel = page.locator('.modal .assignee-add')
-await addSel.selectOption({ label: 'Mirabbos Tashkentov' })
-await page.waitForTimeout(200)
-await addSel.selectOption({ label: 'Jasmina Karimova' })
+const addSel = page.locator('.modal .assignee-add .pp-field')
+await ppPick(addSel, 'Mirabbos Tashkentov')
+await ppPick(addSel, 'Jasmina Karimova')
 await page.waitForTimeout(200)
 ok('two assignee chips picked', (await page.locator('.modal .assignee-chip').count()) === 2,
   String(await page.locator('.modal .assignee-chip').count()))
@@ -117,8 +174,8 @@ await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 })
 await page.waitForTimeout(400)
 const savedVid = (await req('/content')).data.find((c) => c.id === vid.data.id)
 ok('both assignees persisted', (savedVid.assignees || []).length === 2, JSON.stringify(savedVid.assignees))
-const rowTxt = await page.locator('.todo-row', { hasText: 'r14: launch video' }).textContent()
-ok('the to-do row shows the crowd (+1)', /\+1/.test(rowTxt), rowTxt.slice(0, 140))
+const rowTxt = await page.locator('.tcard', { hasText: 'r14: launch video' }).first().textContent()
+ok('the board card shows the crowd (+1)', /\+1/.test(rowTxt), rowTxt.slice(0, 140))
 
 await page.goto(BASE + '/missed')
 await page.waitForSelector('.ov-row', { timeout: 10000 })

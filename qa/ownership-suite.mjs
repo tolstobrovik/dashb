@@ -31,16 +31,29 @@ const shooter = await mk('sh', 'Sardor Shooter')
 const editor = await mk('ed', 'Eldor Editor')
 const rev1 = await mk('r1', 'Rustam Reviewer')
 const rev2 = await mk('r2', 'Rano Reviewer')
+// Somebody who is asked. Round 80 made the admin a superuser — they are
+// never stopped at a handover gate — so the gate's CONTENTS have to be read
+// as the person the gate is for: a planner moving a card on their channel.
+const planner = await req('/users', 'POST', {
+  name: 'Petra Planner', username: 'pl' + sfx, password: 'pw123456', role: 'member',
+  departments: ['instagram_main'], permissions: { manage_content: true, move_tasks: true },
+})
+const plannerT = await login('pl' + sfx, 'pw123456')
 const shooterT = await login('sh' + sfx, 'pw123456')
 const editorT = await login('ed' + sfx, 'pw123456')
 const rev1T = await login('r1' + sfx, 'pw123456')
 const rev2T = await login('r2' + sfx, 'pw123456')
 ok('accounts created', !!(shooter && editor && rev1 && rev2 && rev2T))
 
+// A booked shoot carries a brief since round 66, so the fixtures carry one —
+// these tasks are moved onto the shooting stage all through this suite.
 const newTask = async (over = {}) => (await req('/content', 'POST', {
   title: 'Own ' + Math.random().toString(36).slice(2, 7),
   channels: ['instagram_main'], type: 'reel', status_id: S['Idea'],
-  recording_date: day(2), edit_ready_date: day(4), release_date: day(6), ...over,
+  recording_date: day(2), edit_ready_date: day(4), release_date: day(6),
+  reference_links: ['https://example.com/reference'],
+  script: 'Open on the main gate, walk through the courtyard, two students say why they chose it, close on the library.',
+  ...over,
 })).data
 
 // ---- review can be shared ----------------------------------------------
@@ -80,7 +93,7 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, shooterT)
 
   // While it is the shooter's, the editor cannot move it.
-  let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, editorT)
+  let r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] }, editorT)
   ok('a non-owner cannot move work in someone else’s hands', r.status === 403, `${r.status}`)
   ok('  and is told who has it', Array.isArray(r.data.held_by) && r.data.held_by.includes(shooter), JSON.stringify(r.data.held_by))
 
@@ -90,14 +103,20 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   }, shooterT)
   ok('the owner hands it on', r.status === 200, `${r.status} ${r.data.error || ''}`)
 
-  // …and loses the right to move it.
-  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, shooterT)
+  // …and loses the right to move it. Dragging it BACK is the move to refuse,
+  // and this used to ask for the stage the card was already on — which is not
+  // a move at all, so it was answered 200 for a reason that had nothing to do
+  // with ownership. It passed until round 82 shortened the pipeline and the
+  // no-op became visible. It drags it back now.
+  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, shooterT)
   ok('the previous owner can no longer drag it back', r.status === 403, `${r.status}`)
   ok('  the message names the new holder', /Eldor/.test(r.data.error || ''), r.data.error || '')
 
-  // The new owner can.
-  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Shot'] }, editorT)
+  // The new owner can — the same move, from the person who now holds it.
+  // Backwards, so this asks about ownership and not about a handover gate.
+  r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'] }, editorT)
   ok('the new owner can move it', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] })
 
   // An admin is never locked out.
   r = await req(`/content/${t.id}`, 'PATCH', { status_id: S['Editing'] })
@@ -107,9 +126,6 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
 // ---- ten seconds of regret ----------------------------------------------
 {
   const t = await newTask({ operator_id: shooter })
-  const planBefore = (await req('/trackers?department=instagram_main')).data
-  const reelBefore = (planBefore.find?.((x) => x.content_type === 'reel') || {}).current ?? 0
-
   // A move that completes the task also moves the numbers.
   await req(`/content/${t.id}`, 'PATCH', {
     status_id: S['Editing'], editor_id: editor, shot_link: 'https://drive.google.com/raw2',
@@ -132,27 +148,25 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   ok('there is only one move to take back', again.status === 404, `${again.status}`)
 }
 
-// ---- the statistics are walked back too ---------------------------------
+// ---- publishing is walked back too --------------------------------------
+// This used to watch the channel's plan counter go up and back down. The
+// typed-in plan is gone (round 82) and completion is read off the work now,
+// so the thing to check is the work itself: the piece went out, and taking
+// the move back un-published it.
 {
   const t = await newTask({
     operator_id: shooter, editor_id: editor, reviewer_ids: [rev1],
     shot_link: 'https://drive.google.com/raw-p', ready_link: 'https://drive.google.com/cut-p',
   })
-  const cur = async () => {
-    const { data } = await req('/trackers?department=instagram_main')
-    return (data.find?.((x) => x.content_type === 'reel') || {}).current ?? 0
-  }
-  const before = await cur()
-  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Published'] })
-  const after = await cur()
-  ok('publishing fills the plan', after === before + 1, `${before} → ${after}`)
+  await req(`/content/${t.id}`, 'PATCH', { status_id: S['Published'], post_link: 'https://instagram.com/p/ownership' })
+  const { data: out } = await req(`/content/${t.id}`)
+  ok('publishing stamps it finished', !!out.done_at, String(out.done_at))
 
   const un = await req(`/content/${t.id}/undo`, 'POST', {})
   ok('an admin can undo it', un.status === 200, `${un.status} ${un.data.error || ''}`)
-  const restored = await cur()
-  ok('undoing empties it again', restored === before, `${after} → ${restored} (expected ${before})`)
   const { data: back } = await req(`/content/${t.id}`)
   ok('  and the completion is cleared', !back.done_at, String(back.done_at))
+  ok('  and the stage came back with it', back.status_id !== S['Published'], String(back.status_id))
 }
 
 // ---- the window really closes -------------------------------------------
@@ -186,7 +200,7 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   ok('crew with declared hats exist', !!(opA && edA && edB))
 
   const t = await newTask()
-  const { data: h } = await req(`/content/${t.id}/handover?to=${S['Editing']}`)
+  const { data: h } = await req(`/content/${t.id}/handover?to=${S['Editing']}`, 'GET', null, plannerT)
   const byKey = Object.fromEntries((h.gates || []).map((g) => [g.key, g]))
 
   ok('a move to Editing crosses two gates', (h.gates || []).length === 2,
@@ -205,19 +219,19 @@ const newTask = async (over = {}) => (await req('/content', 'POST', {
   ok('the editing gate knows the footage is still missing', byKey.edit?.link_ok === false, String(byKey.edit?.link_ok))
 
   // Review is the shared one, and asks the people who sign work off.
-  const { data: h2 } = await req(`/content/${t.id}/handover?to=${S['Ready']}`)
+  const { data: h2 } = await req(`/content/${t.id}/handover?to=${S['Ready']}`, 'GET', null, plannerT)
   const rev = (h2.gates || []).find((g) => g.key === 'review')
   ok('the review gate is a multi-pick', rev?.many === true, String(rev?.many))
   ok('  and offers sign-off people, not the crew',
     (rev?.candidates || []).every((c) => c.name !== 'Eldor Cutter'), JSON.stringify((rev?.candidates || []).map((c) => c.name)))
 
   // Backwards asks for nothing.
-  const { data: back } = await req(`/content/${t.id}/handover?to=${S['Idea']}`)
+  const { data: back } = await req(`/content/${t.id}/handover?to=${S['Idea']}`, 'GET', null, plannerT)
   ok('moving backwards hands nothing over', (back.gates || []).length === 0, JSON.stringify(back.gates))
 
   // A gate already behind the task is not asked again.
   await req(`/content/${t.id}`, 'PATCH', { status_id: S['To shoot'], operator_id: opA })
-  const { data: h3 } = await req(`/content/${t.id}/handover?to=${S['Editing']}`)
+  const { data: h3 } = await req(`/content/${t.id}/handover?to=${S['Editing']}`, 'GET', null, plannerT)
   ok('a gate already passed is not asked twice', (h3.gates || []).length === 1
     && h3.gates[0].key === 'edit', JSON.stringify((h3.gates || []).map((g) => g.key)))
   ok('  and the editor already on the task comes pre-selected when there is one',
