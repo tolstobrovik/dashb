@@ -32,6 +32,14 @@ import { tr as tx } from '../lib/i18n.jsx'
 // The states come from the server, worked out from real deliveries. Nothing
 // here can be moved by anything a browser sends. That matters more than it
 // sounds: a reward that can be farmed stops being a reward within a week.
+//
+// None of this rings. The obvious next thought is a nightly "your quota bonus
+// is slipping" notice, and it is the wrong thought: this board used to send a
+// daily digest, every linked member's phone went off at midnight whether or
+// not anything had changed, and the team asked for it to stop — a board that
+// speaks every day is a board people mute. A warning that is waiting when you
+// look is worth more than one that interrupts you, and money is exactly the
+// subject where that is most true.
 
 const ICON = { quota: Target, ontime: Clock, views: Eye }
 const TONE = { won: 'won', close: 'close', open: 'open', behind: 'behind', lost: 'lost' }
@@ -93,6 +101,43 @@ function words(g) {
 const WON_KEY = (uid, month) => `satashkent_pay_won_${uid}_${month}`
 const readWon = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')) } catch { return new Set() } }
 const writeWon = (k, set) => { try { localStorage.setItem(k, JSON.stringify([...set])) } catch { /* private window */ } }
+
+
+// ---- the one line that fits on a folded card ---------------------------------
+//
+// The goals block lives inside the pay card, and on My Day that card is folded
+// — so on the page people actually spend their day on, the whole thing was
+// invisible until somebody thought to open a card about money. Which nobody
+// does on a Tuesday.
+//
+// So the folded card carries ONE line: the goal that most wants attention.
+// Slipping beats nearly, nearly beats the rest, and a month with every bonus
+// already earned says so, because that is the line worth reading twice.
+export function PayGoalLine({ goals, period, currency, shown = true }) {
+  if (!goals || goals.length === 0) return null
+  const live = goals.filter((g) => g.state !== 'lost')
+  if (live.length === 0) return null
+  if (live.every((g) => g.state === 'won')) {
+    return (
+      <span className="pg-line pg-line-won">
+        <Trophy size={12} />
+        {live.length === 1 ? tx('Bonus earned this month') : tx('Every bonus earned this month')}
+      </span>
+    )
+  }
+  const ORDER = { behind: 0, close: 1, open: 2, won: 3 }
+  const top = [...live].sort((a, b) => (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9))[0]
+  if (!top || top.state === 'won') return null
+  const I = ICON[top.key] || Target
+  return (
+    <span className={'pg-line pg-line-' + top.state}>
+      {top.state === 'behind' ? <TriangleAlert size={12} /> : <I size={12} />}
+      <b>{tx(top.label)}</b>
+      <span>{words({ ...top, days_left: period?.days_left ?? top.days_left })}</span>
+      <em>{shown ? money(top.pays, currency) : '••••••'}</em>
+    </span>
+  )
+}
 
 export default function PayGoals({ goals, period, currency, userId, month, shown = true }) {
   const seen = useRef(false)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { File, Upload, Download, ExternalLink, Trash2, Pencil, ScrollText } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { File, Upload, Download, ExternalLink, Trash2, Pencil, ScrollText, Wallet, ChevronRight } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { dateLabel } from '../lib/constants.js'
@@ -199,6 +200,23 @@ export default function Docs() {
           measured against, and it stays — but it is the REFERENCE, and a
           reference goes under the answer rather than in front of it. */}
       <MyPay startOpen />
+
+      {/* An admin opening a page called Payment is usually not here to look at
+          their own payslip. The payroll — everybody's month, and the button
+          that records it as paid — lives in the admin panel, and nothing on
+          this page said so. One line, rather than a second copy of the
+          payroll: two places that work out the same money is how they start
+          disagreeing. */}
+      {isAdmin && (
+        <Link className="card card-pad pay-jump" to="/admin?tab=pay">
+          <Wallet size={17} />
+          <span>
+            <b>{tx('The whole team’s payroll')}</b>
+            <span className="stat-sub">{tx('Everybody’s month, the rates behind it, and recording it as paid')}</span>
+          </span>
+          <ChevronRight size={16} />
+        </Link>
+      )}
 
       <div className="card docs-card kpi-doc">
         <div className="docs-sec-head">

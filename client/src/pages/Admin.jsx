@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Users, PanelLeft, KanbanSquare, FileBarChart, Plus, Pencil, Trash2, AlertCircle,
   ShieldCheck, ArrowUp, ArrowDown, Check, Megaphone, ListChecks, Clapperboard, Send, Pin, Network,
@@ -49,7 +50,21 @@ const TABS = [
 ]
 
 export default function Admin() {
-  const [tab, setTab] = useState('team')
+  // The tab is in the URL, so a tab can be linked to. It was internal state
+  // only, which meant every route into this page landed on Team and left the
+  // person to find the rest — including the Payment page's own link to the
+  // payroll, which is the whole reason this exists.
+  const [params, setParams] = useSearchParams()
+  const wanted = params.get('tab')
+  const [tab, setTabState] = useState(() => (TABS.some((t) => t.key === wanted) ? wanted : 'team'))
+  const setTab = (key) => {
+    setTabState(key)
+    setParams((p) => { const next = new URLSearchParams(p); next.set('tab', key); return next }, { replace: true })
+  }
+  // …and a link followed while already on the page changes the tab too.
+  useEffect(() => {
+    if (wanted && TABS.some((t) => t.key === wanted) && wanted !== tab) setTabState(wanted)
+  }, [wanted]) // eslint-disable-line react-hooks/exhaustive-deps
   const [reportChannel, setReportChannel] = useState('all')
   // A channel row's "Report" button jumps straight into that channel's report.
   const openReport = (key) => { setReportChannel(key); setTab('reports') }

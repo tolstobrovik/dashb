@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, History } from 'lucide-react'
+import { CheckCircle2, Crown, History } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { money } from './SalaryPlanner.jsx'
 import { tr as tx, locale } from '../lib/i18n.jsx'
@@ -48,6 +48,13 @@ export default function PayHistory({ shown = true, months = 6 }) {
   if (top <= 0) return null
   const settled = rows.filter((m) => m.settled)
   const last = settled[settled.length - 1] || null
+  // The best month on the chart, and only when there is something to be best
+  // THAN. One month is not a record, and two months that came to the same
+  // figure have no winner — a crown on an arbitrary one of them is a fact the
+  // chart invented.
+  const best = real.length > 1 && real.filter((m) => m.total === top).length === 1
+    ? real.find((m) => m.total === top)
+    : null
 
   return (
     <div className="pay-hist">
@@ -67,17 +74,20 @@ export default function PayHistory({ shown = true, months = 6 }) {
         {rows.map((m) => {
           const kind = m.settled ? 'settled' : m.assumed ? 'assumed' : m.running ? 'running' : 'open'
           const h = m.assumed ? 0 : top > 0 ? Math.max(4, Math.round((m.total / top) * 100)) : 4
+          const crown = best && best.month === m.month
           return (
-            <div className={'ph-col ph-' + kind} key={m.month}>
+            <div className={'ph-col ph-' + kind + (crown ? ' ph-best' : '')} key={m.month}
+              title={crown ? tx('Your best month so far') : undefined}>
               <span className="ph-amount">{m.assumed ? '' : shown ? money(m.total, '') : '•••'}</span>
               <span className="ph-bar-box">
                 {!m.assumed && <span className="ph-bar" style={{ height: `${h}%` }} />}
               </span>
               <span className="ph-month">{monthWords(m.month)}</span>
               <span className="ph-state">
-                {m.settled ? <CheckCircle2 size={11} />
-                  : m.running ? tx('now')
-                    : m.assumed ? tx('no record') : ''}
+                {crown ? <><Crown size={11} /> {tx('best')}</>
+                  : m.settled ? <CheckCircle2 size={11} />
+                    : m.running ? tx('now')
+                      : m.assumed ? tx('no record') : ''}
               </span>
             </div>
           )

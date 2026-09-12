@@ -5,7 +5,7 @@ import { todayISO } from '../lib/constants.js'
 import { useAuth } from '../lib/auth.jsx'
 import { tr as tx } from '../lib/i18n.jsx'
 import SalaryPlanner, { money } from './SalaryPlanner.jsx'
-import PayGoals from './PayGoals.jsx'
+import PayGoals, { PayGoalLine } from './PayGoals.jsx'
 import PayHistory from './PayHistory.jsx'
 import { Dot } from './Dot.jsx'
 
@@ -97,6 +97,13 @@ export default function MyPay({ startOpen = false }) {
           </>}
         </span>
         <ChevronDown size={16} className={'my-pay-caret' + (open ? ' open' : '')} />
+        {/* Folded, this card is a number and a caret — and on My Day, where it
+            is always folded, that meant the whole of what is still winnable
+            was behind a press nobody makes on a Tuesday. One line comes out
+            to meet them: the goal that most wants attention today. */}
+        {!open && !settled && hasRates && (
+          <PayGoalLine goals={pay.goals} period={pay.period} currency={cur} shown={shown} />
+        )}
       </button>
 
       {open && (
