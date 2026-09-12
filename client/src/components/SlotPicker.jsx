@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarClock, ChevronLeft, ChevronRight, Clock, Loader2, AlertCircle } from 'lucide-react'
+import { CalendarClock, Clock, Loader2, AlertCircle, Plus } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { todayISO } from '../lib/constants.js'
 import { tr as tx, locale } from '../lib/i18n.jsx'
@@ -11,27 +11,41 @@ import { tr as tx, locale } from '../lib/i18n.jsx'
 // The person holding the camera knows their week; the form did not, so the
 // planner guessed and a human corrected the guess every time.
 //
-// So the form asks the two questions in the order they are actually answered:
-// HOW LONG do you need, and then WHICH of these does the operator have free.
-// Everything grey is already spoken for; everything you can press is real.
+// That much was right. What was wrong was the shape of the answer.
 //
-// It is a week at a time because that is the horizon a shoot gets booked in,
-// and because a month of half-hour slots is 1,300 buttons nobody reads.
+// It drew the operator's week as seven columns, each with the hours they were
+// already booked listed as chips, and under those every free half-hour start
+// as a button of its own. On a working week that is somewhere near a hundred
+// buttons — a wall of times to compare against each other, when the question
+// being asked has an obvious shape: WHEN IS THE NEXT TIME THIS PERSON IS FREE
+// FOR TWO HOURS. Nobody scans ninety-six options; they take one of the first
+// three or they go and ask.
+//
+// So it is a list, in the order the days come, and each day offers what a
+// person offers out loud: a morning and an afternoon. Two lines a day, not
+// fourteen. The exact half-hours are still there, one press behind "another
+// time on this day", because somebody occasionally does need 14:30 and taking
+// that away to tidy the screen would be tidying away the feature.
+//
+// Lengths went from six to four for the same reason. 30m, an hour, two hours,
+// half a day are the shapes a shoot actually comes in; 90 and 180 minutes were
+// two more buttons to read past, and a ninety-minute shoot books two hours.
 
-const LENGTHS = [30, 60, 90, 120, 180, 240]
-const lenLabel = (m) => (m % 60 === 0 ? `${m / 60}${tx('h')}` : `${m}${tx('m')}`)
-const addDays = (iso, n) => {
-  const d = new Date(`${iso}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + n)
-  return d.toISOString().slice(0, 10)
-}
+const LENGTHS = [
+  { m: 30, label: '30m' },
+  { m: 60, label: '1h' },
+  { m: 120, label: '2h' },
+  { m: 240, label: 'Half day' },
+]
 const dayWords = (iso) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' })
+const hourOf = (t) => Number(String(t).slice(0, 2))
 
 export default function SlotPicker({ userId, excludeId, value, onPick, defaultMins = 120 }) {
   const today = todayISO()
-  const [from, setFrom] = useState(today)
-  const [mins, setMins] = useState(defaultMins)
+  const [days, setDays] = useState(7)
+  const [mins, setMins] = useState(() => (LENGTHS.some((l) => l.m === defaultMins) ? defaultMins : 120))
+  const [openDay, setOpenDay] = useState(null)   // a day whose exact starts are showing
   const [data, setData] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -40,14 +54,29 @@ export default function SlotPicker({ userId, excludeId, value, onPick, defaultMi
     if (!userId) { setData(null); return }
     let alive = true
     setBusy(true); setErr('')
-    api.get(`/users/${userId}/slots?from=${from}&days=7&mins=${mins}${excludeId ? `&exclude=${excludeId}` : ''}`)
+    api.get(`/users/${userId}/slots?from=${today}&days=${days}&mins=${mins}${excludeId ? `&exclude=${excludeId}` : ''}`)
       .then((d) => { if (alive) setData(d) })
       .catch((e) => { if (alive) setErr(e.message) })
       .finally(() => { if (alive) setBusy(false) })
     return () => { alive = false }
-  }, [userId, from, mins, excludeId])
+  }, [userId, days, mins, excludeId, today])
 
-  const anyFree = useMemo(() => (data?.calendar || []).some((d) => d.slots.length > 0), [data])
+  // Every day that has something to offer, with the morning and the afternoon
+  // picked out of its free starts. A day nobody works, or one that is full, is
+  // not a row — it is nothing, and the count at the bottom says how many days
+  // were looked at.
+  const rows = useMemo(() => (data?.calendar || [])
+    .filter((d) => d.working && d.slots.length > 0)
+    .map((d) => {
+      const am = d.slots.filter((s) => hourOf(s.from) < 12)
+      const pm = d.slots.filter((s) => hourOf(s.from) >= 12)
+      return {
+        day: d.day,
+        offer: [am[0], pm[0]].filter(Boolean),
+        rest: d.slots.filter((s) => s !== am[0] && s !== pm[0]),
+        all: d.slots,
+      }
+    }), [data])
 
   if (!userId) {
     return (
@@ -58,26 +87,20 @@ export default function SlotPicker({ userId, excludeId, value, onPick, defaultMi
     )
   }
 
+  const part = (from) => (hourOf(from) < 12 ? tx('morning') : hourOf(from) < 17 ? tx('afternoon') : tx('evening'))
+
   return (
     <div className="sp">
       <div className="sp-head">
-        <span className="sp-len">
-          <Clock size={13} />
-          <span className="stat-sub">{tx('How long?')}</span>
-          <span className="pill-group">
-            {LENGTHS.map((m) => (
-              <button key={m} type="button" className={'pill' + (mins === m ? ' active' : '')}
-                onClick={() => setMins(m)}>{lenLabel(m)}</button>
-            ))}
-          </span>
-        </span>
-        <span className="spacer" />
-        <span className="sp-nav">
-          <button type="button" className="icon-btn" disabled={from <= today}
-            onClick={() => setFrom((f) => addDays(f, -7))} aria-label={tx('Previous week')}><ChevronLeft size={16} /></button>
-          <button type="button" className="icon-btn"
-            onClick={() => setFrom((f) => addDays(f, 7))} aria-label={tx('Next week')}><ChevronRight size={16} /></button>
-        </span>
+        <Clock size={13} />
+        <span className="stat-sub">{tx('How long?')}</span>
+        <div className="seg sp-len" role="tablist">
+          {LENGTHS.map((l) => (
+            <button key={l.m} type="button" role="tab" aria-selected={mins === l.m}
+              className={'seg-btn' + (mins === l.m ? ' on' : '')}
+              onClick={() => { setMins(l.m); setOpenDay(null) }}>{tx(l.label)}</button>
+          ))}
+        </div>
       </div>
 
       {data?.hours === null && (
@@ -88,42 +111,53 @@ export default function SlotPicker({ userId, excludeId, value, onPick, defaultMi
       )}
       {err && <div className="form-error">{err}</div>}
 
-      <div className="sp-week">
-        {busy && !data && <div className="sp-load"><Loader2 size={16} className="spin" /></div>}
-        {(data?.calendar || []).map((d) => (
-          <div key={d.day} className={'sp-day' + (d.working ? '' : ' sp-off') + (d.day === today ? ' sp-today' : '')}>
-            <div className="sp-day-h">
-              <b>{dayWords(d.day)}</b>
-              {!d.working && <span className="stat-sub">{tx('not working')}</span>}
-            </div>
-            {d.busy.length > 0 && (
-              <div className="sp-busy">
-                {d.busy.map((b) => (
-                  <span key={b.id ?? `${b.from}-${b.to}`} className="sp-taken" title={b.title || undefined}>{b.from}–{b.to}</span>
-                ))}
-              </div>
-            )}
-            <div className="sp-slots">
-              {d.working && d.slots.length === 0 && <span className="stat-sub sp-none">{tx('full')}</span>}
-              {d.slots.map((s) => {
-                const on = value?.date === d.day && value?.from === s.from
-                return (
-                  <button key={s.from} type="button" className={'sp-slot' + (on ? ' on' : '')}
-                    onClick={() => onPick({ date: d.day, from: s.from, to: s.to, mins })}>
-                    {s.from}
+      {busy && !data && <div className="sp-load"><Loader2 size={16} className="spin" /></div>}
+
+      <div className="sp-list">
+        {rows.map((r) => {
+          const open = openDay === r.day
+          const shown = open ? r.all : r.offer
+          return (
+            <div className="sp-row" key={r.day}>
+              <span className="sp-row-day">{dayWords(r.day)}{r.day === today ? ` · ${tx('today')}` : ''}</span>
+              <div className="sp-row-times">
+                {shown.map((s) => {
+                  const on = value?.date === r.day && value?.from === s.from
+                  return (
+                    <button key={s.from} type="button" className={'sp-slot' + (on ? ' on' : '')}
+                      onClick={() => onPick({ date: r.day, from: s.from, to: s.to, mins })}>
+                      {s.from}–{s.to}
+                      {!open && <em>{part(s.from)}</em>}
+                    </button>
+                  )
+                })}
+                {/* The exact half-hours, for the one booking in twenty that
+                    needs 14:30 rather than 14:00. */}
+                {!open && r.rest.length > 0 && (
+                  <button type="button" className="sp-more" onClick={() => setOpenDay(r.day)}>
+                    <Plus size={12} />{tx('another time')}
                   </button>
-                )
-              })}
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      {data && !anyFree && (
+      {data && rows.length === 0 && !busy && (
         <div className="sp-note">
           <AlertCircle size={13} />
-          {tx('No free slot this week')}
+          {tx('Nothing free in the next {n} days at this length.', { n: days })}
         </div>
+      )}
+
+      {/* Looking further out is one press, not a pair of week arrows that
+          make somebody walk forwards a week at a time to find out there is
+          nothing for a fortnight. */}
+      {data && days < 28 && (
+        <button type="button" className="sp-further" onClick={() => setDays((d) => d + 14)}>
+          {tx('Look further ahead')}
+        </button>
       )}
     </div>
   )

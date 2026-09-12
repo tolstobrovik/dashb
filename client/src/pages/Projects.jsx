@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Trash2, Briefcase, Megaphone, KanbanSquare, GanttChartSquare } from 'lucide-react'
+import { Plus, Trash2, Briefcase, Megaphone, GanttChartSquare } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
@@ -8,7 +8,7 @@ import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import CampaignForm from '../components/CampaignForm.jsx'
 import CampaignGantt from '../components/CampaignGantt.jsx'
-import { HealthPill, StatusBadge, CampaignRow, PC, PhotoField } from '../components/ProjectBits.jsx'
+import { HealthPill, CampaignRow, PhotoField } from '../components/ProjectBits.jsx'
 import { dateLabel, todayISO } from '../lib/constants.js'
 import { loadFailed } from '../lib/toast.js'
 import { tr as tx, locale } from '../lib/i18n.jsx'
@@ -19,12 +19,6 @@ const CAMP_FILTERS = [
   { key: 'blocked', label: 'Blocked' },
   { key: 'idea', label: 'Not ready' },
   { key: 'done', label: 'Done' },
-]
-const BOARD_COLS = [
-  { key: 'idea', label: 'Idea', statuses: ['idea'] },
-  { key: 'incoming', label: 'Incoming', statuses: ['incoming', 'live'] },
-  { key: 'blocked', label: 'Blocked', statuses: ['blocked'] }, // third on purpose — empty this column
-  { key: 'done', label: 'Completed', statuses: ['done'] },
 ]
 
 // Admin's project editor (create + the fields the table needs).
@@ -168,8 +162,6 @@ export default function Projects() {
   const [month, setMonth] = useState(null)              // 'YYYY-MM', or null for every month
   const [projectModal, setProjectModal] = useState(null) // null | 'new' | project
   const [campModal, setCampModal] = useState(null)       // null | 'new' | campaign
-  const dragRef = useRef(null)
-  const [overCol, setOverCol] = useState(null)
 
   const load = () => Promise.all([
     api.get('/projects'), api.get('/campaigns'), api.get('/users'), api.get('/projects/metrics'),
@@ -179,7 +171,7 @@ export default function Projects() {
   // Live refresh, same rhythm as the rest of the app.
   useEffect(() => {
     const refresh = () => {
-      if (document.hidden || projectModal || campModal || dragRef.current !== null) return
+      if (document.hidden || projectModal || campModal) return
       api.poll('/projects').then((f) => { if (f) setProjects(f) }).catch(() => {})
       api.poll('/campaigns').then((f) => { if (f) setCamps(f) }).catch(() => {})
     }
@@ -290,28 +282,22 @@ export default function Projects() {
     return next
   })
 
-  // Board drag: moving into Incoming runs the gate; Completed closes;
-  // Idea demotes. Blocked is never a drop target — it derives.
-  const dropTo = async (colKey) => {
-    const id = dragRef.current
-    dragRef.current = null
-    setOverCol(null)
-    const c = camps.find((x) => x.id === id)
-    if (!c) return
-    const stage = colKey === 'idea' ? 'idea' : colKey === 'incoming' ? 'accepted' : colKey === 'done' ? 'closed' : null
-    if (!stage) { alert('Blocked is not set by hand — it derives from overdue checklist items.'); return }
-    try {
-      replaceCamp(await api.patch(`/campaigns/${c.id}`, { stage }))
-    } catch (e) { alert(e.message) }
-  }
-
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 
+  // Three views, each answering a question the other two cannot.
+  //
+  // There were four. "Board" was a kanban of the same campaigns the Campaigns
+  // list already shows, in the same order, with the same rows — the only thing
+  // it could do that the list could not was drag a campaign between stages,
+  // and the campaign itself has a stage control on it. A third rendering of
+  // one list is not a view, it is a place to be lost.
+  //
+  // "Gantt" is a word for a chart, not for what somebody wants: they want to
+  // know what overlaps when, so it is called Timeline.
   const VIEWS = [
     { key: 'projects', label: 'Projects', icon: Briefcase },
     { key: 'campaigns', label: 'Campaigns', icon: Megaphone },
-    { key: 'board', label: tx('Board'), icon: KanbanSquare },
-    { key: 'gantt', label: 'Gantt', icon: GanttChartSquare },
+    { key: 'gantt', label: 'Timeline', icon: GanttChartSquare },
   ]
 
   return (
@@ -458,58 +444,6 @@ export default function Projects() {
         </>
       )}
 
-      {view === 'board' && (
-        <div className="pc-board">
-          {BOARD_COLS.map((col) => {
-            const list = camps.filter((c) => col.statuses.includes(c.status))
-            return (
-              <div
-                key={col.key}
-                className={`pcb-col${overCol === col.key ? ' over' : ''}${col.key === 'blocked' ? ' danger' : ''}`}
-                onDragOver={(e) => { e.preventDefault(); setOverCol(col.key) }}
-                onDrop={() => dropTo(col.key)}
-              >
-                <div className="pcb-head">{col.label} <span className="count">{list.length}</span></div>
-                {list.map((c) => (
-                  <div
-                    key={c.id}
-                    className="pcb-card"
-                    draggable
-                    onDragStart={(e) => {
-                      dragRef.current = c.id
-                      try { e.dataTransfer.setData('text/plain', String(c.id)); e.dataTransfer.effectAllowed = 'move' } catch { /* ok */ }
-                    }}
-                    onDragEnd={() => { dragRef.current = null; setOverCol(null) }}
-                    onClick={() => navigate(`/campaigns/${c.id}`)}
-                  >
-                    <div className="pc-camp-top">
-                      <span className="pc-camp-name" style={{ fontSize: 13 }}>{c.name}</span>
-                      {c.status === 'live' && <StatusBadge status="live" />}
-                    </div>
-                    <div className="pc-camp-sub">
-                      {c.project_name ? <span>{c.project_name}</span> : <span className="pc-red">no project</span>}
-                      {c.owner_name ? <span>· {c.owner_name}</span> : <span className="pc-red">· no owner</span>}
-                    </div>
-                    {c.start_date && c.end_date && <div className="pc-camp-sub">{c.start_date} – {c.end_date}</div>}
-                    {c.channels.length > 0 && (
-                      <div className="pc-camp-chips">
-                        {c.channels.map((ch) => <span key={ch} className="chip chip-muted">{byKey[ch]?.label || ch}</span>)}
-                      </div>
-                    )}
-                    {c.status === 'blocked' && c.blocking
-                      ? <div className="pc-strip">Blocked: {c.blocking.text}</div>
-                      : c.status === 'idea' && c.missing.length > 0
-                        ? <div className="pc-strip-soft">Draft — needs: {c.missing.join(', ')}</div>
-                        : <div style={{ marginTop: 6 }}><PaceBarSafe c={c} /></div>}
-                  </div>
-                ))}
-                {list.length === 0 && <div className="board-empty">{col.key === 'blocked' ? 'Empty — keep it that way' : '—'}</div>}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
       {view === 'gantt' && (
         <CampaignGantt camps={camps} onOpen={(c) => navigate(`/campaigns/${c.id}`)} />
       )}
@@ -541,12 +475,3 @@ export default function Projects() {
   )
 }
 
-function PaceBarSafe({ c }) {
-  if (!c.pace) return null
-  return (
-    <div className="pace-track" style={{ height: 8 }}>
-      <div className="pace-fill" style={{ width: `${c.pace.fill_pct}%`, background: c.pace.behind ? PC.amber : PC.green }} />
-      <div className="pace-tick" style={{ left: `${c.pace.time_pct}%` }} />
-    </div>
-  )
-}

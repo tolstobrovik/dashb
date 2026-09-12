@@ -1127,146 +1127,126 @@ function PayTab() {
             </div>
           )}
 
-          <div className="card card-pad rp-head">
-            <div className="rp-big">
-              <b>{money(total, cur)}</b>
-              <span className="rp-big-label">
-                the whole payroll for the period
-                <br /><span className="stat-sub">{range.from} → {range.to}</span>
-              </span>
+          {/* "0 UZS" in 40px type is a statement about the team. On a board
+              where nobody has set a rate it is a statement about the setup,
+              and the card above already makes it — so the total waits until
+              there is one. */}
+          {data.hasDefault && (
+            <div className="card card-pad rp-head">
+              <div className="rp-big">
+                <b>{money(total, cur)}</b>
+                <span className="rp-big-label">
+                  the whole payroll for the period
+                  <br /><span className="stat-sub">{range.from} → {range.to}</span>
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* The arithmetic, once, in words. Every number in the table below
-              is one of these four, and the last column is the four added up.
-              Without this the table is eight numbers with no relationship
-              between them. */}
-          <div className="card card-pad pay-legend">
-            <div className="pay-sum">
-              <span className="pay-term pay-term-base">{tx('Base')}</span>
-              <span className="pay-op">+</span>
-              <span className="pay-term pay-term-piece">{tx('Piecework')}</span>
-              <span className="pay-op">+</span>
-              <span className="pay-term pay-term-bonus">{tx('Bonus')}</span>
-              <span className="pay-op">−</span>
-              <span className="pay-term pay-term-late">{tx('Late penalty')}</span>
-              <span className="pay-op">=</span>
-              <span className="pay-term pay-term-total">{tx('Pay')}</span>
-            </div>
-            <ul className="pay-defs">
-              <li><b>{tx('Base')}</b> — {tx('paid for the period whatever the count')}</li>
-              <li><b>{tx('Piecework')}</b> — {tx('what each finished piece is worth, added up')}</li>
-              <li><b>{tx('Bonus')}</b> — {tx('paid for meeting the quota, and for hitting the on-time target')}</li>
-              <li><b>{tx('Late penalty')}</b> — {tx('taken off for each piece delivered after its day')}</li>
-            </ul>
-          </div>
+          {/* One row per person, not ten columns.
+              It WAS a table: Member, Delivered, On time, Views, Base,
+              Piecework, Bonus, Late, Pay, and two buttons — every cell with
+              two or three sub-lines under it. Ten columns is past what
+              anybody reads across, which is why it needed a legend card above
+              it explaining that the last column was the other four added up.
+              A table that needs a key is a table nobody can read.
 
-          <div className="card table-wrap" style={{ marginTop: 14 }}>
-            <table className="tbl pay-tbl">
-              <thead><tr>
-                <th>{tx('Member')}</th>
-                <th data-tip={tx('Finished pieces in this period, against the quota if one is set')}>{tx('Delivered')}</th>
-                <th data-tip={tx('How many of them landed on or before their day')}>{tx('Delivered on time')}</th>
-                <th data-tip={tx('Views on the pieces made for them, and the target if one is set')}>{tx('Views')}</th>
-                <th data-tip={tx('Paid for the period whatever the count')}>{tx('Base')}</th>
-                <th data-tip={tx('What each finished piece is worth, added up')}>{tx('Piecework')}</th>
-                <th data-tip={tx('Paid for meeting the quota, and for hitting the on-time target')}>{tx('Bonus')}</th>
-                <th data-tip={tx('Taken off for each piece delivered after its day')}>{tx('Late penalty')}</th>
-                <th data-tip={tx('Base plus piecework plus bonus, less late')}>{tx('Pay')}</th><th />
-              </tr></thead>
-              <tbody>
-                {data.people.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <Avatar name={p.name} color={p.color} src={p.avatar} size="sm" />
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{p.name}</div>
-                          <div className="stat-sub">
-                            {p.source === 'own' ? 'own rates' : p.source === 'default' ? 'default rates' : 'no rates'}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <b>{p.delivered}</b>{p.quota > 0 && <span className="stat-sub"> / {p.quota}</span>}
-                      {p.quota > 0 && (
-                        <div className={p.quotaMet ? 'pay-good' : 'stat-sub'} style={{ fontSize: 11 }}>
-                          {p.quotaMet ? 'quota met' : `${p.quotaLeft} to go`}
-                        </div>
-                      )}
-                      {p.lines.filter((l) => l.count > 0).length > 0 && (
-                        <div className="stat-sub">{p.lines.filter((l) => l.count > 0).map((l) => `${l.label} ${l.count}`).join(' · ')}</div>
-                      )}
-                    </td>
-                    <td>{p.onTimePct === null ? <span className="stat-sub">—</span>
-                      : <span className={p.onTimePct >= (p.rates.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>{p.onTimePct}%</span>}</td>
-                    <td>
-                      <b>{(p.views || 0).toLocaleString()}</b>
-                      {p.viewsTarget > 0 && <span className="stat-sub"> / {p.viewsTarget.toLocaleString()}</span>}
-                      {p.viewsTarget > 0 && (
-                        <div className={p.viewsMet ? 'pay-good' : 'stat-sub'} style={{ fontSize: 11 }}>
-                          {p.viewsMet ? tx('target met') : `${(p.viewsLeft || 0).toLocaleString()} ${tx('to go')}`}
-                        </div>
-                      )}
-                      {/* A sum drawn from a third of the pieces reads as if it
-                          were all of them, so it says how many it is from. */}
-                      {p.viewsCounted > 0 && p.viewsCounted < p.delivered && (
-                        <div className="stat-sub" style={{ fontSize: 11 }}>
-                          {p.viewsCounted}/{p.delivered} {tx('counted')}
-                        </div>
-                      )}
-                    </td>
-                    <td>{money(p.base, p.currency)}</td>
-                    <td>
-                      {money(p.piecework + (p.viewsPay || 0), p.currency)}
-                      {p.viewsPay > 0 && (
-                        <div className="stat-sub" style={{ fontSize: 11 }}>{tx('incl. views')} {money(p.viewsPay, p.currency)}</div>
-                      )}
-                    </td>
-                    <td>
-                      {p.bonus ? <span className="pay-good">+{money(p.bonus, p.currency)}</span> : <span className="stat-sub">—</span>}
-                      {p.bonus > 0 && (
-                        <div className="stat-sub" style={{ fontSize: 11 }}>
-                          {[p.quotaBonus > 0 && tx('quota'), p.onTimeBonus > 0 && tx('on time'), p.viewsBonus > 0 && tx('views')].filter(Boolean).join(' + ')}
-                        </div>
-                      )}
-                    </td>
-                    <td>{p.penalty ? <span className="pay-bad">−{money(p.penalty, p.currency)}</span> : <span className="stat-sub">—</span>}</td>
-                    <td>
-                      <b>{money(p.total, p.currency)}</b>
-                      {/* Where this person's money comes from, at a glance.
-                          Two people on the same total can be paid in
-                          completely different shapes, and the table alone
-                          never showed that. */}
-                      {p.total > 0 && (
-                        <div className="pay-bar" data-tip={payShape(p)}>
-                          {[['base', p.base], ['piece', p.piecework + (p.viewsPay || 0)], ['bonus', p.bonus]]
-                            .filter(([, v]) => v > 0)
-                            .map(([k, v]) => (
-                              <span key={k} className={`pay-bar-${k}`}
-                                style={{ flexGrow: v }} />
-                            ))}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {/* Two different things get paid here and they are set
-                          apart: the RATES are what a piece is worth and change
-                          rarely; the KPI card is this month's grades and is
-                          rewritten in the last five days of every month. */}
-                      <button className="icon-btn" onClick={() => setKpiFor({ id: p.id, name: p.name })}
-                        data-tip={`${p.name}'s KPI this month`} data-tip-left=""><Gauge size={14} /></button>
-                      <button className="icon-btn" onClick={() => openCard(p.id, p.name)}
-                        data-tip={`${p.name}'s rates`} data-tip-left=""><Pencil size={14} /></button>
-                    </td>
-                  </tr>
-                ))}
-                {data.people.length === 0 && (
-                  <tr><td colSpan={9} className="empty">{tx('No deliveries')}</td></tr>
-                )}
-              </tbody>
-            </table>
+              So the sum is drawn instead of explained: the bar under each
+              name IS base + piecework + bonus, in proportion, and the terms
+              are written under it in the same colours. Nothing to cross-
+              reference, and the legend card is gone with the columns. */}
+          <div className="pay-rows">
+            {data.people.map((p) => {
+              const noRates = p.source === 'none'
+              const parts = [
+                ['base', tx('Base'), p.base],
+                ['piece', tx('Piecework'), p.piecework + (p.viewsPay || 0)],
+                ['bonus', tx('Bonus'), p.bonus],
+              ].filter(([, , v]) => v > 0)
+              return (
+                <div className={'pay-row' + (noRates ? ' pay-row-unset' : '')} key={p.id}>
+                  <div className="pay-row-who">
+                    <Avatar name={p.name} color={p.color} src={p.avatar} size="sm" />
+                    <div>
+                      <b>{p.name}</b>
+                      <span className="stat-sub">
+                        {p.source === 'own' ? tx('own rates') : p.source === 'default' ? tx('default rates') : tx('no rates set')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pay-row-sum">
+                    {/* A person nobody has set up shows what is true — that
+                        nobody has set them up. "0 UZS" in the same type as
+                        everybody else's pay reads as a statement about them. */}
+                    {noRates
+                      ? <button className="btn btn-sm" onClick={() => openCard(p.id, p.name)}>{tx('Set their rates')}</button>
+                      : <>
+                          <b>{money(p.total, p.currency)}</b>
+                          {parts.length > 0 && (
+                            <>
+                              <span className="pay-bar">
+                                {parts.map(([k, , v]) => <span key={k} className={`pay-bar-${k}`} style={{ flexGrow: v }} />)}
+                              </span>
+                              <span className="pay-parts">
+                                {parts.map(([k, label, v]) => (
+                                  <span key={k} className={`pay-part pay-part-${k}`}>
+                                    <i />{label} {money(v, '')}
+                                  </span>
+                                ))}
+                                {p.penalty > 0 && (
+                                  <span className="pay-part pay-part-late">
+                                    <i />{tx('Late')} −{money(p.penalty, '')}
+                                  </span>
+                                )}
+                              </span>
+                            </>
+                          )}
+                        </>}
+                  </div>
+
+                  {/* The counts that earned it. Nothing that is zero and
+                      nothing nobody set a target for is printed: a board that
+                      pays nothing on views should never mention views. */}
+                  <div className="pay-row-facts">
+                    <span>
+                      <b>{p.delivered}</b>{p.quota > 0 ? ` / ${p.quota}` : ''} {tx('delivered')}
+                      {p.quota > 0 && !p.quotaMet && <em> · {tx('{n} to go', { n: p.quotaLeft })}</em>}
+                    </span>
+                    {p.onTimePct !== null && (
+                      <span className={p.onTimePct >= (p.rates?.ontime_target || 0) ? 'pay-good' : 'pay-bad'}>
+                        <b>{p.onTimePct}%</b> {tx('on time')}
+                      </span>
+                    )}
+                    {(p.views > 0 || p.viewsTarget > 0) && (
+                      <span className={p.viewsTarget > 0 && p.viewsMet ? 'pay-good' : undefined}>
+                        <b>{(p.views || 0).toLocaleString()}</b>
+                        {p.viewsTarget > 0 ? ` / ${p.viewsTarget.toLocaleString()}` : ''} {tx('views')}
+                        {p.viewsCounted > 0 && p.viewsCounted < p.delivered && (
+                          <em> · {tx('{counted} of {delivered} counted', { counted: p.viewsCounted, delivered: p.delivered })}</em>
+                        )}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Two different things get paid here and they are set
+                      apart: the RATES are what a piece is worth and change
+                      rarely; the KPI card is this month's grades and is
+                      rewritten in the last five days of every month.
+                      Named in words rather than left to two tooltips that
+                      opened on top of each other. */}
+                  <div className="pay-row-do">
+                    <button className="btn btn-sm" onClick={() => setKpiFor({ id: p.id, name: p.name })}>
+                      <Gauge size={14} /> {tx('KPI')}
+                    </button>
+                    <button className="btn btn-sm" onClick={() => openCard(p.id, p.name)}>
+                      <Pencil size={14} /> {tx('Rates')}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+            {data.people.length === 0 && <div className="card card-pad empty">{tx('No deliveries')}</div>}
           </div>
           {kpiFor && (
             <KpiCard userId={kpiFor.id} name={kpiFor.name} month={range.to.slice(0, 7)}
@@ -1380,18 +1360,6 @@ function PayTab() {
 // Nobody is late by default. A day nobody has looked at says nothing, and the
 // register only ever says what an admin said, which is why "on time" is a
 // state somebody chooses rather than what an empty row means.
-// "12 000 base + 40 000 piecework + 5 000 bonus, less 2 000 late" — the row's
-// own arithmetic, spelled out for the bar under its total.
-const payShape = (p) => {
-  const bits = []
-  if (p.base > 0) bits.push(`${p.base.toLocaleString()} base`)
-  if (p.piecework > 0) bits.push(`${p.piecework.toLocaleString()} piecework`)
-  if (p.viewsPay > 0) bits.push(`${p.viewsPay.toLocaleString()} on views`)
-  if (p.bonus > 0) bits.push(`${p.bonus.toLocaleString()} bonus`)
-  const sum = bits.join(' + ') || '0'
-  return p.penalty > 0 ? `${sum}, less ${p.penalty.toLocaleString()} late` : sum
-}
-
 
 function AiTab() {
   const [st, setSt] = useState(null)
