@@ -107,8 +107,8 @@ await page.waitForTimeout(2500)
 
 // Drag whatever pill carries `title` two days to the right, and say what the
 // day became.
-const dragIt = async (t) => {
-  await page.goto(B + '/releases', { waitUntil: 'domcontentloaded' })
+const dragIt = async (t, where = '/releases') => {
+  await page.goto(B + where, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2200)
   const pill = page.locator('.rel-ev', { hasText: t.title }).first()
   if (!(await pill.count())) return { found: false }
@@ -145,6 +145,33 @@ ok('a piece past the idea stage is on the calendar too', c.found)
 ok('…but its pill never lifts', c.lifted === false)
 ok('…so nothing is sent for it', patches.length === 0, JSON.stringify(patches))
 ok('…and its day is untouched', c.after === day(2), `${c.after} (wanted ${day(2)})`)
+
+// ---- and the chain holds when a card is dragged ----
+// The form has always cascaded: shoot, then cut, then out, keeping the gaps
+// the plan had. The calendar sent the one day it was given, so a card dragged
+// forward left its cut stranded before the footage existed — the board showing
+// a plan it would refuse if you typed it in. Same rule, two paths, one of them
+// forgotten. Dragged here, not called directly, because the helper was never
+// the broken part.
+const chained = await api('/content', T, { method: 'POST', body: JSON.stringify({
+  title: `chain ${stamp}`, channels: [ch], type: 'reel', status_id: idea.id,
+  recording_date: day(0), edit_ready_date: day(1), release_date: day(2) }) })
+// Dragged on RECORDINGS, so the day that moves is the shoot — the first link,
+// with a cut and a release behind it. Dragging the release instead would prove
+// nothing: it is last in the chain and has nothing to push.
+await dragIt({ ...chained.data, title: `chain ${stamp}` }, '/recordings')
+const whole = (await api(`/content/${chained.data.id}`, T)).data
+ok('the shoot lands where it was dropped', whole.recording_date === day(4),
+  `${whole.recording_date} (wanted ${day(4)})`)
+ok('…and the cut came with it rather than staying before the footage',
+  whole.edit_ready_date >= whole.recording_date,
+  JSON.stringify({ shoot: whole.recording_date, cut: whole.edit_ready_date }))
+ok('…and the release stayed after the cut',
+  whole.release_date >= whole.edit_ready_date,
+  JSON.stringify({ cut: whole.edit_ready_date, out: whole.release_date }))
+ok('…and the plan kept its shape rather than collapsing onto one day',
+  whole.edit_ready_date > whole.recording_date && whole.release_date > whole.edit_ready_date,
+  JSON.stringify({ shoot: whole.recording_date, cut: whole.edit_ready_date, out: whole.release_date }))
 
 ok('no page errors throughout', errs.length === 0, JSON.stringify(errs.slice(0, 3)))
 await b.close()

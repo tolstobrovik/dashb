@@ -13,6 +13,7 @@ import ContentCalendar from '../components/ContentCalendar.jsx'
 import DayAgenda from '../components/DayAgenda.jsx'
 import ContentFilters, { BLANK_FILTER, matchesFilter, filterIsOn, assigneesOf } from '../components/ContentFilters.jsx'
 import { stageRankOf } from '../lib/gaps.js'
+import { cascadeDates, LABELS } from '../lib/formState.js'
 import { tr as tx } from '../lib/i18n.jsx'
 
 // How many overdue chips the strip shows before it stops being a strip.
@@ -214,26 +215,62 @@ export default function Schedule({ mode }) {
   const mayMoveDay = useCallback(
     (t) => canMove || ideaIds.has(t.status_id), [canMove, ideaIds])
   const manageContent = can(user, 'manage_content')
-  const setDay = async (t, field, iso, back) => {
+  const setDay = async (t, field, iso) => {
     const before = t[field] || null
     if ((iso || null) === before) return
-    setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, [field]: iso } : x)))
+    // The three dates are a chain: shoot, then cut, then out. The task form
+    // has always known this — moving the shoot past the cut leaves the cut due
+    // before the footage exists, a promise nobody can keep — and it cascades
+    // the days after it, keeping the gaps the plan had.
+    //
+    // The CALENDAR did not. It sent the one day it was given, so a card
+    // dragged four days to the right left its cut stranded in the past, and
+    // the board showed a plan it would refuse if you typed it into the form.
+    // Same rule, enforced on one path and forgotten on its neighbour. It uses
+    // the form's own helper now, so there is one implementation of the chain
+    // rather than two that can drift, and it says what it moved — a deadline
+    // that shifts under somebody in silence is worse than one that does not
+    // shift at all.
+    const { moved } = cascadeDates(t, field, iso)
+    const payload = { [field]: iso }
+    for (const m of moved) payload[m.key] = m.to
+    // What every touched day was, kept out here because both the undo button
+    // and the failure path put it back.
+    const wasBefore = { [field]: before }
+    for (const m of moved) wasBefore[m.key] = m.from
+    setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, ...payload } : x)))
     try {
-      const c = await api.patch(`/content/${t.id}`, { [field]: iso })
+      const c = await api.patch(`/content/${t.id}`, payload)
       setItems((prev) => prev.map((x) => (x.id === t.id ? c : x)))
       const where = iso ? dateLabel(iso) : 'off the calendar'
-      const undo = { label: 'Undo', onClick: () => setDay({ ...t, [field]: iso }, field, before, true) }
-      // `iso` is where it is going, `before` is where it came from — and an
-      // undo has to name the DESTINATION, same as any other move. Naming
-      // `before` here told you it had gone back to the day it just left.
-      if (back) toast(`${t.title} · back to ${iso ? dateLabel(iso) : 'no day'}`)
-      else toast(iso ? `${t.title} → ${where}` : `${t.title} · taken ${where}`, 'ok', undo)
+      // An undo puts back everything the move touched, not just the day that
+      // was dragged: a cascade that could not be undone whole would be a
+      // button that half works.
+      const undoAll = async () => {
+        setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, ...wasBefore } : x)))
+        try {
+          const r = await api.patch(`/content/${t.id}`, wasBefore)
+          setItems((prev) => prev.map((x) => (x.id === t.id ? r : x)))
+          toast(`${t.title} · back to ${before ? dateLabel(before) : 'no day'}`)
+        } catch (e2) { toast(e2.message, 'err') }
+      }
+      const undo = { label: 'Undo', onClick: undoAll }
+      if (moved.length) {
+        toast(tx('{what} moved with it — {days}', {
+          what: moved.map((m) => tx(LABELS[m.key])).join(tx(' and ')),
+          days: moved.map((m) => dateLabel(m.to)).join(', '),
+        }))
+      }
+      toast(iso ? `${t.title} → ${where}` : `${t.title} · taken ${where}`, 'ok', undo)
     } catch (e) {
-      setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, [field]: before } : x)))
+      // Put back every day the optimistic update touched, not only the one
+      // that was dragged — a half-rolled-back cascade leaves the board
+      // showing a plan the server rejected.
+      setItems((prev) => prev.map((x) => (x.id === t.id ? { ...x, ...wasBefore } : x)))
       toast(e.message, 'err')
     }
   }
-  const moveDate = (t, field, iso) => setDay(t, field, iso, false)
+  const moveDate = (t, field, iso) => setDay(t, field, iso)
 
   // What you can see is what you get. The calendar owns where it is parked, so
   // it reports its span up here; the export carries that span plus the late
