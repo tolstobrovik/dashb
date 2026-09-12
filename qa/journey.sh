@@ -47,9 +47,18 @@ ok('member books the shoot and moves it to To shoot', moved.status === 200 && mo
   `${moved.status} ${moved.data.error || ''}`)
 ok('member blocked from admin user PATCH', (await req(`/users/${mir.id}`, { method: 'PATCH', token: MT, body: { name: 'hack' } })).status === 403)
 const MT2 = await login('mir', 'm1234')
+// The schedule is shared and the paperwork is not — two rules now, where
+// there used to be one. Round 90 opened READING across the board, because
+// scoped to your own channels "who is filming on Thursday" could only be
+// answered by the people who already knew. Round 92 then put back what had
+// come open with it. So both halves are asked here, which is stronger than
+// either version of this check on its own.
 const mirView = (await req('/content', { token: MT2 })).data
-ok('other member does not see foreign-channel task', !mirView.find((c) => c.id === task.id))
-ok('other member cannot open it directly', (await req(`/content/${task.id}`, { token: MT2 })).status === 404)
+ok('another channel’s member sees the work on the shared schedule', !!mirView.find((c) => c.id === task.id))
+ok('…and can open it', (await req(`/content/${task.id}`, { token: MT2 })).status === 200)
+ok('…but not its paperwork', (await req(`/content/${task.id}/files`, { token: MT2 })).status === 404)
+ok('…and cannot undo somebody else’s move',
+  (await req(`/content/${task.id}/undo`, { method: 'POST', token: MT2 })).status === 403)
 ok('empty title rejected', (await req('/content', { method: 'POST', token: T, body: { title: '   ', channels: ['youtube'], type: 'post' } })).status === 400)
 ok('unknown channel rejected', (await req('/content', { method: 'POST', token: T, body: { title: 'X', channels: ['nope'], type: 'post' } })).status === 400)
 await req(`/users/${mir.id}`, { method: 'DELETE', token: T })
