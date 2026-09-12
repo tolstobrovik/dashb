@@ -240,10 +240,18 @@ const doomed = await mk({ title: 'doomed', status_id: published.id,
   done_at: new Date().toISOString(), release_date: day(0), editor_id: crew.id,
   edited_at: new Date().toISOString(), edit_ready_date: day(0) })
 const beforeAct = (await req('/reports/activity?days=4')).data.done
+// One piece is not one count. The chart counts CRAFTS — filmed, edited,
+// designed, published — so a piece that was edited by one person and run by
+// another contributes two. Deleting it must remove every one of them, which
+// is a sharper question than "the number went down by one" and the reason
+// this is worth asking at all.
+const crafts = ['operator_id', 'editor_id', 'designer_id', 'assignee_id']
+  .filter((k) => doomed[k]).length
 await req(`/content/${doomed.id}`, 'DELETE')
 const afterAct = (await req('/reports/activity?days=4')).data.done
-ok('J1', 'a deleted piece stops being counted as work done',
-  afterAct === beforeAct - 1, JSON.stringify({ before: beforeAct, after: afterAct }))
+ok('J1', 'a deleted piece takes every craft it was counted for with it',
+  afterAct === beforeAct - crafts,
+  JSON.stringify({ before: beforeAct, after: afterAct, crafts }))
 const afterPay = (await req(`/reports/pay?from=${from}&to=${to}`)).data
   .people.find((p) => p.id === crew.id)
 ok('J2', '…and stops being paid for',

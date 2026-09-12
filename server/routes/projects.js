@@ -100,6 +100,15 @@ function view(p, liveCount, today, camps = []) {
 // What needs a person comes first; what is finished sinks to the bottom.
 const HEALTH_ORDER = { red: 0, amber: 1, green: 2, idle: 3, done: 4 }
 
+// Every metric this board offers is a count — Followers, Reach, Views, Leads,
+// Applications, Enrollments, Attendees, Posts published, Engagement, Revenue —
+// and none of them can run backwards. `Number(x) || 0` already turned typing
+// into the box into a nought; it just never looked at the sign, so a stray
+// minus stored −5 and the project read "−5%" against a bar that clamps at
+// nothing. One helper for both write paths, so creating and editing a project
+// cannot disagree about what a number is.
+const count = (v) => Math.max(0, Math.round(Number(v) || 0))
+
 router.get('/metrics', wrap(async (req, res) => res.json(METRICS)))
 
 // The landing table: sorted by health, red first.
@@ -158,8 +167,8 @@ router.post('/', adminOnly, wrap(async (req, res) => {
     name,
     b.owner_id == null || b.owner_id === '' ? null : Number(b.owner_id),
     String(b.metric || ''),
-    Number(b.target) || 0,
-    Number(b.actual) || 0,
+    count(b.target),
+    count(b.actual),
     /^\d{4}-\d{2}-\d{2}$/.test(String(b.start_date || '')) ? b.start_date : null,
     /^\d{4}-\d{2}-\d{2}$/.test(String(b.deadline || '')) ? b.deadline : null,
     ['active', 'paused', 'closed'].includes(b.status) ? b.status : 'active',
@@ -191,8 +200,8 @@ router.patch('/:id', wrap(async (req, res) => {
     patch.owner_id = next
   }
   if (b.metric !== undefined) patch.metric = String(b.metric)
-  if (b.target !== undefined) patch.target = Number(b.target) || 0
-  if (b.actual !== undefined) patch.actual = Number(b.actual) || 0 // the weekly human number
+  if (b.target !== undefined) patch.target = count(b.target)
+  if (b.actual !== undefined) patch.actual = count(b.actual) // the weekly human number
   if (b.deadline !== undefined) patch.deadline = /^\d{4}-\d{2}-\d{2}$/.test(String(b.deadline || '')) ? b.deadline : null
   if (b.status !== undefined && ['active', 'paused', 'closed'].includes(b.status)) patch.status = b.status
   if (b.description !== undefined) patch.description = String(b.description).slice(0, 2000)

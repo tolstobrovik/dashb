@@ -1161,11 +1161,20 @@ router.post('/', wrap(async (req, res) => {
     if (booking && !free) return res.status(400).json({ error: booking })
   }
   const maxSort = (await get('SELECT COALESCE(MAX(todo_sort), -1) AS m FROM content')).m
+  // A piece created straight into the final stage is a piece that has already
+  // gone out — somebody writing last month's work down. Moving a task there
+  // stamps done_at (see the PATCH handler); creating one there did not, and
+  // done_at is what the whole board reads to mean "finished". So the record
+  // sat in every `WHERE done_at IS NULL` query there is: open on the channel
+  // board, counted as work in hand on the Overview, chased by the gap views,
+  // and never credited to the person whose name was on it. The same end state
+  // reached two ways has to give the same record.
+  const bornDone = (await isFinal(status)) ? (req.body?.done_at || new Date().toISOString()) : null
   const info = await run(`
     INSERT INTO content (title, channels, type, assignee_id, assignees, created_by, status_id, campaign_id, operator_id, editor_id, designer_id, reviewer_id, reviewers,
       recording_date, recording_time, recording_end, edit_ready_date, design_ready_date, release_date, release_time, description, ready_link,
-      shot_link, design_link, reference_text, reference_links, format, rubrika, script, tz, script_key, photo, photo_thumb, checklist, todo_sort, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      shot_link, design_link, reference_text, reference_links, format, rubrika, script, tz, script_key, photo, photo_thumb, checklist, todo_sort, done_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     String(title).trim(), JSON.stringify(channels), safeType, assignee, JSON.stringify(assigneeList), req.user.id, status, campaignId,
     crew.operator_id, crew.editor_id, crew.designer_id, crew.reviewer_id, JSON.stringify(reviewerList),
@@ -1175,7 +1184,7 @@ router.post('/', wrap(async (req, res) => {
     reference_text ? String(reference_text).slice(0, 4000) : null, JSON.stringify(referenceLinks),
     briefText.format, briefText.rubrika, briefText.script, briefText.tz, scriptKey(briefText.script),
     photo || null, photo_thumb || null, JSON.stringify(Array.isArray(checklist) ? checklist : []),
-    maxSort + 1, new Date().toISOString(),
+    maxSort + 1, bornDone, new Date().toISOString(),
   )
   if (campaignId) await bumpProjectOfCampaign(campaignId)
   await logEvent(req.user, info.lastInsertRowid, String(title).trim(), 'created')
