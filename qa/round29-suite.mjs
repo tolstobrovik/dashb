@@ -39,13 +39,13 @@ ok('a pasted link opens its task', (await p.locator('.modal .cm-title').inputVal
 // whose accessible name IS its visible text needs no aria-label, and is
 // better off without one — two names for one control is how they drift.
 await p.locator('.modal .cm-more-btn').click(); await p.waitForTimeout(350)
-await p.locator('.modal .cm-tools.open .btn', { hasText: /^Copy link$/ }).click(); await p.waitForTimeout(400)
+await p.locator('.modal .cm-tools.open .btn', { hasText: 'Copy link' }).click(); await p.waitForTimeout(400)
 const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '')
 ok('Copy link writes the task URL', clip.includes(`/brief?task=${src.id}`))
 
 // ---- 2) Duplicate from the modal ----
 await p.locator('.modal .cm-more-btn').click(); await p.waitForTimeout(350)
-await p.locator('.modal .cm-tools.open .btn', { hasText: /^Duplicate$/ }).click(); await p.waitForTimeout(900)
+await p.locator('.modal .cm-tools.open .btn', { hasText: 'Duplicate' }).click(); await p.waitForTimeout(900)
 // Round 78 renamed what a duplicate is called. "(copy)" was one name however
 // many copies you made, so a second press produced a second row with the same
 // title as the first; it is "Duplicate 1", "Duplicate 2" now, numbered by the
