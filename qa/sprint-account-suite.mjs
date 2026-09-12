@@ -67,6 +67,30 @@ const O = await login('spo', 'pass1234')
 ok('an admin is not a sprint owner', (await req('/sprints/current')).data.owner === false)
 ok('…and the owner is', (await req('/sprints/current', 'GET', null, O)).data.owner === true)
 
+// The board freezes at Saturday noon Tashkent. Every scenario below is about
+// an OPEN week — "a member may drop a task on the open week", "anybody may
+// put the first real day on it" — so a gate that happens to run on a Saturday
+// afternoon read this week as legitimately frozen and failed nine checks
+// about rules the freeze was never part of. The very first fixture threw,
+// because a refused POST has no `tasks` to read.
+//
+// The week is put where the scenario needs it rather than left to the clock,
+// exactly as sprint-guards-suite already does for its Monday. Not a rule being
+// silenced: the freeze has a suite of its own, and the closed-week checks
+// below build their own past sprint on purpose.
+const openTheWeek = async () => {
+  const s = (await req('/sprints/current')).data.sprint
+  await db.execute({
+    sql: 'UPDATE sprints SET freeze_at = ?, meeting_at = ? WHERE id = ?',
+    args: [new Date(Date.now() + 86400e3).toISOString(),
+      new Date(Date.now() + 86400e3 + 3 * 3600e3).toISOString(), s.id],
+  })
+  return (await req('/sprints/current')).data
+}
+const opened = await openTheWeek()
+ok('the week under test is open, whatever day the gate runs on',
+  opened.frozen === false, JSON.stringify({ frozen: opened.frozen, freeze_at: opened.sprint.freeze_at }))
+
 const mk = async (title, tok) => (await req('/sprints/tasks', 'POST', { title }, tok)).data.tasks.find((t) => t.title === title)
 const one = async (id) => (await req('/sprints/current')).data.tasks.find((t) => t.id === id)
 
