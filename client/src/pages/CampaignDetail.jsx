@@ -10,6 +10,7 @@ import CampaignForm from '../components/CampaignForm.jsx'
 import ContentBoard from '../components/ContentBoard.jsx'
 import ContentModal from '../components/ContentModal.jsx'
 import { StatusBadge, PaceBar, PcChecklist, NotesBlock, PC } from '../components/ProjectBits.jsx'
+import { stageRankOf } from '../lib/gaps.js'
 
 // Campaign detail: header, one big number, the pre-launch checklist that
 // drives Blocked, the content kanban filtered to this campaign, and notes.
@@ -24,6 +25,12 @@ export default function CampaignDetail() {
   const [projects, setProjects] = useState([])
   const [content, setContent] = useState([])
   const [statuses, setStatuses] = useState([])
+  // Same carve-out the Schedule calendar and the kanban make: an idea has no
+  // promise on it, so anybody who can see it may move its day.
+  const ideaIds = useMemo(() => {
+    const rank = stageRankOf(statuses)
+    return new Set(statuses.filter((st) => rank(st.id) === 'idea').map((st) => st.id))
+  }, [statuses])
   const [err, setErr] = useState('')
   const [editing, setEditing] = useState(false)
   const [openItem, setOpenItem] = useState(null)
@@ -191,7 +198,7 @@ export default function CampaignDetail() {
           items={tagged}
           statuses={statuses}
           dept={null}
-          canMove={can(user, 'move_tasks')}
+          canMove={(t) => can(user, 'move_tasks') || ideaIds.has(t.status_id)}
           onMove={(item, statusId) => updateContent(item, { status_id: statusId }).catch((e) => alert(e.message))}
           onOpen={setOpenItem}
           campaignsById={campaignsById}

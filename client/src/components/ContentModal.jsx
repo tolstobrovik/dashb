@@ -709,9 +709,18 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
     { col: 'ready_link', file: 'ready_file', label: 'Edit ready', sub: 'the editor’s finished cut', icon: Scissors, kind: 'edit', mine: myHats.editor, present: !!item?.editor_id, offer: true },
     { col: 'design_link', file: 'design_file', label: 'Design ready', sub: 'the designer’s finished artwork', icon: Palette, kind: 'design', mine: myHats.designer, present: !!item?.designer_id, offer: true },
   ]
+  // Three EMPTY boxes on a task nobody is making yet is clutter, which is why
+  // this waited behind a button. But a seat that is FILLED is a person who has
+  // been asked to deliver something, and their box is then the most useful
+  // thing on the sheet — folded away, it had planners opening the task,
+  // finding nothing, and going to ask in Telegram whether the cut was done.
+  // So a box appears the moment somebody is expected to fill it. The crew
+  // branch has always read it this way (`f.present`); the planner's branch
+  // now reads it the same. An unfilled seat's box still waits to be asked
+  // for, because there is nobody to put anything in it.
   const deliveryFields = DELIVERY.filter((f) => (form[f.col] ? true : (crewViewer
     ? (f.offer && (f.mine || f.present))
-    : (f.offer && canEdit && show.delivery))))
+    : (f.offer && canEdit && (f.present || show.delivery)))))
 
   // Which page the sheet opens on, decided once. A crew member opens this to
   // tick their milestone and drop their link, and both live on the second

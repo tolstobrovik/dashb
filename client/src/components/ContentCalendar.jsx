@@ -30,7 +30,18 @@ const fmtShort = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale(
 //  - Week: seven tall columns with rich cards (type, stage, time) — the
 //    day-to-day working view. Cards drag between days in both scales;
 //    click a card to open it, a day to plan it, + to add straight there.
+// `canMove` is a boolean OR a predicate on the item. It has to be per-item
+// because of ideas: a thought nobody has promised anything about may be
+// shoved around by anybody who can see it, with no move_tasks permission and
+// no waiting on whoever's name is on it. The server already says so
+// (content.js, `wasAnIdea`) and the kanban already agrees (ContentBoard's
+// canDrag) — the calendar was the one surface left where an idea sat still,
+// which reads as the board being broken rather than as a rule.
 export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDayClick, statusesById = {}, onOpenItem, onAddAt, trayItems = [], onRange }) {
+  const mayMove = typeof canMove === 'function' ? canMove : () => !!canMove
+  // Day cells and the tray carry data-drop unconditionally and always did, so
+  // unlike the kanban there is no second gate to widen here — deciding at
+  // pick-up is the whole of it.
   const [ty, tm] = todayISO().split('-').map(Number) // today in Tashkent time
   const [cursor, setCursor] = useState({ y: ty, m: tm - 1 })
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()))
@@ -62,7 +73,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
   const [overCell, setOverCell] = useState(null) // a day's iso | 'tray' | null
   const [ghost, setGhost] = useState(null) // { x, y, title } under the pointer
   const ctx = useRef({})
-  ctx.current = { items, trayItems, dateField, canMove, onMoveDate }
+  ctx.current = { items, trayItems, dateField, mayMove, onMoveDate }
   const dnd = useRef(null)
   if (!dnd.current) {
     // Built once; everything mutable lives on this object or in ctx, so the
@@ -165,7 +176,7 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
       d.cleanup()
     }
     d.start = (e, item) => {
-      if (!ctx.current.canMove) return
+      if (!ctx.current.mayMove(item)) return
       if (d.press) return // a second finger never steals the gesture
       if (e.button !== undefined && e.button !== 0) return
       const touch = e.pointerType === 'touch'
@@ -260,12 +271,12 @@ export default function ContentCalendar({ items, mode, canMove, onMoveDate, onDa
                   onPointerDown={(e) => startDrag(e, it)}
                   onContextMenu={(e) => { if (dragId === it.id) e.preventDefault() }}
                   onClick={() => onOpenItem && onOpenItem(it)}
-                  title={canMove ? `${it.title} — drag onto a day to schedule, click to open` : it.title}
+                  title={mayMove(it) ? `${it.title} — drag onto a day to schedule, click to open` : it.title}
                 >
                   <Icon size={10} style={{ flexShrink: 0 }} />
                   <span className="ev-txt">{it.title}</span>
                   <span className={`chip ct-${it.type} tray-type`}>{typeInfo(it.type).label}</span>
-                  {canMove && (
+                  {mayMove(it) && (
                     <span className="tray-quick">
                       <button type="button" className="qbtn" data-tip={tx("Schedule for today")}
                         onClick={(e) => { e.stopPropagation(); onMoveDate(it, dateField, todayISO()) }}>{tx("Today")}</button>
