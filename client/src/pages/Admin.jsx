@@ -1270,7 +1270,7 @@ function PayTab() {
                       ? <button className="btn btn-sm" onClick={() => openCard(p.id, p.name)}>{tx('Set their rates')}</button>
                       : <>
                           <b>{money(p.payout ? p.payout.total : p.total, p.currency)}</b>
-                          {!p.payout && (p.goals || []).some((g) => g.state === 'behind') && (
+                          {wholeMonth && !p.payout && (p.goals || []).some((g) => g.state === 'behind') && (
                             <span className="pay-slip-tag"
                               data-tip={tx('At this pace the month ends short of a bonus they could still reach')}>
                               <AlertCircle size={12} /> {tx('slipping')}
