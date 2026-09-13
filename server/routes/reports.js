@@ -929,17 +929,18 @@ async function payHistory(userId, n = 6) {
     const slice = list.filter((c) => String(c.day).slice(0, 7) === m)
     const run = await payRun({ from, to, only: userId, list: slice })
     const p = run.people[0]
-    // A base salary is paid "whatever the count", so the calculator happily
-    // reports a full month's base for a month this person has no record of
-    // working at all — including months before they joined. That figure is
-    // not a lie about the rate card; it would be a lie about the month. So it
-    // is marked as assumed, and drawn hollow rather than as a bar somebody
-    // could read as money they were once paid.
+    // A month with nothing delivered in it is a month this board has no record
+    // of this person working, and there are two ways it lies if drawn as data.
+    // With a base salary on the card the calculator reports a full month's pay
+    // — "whatever the count" — including for months before they joined. With
+    // no base it reports a confident nought, which reads as "you earned
+    // nothing in April" rather than "April is not on the record". Both are
+    // marked, and the chart draws neither as a bar.
     const delivered = p?.delivered || 0
     out.push({
       month: m, total: p ? Math.round(p.total) : 0, currency: p?.currency || 'UZS',
       settled: false, payout: null, delivered,
-      assumed: delivered === 0 && !!p && p.total > 0,
+      assumed: delivered === 0,
       running: m === today.slice(0, 7),
     })
   }
@@ -1067,7 +1068,7 @@ async function payRun({ from, to, only, list: given }) {
       // the browser only has to draw it, and so none of it can be nudged by
       // anything a browser sends.
       ...(from && to
-        ? goalsOf({ rates, delivered: e.done, late: e.late, onTime, views, from, to })
+        ? goalsOf({ rates, delivered: e.done, late: e.late, onTime, views, from, to, today: dayISO() })
         : { period: null, goals: [] }),
       items: e.items.sort((a, b) => String(b.day).localeCompare(String(a.day))),
     }

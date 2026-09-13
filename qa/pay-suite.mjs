@@ -124,8 +124,10 @@ ok('A1', 'a person with rates and nothing delivered still gets goals',
 ok('A2', '…and the window is the whole month, not the days that have passed',
   pay.period?.horizon === new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).toISOString().slice(0, 10),
   JSON.stringify(pay.period))
-ok('A3', '…so the days left are counted to the end of the month',
-  pay.period?.days_left === Math.round((Date.parse(pay.period.horizon + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000),
+// Counting TODAY. A day you can still work in is a day left; see section H,
+// which is about the one day this distinction decides anything.
+ok('A3', '…so the days left are counted to the end of the month, today included',
+  pay.period?.days_left === Math.round((Date.parse(pay.period.horizon + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000) + 1,
   JSON.stringify({ left: pay.period?.days_left, horizon: pay.period?.horizon, today }))
 // Nothing delivered is not a punctuality failure. A share of nothing is not
 // 0% — it is "nothing to judge" — and a card that opens on somebody's first
@@ -310,6 +312,50 @@ const noTarget = await mineFor(eve)
 ok('G3', 'a views bonus with no target set is not a goal',
   !goal(noTarget, 'views'), JSON.stringify((noTarget.goals || []).map((g) => g.key)))
 ok('G4', '…while the quota, which IS set, is one', !!goal(noTarget, 'quota'))
+
+console.log('\n=== H. the month, walked day by day ===')
+// The calendar decides every state here, and a suite that only ever runs on
+// the day it happens to run tests one square of it. These are pure functions,
+// so the month is walked instead of waited for — which is how the bug below
+// was found on the 12th rather than on the 30th by somebody who had lost a
+// bonus to it.
+const { goalsOf, periodOf } = await import(`${ROOT}/server/paygoals.js`)
+const RATES = { quota: 20, quota_bonus: 400000, ontime_bonus: 0, ontime_target: 90, views_target: 0, views_bonus: 0 }
+const at = (have, day, now = day) => goalsOf({
+  rates: RATES, delivered: have, late: 0, onTime: have, views: 0,
+  from: '2026-09-01', to: day, today: now }).goals[0].state
+const leftOn = (day, now = day) => periodOf('2026-09-01', day, now).days_left
+
+ok('H1', 'the first morning of a month is not "behind"',
+  at(0, '2026-09-01') === 'open', `${at(0, '2026-09-01')} — nobody can have slipped before they have had a day`)
+ok('H2', '…and offers the whole month, today included',
+  leftOn('2026-09-01') === 30, String(leftOn('2026-09-01')))
+ok('H3', 'a month run at half the pace it needs is called behind, with time to act',
+  at(2, '2026-09-12') === 'behind', at(2, '2026-09-12'))
+ok('H4', '…and one run at the pace it needs is not',
+  at(8, '2026-09-12') === 'open', at(8, '2026-09-12'))
+ok('H5', 'three from home is "nearly"', at(17, '2026-09-12') === 'close', at(17, '2026-09-12'))
+ok('H6', 'five of twenty with eighteen days to run is NOT "nearly"',
+  at(5, '2026-09-12') !== 'close', `${at(5, '2026-09-12')} — five is a comfortable fortnight, not an afternoon`)
+
+// The day the whole feature is for. The first cut counted the days BETWEEN
+// today and the end of the month, so the last day of the month had none left
+// and every unfinished goal was declared lost — to somebody with a full
+// working day in front of them and one piece to deliver.
+ok('H7', 'the last day of the month still has a day left in it',
+  leftOn('2026-09-30') === 1, String(leftOn('2026-09-30')))
+ok('H8', '…so one piece short on the 30th is still winnable, not lost',
+  at(19, '2026-09-30') === 'close',
+  `${at(19, '2026-09-30')} — a warning that gives up while there is time to act is worse than none`)
+ok('H9', '…while genuinely out of reach on the 30th is still lost',
+  at(5, '2026-09-30') === 'lost', at(5, '2026-09-30'))
+ok('H10', '…and a quota met on the last day is won, not timed out',
+  at(20, '2026-09-30') === 'won', at(20, '2026-09-30'))
+// History asks about months that are over, and those really do have none left.
+ok('H11', 'a month read after it ended has no days left',
+  leftOn('2026-09-30', '2026-10-03') === 0, String(leftOn('2026-09-30', '2026-10-03')))
+ok('H12', '…and its unfinished goals are lost, not still hopeful',
+  at(19, '2026-09-30', '2026-10-03') === 'lost', at(19, '2026-09-30', '2026-10-03'))
 
 console.log(`\n${'='.repeat(58)}`)
 if (found.length) {

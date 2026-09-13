@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { Trophy, Target, Clock, Eye, TriangleAlert, Flame } from 'lucide-react'
 import { money } from './SalaryPlanner.jsx'
-
-// The board spaces its thousands. A comma here would be a second number
-// system on a card that already has money on it.
-const num = (n) => money(n, '')
 import { celebrate } from '../lib/celebrate.js'
 import { playDing } from '../lib/sound.js'
 import { toast } from '../lib/toast.js'
 import { tr as tx } from '../lib/i18n.jsx'
+
+// The board spaces its thousands. A comma here would be a second number
+// system on a card that already has money on it.
+const num = (n) => money(n, '')
 
 // ---- what is still on the table ---------------------------------------------
 //
@@ -42,7 +42,6 @@ import { tr as tx } from '../lib/i18n.jsx'
 // subject where that is most true.
 
 const ICON = { quota: Target, ontime: Clock, views: Eye }
-const TONE = { won: 'won', close: 'close', open: 'open', behind: 'behind', lost: 'lost' }
 
 // The ring. 44px, two arcs — the track and how far round the year has got —
 // with the pct in the middle. Drawn rather than animated: a bar that fills
@@ -54,9 +53,14 @@ function Ring({ pct, state }) {
   return (
     <svg className={'pg-ring pg-' + state} viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
       <circle className="pg-ring-track" cx="22" cy="22" r={R} fill="none" strokeWidth="4" />
-      <circle className="pg-ring-on" cx="22" cy="22" r={R} fill="none" strokeWidth="4"
-        strokeDasharray={`${(on / 100) * C} ${C}`} strokeLinecap="round"
-        transform="rotate(-90 22 22)" />
+      {/* Nothing done yet draws nothing. A zero-length dash with a round cap
+          is not nothing — it is a cap, and it rendered as a stray coloured
+          dot at twelve o'clock on every goal somebody had not started. */}
+      {on > 0 && (
+        <circle className="pg-ring-on" cx="22" cy="22" r={R} fill="none" strokeWidth="4"
+          strokeDasharray={`${(on / 100) * C} ${C}`} strokeLinecap="round"
+          transform="rotate(-90 22 22)" />
+      )}
       {state === 'won'
         ? <path className="pg-ring-tick" d="M15.5 22.5 L20 27 L28.5 17.5" fill="none" strokeWidth="2.6"
             strokeLinecap="round" strokeLinejoin="round" />
@@ -211,7 +215,7 @@ export default function PayGoals({ goals, period, currency, userId, month, shown
         {shownGoals.map((g) => {
           const I = ICON[g.key] || Target
           return (
-            <div className={'pg-goal pg-' + TONE[g.state]} key={g.key}>
+            <div className={'pg-goal pg-' + g.state} key={g.key}>
               <Ring pct={g.pct} state={g.state} />
               <div className="pg-goal-body">
                 <span className="pg-goal-name">

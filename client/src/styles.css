@@ -1750,6 +1750,11 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .rp-note-plain { color: var(--muted); font-weight: 400; max-width: 280px; line-height: 1.4; }
 @media (max-width: 640px) {
   .rp-close { margin-left: 0; width: 100%; }
+  /* 46px of "3 660 000 UZS" takes three lines on a 390px screen, which is a
+     headline number that has stopped being readable as one. */
+  .rp-big { flex-wrap: wrap; gap: 4px 12px; }
+  .rp-big > b { font-size: 30px; }
+  .rp-big-label { flex: 1 1 100%; font-size: 13.5px; }
 }
 .rp-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
 .rp-chan { border: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; padding: 4px 10px; }
@@ -3683,9 +3688,15 @@ button.blame-person:hover { background: var(--surface-2); }
 .pg-line-close > svg { color: var(--warn-ink); }
 .pg-line-won { background: none; padding-left: 0; color: var(--good-ink); font-weight: 600; }
 .pg-line-won > svg { color: var(--good-ink); }
+/* On a phone the row cannot hold a name, a sentence and an amount, and the
+   sentence is the part that loses — it collapsed to nothing, leaving a bonus
+   name and a number with no instruction, which is the one thing this line
+   exists to give. So it takes a row of its own and wraps. */
 @media (max-width: 640px) {
-  .pg-line { font-size: 12px; }
-  .pg-line em { flex: 0 0 100%; margin-left: 0; }
+  .pg-line { font-size: 12px; flex-wrap: wrap; row-gap: 3px; }
+  .pg-line b { flex: 1 1 auto; }
+  .pg-line em { margin-left: auto; flex: 0 0 auto; }
+  .pg-line > span { flex: 0 0 100%; white-space: normal; overflow: visible; }
 }
 .my-pay-sum { display: flex; flex-direction: column; line-height: 1.25; }
 .my-pay-sum b { font-size: 20px; font-variant-numeric: tabular-nums; }

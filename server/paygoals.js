@@ -38,12 +38,29 @@ export function horizonOf(from, to) {
   return wholeMonth ? LAST_DAY(from) : to
 }
 
+// The board reckons in Tashkent (UTC+5), like everything else that asks what
+// day it is. Passed in by the caller in production so one request cannot
+// straddle midnight halfway through; defaulted so this file stays testable on
+// its own.
+const tashkentToday = () => new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10)
+
 // How far through the period we are, 0..1, and how many days are left in it.
-export function periodOf(from, to) {
+//
+// DAYS LEFT COUNTS TODAY. The first cut did not, and it was wrong on the one
+// day the whole feature matters most: on the 30th of a 30-day month somebody
+// one piece short of their quota was told "the month has gone" — with a full
+// working day in front of them. A warning that gives up while there is still
+// time to act is worse than no warning, because it teaches the reader that
+// the board does not know what day it is.
+//
+// It is counted from TODAY rather than from `to`, so a month already over —
+// history asks for those, with `to` on its last day — correctly has none left.
+export function periodOf(from, to, today = tashkentToday()) {
   const horizon = horizonOf(from, to)
   const span = Math.max(1, daysBetween(from, horizon) + 1)
   const elapsed = Math.min(span, Math.max(0, daysBetween(from, to) + 1))
-  return { from, to, horizon, span, elapsed, days_left: Math.max(0, daysBetween(to, horizon)), through: elapsed / span }
+  const days_left = today > horizon ? 0 : Math.max(0, daysBetween(today, horizon) + 1)
+  return { from, to, horizon, span, elapsed, days_left, through: elapsed / span }
 }
 
 // One goal, read off a count against a target.
@@ -105,8 +122,8 @@ function onTimeGoal({ pays, target, done, onTime, period }) {
 // bonus never produces a views goal — an empty ladder is a statement about the
 // setup, not about the person, and this page has been careful about that
 // since the day it stopped printing "0 UZS" under everybody's name.
-export function goalsOf({ rates, delivered, late, onTime, views, from, to }) {
-  const period = periodOf(from, to)
+export function goalsOf({ rates, delivered, late, onTime, views, from, to, today }) {
+  const period = periodOf(from, to, today)
   const out = []
   if (rates.quota > 0 && rates.quota_bonus > 0) {
     out.push(countGoal({

@@ -1318,8 +1318,8 @@ function PayTab() {
                     )}
                     {(p.views > 0 || p.viewsTarget > 0) && (
                       <span className={p.viewsTarget > 0 && p.viewsMet ? 'pay-good' : undefined}>
-                        <b>{(p.views || 0).toLocaleString()}</b>
-                        {p.viewsTarget > 0 ? ` / ${p.viewsTarget.toLocaleString()}` : ''} {tx('views')}
+                        <b>{money(p.views || 0, '')}</b>
+                        {p.viewsTarget > 0 ? ` / ${money(p.viewsTarget, '')}` : ''} {tx('views')}
                         {p.viewsCounted > 0 && p.viewsCounted < p.delivered && (
                           <em> · {tx('{counted} of {delivered} counted', { counted: p.viewsCounted, delivered: p.delivered })}</em>
                         )}

@@ -49,10 +49,14 @@ export default function PayHistory({ shown = true, months }) {
   // it. So they contribute neither a bar nor a figure — only the words "no
   // record", which is what is actually known about them.
   const real = rows.filter((m) => !m.assumed)
-  // A board where nothing has ever been worked out has nothing to draw. Six
-  // empty columns under a heading is worse than no heading.
+  // A board where nothing has ever been worked out has nothing to draw, and
+  // ONE month is not a history — it is the figure already printed at the top
+  // of this card, drawn again as a single bar beside five empty slots. The
+  // strip earns its place the month there is something to compare against,
+  // and turning up then is a better moment than being there all along saying
+  // nothing.
   const top = Math.max(...real.map((m) => m.total), 0)
-  if (top <= 0) return null
+  if (top <= 0 || real.filter((m) => m.total > 0).length < 2) return null
   const settled = rows.filter((m) => m.settled)
   const last = settled[settled.length - 1] || null
   // The best month on the chart, and only when there is something to be best
