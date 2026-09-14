@@ -2369,11 +2369,31 @@ router.patch('/:id', wrap(async (req, res) => {
     patch.checklist = JSON.stringify(Array.isArray(body.checklist) ? body.checklist : [])
   }
 
+  // Taking a THOUGHT into production. Leaving Idea needs no ticket — that is
+  // `wasAnIdea`, decided far above and applied at every gate between here and
+  // the bottom of this handler — but the handover gate makes naming the crew a
+  // CONDITION of the move: drag a thought onto the shooting stage and the board
+  // asks "who is shooting this?".
+  //
+  // Those two rules used to contradict each other, and the contradiction was
+  // invisible from either side. The move was allowed; the answer to the
+  // question it asked was refused as an editing right. So a content maker
+  // picked the shooter, pressed "Hand over and move", got a 403 the gate read
+  // as one more missing field, and was handed the same question again — for
+  // ever. From the outside that is simply "ideas cannot be moved", which is
+  // what it was reported as.
+  //
+  // So whoever may make the move may answer what the move asks. Narrow on
+  // purpose: only while the task IS still an idea, and only in the same patch
+  // that takes it off the idea stage. It grants nothing on a task already in
+  // production, and nothing to somebody who is not moving anything.
+  const bookingAnIdea = wasAnIdea && body.status_id !== undefined && body.status_id !== row.status_id
+
   // Crew hats (operator / editor / designer) — an editing right, linked to
   // real members.
   for (const f of ['operator_id', 'editor_id', 'designer_id', 'reviewer_id']) {
     if (body[f] !== undefined) {
-      if (!can(req.user, 'manage_content'))
+      if (!can(req.user, 'manage_content') && !bookingAnIdea)
         return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
       const next = body[f] == null || body[f] === '' ? null : Number(body[f])
       if (next !== null && !(await userExists(next)))
@@ -2456,7 +2476,10 @@ router.patch('/:id', wrap(async (req, res) => {
   // Review can be shared: the list is the truth, reviewer_id mirrors its head
   // so everything that reads one name keeps working.
   if (body.reviewer_ids !== undefined) {
-    if (!can(req.user, 'manage_content'))
+    // Shared review is named the same way a shooter is, and by the same person
+    // — the gate sends this field when the stage it is asking about shares its
+    // review. See `bookingAnIdea` above for why it is allowed here.
+    if (!can(req.user, 'manage_content') && !bookingAnIdea)
       return res.status(403).json({ error: 'You don’t have permission to edit tasks' })
     const list = [...new Set((Array.isArray(body.reviewer_ids) ? body.reviewer_ids : [])
       .map(Number).filter(Boolean))]

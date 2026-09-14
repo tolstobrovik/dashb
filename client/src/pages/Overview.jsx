@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { CalendarClock, ChevronDown } from 'lucide-react'
 import { api, cache } from '../lib/api.js'
 import { useChannels } from '../lib/channels.jsx'
-import { todayISO, addDaysISO, deptColor, onColor, iconFor, isDeletedLabel, tashkentDay } from '../lib/constants.js'
+import { todayISO, addDaysISO, deptColor, onColor, iconFor, isDeletedLabel, tashkentDay} from '../lib/constants.js'
+import { nextDue } from '../lib/due.js'
 import { loadFailed, toast } from '../lib/toast.js'
 import Avatar from '../components/Avatar.jsx'
 import { AreaChart, BarChart, ChartCard, RangePick, Stat } from '../components/Chart.jsx'
@@ -97,7 +98,7 @@ export default function Overview() {
     return channels.map((c, i) => {
       const tasks = content.filter((t) => t.channels.includes(c.key))
       const open = tasks.filter((t) => !t.done_at && !dead.has(t.status_id))
-      const dateOf = (t) => t.release_date || t.recording_date || null
+      const dateOf = (t) => nextDue(t, today)
       const overdue = open.filter((t) => dateOf(t) && dateOf(t) < today)
       const weekAgo = addDaysISO(today, -7)
       const doneWeek = tasks.filter((t) => t.done_at && tashkentDay(t.done_at) >= weekAgo)
@@ -121,7 +122,7 @@ export default function Overview() {
   const nums = useMemo(() => {
     const dead = new Set(statuses.filter((s) => isDeletedLabel(s.label)).map((s) => s.id))
     const open = content.filter((t) => !t.done_at && !dead.has(t.status_id))
-    const dateOf = (t) => t.release_date || t.recording_date || null
+    const dateOf = (t) => nextDue(t, today)
     const late = open.filter((t) => dateOf(t) && dateOf(t) < today)
     return { open: open.length, late: late.length }
   }, [content, statuses, today])

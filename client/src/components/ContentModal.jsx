@@ -555,6 +555,17 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   const atIdea = form.status_id === null || form.status_id === undefined
     || stageRank(form.status_id) === 'idea'
   const ideaOnly = creating && !fillNow && atIdea
+  // Where the task IS SAVED, which is a different question from where the form
+  // is currently showing. Leaving Idea needs no ticket — an idea is a thought
+  // nobody has promised anything about, and a column you need a permission to
+  // empty is a column that fills up. The server has said so for a while
+  // (`wasAnIdea` in routes/content.js) and the board agrees (ContentBoard's
+  // `openStages`); this menu was the one surface still refusing, so a content
+  // maker could drag an idea onward but not move it from the task it opened.
+  // Read off the SAVED stage: reading the form would re-lock the picker the
+  // instant somebody chose the stage they were trying to move to.
+  const heldAtIdea = !creating && (item?.status_id === null || item?.status_id === undefined
+    || stageRank(item?.status_id) === 'idea')
 
   const [show, setShow] = useState(() => ({
     description: true,
@@ -589,7 +600,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // What the person whose seat this is could actually change about the brief.
   const briefEditable = canEdit && !asCrew
   const checklistLocked = detailsLocked && !isMine
-  const readOnly = detailsLocked && !isMine && !canMove && !isCrew
+  // …and `heldAtIdea` for the same reason the picker unlocks below: somebody
+  // who may move a thought along needs a Save button to do it with. Unlocking
+  // the picker and then hiding the button left the change nowhere to go, which
+  // is a worse answer than the greyed-out picker it replaced.
+  const readOnly = detailsLocked && !isMine && !canMove && !isCrew && !heldAtIdea
 
   // The hats this task actually carries, for the "see it as…" switch. Only
   // hats somebody holds: previewing an empty seat shows nothing worth seeing.
@@ -1274,7 +1289,7 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           if (form[file]) payload[file] = form[file].trim()
           else if ((form[col] || '') !== (item[col] || '')) payload[col] = form[col].trim()
         }
-      } else if (canMove && form.status_id !== item.status_id) {
+      } else if ((canMove || heldAtIdea) && form.status_id !== item.status_id) {
         payload.status_id = form.status_id
       }
       if (isMine) payload.checklist = form.checklist
@@ -1658,8 +1673,11 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         <div className="stage-chips">
           {(() => {
             // The crew see the stage but never set it by hand (they tick their
-            // milestone instead) — only move_tasks unlocks the picker.
-            const locked = !creating && !canMove
+            // milestone instead) — only move_tasks unlocks the picker. An IDEA
+            // is the exception, and the same exception the server and the
+            // board already make: anybody who can see a thought may shove it
+            // along.
+            const locked = !creating && !canMove && !heldAtIdea
             const current = statuses.find((s) => s.id === form.status_id)
             // "Deleted" is not a stage anybody picks from a list — deleting has
             // its own door — so it is offered only when the task is already there.

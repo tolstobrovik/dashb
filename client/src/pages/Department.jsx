@@ -12,7 +12,8 @@ import { toast, loadFailed } from '../lib/toast.js'
 import { markDone, askForTheLink } from '../lib/finish.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
-import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, isWritingChannel, WRITING_STAGES, tashkentDay } from '../lib/constants.js'
+import { CADENCES, can, todayISO, addDaysISO, dateLabel, typeInfo, isDeletedLabel, isWritingChannel, WRITING_STAGES, tashkentDay} from '../lib/constants.js'
+import { nextDue } from '../lib/due.js'
 import { useFullscreen } from '../lib/useFullscreen.js'
 import Modal from '../components/Modal.jsx'
 import Fold from '../components/Fold.jsx'
@@ -124,7 +125,7 @@ function DeptTaskList({ rows, empty, onOpen, done = false }) {
   return (
     <div className="card card-pad" style={{ paddingTop: 8, paddingBottom: 8 }}>
       {rows.map((t) => {
-        const d = done ? tashkentDay(t.done_at) : (t.release_date || t.recording_date)
+        const d = done ? tashkentDay(t.done_at) : nextDue(t, today)
         const late = !done && d < today
         return (
           <button key={t.id} className="ov-row" onClick={() => onOpen(t)}>
@@ -553,7 +554,7 @@ export default function Department() {
     ...(writes ? [] : [{ key: 'recording', label: 'Recording', icon: Clapperboard }]),
   ]
 
-  const dateOf = (t) => t.release_date || t.recording_date || null
+  const dateOf = (t) => nextDue(t, todayISO())
   const upcomingRows = liveContent
     .filter((t) => !t.done_at && dateOf(t))
     .sort((a, b) => dateOf(a).localeCompare(dateOf(b)))
