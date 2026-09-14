@@ -997,7 +997,20 @@ const RATE_ROWS = [
   { key: 'views_target', label: 'Views a month', hint: 'What a full month of watching looks like. 0 means no target', plain: true },
   { key: 'views_bonus', label: 'Views bonus', hint: 'Paid whole when their month reaches that many views' },
 ]
-const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0, per_1k_views: 0, views_target: 0, views_bonus: 0 }
+const BLANK_CARD = { currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0, per_review: 0, quota: 0, quota_bonus: 0, ontime_bonus: 0, ontime_target: 90, late_penalty: 0, per_1k_views: 0, views_target: 0, views_bonus: 0, pillow: 0, scheme: 'piece' }
+
+// Which of the rate rows an arrangement actually pays on. A card set to a
+// fixed salary has eleven piece rates on it that decide nothing, and leaving
+// them on screen is the form inviting somebody to set a number that will never
+// be paid. They are not deleted — switching back brings them straight back.
+const SCHEME_SHOWS = {
+  piece: { rates: true, pillow: false },
+  fixed: { rates: false, pillow: false },
+  kpi: { rates: false, pillow: false },
+  fixed_kpi: { rates: false, pillow: false },
+  pillow: { rates: true, pillow: true },
+  pillow_kpi: { rates: false, pillow: true },
+}
 
 /* ---- working a card out from one number ----
  *
@@ -1065,6 +1078,9 @@ function PayTab() {
   const [card, setCard] = useState(null) // { userId | 'default', name, form }
   const [kpiFor, setKpiFor] = useState(null) // { id, name } — whose month is open
   const [plan, setPlan] = useState(null) // null | { job, monthly, quota } — the calculator
+  // The arrangements there are, served rather than copied: the card that
+  // OFFERS one and the run that PAYS on it have to agree about what it does.
+  const [schemes, setSchemes] = useState({})
   const [closing, setClosing] = useState(null) // { month, paid_at, note } — the month being recorded as paid
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -1078,6 +1094,9 @@ function PayTab() {
     api.get(`/reports/pay?from=${range.from}&to=${range.to}`).then(setData).catch(() => setData(null))
     api.get('/reports/pay/rules').then(setRules).catch(() => setRules([]))
   }
+  useEffect(() => { api.get('/reports/pay/schemes').then((d) => setSchemes(d?.schemes || {})).catch(() => {}) }, [])
+  // Which parts of the card the chosen arrangement actually pays on.
+  const shows = SCHEME_SHOWS[card?.form?.scheme || 'piece'] || SCHEME_SHOWS.piece
   useEffect(() => { load() }, [range.from, range.to]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCard = (userId, name) => {
@@ -1420,10 +1439,39 @@ function PayTab() {
               onChange={(e) => setCard({ ...card, form: { ...card.form, currency: e.target.value } })} />
           </div>
 
+          {/* HOW this person is paid, before a single rate. It decides which
+              of the rows below are paid on at all, so asking it after them
+              would be eleven questions in front of the one that says whether
+              they matter. */}
+          <div className="field"><label>{tx('How they are paid')}</label>
+            <select className="select" value={card.form.scheme || 'piece'}
+              onChange={(e) => setCard({ ...card, form: { ...card.form, scheme: e.target.value } })}>
+              {Object.entries(schemes).map(([k, v]) => (
+                <option key={k} value={k}>{tx(v.label)}</option>
+              ))}
+            </select>
+            <div className="cm-hint">{tx(schemes[card.form.scheme || 'piece']?.hint || '')}</div>
+          </div>
+
+          {/* The safety pillow. Drawn only where one stands, and it says what
+              it does in the two directions people actually ask about. */}
+          {shows.pillow && (
+            <div className="field"><label>{tx('Safety pillow')}</label>
+              <input className="input" type="number" min="0" step="100000" style={{ maxWidth: 220 }}
+                value={card.form.pillow ?? 0}
+                onChange={(e) => setCard({ ...card, form: { ...card.form, pillow: e.target.value } })} />
+              <div className="cm-hint">
+                {Number(card.form.pillow) > 0
+                  ? tx('A month that comes to less than {amount} is topped up to it — a month the company could not fill is still paid in full. A month that runs past it is paid for what was actually done; the pillow is a floor, never a bonus on top.', { amount: money(Number(card.form.pillow), card.form.currency || 'UZS') })
+                  : tx('Nothing guaranteed. Set an amount and the month can never come to less than it.')}
+              </div>
+            </div>
+          )}
+
           {/* Eleven rates typed from scratch, per person, is how a pay scheme
               never gets set up at all. Nobody thinks in rates; everybody
               thinks in "an editor's month is worth about four million". */}
-          {!plan ? (
+          {!shows.rates ? null : !plan ? (
             <button type="button" className="btn btn-sm" style={{ marginBottom: 14 }}
               onClick={() => setPlan({ job: JOBS[0].key, monthly: JOBS[0].monthly, quota: JOBS[0].quota })}>
               <Wallet size={14} /> Work it out from a monthly figure
@@ -1472,7 +1520,7 @@ function PayTab() {
               </div>
             </div>
           )}
-          {RATE_ROWS.map((r) => (
+          {shows.rates && RATE_ROWS.map((r) => (
             <div className="field" key={r.key}>
               <label>{r.label} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>— {r.hint}</span></label>
               <input className="input" type="number" min="0" style={{ maxWidth: 220 }}

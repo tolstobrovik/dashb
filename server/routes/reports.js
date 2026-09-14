@@ -1,6 +1,6 @@
 import { gradeCard, METRICS } from '../kpi.js'
 import { Router } from 'express'
-import { all, get, run, publicUser, tashkentDay, dayISO, getSkipTiers, tierFor, getMakerGrades, gradeFor } from '../db.js'
+import { all, get, run, publicUser, tashkentDay, dayISO, getSkipTiers, tierFor, getMakerGrades, gradeFor, PAY_SCHEMES, PAY_SCHEME_KEYS, schemeOf } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 import { resolveGates, phasesOf, phasePassed } from '../deadlines.js'
 import { goalsOf, periodOf } from '../paygoals.js'
@@ -298,7 +298,9 @@ const cardFor = async (userId, month) =>
 const statsFor = async (userId, month) => {
   const from = `${month}-01`
   const to = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10)
-  const { people } = await payRun({ from, to, only: userId })
+  // skipKpi, because this is the call a KPI card is graded FROM: letting the
+  // run grade cards here would be the run asking itself for its own answer.
+  const { people } = await payRun({ from, to, only: userId, skipKpi: true })
   const me = (people || []).find((p) => p.id === Number(userId))
   return me?.stats || {}
 }
@@ -843,6 +845,10 @@ export const RATE_FIELDS = [
   'per_shoot_reel', 'per_edit_reel',
   'per_shoot_youtube', 'per_edit_youtube',
   'per_shoot_target', 'per_edit_target',
+  // The safety pillow: a floor under the whole month. Work fills it; the
+  // arrangement that stands over it is `scheme`, which is not a number and so
+  // is carried beside this list rather than in it.
+  'pillow',
 ]
 const BLANK_RATES = {
   currency: 'UZS', base: 0, per_shoot: 0, per_edit: 0, per_design: 0, per_publish: 0,
@@ -873,7 +879,10 @@ async function rateCards() {
   const pick = (userId) => {
     const row = mine.get(userId) || fallback
     if (!row) return { ...BLANK_RATES, source: 'none' }
-    const card = { currency: row.currency || 'UZS', source: mine.has(userId) ? 'own' : 'default' }
+    const card = {
+      currency: row.currency || 'UZS', source: mine.has(userId) ? 'own' : 'default',
+      scheme: schemeOf(row.scheme),
+    }
     for (const f of RATE_FIELDS) card[f] = Number(row[f]) || 0
     return card
   }
@@ -947,7 +956,7 @@ async function payHistory(userId, n = 6) {
   return { months: out, currency: out.find((m) => m.total > 0)?.currency || 'UZS' }
 }
 
-async function payRun({ from, to, only, list: given }) {
+async function payRun({ from, to, only, list: given, skipKpi = false }) {
   const list = given || await contributions({ from, to })
   const { pick } = await rateCards()
   const users = (await all('SELECT * FROM users')).map(publicUser)
@@ -1044,7 +1053,11 @@ async function payRun({ from, to, only, list: given }) {
     const viewsMet = viewsTarget > 0 && views >= viewsTarget
     const viewsBonus = viewsMet ? (rates.views_bonus || 0) : 0
     const bonus = onTimeBonus + quotaBonus + viewsBonus
-    const total = (rates.base || 0) + piecework + viewsPay + bonus - penalty
+    // What the piecework side of the card comes to. Under most arrangements
+    // this IS the month; under some it is only one of the things that could
+    // be. The scheme decides, below and after the KPI card is known.
+    const pieceTotal = (rates.base || 0) + piecework + viewsPay + bonus - penalty
+    const total = pieceTotal
     return {
       id: u.id, name: u.name, color: u.color, avatar: u.avatar, role: u.role, crew_roles: u.crew_roles,
       currency: rates.currency, source: rates.source, rates,
@@ -1063,7 +1076,8 @@ async function payRun({ from, to, only, list: given }) {
         skip_rate: e.skipN > 0 ? Math.round((e.skipSum / e.skipN) * 10) / 10 : null,
       },
       lines: earning, base: rates.base || 0, piecework,
-      onTimeBonus, quotaBonus, viewsBonus, bonus, penalty, total,
+      onTimeBonus, quotaBonus, viewsBonus, bonus, penalty, total, pieceTotal,
+      scheme: rates.scheme, pillow: rates.pillow || 0,
       // What is still winnable, and what it would take — worked out here so
       // the browser only has to draw it, and so none of it can be nudged by
       // anything a browser sends.
@@ -1073,6 +1087,45 @@ async function payRun({ from, to, only, list: given }) {
       items: e.items.sort((a, b) => String(b.day).localeCompare(String(a.day))),
     }
   })
+
+  // ---- and now the arrangement each of them is on ---------------------------
+  //
+  // Done as a second pass, after the piecework is worked out, for one reason
+  // that matters: a KPI card is graded against the month's stats, and those
+  // stats come from the pay run. Reaching for them the other way round —
+  // statsFor() calls payRun() — is how this recurses for ever. Everything the
+  // grading needs is already in hand by here.
+  //
+  // `skipKpi` is set by the one caller that is itself inside that loop.
+  const month = String(to || dayISO()).slice(0, 7)
+  for (const p of people) {
+    const S = PAY_SCHEMES[p.scheme] || PAY_SCHEMES.piece
+    // The KPI card, where the arrangement is one that pays on it.
+    if (S.kpi && !skipKpi) {
+      const card = await get('SELECT * FROM kpi_cards WHERE user_id = ? AND month = ?', p.id, month)
+      p.kpi = card ? gradeCard(card, p.stats) : null
+    } else {
+      p.kpi = null
+    }
+    const kpiTotal = p.kpi?.total || 0
+    // Where this month's earnings come from.
+    const earned = S.earns === 'base' ? (p.rates.base || 0)
+      : S.earns === 'kpi' ? kpiTotal
+        : S.earns === 'base+kpi' ? (p.rates.base || 0) + kpiTotal
+          : p.pieceTotal
+    // …and whether a pillow stands under them. A floor, never a bonus: work
+    // fills it, and a month that ran past it is paid for what was done.
+    const pillow = S.floor ? (p.pillow || 0) : 0
+    p.earned = Math.round(earned)
+    p.pillowTopUp = pillow > earned ? Math.round(pillow - earned) : 0
+    p.pillowMet = pillow > 0 && earned >= pillow
+    p.total = Math.round(Math.max(earned, pillow))
+    // Whether the KPI card is already inside that total. The payslip used to
+    // add it on afterwards, unconditionally, which under these arrangements
+    // would count it twice.
+    p.kpiCounted = !!S.kpi && !skipKpi
+    p.schemeLabel = S.label
+  }
   return { from: from || null, to: to || null, people }
 }
 
@@ -1149,6 +1202,13 @@ router.put('/kpi/:userId/:month', adminOnly, wrap(async (req, res) => {
   res.json({ month, card: gradeCard(saved, await statsFor(userId, month)) })
 }))
 
+// The arrangements there are, and what each one means, in the words the admin
+// reads. Served rather than copied into the browser: the card that OFFERS an
+// arrangement and the run that PAYS on it have to agree about what it does.
+router.get('/pay/schemes', wrap(async (_req, res) => {
+  res.json({ schemes: PAY_SCHEMES, keys: PAY_SCHEME_KEYS })
+}))
+
 router.get('/pay/rules', wrap(async (_req, res) => {
   res.json(await all('SELECT * FROM pay_rules ORDER BY user_id IS NOT NULL, user_id'))
 }))
@@ -1171,6 +1231,10 @@ router.put('/pay/rules/:userId', wrap(async (req, res) => {
   }
   if (vals.ontime_target > 100) return res.status(400).json({ error: 'ontime_target is a percentage — 100 at most' })
   const currency = String(body.currency || 'UZS').trim().slice(0, 8) || 'UZS'
+  // How this person is paid, as opposed to at what rates. Anything
+  // unrecognised is piecework, which is what every card was before schemes
+  // existed — a bad value can only ever mean "as before".
+  const scheme = schemeOf(body.scheme)
 
   const now = new Date().toISOString()
   const existing = isDefault
@@ -1178,14 +1242,14 @@ router.put('/pay/rules/:userId', wrap(async (req, res) => {
     : await get('SELECT id FROM pay_rules WHERE user_id = ?', userId)
   const cols = RATE_FIELDS.map((f) => `${f}=?`).join(', ')
   if (existing) {
-    await run(`UPDATE pay_rules SET currency=?, ${cols}, updated_by=?, updated_at=? WHERE id=?`,
-      currency, ...RATE_FIELDS.map((f) => vals[f]), req.user.id, now, existing.id)
+    await run(`UPDATE pay_rules SET currency=?, scheme=?, ${cols}, updated_by=?, updated_at=? WHERE id=?`,
+      currency, scheme, ...RATE_FIELDS.map((f) => vals[f]), req.user.id, now, existing.id)
     return res.json(await get('SELECT * FROM pay_rules WHERE id = ?', existing.id))
   }
   const info = await run(
-    `INSERT INTO pay_rules (user_id, currency, ${RATE_FIELDS.join(', ')}, updated_by, created_at, updated_at)
-     VALUES (?, ?, ${RATE_FIELDS.map(() => '?').join(', ')}, ?, ?, ?)`,
-    userId, currency, ...RATE_FIELDS.map((f) => vals[f]), req.user.id, now, now)
+    `INSERT INTO pay_rules (user_id, currency, scheme, ${RATE_FIELDS.join(', ')}, updated_by, created_at, updated_at)
+     VALUES (?, ?, ?, ${RATE_FIELDS.map(() => '?').join(', ')}, ?, ?, ?)`,
+    userId, currency, scheme, ...RATE_FIELDS.map((f) => vals[f]), req.user.id, now, now)
   res.status(201).json(await get('SELECT * FROM pay_rules WHERE id = ?', info.lastInsertRowid))
 }))
 

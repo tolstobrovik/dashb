@@ -1203,6 +1203,18 @@ export async function initSchema() {
       per_edit_youtube  REAL NOT NULL DEFAULT 0,
       per_shoot_target  REAL NOT NULL DEFAULT 0,
       per_edit_target   REAL NOT NULL DEFAULT 0,
+      -- HOW this person is paid, as opposed to at what rates. See PAY_SCHEMES.
+      -- Everybody was on piecework before this existed, so that is the default
+      -- and an existing board's numbers do not move.
+      scheme  TEXT NOT NULL DEFAULT 'piece',
+      -- The safety pillow: the month cannot come to less than this.
+      --
+      -- Work FILLS it. A month where the company could not hand over enough
+      -- to do is still paid the pillow in full; a month where somebody did
+      -- more than it holds is paid for what they did, the pillow having been
+      -- filled on the way past. It is a floor under the month, never a bonus
+      -- on top of one — max(pillow, earned), which is the whole of the rule.
+      pillow  REAL NOT NULL DEFAULT 0,
       updated_by    INTEGER,
       created_at    TEXT    NOT NULL,
       updated_at    TEXT    NOT NULL
@@ -1525,6 +1537,8 @@ export async function initSchema() {
     await exec("ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'atleast'")
     await exec('ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS reward REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota REAL NOT NULL DEFAULT 0')
+    await exec("ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS scheme TEXT NOT NULL DEFAULT 'piece'")
+    await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS pillow REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS quota_bonus REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS per_1k_views REAL NOT NULL DEFAULT 0')
     await exec('ALTER TABLE pay_rules ADD COLUMN IF NOT EXISTS views_target REAL NOT NULL DEFAULT 0')
@@ -1688,6 +1702,8 @@ async function migrate() {
     if (!(await hasColumn('person_kpis', 'direction'))) await exec("ALTER TABLE person_kpis ADD COLUMN direction TEXT NOT NULL DEFAULT 'atleast'")
     if (!(await hasColumn('person_kpis', 'reward'))) await exec('ALTER TABLE person_kpis ADD COLUMN reward REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'quota'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota REAL NOT NULL DEFAULT 0')
+    if (!(await hasColumn('pay_rules', 'scheme'))) await exec("ALTER TABLE pay_rules ADD COLUMN scheme TEXT NOT NULL DEFAULT 'piece'")
+    if (!(await hasColumn('pay_rules', 'pillow'))) await exec('ALTER TABLE pay_rules ADD COLUMN pillow REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'quota_bonus'))) await exec('ALTER TABLE pay_rules ADD COLUMN quota_bonus REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('pay_rules', 'per_1k_views'))) await exec('ALTER TABLE pay_rules ADD COLUMN per_1k_views REAL NOT NULL DEFAULT 0')
     if (!(await hasColumn('projects', 'start_date'))) await exec('ALTER TABLE projects ADD COLUMN start_date TEXT')
@@ -2216,7 +2232,11 @@ export const CHANNEL_FORMATS = {
   video: {
     label: 'Long video',
     hint: 'YouTube and anything else filmed and cut at length',
-    crew: ['operator', 'editor'],
+    // A designer belongs here, and leaving them out was a real hole rather
+    // than a tidy simplification: the thumbnail is the most looked-at image a
+    // YouTube channel makes, and end cards and covers are drawn too. Found by
+    // round43, which asks a post on YouTube for its designer and was right to.
+    crew: ['operator', 'editor', 'designer'],
     fields: ['format', 'rubrika', 'script', 'tz', 'reference', 'description'],
   },
   ads: {
@@ -2227,6 +2247,58 @@ export const CHANNEL_FORMATS = {
   },
 }
 export const CHANNEL_FORMAT_KEYS = Object.keys(CHANNEL_FORMATS)
+
+// ---- how a person is paid ---------------------------------------------------
+//
+// Not at WHAT RATES — that is the rate card — but by what arrangement. A board
+// that runs one arrangement for everybody is a board that cannot hire the next
+// person on different terms without somebody keeping the difference in a
+// spreadsheet, which is where pay disputes come from.
+//
+//   earns   where the month's earnings come from: the piecework the rate card
+//           works out, the graded KPI card, or nothing at all
+//   floor   whether a safety pillow stands under the result
+//
+// THE PILLOW IS A FLOOR, NOT A BONUS. Work fills it. A month the company could
+// not fill is still paid in full; a month that ran past it is paid for what
+// was actually done. max(pillow, earned) — and writing it down here because
+// "X plus the work he did" can be read two ways and only one of them is a
+// pillow. The payslip draws the top-up as its own line so the arithmetic is on
+// screen rather than in somebody's head.
+export const PAY_SCHEMES = {
+  piece: {
+    label: 'Piecework',
+    hint: 'Base, the per-piece rates and the bonuses — what every card did before schemes existed.',
+    earns: 'piece', floor: false, kpi: false,
+  },
+  fixed: {
+    label: 'Fixed salary',
+    hint: 'The base, whatever the month held. Nothing is counted per piece.',
+    earns: 'base', floor: false, kpi: false,
+  },
+  kpi: {
+    label: 'Full KPI',
+    hint: 'The month is the KPI card: its fixed part and whatever the ladders graded.',
+    earns: 'kpi', floor: false, kpi: true,
+  },
+  fixed_kpi: {
+    label: 'Fixed + KPI',
+    hint: 'A salary that does not move, and the KPI card on top of it.',
+    earns: 'base+kpi', floor: false, kpi: true,
+  },
+  pillow: {
+    label: 'Safety pillow, then piecework',
+    hint: 'Guaranteed the pillow. Piecework fills it; anything past it is paid on top.',
+    earns: 'piece', floor: true, kpi: false,
+  },
+  pillow_kpi: {
+    label: 'Safety pillow, then KPI',
+    hint: 'Guaranteed the pillow. The KPI card fills it; anything past it is paid on top.',
+    earns: 'kpi', floor: true, kpi: true,
+  },
+}
+export const PAY_SCHEME_KEYS = Object.keys(PAY_SCHEMES)
+export const schemeOf = (v) => (PAY_SCHEMES[v] ? v : 'piece')
 export const formatOf = (row) =>
   (row && CHANNEL_FORMATS[row.format]) ? row.format : 'social'
 

@@ -171,6 +171,14 @@ jobs:
           DASHB_ROOT: ${{ github.workspace }}
         run: node qa/format-suite.mjs
 
+      # How people are paid: the six arrangements and the safety pillow, which
+      # is a FLOOR and not a bonus — the one mistake here nobody notices until
+      # payday. Boots its own API on 4129.
+      - name: Pay scheme suite
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: node qa/scheme-suite.mjs
+
       # The Telegram bridge: these boot their own API and their own bot mock.
       - name: Notification suites
         env:

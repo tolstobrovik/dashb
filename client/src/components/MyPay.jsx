@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Wallet, ChevronDown, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
+import { Wallet, ChevronDown, Eye, EyeOff, CheckCircle2, Shield } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { todayISO } from '../lib/constants.js'
 import { useAuth } from '../lib/auth.jsx'
@@ -51,6 +51,10 @@ export default function MyPay({ startOpen = false }) {
   // of grades has no piece rates at all, and bailing out on the rate card left
   // them looking at a page with nothing on it about their own month.
   const hasRates = !!pay && pay.source !== 'none'
+  // Under some arrangements the KPI card IS the month and the server has
+  // already put it in the total; adding it again here would pay it twice on
+  // screen. `kpiCounted` says which.
+  const kpiInTotal = !!pay?.kpiCounted
   const hasKpi = !!kpi && (kpi.ladders.length > 0 || kpi.fixed > 0)
   if (!hasRates && !hasKpi) return null
   const cur = (hasRates ? pay.currency : kpi?.currency) || 'UZS'
@@ -81,7 +85,7 @@ export default function MyPay({ startOpen = false }) {
       <button type="button" className="my-pay-head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <Wallet size={17} />
         <span className="my-pay-sum">
-          <b>{amt(settled ? view.total : (hasRates ? pay.total : 0) + (hasKpi ? kpi.total : 0))}</b>
+          <b>{amt(settled ? view.total : (hasRates ? pay.total : 0) + (hasKpi && !kpiInTotal ? kpi.total : 0))}</b>
           <span className="stat-sub">
             {settled
               ? <><CheckCircle2 size={12} /> {tx('paid this month')}</>
@@ -183,6 +187,24 @@ export default function MyPay({ startOpen = false }) {
               <span className="stat-sub">{view.late} × {amt(view.rates.late_penalty)}</span>
               <b className="pay-bad">−{amt(view.penalty)}</b>
             </div>
+          )}
+          {/* The safety pillow, drawn as the two facts it is: what the month
+              actually earned, and what the pillow put on top of it. A floor
+              shown as one number is a floor nobody can check. */}
+          {!settled && view.pillow > 0 && (
+            view.pillowTopUp > 0 ? (
+              <div className="my-pay-line my-pay-pillow">
+                <span><Shield size={13} /> {tx('Safety pillow')}</span>
+                <span className="stat-sub">{tx('the month came to {earned} — topped up to the guarantee', { earned: amt(view.earned) })}</span>
+                <b className="pay-good">+{amt(view.pillowTopUp)}</b>
+              </div>
+            ) : (
+              <div className="my-pay-line my-pay-pillow">
+                <span className="stat-sub"><Shield size={13} /> {tx('Safety pillow')}</span>
+                <span className="stat-sub">{tx('{amount} guaranteed — this month went past it', { amount: amt(view.pillow) })}</span>
+                <span />
+              </div>
+            )
           )}
           <div className="my-pay-line my-pay-total">
             <span>{settled ? tx('Paid this month') : tx('Expected this month')}</span><span /><b>{amt(view.total)}</b>
