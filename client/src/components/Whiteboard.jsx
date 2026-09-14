@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Trash2, Pencil, Link2, Check, AlertCircle, UserRound, Maximize2, Minimize2, ZoomIn, ZoomOut } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useFullscreen } from '../lib/useFullscreen.js'
 import Avatar from './Avatar.jsx'
 import { useContextMenu } from './ContextMenu.jsx'
 import Modal from './Modal.jsx'
+import RichNote from './RichNote.jsx'
+import { Rich } from '../lib/richtext.js'
 
 // Whiteboard: free-form canvas for the org structure. Each card is a role;
 // bind a team member to it (their live name and photo render on the card),
@@ -13,9 +15,64 @@ import Modal from './Modal.jsx'
 const CANVAS_W = 6000
 const CANVAS_H = 4000
 const NODE_W = 190
-const NODE_H = 76
+const NODE_H = 76          // the height of an empty card — a floor, not the truth
 const COLORS = ['#a32234', '#2a78d6', '#0ca30c', '#fab219', '#7c5cd6', '#ec835a', '#8b8388']
 const uid = () => `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
+
+// ---- one card ---------------------------------------------------------------
+// Memoised, and that is the difference between a board that drags smoothly and
+// one that does not. Moving a card rebuilds the nodes ARRAY but leaves every
+// other node OBJECT identical, so with this in place a drag re-renders one
+// card instead of all of them — on a real org chart that is one small div
+// against sixty, thirty times a second.
+const Node = memo(function Node({ n, bound, linkFrom, register, onDown, onMenu, onLink, onEdit, onDelete }) {
+  const hold = useCallback((el) => register(n.id, el), [register, n.id])
+  return (
+    <div
+      ref={hold}
+      data-nid={n.id}
+      className={'board-node' + (linkFrom === n.id ? ' link-src' : '') + (linkFrom && linkFrom !== n.id ? ' link-target' : '')}
+      style={{ left: n.x, top: n.y, borderTopColor: n.color }}
+      onPointerDown={(e) => onDown(e, n)}
+      onContextMenu={(e) => onMenu(e, n)}
+    >
+      <div className="bn-tools" onPointerDown={(e) => e.stopPropagation()}>
+        <button className="icon-btn" onClick={() => onLink(n.id)} data-tip="Connect to another card" aria-label="Link"><Link2 size={13} /></button>
+        <button className="icon-btn" onClick={() => onEdit(n)} data-tip="Edit role & member" aria-label="Edit"><Pencil size={13} /></button>
+        <button className="icon-btn del-btn" onClick={() => onDelete(n)} data-tip="Delete this card" data-tip-left="" aria-label="Delete"><Trash2 size={13} /></button>
+      </div>
+      <div className="bn-title">{n.text || 'Role'}</div>
+      {bound ? (
+        <div className="bn-user">
+          <Avatar name={bound.name} color={bound.color} src={bound.avatar} size="sm" />
+          <span>{bound.name}</span>
+        </div>
+      ) : (
+        <div className="bn-empty"><UserRound size={11} /> No one assigned</div>
+      )}
+      {n.sub && <Rich text={n.sub} className="bn-rich" />}
+    </div>
+  )
+})
+
+// ---- one connector ----------------------------------------------------------
+// Memoised on the four numbers it is drawn from, so a card moving at the far
+// end of the board does not redraw every line on it.
+const Edge = memo(function Edge({ id, x1, y1, x2, y2, onRemove }) {
+  const mx = (x1 + x2) / 2
+  const my = (y1 + y2) / 2
+  return (
+    <g className="board-edge">
+      <path d={`M ${x1} ${y1} C ${x1} ${y1 + 45}, ${x2} ${y2 - 45}, ${x2} ${y2}`}
+        fill="none" stroke="#b59298" strokeWidth="2" markerEnd="url(#bArrow)" />
+      <g className="edge-x" onClick={() => onRemove(id)}>
+        <circle cx={mx} cy={my} r="9" />
+        <path d={`M ${mx - 3.2} ${my - 3.2} L ${mx + 3.2} ${my + 3.2} M ${mx + 3.2} ${my - 3.2} L ${mx - 3.2} ${my + 3.2}`} stroke="#fff" strokeWidth="1.8" />
+      </g>
+    </g>
+  )
+})
 
 export default function Whiteboard() {
   const [boards, setBoards] = useState(null)
@@ -111,6 +168,7 @@ export default function Whiteboard() {
   }
 
   // ---- zoom: see the whole field small, or work close up ----
+  const canvasRef = useRef(null)
   const [zoom, setZoomRaw] = useState(() => {
     const z = Number(localStorage.getItem('satashkent_board_zoom'))
     return z >= 0.4 && z <= 1.6 ? z : 1
@@ -118,47 +176,132 @@ export default function Whiteboard() {
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
   const setZoom = (z) => {
-    const v = Math.round(Math.min(1.6, Math.max(0.4, z)) * 10) / 10
+    const v = Math.round(clamp(z, 0.4, 1.6) * 100) / 100
     setZoomRaw(v)
     try { localStorage.setItem('satashkent_board_zoom', String(v)) } catch { /* ok */ }
+    return v
   }
 
+  // ⌘/Ctrl + wheel zooms, and zooms AROUND THE POINTER — the thing under the
+  // cursor stays under the cursor. Zooming from the top-left corner instead
+  // (which is what changing the scale alone does) throws the card you were
+  // looking at off the screen, so every zoom costs a hunt to find it again.
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    const onWheel = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      const box = el.getBoundingClientRect()
+      const px = e.clientX - box.left
+      const py = e.clientY - box.top
+      const z0 = zoomRef.current
+      const z1 = setZoom(z0 * (e.deltaY < 0 ? 1.1 : 1 / 1.1))
+      if (z1 === z0) return
+      const cx = (el.scrollLeft + px) / z0
+      const cy = (el.scrollTop + py) / z0
+      requestAnimationFrame(() => {
+        el.scrollLeft = cx * z1 - px
+        el.scrollTop = cy * z1 - py
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // ---- how tall each card really is -------------------------------------
+  // Cards used to be one fixed height, so the connectors could leave from a
+  // number. Now that a card carries a list of duties it is as tall as what is
+  // written on it, and a line leaving from 76px down would come out of the
+  // middle of the text. Measured, so the arrows stay on the edges.
+  const [heights, setHeights] = useState({})
+  const hRef = useRef({})
+  const roRef = useRef(null)
+  const elsRef = useRef(new Map())
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver((entries) => {
+      let changed = false
+      const next = { ...hRef.current }
+      for (const en of entries) {
+        const id = en.target.dataset.nid
+        const h = en.target.offsetHeight
+        if (id && h && next[id] !== h) { next[id] = h; changed = true }
+      }
+      if (changed) { hRef.current = next; setHeights(next) }
+    })
+    roRef.current = ro
+    for (const el of elsRef.current.values()) ro.observe(el)
+    return () => { ro.disconnect(); roRef.current = null }
+  }, [])
+  const register = useCallback((id, el) => {
+    const map = elsRef.current
+    const prev = map.get(id)
+    if (prev === el) return
+    if (prev && roRef.current) roRef.current.unobserve(prev)
+    if (el) { map.set(id, el); roRef.current?.observe(el) } else { map.delete(id) }
+  }, [])
+  const tall = (id) => heights[id] || NODE_H
+
   // ---- nodes ----
-  const canvasRef = useRef(null)
+  const addNodeAt = (x, y) => {
+    const node = {
+      id: uid(),
+      x: clamp(Math.round(x), 0, CANVAS_W - 40 - NODE_W),
+      y: clamp(Math.round(y), 0, CANVAS_H - 40 - NODE_H),
+      text: 'New role',
+      sub: '',
+      color: COLORS[(boardRef.current?.nodes.length || 0) % COLORS.length],
+      user_id: null,
+    }
+    change((prev) => ({ ...prev, nodes: [...prev.nodes, node] }))
+    setEditNode(node)
+  }
   const addNode = () => {
     const count = board.nodes.length
     // Spawn where the user is looking — the field is big, the corner is far.
     const sc = canvasRef.current
     const baseX = sc ? sc.scrollLeft / zoomRef.current + 80 : 80
     const baseY = sc ? sc.scrollTop / zoomRef.current + 60 : 60
-    const node = {
-      id: uid(),
-      x: Math.min(CANVAS_W - 40 - NODE_W, baseX + (count % 5) * 210),
-      y: Math.min(CANVAS_H - 40 - NODE_H, baseY + (Math.floor(count / 5) % 6) * 130),
-      text: 'New role',
-      sub: '',
-      color: COLORS[count % COLORS.length],
-      user_id: null,
-    }
-    change((prev) => ({ ...prev, nodes: [...prev.nodes, node] }))
-    setEditNode(node)
+    addNodeAt(baseX + (count % 5) * 210, baseY + (Math.floor(count / 5) % 6) * 130)
   }
   const applyNode = (node) =>
     change((prev) => ({ ...prev, nodes: prev.nodes.map((n) => (n.id === node.id ? node : n)) }))
-  const removeNode = (id) =>
+  const removeNode = (id) => {
+    register(id, null)
     change((prev) => ({
       ...prev,
       nodes: prev.nodes.filter((n) => n.id !== id),
       edges: prev.edges.filter((e) => e.from !== id && e.to !== id),
     }))
+  }
 
-  // ---- drag (mouse) ----
+  // ---- drag (pointer) ----
   const dragState = useRef(null)
+  const rafRef = useRef(0)
+  const pendRef = useRef(null)
   // Pointer events, not mouse events. A finger fires neither `mousedown` nor
   // `mousemove`, so on a phone the cards on this board could be looked at and
   // not moved — the whole point of the board. Capturing the pointer also means
   // a drag that wanders off the card keeps following the finger.
-  const startDrag = (e, node) => {
+  //
+  // And ONE STATE CHANGE PER FRAME. A pointer device reports faster than the
+  // screen redraws — a trackpad happily fires three or four moves between two
+  // frames — and every one of those used to be a React render whose result was
+  // thrown away before anybody saw it. The moves are collapsed into the next
+  // frame instead, so the work done matches the frames drawn.
+  const moveTo = (id, p) => setBoard((prev) => {
+    const next = { ...prev, nodes: prev.nodes.map((n) => (n.id === id ? { ...n, x: p.x, y: p.y } : n)) }
+    boardRef.current = next
+    return next
+  })
+  const commit = () => {
+    rafRef.current = 0
+    const d = dragState.current
+    const p = pendRef.current
+    if (d && p) moveTo(d.id, p)
+  }
+  const startDrag = useCallback((e, node) => {
     if (e.button !== undefined && e.button !== 0) return
     e.preventDefault()
     try { e.currentTarget.setPointerCapture?.(e.pointerId) } catch { /* not captured, still works */ }
@@ -171,54 +314,111 @@ export default function Whiteboard() {
       const dy = (ev.clientY - d.sy) / zoomRef.current
       if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true
       if (!d.moved) return
-      const x = Math.min(CANVAS_W - 20 - NODE_W, Math.max(0, d.ox + dx))
-      const y = Math.min(CANVAS_H - 20 - NODE_H, Math.max(0, d.oy + dy))
-      setBoard((prev) => {
-        const next = { ...prev, nodes: prev.nodes.map((n) => (n.id === d.id ? { ...n, x, y } : n)) }
-        boardRef.current = next
-        return next
-      })
+      pendRef.current = {
+        x: clamp(d.ox + dx, 0, CANVAS_W - 20 - NODE_W),
+        y: clamp(d.oy + dy, 0, CANVAS_H - 20 - NODE_H),
+      }
+      if (!rafRef.current) rafRef.current = requestAnimationFrame(commit)
     }
     const onUp = () => {
+      // THE LAST POSITION ALWAYS LANDS. The frame-throttling above means the
+      // newest position may still be waiting for a frame that has not come —
+      // and a quick flick of a card fits entirely between two frames, so that
+      // is the common case, not the rare one. Read the pending position out
+      // FIRST and apply it by hand; clearing the drag and then asking the
+      // frame handler to finish the job left the card where it started.
       const d = dragState.current
+      const p = pendRef.current
       dragState.current = null
+      pendRef.current = null
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0 }
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
       if (!d) return
-      if (d.moved) scheduleSave()
+      if (d.moved) { if (p) moveTo(d.id, p); scheduleSave() }
       else clickNode(d.id) // a plain click: link target or open the editor
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
+  }, [])
+
+  // ---- pan the field ------------------------------------------------------
+  // A six-thousand-pixel field reached only by its scrollbars is a field
+  // nobody crosses. Dragging the empty space moves it, the way every canvas
+  // anybody has used works, and the middle mouse button does it from anywhere
+  // — including from on top of a card, where a left-drag means something else.
+  const [panning, setPanning] = useState(false)
+  const startPan = (e) => {
+    const onCard = e.target.closest?.('.board-node, .edge-x')
+    if (e.button === 1) e.preventDefault()
+    else if (e.button !== 0 || onCard) return
+    const el = canvasRef.current
+    if (!el) return
+    const sx = e.clientX
+    const sy = e.clientY
+    const l0 = el.scrollLeft
+    const t0 = el.scrollTop
+    setPanning(true)
+    const onMove = (ev) => {
+      el.scrollLeft = l0 - (ev.clientX - sx)
+      el.scrollTop = t0 - (ev.clientY - sy)
+    }
+    const onUp = () => {
+      setPanning(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+  // Double-click the empty field to put a card exactly there — quicker than
+  // adding one somewhere and dragging it to where it was always going.
+  const dblAdd = (e) => {
+    if (e.target.closest?.('.board-node')) return
+    const el = canvasRef.current
+    const box = el.getBoundingClientRect()
+    addNodeAt((el.scrollLeft + e.clientX - box.left) / zoomRef.current - NODE_W / 2,
+      (el.scrollTop + e.clientY - box.top) / zoomRef.current - 20)
   }
 
   const clickNode = (id) => {
     const node = boardRef.current.nodes.find((n) => n.id === id)
     if (!node) return
-    if (linkFrom) {
-      if (linkFrom !== id) {
+    if (linkFromRef.current) {
+      const src = linkFromRef.current
+      if (src !== id) {
         const dup = boardRef.current.edges.some(
-          (e) => (e.from === linkFrom && e.to === id) || (e.from === id && e.to === linkFrom))
-        if (!dup) change((prev) => ({ ...prev, edges: [...prev.edges, { id: uid(), from: linkFrom, to: id }] }))
+          (e) => (e.from === src && e.to === id) || (e.from === id && e.to === src))
+        if (!dup) change((prev) => ({ ...prev, edges: [...prev.edges, { id: uid(), from: src, to: id }] }))
       }
       setLinkFrom(null)
     } else {
       setEditNode(node)
     }
   }
+  // clickNode runs from a listener closed over at pointerdown, so it must read
+  // link mode from a ref rather than the render it was born in.
+  const linkFromRef = useRef(null)
+  linkFromRef.current = linkFrom
 
-  const removeEdge = (id) => change((prev) => ({ ...prev, edges: prev.edges.filter((e) => e.id !== id) }))
+  const removeEdge = useCallback((id) =>
+    change((prev) => ({ ...prev, edges: prev.edges.filter((e) => e.id !== id) })), [])
 
   // Right-click a card: edit, connect, or delete without hunting the tiny icons.
   const { openMenu } = useContextMenu()
-  const nodeMenu = (e, n) => openMenu(e, [
+  const nodeMenu = useCallback((e, n) => openMenu(e, [
     { label: 'Edit role & member', icon: Pencil, onClick: () => setEditNode(n) },
     { label: 'Connect to another card', icon: Link2, onClick: () => setLinkFrom(n.id) },
     { sep: true },
     { label: 'Delete card', icon: Trash2, danger: true, onClick: () => { if (confirm(`Delete “${n.text}”?`)) removeNode(n.id) } },
-  ])
+  ]), [openMenu])
+  const onLink = useCallback((id) => setLinkFrom((cur) => (cur === id ? null : id)), [])
+  const onEdit = useCallback((n) => setEditNode(n), [])
+  const onDelete = useCallback((n) => { if (confirm(`Delete “${n.text}”?`)) removeNode(n.id) }, [])
 
   // Esc cancels link mode
   useEffect(() => {
@@ -259,10 +459,11 @@ export default function Whiteboard() {
       {linkFrom ? (
         <div className="link-banner"><Link2 size={14} /> Click another card to connect it — Esc to cancel</div>
       ) : (
-        <div className="board-hint">Drag cards to arrange · click a card to edit it and assign a member · the <Link2 size={12} style={{ verticalAlign: -2 }} /> button links two cards</div>
+        <div className="board-hint">Drag the empty field to move around · double-click it to add a role there · ⌘/Ctrl + scroll to zoom · click a card to edit it</div>
       )}
 
-      <div className="board-canvas" ref={canvasRef}>
+      <div className={'board-canvas' + (panning ? ' panning' : '')} ref={canvasRef}
+        onPointerDown={startPan} onDoubleClick={dblAdd}>
         <div className="board-zoom" style={{ width: CANVAS_W * zoom, height: CANVAS_H * zoom }}>
         <div className="board-inner" style={{ transform: `scale(${zoom})`, transformOrigin: '0 0' }}>
           <svg className="board-svg" width={CANVAS_W} height={CANVAS_H}>
@@ -275,50 +476,26 @@ export default function Whiteboard() {
               const f = nodesById[e.from]
               const t = nodesById[e.to]
               if (!f || !t) return null
-              const x1 = f.x + NODE_W / 2, y1 = f.y + NODE_H
-              const x2 = t.x + NODE_W / 2, y2 = t.y
-              const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
               return (
-                <g key={e.id} className="board-edge">
-                  <path d={`M ${x1} ${y1} C ${x1} ${y1 + 45}, ${x2} ${y2 - 45}, ${x2} ${y2}`}
-                    fill="none" stroke="#b59298" strokeWidth="2" markerEnd="url(#bArrow)" />
-                  <g className="edge-x" onClick={() => removeEdge(e.id)}>
-                    <circle cx={mx} cy={my} r="9" />
-                    <path d={`M ${mx - 3.2} ${my - 3.2} L ${mx + 3.2} ${my + 3.2} M ${mx + 3.2} ${my - 3.2} L ${mx - 3.2} ${my + 3.2}`} stroke="#fff" strokeWidth="1.8" />
-                  </g>
-                </g>
+                <Edge key={e.id} id={e.id}
+                  x1={f.x + NODE_W / 2} y1={f.y + tall(f.id)}
+                  x2={t.x + NODE_W / 2} y2={t.y}
+                  onRemove={removeEdge} />
               )
             })}
           </svg>
 
-          {board.nodes.map((n) => {
-            const bound = n.user_id ? teamById[n.user_id] : null
-            return (
-              <div
-                key={n.id}
-                className={'board-node' + (linkFrom === n.id ? ' link-src' : '') + (linkFrom && linkFrom !== n.id ? ' link-target' : '')}
-                style={{ left: n.x, top: n.y, borderTopColor: n.color }}
-                onPointerDown={(e) => startDrag(e, n)}
-                onContextMenu={(e) => nodeMenu(e, n)}
-              >
-                <div className="bn-tools" onPointerDown={(e) => e.stopPropagation()}>
-                  <button className="icon-btn" onClick={() => setLinkFrom(linkFrom === n.id ? null : n.id)} data-tip="Connect to another card" aria-label="Link"><Link2 size={13} /></button>
-                  <button className="icon-btn" onClick={() => setEditNode(n)} data-tip="Edit role & member" aria-label="Edit"><Pencil size={13} /></button>
-                  <button className="icon-btn del-btn" onClick={() => { if (confirm(`Delete “${n.text}”?`)) removeNode(n.id) }} data-tip="Delete this card" data-tip-left="" aria-label="Delete"><Trash2 size={13} /></button>
-                </div>
-                <div className="bn-title">{n.text || 'Role'}</div>
-                {bound ? (
-                  <div className="bn-user">
-                    <Avatar name={bound.name} color={bound.color} src={bound.avatar} size="sm" />
-                    <span>{bound.name}</span>
-                  </div>
-                ) : (
-                  <div className="bn-empty"><UserRound size={11} /> No one assigned</div>
-                )}
-                {n.sub && <div className="bn-sub">{n.sub}</div>}
-              </div>
-            )
-          })}
+          {board.nodes.map((n) => (
+            <Node key={n.id} n={n}
+              bound={n.user_id ? teamById[n.user_id] : null}
+              linkFrom={linkFrom}
+              register={register}
+              onDown={startDrag}
+              onMenu={nodeMenu}
+              onLink={onLink}
+              onEdit={onEdit}
+              onDelete={onDelete} />
+          ))}
         </div>
         </div>
       </div>
@@ -361,8 +538,12 @@ function NodeModal({ node, team, onClose, onSave, onDelete }) {
         </select>
       </div>
       <div className="field">
-        <label>Note <span className="stat-sub">(optional — e.g. responsibilities)</span></label>
-        <input className="input" value={form.sub} onChange={(e) => setForm({ ...form, sub: e.target.value })} placeholder="Reels, stories, shoots" />
+        <label>Details <span className="stat-sub">(what they own, what they are measured on, notes)</span></label>
+        <RichNote
+          value={form.sub}
+          onChange={(sub) => setForm((f) => ({ ...f, sub }))}
+          placeholder={'**Owns** the YouTube channel\n- Plan, produce, publish\n- Answer comments\n**Metric** views, videos out vs planned'}
+        />
       </div>
       <div className="field">
         <label>Card color</label>

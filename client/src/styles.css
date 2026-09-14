@@ -1393,22 +1393,70 @@ table.tbl tr:hover td { background: var(--surface-2); }
 /* ---- whiteboard (org structure) ---- */
 .board-hint { font-size: 12.5px; color: var(--muted); margin: 2px 0 10px; }
 .link-banner { display: flex; align-items: center; gap: 8px; background: rgba(42, 120, 214, 0.1); color: #2a78d6; font-weight: 600; font-size: 13px; padding: 8px 12px; border-radius: 9px; margin: 2px 0 10px; }
-.board-canvas { position: relative; height: 640px; overflow: auto; border: 1px solid var(--hairline); border-radius: 14px; background: var(--surface); }
+.board-canvas { position: relative; height: 640px; overflow: auto; border: 1px solid var(--hairline); border-radius: 14px; background: var(--surface); cursor: grab; overscroll-behavior: contain; }
+.board-canvas.panning { cursor: grabbing; }
+/* While the field is being dragged, nothing on it should be selecting text or
+   trying to answer the pointer — both make a pan feel like it is fighting. */
+.board-canvas.panning .board-inner { user-select: none; pointer-events: none; }
 .board-inner { position: relative; width: 6000px; height: 4000px; background-image: radial-gradient(circle, rgba(163, 34, 52, 0.13) 1px, transparent 1px); background-size: 26px 26px; }
 .board-svg { position: absolute; inset: 0; pointer-events: none; }
 .board-svg .edge-x { pointer-events: auto; cursor: pointer; opacity: 0; }
 .board-svg .edge-x circle { fill: #b59298; }
 .board-svg .board-edge:hover .edge-x, .board-svg .edge-x:hover { opacity: 1; }
 .board-svg .edge-x:hover circle { fill: #c0392b; }
-.board-node { position: absolute; width: 190px; background: var(--surface); border: 1px solid var(--hairline); border-top: 4px solid #a32234; border-radius: 12px; padding: 10px 12px 11px; cursor: grab; user-select: none; box-shadow: 0 1px 5px rgba(44, 26, 30, 0.08); }
+.board-node { position: absolute; width: 190px; will-change: left, top; background: var(--surface); border: 1px solid var(--hairline); border-top: 4px solid #a32234; border-radius: 12px; padding: 10px 12px 11px; cursor: grab; user-select: none; box-shadow: 0 1px 5px rgba(44, 26, 30, 0.08); }
 .board-node:active { cursor: grabbing; }
 .board-node.link-src { outline: 2px dashed #2a78d6; outline-offset: 2px; }
 .board-node.link-target:hover { outline: 2px solid #2a78d6; outline-offset: 2px; }
-.bn-title { font-weight: 700; font-size: 13.5px; margin-bottom: 7px; padding-right: 8px; }
+/* The tools sit over the top-right corner, so the title is given that corner
+   to stay out of. It used to be `padding-right: 8px` and the icons landed on
+   top of the words the moment anybody hovered — "YouTube Manager" read as
+   "YouTube Manage" with a bin through it. Reserved rather than reserved-on-
+   hover, because appearing space would shove the title about as the pointer
+   crossed the card. */
+.bn-title { font-weight: 700; font-size: 13.5px; margin-bottom: 7px; padding-right: 62px; min-height: 17px; }
 .bn-user { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; }
 .bn-user .avatar-sm { width: 22px; height: 22px; font-size: 9px; }
 .bn-empty { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); font-style: italic; }
 .bn-sub { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+/* What a role actually is, written on the card: a couple of plain lines, or a
+   list of duties, with **bold** for the words that carry it. Deliberately
+   small — this is read at a glance across a whole org chart, not sat down
+   with. See lib/richtext.js for what is allowed and why so little is. */
+.bn-rich { font-size: 11px; color: var(--muted); margin-top: 7px; line-height: 1.4; }
+.bn-rich p { margin: 0 0 3px; }
+.bn-rich p:last-child { margin-bottom: 0; }
+.bn-rich b { color: var(--text); font-weight: 700; }
+.bn-rich ul { margin: 0 0 3px; padding-left: 14px; list-style: none; }
+.bn-rich ul:last-child { margin-bottom: 0; }
+.bn-rich li { position: relative; margin: 0 0 2px; }
+.bn-rich li::before {
+  content: ''; position: absolute; left: -10px; top: 6px;
+  width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.55;
+}
+
+/* ---- the little editor those details are written in ---- */
+.rn { display: flex; flex-direction: column; gap: 6px; }
+.rn-bar { display: flex; align-items: center; gap: 4px; }
+.rn-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; border-radius: 7px;
+  border: 1px solid var(--hairline); background: var(--surface); color: var(--text); cursor: pointer;
+}
+.rn-btn:hover { background: var(--hover); }
+.rn-btn:active { transform: translateY(1px); }
+.rn-hint { font-size: 11px; color: var(--muted); margin-left: 4px; }
+.rn-area { font-family: inherit; line-height: 1.5; resize: vertical; min-height: 84px; }
+.rn-preview {
+  border: 1px dashed var(--hairline); border-radius: 10px;
+  padding: 8px 10px; background: var(--hover);
+}
+.rn-preview-key {
+  display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin-bottom: 4px;
+}
+.rn-preview .bn-rich { margin-top: 0; }
+@media (max-width: 560px) { .rn-hint { display: none; } }
 .bn-tools { position: absolute; top: 5px; right: 5px; display: flex; gap: 0; opacity: 0; background: var(--surface); border-radius: 7px; }
 .board-node:hover .bn-tools { opacity: 1; }
 .bn-tools .icon-btn { padding: 3px; }
