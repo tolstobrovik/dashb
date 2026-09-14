@@ -2273,6 +2273,14 @@ table.tbl tr:hover td { background: var(--surface-2); }
 .pay-jump > span { display: grid; gap: 1px; min-width: 0; }
 .pay-jump b { font-size: 14.5px; }
 .pay-jump > svg:last-child { margin-left: auto; color: var(--muted); flex: 0 0 auto; }
+/* What kind of surface a channel is, on its own row. It decides what every
+   task going there is asked for, which is not a thing to open a form to find
+   out. */
+.chan-kind {
+  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  background: var(--surface-2); color: var(--ink-2); white-space: nowrap;
+}
 .docs-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .docs-sec-head h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0; }
 .docs-up { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

@@ -14,6 +14,7 @@ import SlotPicker from './SlotPicker.jsx'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { gapsOf, stageRankOf, datesFrozenAt } from '../lib/gaps.js'
+import { askedOf } from '../lib/channelFormat.js'
 import { toast } from '../lib/toast.js'
 import { useDirtyState, cascadeDates, LABELS } from '../lib/formState.js'
 import { saveDraft, readDraft, clearDraft, draftBeatsRow } from '../lib/draft.js'
@@ -603,16 +604,32 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   })()
 
   const plan = typeInfo(form.type).plan
-  // A post is designed, not filmed: one designer hat instead of operator+editor.
-  const isDesign = form.type === 'post'
-  // Does a brief field apply to this task's type — and is it demanded?
-  const fOn = (k) => { const r = fieldRules?.[k]; return !!r && r.state !== 'off' && r.types.includes(form.type) }
-  const fReq = (k) => { const r = fieldRules?.[k]; return !!r && r.state === 'required' && r.types.includes(form.type) }
+  // WHERE this piece is going, and therefore what it can be asked for at all.
+  // Every rule below used to read the TYPE alone, which is why a Telegram
+  // announcement was asked for artwork, a designer and a reference image: the
+  // board knew what the piece was and never where it was going. The channel's
+  // format is the other half of the question, and the two are asked together.
+  const asked = useMemo(
+    () => askedOf(fieldRules?.channel_formats, form.channels, byKey),
+    [fieldRules, form.channels, byKey])
+  // A post is designed, not filmed: one designer hat instead of operator+editor
+  // — where the surface it is going to has designers at all.
+  const isDesign = form.type === 'post' && asked.crew('designer')
+  // Does a brief field apply to this task's type, on these channels — and is
+  // it demanded?
+  const fOn = (k) => {
+    const r = fieldRules?.[k]
+    return !!r && r.state !== 'off' && r.types.includes(form.type) && asked.field(k)
+  }
+  const fReq = (k) => {
+    const r = fieldRules?.[k]
+    return !!r && r.state === 'required' && r.types.includes(form.type) && asked.field(k)
+  }
   // Does this type of task need somebody holding the camera? The admin's crew
   // rule (Admin → Pipeline) decides, and /fields serves it beside the brief
   // rules — so a text post is never asked, and a type added there starts being
   // asked with nothing further to wire up.
-  const isFilmedType = !!fieldRules?.crew?.operator?.includes(form.type)
+  const isFilmedType = !!fieldRules?.crew?.operator?.includes(form.type) && asked.crew('operator')
   // WHERE the task sits decides what it owes. Before the shooting stage it is
   // an idea — a title and a maybe — and owes nobody a crew, a date or a brief.
   // From the shooting stage on it is a BOOKED shoot and owes all three; one
@@ -630,9 +647,9 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
         ?? (item?.assignees?.length ? item.assignees : item?.assignee_id ? [item.assignee_id] : creating ? [user.id] : []),
       ready_at: item?.ready_at || null,
     }
-    const g = gapsOf(probe, fieldRules?.crew, stageRank)
+    const g = gapsOf(probe, fieldRules?.crew, stageRank, asked)
     return [...g.people, ...g.dates]
-  }, [form, item, fieldRules, stageRank, creating, user.id])
+  }, [form, item, fieldRules, stageRank, creating, user.id, asked])
 
   const shootAt = liveStages.findIndex((s) => /to\s*shoot|shooting|s[yj]omka/i.test(s.label || ''))
   const stageAt = liveStages.findIndex((s) => s.id === form.status_id)
@@ -1525,7 +1542,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           thing it owes has arrived, and how late it is if it is late. */}
       {!creating && (item?.phases || []).length > 0 && (
         <div className="cm-state">
-          {item.phases.map((ph) => {
+          {/* Only the phases this surface actually has. A written Telegram
+              post was showing "Shooting · nobody · No date" and "Editing ·
+              nobody · No date" above work nobody films and nobody cuts —
+              three phases of a pipeline it is not in. Each phase names the
+              hat it belongs to, so it is the same question the rest of this
+              form now asks. Review is never hidden: somebody signs off and
+              publishes on every channel there is. */}
+          {item.phases.filter((ph) => ph.role === 'reviewer' || asked.crew(ph.role)).map((ph) => {
             const owner = team.find((u) => u.id === ph.owner_id)
             const file = { shoot: form.shot_link, edit: form.ready_link }[ph.phase]
             const tone = ph.state === 'late' ? 'late' : ph.state === 'excused' ? 'wait'
@@ -1910,7 +1934,14 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             <span className="crew-label dlv-head">
               <Send size={13} />
               <b>{tx('The published post')}</b>
-              <span className="stat-sub">{tx('needed before it can move to the last stage')}</span>
+              {/* Said forwards or backwards depending on where the piece
+                  actually is. A task already ON the last stage was being told
+                  the link was "needed before it can move" there — advice about
+                  a move that has happened, on a board that is supposed to know
+                  where its own work stands. */}
+              <span className="stat-sub">
+                {isOut ? tx('where it went out') : tx('needed before it can move to the last stage')}
+              </span>
             </span>
             <input className={'input' + (badField === 'post_link' ? ' field-bad' : '')}
               value={form.post_link} placeholder="https://…"
@@ -2256,9 +2287,12 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
               column and anyone already holding it are untouched; it is simply
               not offered any more. */}
           {[
-            // No shooter on written work — there is nothing to film.
-            ...(textOnly ? [] : [{ key: 'operator_id', label: tx('Operator'), role: 'operator', tip: 'Who films / shoots this' }]),
-            { key: 'editor_id', label: tx('Editor'), role: 'editor', tip: 'Who edits this' },
+            // Only the hats the channels this is going to actually have. A
+            // written channel has neither: nothing is filmed and nothing is
+            // cut, and a seat nobody can fill is a seat somebody spends a
+            // minute trying to.
+            ...(textOnly || !asked.crew('operator') ? [] : [{ key: 'operator_id', label: tx('Operator'), role: 'operator', tip: 'Who films / shoots this' }]),
+            ...(asked.crew('editor') ? [{ key: 'editor_id', label: tx('Editor'), role: 'editor', tip: 'Who edits this' }] : []),
           ].map((f) => {
             const holds = (u) => (u.crew_roles || []).includes(f.role)
             const bySort = (a, b) =>

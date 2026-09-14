@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { get, run, getTaskFields, DEFAULT_TASK_FIELDS, TASK_FIELD_KEYS, CONTENT_TYPES, getCrewNeeds, CREW_NEED_KEYS, getPageRules, getPageAudience, PAGE_KEYS, PAGE_AUDIENCES, getSkipTiers, getMakerGrades, getPlannedUpdate } from '../db.js'
+import { get, run, getTaskFields, DEFAULT_TASK_FIELDS, TASK_FIELD_KEYS, CONTENT_TYPES, getCrewNeeds, CREW_NEED_KEYS, getPageRules, getPageAudience, PAGE_KEYS, PAGE_AUDIENCES, getSkipTiers, getMakerGrades, getPlannedUpdate, CHANNEL_FORMATS } from '../db.js'
 import { authRequired, adminOnly, wrap } from '../auth.js'
 
 // How this board is set up, in one place: which briefing fields the task form
@@ -18,6 +18,11 @@ router.get('/', wrap(async (req, res) => {
   res.json({
     ...(await getTaskFields()),
     crew: await getCrewNeeds(),
+    // What each kind of channel can need at all. Served rather than copied
+    // into the browser, so the form that DRAWS the questions and the routes
+    // that REFUSE the answers are reading one table — two copies of a rule
+    // about what a Telegram post owes is two copies to disagree.
+    channel_formats: CHANNEL_FORMATS,
     pages: await getPageRules(),
     page_audience: await getPageAudience(),
     // What a reel earns by how much of it was watched, and how many pieces
@@ -143,6 +148,11 @@ router.post('/', adminOnly, wrap(async (req, res) => {
   res.json({
     ...(await getTaskFields()),
     crew: await getCrewNeeds(),
+    // What each kind of channel can need at all. Served rather than copied
+    // into the browser, so the form that DRAWS the questions and the routes
+    // that REFUSE the answers are reading one table — two copies of a rule
+    // about what a Telegram post owes is two copies to disagree.
+    channel_formats: CHANNEL_FORMATS,
     pages: await getPageRules(),
     page_audience: await getPageAudience(),
     skip_tiers: await getSkipTiers(),

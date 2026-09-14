@@ -59,9 +59,19 @@ export const datesFrozenAt = (statusId, statuses) => {
   return at >= from && (until < 0 || at < until)
 }
 
-export const gapsOf = (t, crew, rank) => {
-  const need = (hat, fallback) => (Array.isArray(crew?.[hat]) ? crew[hat] : fallback).includes(t.type)
-  const filmed = t.type === 'reel' || t.type === 'video'
+// `asked` is the channel-format reader (lib/channelFormat.js): what the
+// surfaces this task is going to can need at all. A hat has to be wanted by
+// the TYPE and by at least one of those surfaces — "needs a designer" on a
+// written Telegram announcement is the board knowing what the piece is and
+// not where it is going. Left out, nothing is narrowed and this reads exactly
+// as it always did.
+export const gapsOf = (t, crew, rank, asked) => {
+  const allows = (hat) => (asked ? asked.crew(hat) : true)
+  const need = (hat, fallback) =>
+    (Array.isArray(crew?.[hat]) ? crew[hat] : fallback).includes(t.type) && allows(hat)
+  // A shoot day is owed where somebody films. On a channel nobody films for,
+  // there is no day to miss.
+  const filmed = (t.type === 'reel' || t.type === 'video') && allows('operator')
   const preEdit = !t.ready_at
   const where = rank ? rank(t.status_id) : 'shot'
   const people = []

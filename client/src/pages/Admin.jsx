@@ -1620,11 +1620,17 @@ function AiTab() {
   )
 }
 
+// The hats a format can take off the table, in the words the admin reads.
+const CREW_WORDS = [['operator', 'an operator'], ['editor', 'an editor'], ['designer', 'a designer']]
+
 function ChannelsTab({ onOpenReport }) {
   const { channels, reload } = useChannels()
-  const [modal, setModal] = useState(null) // {id?, label, icon, head_id}
+  const [modal, setModal] = useState(null) // {id?, label, icon, head_id, format}
   const [team, setTeam] = useState([])
   const [err, setErr] = useState('')
+  // The kinds of channel there are, and what each one needs — served from
+  // /fields so the picker here and the form that obeys it read one table.
+  const [formats, setFormats] = useState({})
   // The same numbers the Reports tab shows for "This month" — one source.
   const [monthReport, setMonthReport] = useState(null)
   const [content, setContent] = useState([])
@@ -1637,6 +1643,7 @@ function ChannelsTab({ onOpenReport }) {
   }
   useEffect(() => {
     api.get('/users').then(setTeam).catch(() => {})
+    api.get('/fields').then((f) => setFormats(f?.channel_formats || {})).catch(() => {})
     loadStats()
     const id = setInterval(() => { if (!document.hidden) loadStats() }, 15000)
     return () => clearInterval(id)
@@ -1655,7 +1662,7 @@ function ChannelsTab({ onOpenReport }) {
     if (!modal.label.trim()) return
     setErr('')
     try {
-      const body = { label: modal.label.trim(), icon: modal.icon, head_id: modal.head_id ?? null, drive_url: (modal.drive_url ?? '').trim(), daily_ad_cap: Number(modal.daily_ad_cap) || 0 }
+      const body = { label: modal.label.trim(), icon: modal.icon, head_id: modal.head_id ?? null, drive_url: (modal.drive_url ?? '').trim(), daily_ad_cap: Number(modal.daily_ad_cap) || 0, format: modal.format ?? 'social' }
       if (modal.id) await api.patch(`/channels/${modal.id}`, body)
       else await api.post('/channels', body)
       reload()
@@ -1680,7 +1687,7 @@ function ChannelsTab({ onOpenReport }) {
         <h2>Sidebar channels</h2>
         <span className="count">· shown top to bottom</span>
         <span className="spacer" />
-        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', icon: 'instagram', head_id: null, drive_url: '', daily_ad_cap: 0 }); setErr('') }}><Plus size={15} /> Add channel</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { setModal({ label: '', icon: 'instagram', head_id: null, drive_url: '', daily_ad_cap: 0, format: 'social' }); setErr('') }}><Plus size={15} /> Add channel</button>
       </div>
       <div className="card" style={{ padding: '6px 14px' }}>
         {channels.map((c, i) => {
@@ -1690,6 +1697,14 @@ function ChannelsTab({ onOpenReport }) {
               <span className="chan-icon"><Icon size={17} /></span>
               <span style={{ fontWeight: 600 }}>{c.label}</span>
               <span className="stat-sub" style={{ fontFamily: 'ui-monospace, monospace' }}>{c.key}</span>
+              {/* Nothing until the table has arrived: a Telegram channel
+                  labelled "Social feed" for half a second is worse than a
+                  badge that turns up a moment late. */}
+              {formats[c.format || 'social'] && (
+                <span className="chan-kind" data-tip={tx(formats[c.format || 'social'].hint)}>
+                  {tx(formats[c.format || 'social'].label)}
+                </span>
+              )}
               {c.head_id && c.head_name ? (
                 <span className="chan-head" title={`Head: ${c.head_name}`}>
                   <Avatar name={c.head_name} color={c.head_color} src={c.head_avatar} size="sm" />
@@ -1712,7 +1727,7 @@ function ChannelsTab({ onOpenReport }) {
               <span className="spacer" style={{ flex: 1 }} />
               <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} data-tip="Move up in the sidebar" aria-label="Up"><ArrowUp size={15} /></button>
               <button className="icon-btn" disabled={i === channels.length - 1} onClick={() => move(i, 1)} data-tip="Move down in the sidebar" aria-label="Down"><ArrowDown size={15} /></button>
-              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null, drive_url: c.drive_url || '', daily_ad_cap: c.daily_ad_cap || 0 }); setErr('') }} data-tip="Edit name, head & icon" aria-label="Edit"><Pencil size={15} /></button>
+              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => { setModal({ id: c.id, label: c.label, icon: c.icon, head_id: c.head_id ?? null, drive_url: c.drive_url || '', daily_ad_cap: c.daily_ad_cap || 0, format: c.format || 'social' }); setErr('') }} data-tip="Edit this channel" aria-label="Edit"><Pencil size={15} /></button>
               <button className="btn btn-danger btn-sm btn-icon u-onhover" onClick={() => del(c)} data-tip="Delete channel & its data" data-tip-left="" aria-label="Delete"><Trash2 size={15} /></button>
             </div>
           )
@@ -1731,6 +1746,31 @@ function ChannelsTab({ onOpenReport }) {
           {err && <div className="form-error"><AlertCircle size={16} /> {err}</div>}
           <div className="field"><label>Name</label>
             <input className="input" autoFocus value={modal.label} onChange={(e) => setModal({ ...modal, label: e.target.value })} placeholder="e.g. Instagram Kids" />
+          </div>
+          {/* WHAT KIND OF SURFACE THIS IS.
+              It decides what a task going here is asked for, which is the
+              difference between a Telegram announcement and an Instagram
+              post — the same word, two completely different jobs. Before
+              this, one set of rules covered every channel at once and the
+              board asked a team writing an announcement for its artwork. */}
+          <div className="field"><label>{tx('What kind of channel')}</label>
+            <select className="select" value={modal.format ?? 'social'}
+              onChange={(e) => setModal({ ...modal, format: e.target.value })}>
+              {Object.entries(formats).map(([k, f]) => (
+                <option key={k} value={k}>{tx(f.label)}</option>
+              ))}
+            </select>
+            <div className="cm-hint">
+              {tx(formats[modal.format ?? 'social']?.hint || '')}
+              {(() => {
+                const f = formats[modal.format ?? 'social']
+                if (!f) return null
+                const off = CREW_WORDS.filter(([h]) => !f.crew.includes(h)).map(([, w]) => tx(w))
+                return off.length
+                  ? <><br />{tx('Tasks here are never asked for {who}.', { who: off.join(', ') })}</>
+                  : null
+              })()}
+            </div>
           </div>
           <div className="field"><label>Head of department <span className="stat-sub">(shown on the channel page)</span></label>
             <select className="select" value={modal.head_id ?? ''} onChange={(e) => setModal({ ...modal, head_id: e.target.value === '' ? null : Number(e.target.value) })}>

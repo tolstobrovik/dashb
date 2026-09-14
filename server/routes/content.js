@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { createHmac } from 'crypto'
-import { all, get, run, batch, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO, taskChildDeletes } from '../db.js'
+import { all, get, run, batch, CONTENT_TYPES, resyncStorage, mayLeaveStage, getTaskFields, getCrewNeeds, publicUser, dayISO, taskChildDeletes, channelFormatsFor, formatsAllowField, formatsAllowCrew } from '../db.js'
 import { bumpProjectOfCampaign } from '../pcmodel.js'
 import { resolveGates, gatesUpTo, phasesOf, holderOf, phasePassed } from '../deadlines.js'
 import { readText, hasSubstance, hasLink, isSentence, clip, scriptKey, MIN_SENTENCE_WORDS } from '../text.js'
@@ -958,10 +958,17 @@ const ideaRules = (rules) => ({ description: rules.description })
 // sentence to show. Presence, substance and (for a reference) direction are
 // three different failures and get three different sentences — "required"
 // alone would send somebody back to a field they had already filled in.
-const requiredProblem = (rules, type, checks) => {
+// `formats` is the set of channel formats this task is going to. A field has
+// to be wanted by the type AND by at least one of those surfaces: "«Reference»
+// is required for this type of task" was being said to somebody writing a
+// Telegram announcement, because the rule knew what the piece WAS and not
+// where it was going. With no channels chosen yet the type rules stand alone,
+// which is what a brand-new idea should be judged by.
+const requiredProblem = (rules, type, checks, formats = []) => {
   for (const [k, label] of Object.entries(FIELD_LABELS)) {
     const r = rules[k]
     if (r?.state !== 'required' || !r.types.includes(type)) continue
+    if (!formatsAllowField(formats, k)) continue
     const c = checks[k] || {}
     if (!c.present) return `«${label}» is required for this type of task`
     // Three different failures, three different sentences: it is empty, it
@@ -1015,6 +1022,7 @@ router.post('/', wrap(async (req, res) => {
   // else the admin demands is asked when the piece leaves the idea stage.
   const bornAnIdea = isIdeaStage(status_id, resolveGates(await all('SELECT id, label, sort, is_final FROM statuses')))
   const askedNow = bornAnIdea ? ideaRules(fieldRules) : fieldRules
+  const formats = await channelFormatsFor(channels)
   const problem = requiredProblem(askedNow, safeType, {
     format: { present: !!format, thin: !hasSubstance(format), raw: format },
     rubrika: { present: !!rubrika, thin: !hasSubstance(rubrika), raw: rubrika },
@@ -1029,7 +1037,7 @@ router.post('/', wrap(async (req, res) => {
       thin: !refCarried && !hasSubstance(reference_text), raw: reference_text,
       linkless: !refCarried && hasSubstance(reference_text) && !hasLink(reference_text),
     },
-  })
+  }, formats)
   if (problem && !free) return res.status(400).json({ error: problem })
 
   // The two rules that hold whether or not the admin demanded the field,
@@ -1151,7 +1159,7 @@ router.post('/', wrap(async (req, res) => {
   const adFull = await adCapProblem(safeType, channels, release_date)
   if (adFull) return res.status(409).json({ error: adFull, crew_field: 'release_date' })
 
-  const isFilmed = (await getCrewNeeds()).operator.includes(safeType)
+  const isFilmed = (await getCrewNeeds()).operator.includes(safeType) && formatsAllowCrew(formats, 'operator')
   if (isFilmed && isBooking(status, await all('SELECT id, label, sort, is_final FROM statuses'))) {
     const booking = bookingProblem({
       operatorId: crew.operator_id, recording: recording_date, editReady: edit_ready_date,
@@ -2277,7 +2285,8 @@ router.patch('/:id', wrap(async (req, res) => {
     const nOperator = body.operator_id !== undefined
       ? (body.operator_id === null || body.operator_id === '' ? null : Number(body.operator_id))
       : row.operator_id
-    if ((await getCrewNeeds()).operator.includes(nType) && !nOperator)
+    const nFormats = await channelFormatsFor(chansOf({ channels: patch.channels !== undefined ? patch.channels : row.channels }))
+    if ((await getCrewNeeds()).operator.includes(nType) && formatsAllowCrew(nFormats, 'operator') && !nOperator)
       return res.status(400).json({ error: 'Pick who is filming this — a shoot nobody is holding is nobody’s job' })
   }
   for (const f of ['recording_time', 'recording_end', 'release_time'])
@@ -2696,7 +2705,7 @@ router.patch('/:id', wrap(async (req, res) => {
             thin: !carried && !hasSubstance(val('reference_text')), raw: val('reference_text'),
             linkless: !carried && hasSubstance(val('reference_text')) && !hasLink(val('reference_text')),
           },
-        })
+        }, await channelFormatsFor(chansOf({ channels: patch.channels !== undefined ? patch.channels : row.channels })))
         if (briefGap) return res.status(400).json({ error: briefGap })
       }
 
@@ -2758,6 +2767,7 @@ router.patch('/:id', wrap(async (req, res) => {
       }
 
       const filmedNow = !free && (await getCrewNeeds()).operator.includes(val('type') ?? row.type)
+        && formatsAllowCrew(await channelFormatsFor(chansOf({ channels: val('channels') ?? row.channels })), 'operator')
       const g = resolved.gates.shoot
       if (filmedNow && g && at(patch.status_id) === g.index) {
         let links = []

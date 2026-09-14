@@ -58,8 +58,14 @@ export const isIdeaLabel = (label) => /idea/i.test(label || '')
 // out. Matched on the channel the way the platform lens already is — the icon
 // an admin picks when they create it, or the key it got from its name — so a
 // second Telegram channel is one without anybody wiring it up.
+// A channel now SAYS what it is (Admin → Channels → What kind of channel), so
+// this reads the answer instead of guessing at it from an icon. The guess is
+// kept for one case only: a channel list cached by a browser from before
+// formats existed, which has no format on it to read.
 export const isWritingChannel = (ch) =>
-  ch?.icon === 'telegram' || /telegram/i.test(ch?.key || '')
+  (ch && ch.format)
+    ? ch.format === 'text'
+    : (ch?.icon === 'telegram' || /telegram/i.test(ch?.key || ''))
 
 // The three stages such a channel runs on. Idea and the making stage are
 // matched on the pipeline's own labels, the way the stage rules are; the last

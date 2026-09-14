@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { all, get, run, batch, taskChildDeletes } from '../db.js'
+import { all, get, run, batch, taskChildDeletes, CHANNEL_FORMAT_KEYS } from '../db.js'
 import { authRequired, adminOnly, can, wrap } from '../auth.js'
 
 const router = Router()
@@ -28,6 +28,12 @@ const cleanHead = async (v) => {
   return id
 }
 
+// What kind of surface this is — see CHANNEL_FORMATS. Anything unrecognised
+// falls back to a social feed, which is how every channel behaved before
+// formats existed, so a bad value can only ever mean "as before".
+const cleanFormat = (v, fallback = 'social') =>
+  (typeof v === 'string' && CHANNEL_FORMAT_KEYS.includes(v)) ? v : fallback
+
 router.post('/', adminOnly, wrap(async (req, res) => {
   const { label, icon = 'star', head_id = null } = req.body || {}
   if (!label || !String(label).trim()) return res.status(400).json({ error: 'Name is required' })
@@ -44,15 +50,15 @@ router.post('/', adminOnly, wrap(async (req, res) => {
   let n = 1
   while (await get('SELECT 1 AS x FROM channels WHERE key = ?', key)) key = `${slugify(label)}_${++n}`
   const maxSort = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM channels')).m
-  const info = await run('INSERT INTO channels (key, label, icon, head_id, sort) VALUES (?, ?, ?, ?, ?)',
-    key, String(label).trim(), icon, head, maxSort + 1)
+  const info = await run('INSERT INTO channels (key, label, icon, head_id, sort, format) VALUES (?, ?, ?, ?, ?, ?)',
+    key, String(label).trim(), icon, head, maxSort + 1, cleanFormat(req.body?.format))
   res.status(201).json(await get('SELECT * FROM channels WHERE id = ?', info.lastInsertRowid))
 }))
 
 router.patch('/:id', adminOnly, wrap(async (req, res) => {
   const row = await get('SELECT * FROM channels WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Channel not found' })
-  const { label, icon, head_id, drive_url, daily_ad_cap } = req.body || {}
+  const { label, icon, head_id, drive_url, daily_ad_cap, format } = req.body || {}
   let head = row.head_id
   if (head_id !== undefined) {
     try { head = await cleanHead(head_id) } catch (e) { return res.status(400).json({ error: e.message }) }
@@ -78,8 +84,9 @@ router.patch('/:id', adminOnly, wrap(async (req, res) => {
     }
     adCap = n
   }
-  await run('UPDATE channels SET label = ?, icon = ?, head_id = ?, drive_url = ?, daily_ad_cap = ? WHERE id = ?',
-    label !== undefined ? String(label).trim() : row.label, icon ?? row.icon, head, drive, adCap, row.id)
+  await run('UPDATE channels SET label = ?, icon = ?, head_id = ?, drive_url = ?, daily_ad_cap = ?, format = ? WHERE id = ?',
+    label !== undefined ? String(label).trim() : row.label, icon ?? row.icon, head, drive, adCap,
+    format !== undefined ? cleanFormat(format, row.format || 'social') : (row.format || 'social'), row.id)
   res.json(await get('SELECT * FROM channels WHERE id = ?', row.id))
 }))
 

@@ -571,6 +571,18 @@ export async function initSchema() {
       -- happens to be making them. 0 is what every channel was before this
       -- existed: no ceiling.
       daily_ad_cap INTEGER NOT NULL DEFAULT 0,
+      -- WHAT KIND OF SURFACE THIS IS.
+      --
+      -- Every rule about what a task owes used to be keyed on the content
+      -- TYPE alone — a 'post' needs a designer, a 'post' needs a Reference —
+      -- which is true of a post on Instagram and nonsense for the same word on
+      -- Telegram. So the board asked a team writing a Telegram announcement
+      -- for artwork, a designer and a reference image, and refused to let the
+      -- piece move until it got them.
+      --
+      -- A type says what the piece IS. A format says where it is going, and
+      -- the two together decide what it owes. See CHANNEL_FORMATS.
+      format TEXT NOT NULL DEFAULT 'social',
       sort    INTEGER NOT NULL DEFAULT 0
     );
 
@@ -1508,6 +1520,7 @@ export async function initSchema() {
     await exec("ALTER TABLE channels ADD COLUMN IF NOT EXISTS drive_url TEXT NOT NULL DEFAULT ''")
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_cap INTEGER NOT NULL DEFAULT 0')
     await exec('ALTER TABLE channels ADD COLUMN IF NOT EXISTS daily_ad_cap INTEGER NOT NULL DEFAULT 0')
+    await exec("ALTER TABLE channels ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'social'")
     await exec("ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''")
     await exec("ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'atleast'")
     await exec('ALTER TABLE person_kpis ADD COLUMN IF NOT EXISTS reward REAL NOT NULL DEFAULT 0')
@@ -1670,6 +1683,7 @@ async function migrate() {
     // CREATE TABLE IF NOT EXISTS, which will not add a column to one that is
     // already there, so an existing board needs these two spelled out.
     if (!(await hasColumn('channels', 'daily_ad_cap'))) await exec('ALTER TABLE channels ADD COLUMN daily_ad_cap INTEGER NOT NULL DEFAULT 0')
+    if (!(await hasColumn('channels', 'format'))) await exec("ALTER TABLE channels ADD COLUMN format TEXT NOT NULL DEFAULT 'social'")
     if (!(await hasColumn('person_kpis', 'source'))) await exec("ALTER TABLE person_kpis ADD COLUMN source TEXT NOT NULL DEFAULT ''")
     if (!(await hasColumn('person_kpis', 'direction'))) await exec("ALTER TABLE person_kpis ADD COLUMN direction TEXT NOT NULL DEFAULT 'atleast'")
     if (!(await hasColumn('person_kpis', 'reward'))) await exec('ALTER TABLE person_kpis ADD COLUMN reward REAL NOT NULL DEFAULT 0')
@@ -1769,6 +1783,34 @@ async function migrate() {
     console.warn('Skipping legacy migrations:', e.message)
   }
 }
+
+// ---- what a task on THESE channels, of THIS type, actually owes ------------
+//
+// The two halves of the question, finally asked together. The type rules say
+// what a piece of this kind needs; the channel formats say what this surface
+// can need at all. A field or a hat survives only if BOTH want it.
+//
+// Across several channels the answer is the UNION, and that is the honest way
+// round: a piece cross-posted to Instagram and Telegram is still going on
+// Instagram, so it still needs the artwork. Only a task going nowhere but
+// Telegram stops being asked.
+//
+// A task with no channels yet — a brand-new idea — is judged by the type
+// rules alone, exactly as before. It is not "no channel, therefore nothing is
+// needed"; it is "nobody has said where this is going yet".
+export async function channelFormatsFor(keys) {
+  const list = (Array.isArray(keys) ? keys : []).map(String).filter(Boolean)
+  if (!list.length) return []
+  const rows = await all(`SELECT key, format FROM channels WHERE key IN (${list.map(() => '?').join(',')})`, ...list)
+  return rows.map(formatOf)
+}
+
+// Does any of these formats allow this brief field / this hat? With no formats
+// to go on, everything is allowed and the type rules stand alone.
+export const formatsAllowField = (formats, key) =>
+  !formats.length || formats.some((f) => CHANNEL_FORMATS[f]?.fields.includes(key))
+export const formatsAllowCrew = (formats, hat) =>
+  !formats.length || formats.some((f) => CHANNEL_FORMATS[f]?.crew.includes(hat))
 
 export async function getChannelKeys() {
   return (await all('SELECT key FROM channels ORDER BY sort')).map((r) => r.key)
@@ -2138,6 +2180,77 @@ export async function getCrewNeeds() {
 // for an ad set rather than for the feed.
 export const CONTENT_TYPES = ['post', 'reel', 'story', 'video', 'target', 'other']
 
+// ---- what kind of surface a channel is -------------------------------------
+//
+// The board knew what a piece WAS (a post, a reel) and never where it was
+// going, so one set of rules had to cover every channel at once. A written
+// Telegram announcement was asked for artwork, a designer and a reference
+// image, because somewhere a rule says a 'post' needs those — and it does, on
+// Instagram.
+//
+// A format is the second half of that question. It is named for the shape of
+// the surface rather than for a brand, because a board that adds Threads next
+// year should not need a code change to describe it.
+//
+//   crew    the hats a task on this channel can need at all. The type rules
+//           still decide which of them THIS piece needs; the format can only
+//           take a hat off the table, never put one on.
+//   fields  the brief fields worth asking for here, same way round.
+//
+// Nothing here is a permission and nothing here is a deadline: it is the list
+// of questions worth asking. A format that allows a field still leaves the
+// admin's own off/optional/required setting in charge of it.
+export const CHANNEL_FORMATS = {
+  social: {
+    label: 'Social feed',
+    hint: 'Images and video in a feed — Instagram, TikTok, Threads',
+    crew: ['operator', 'editor', 'designer'],
+    fields: ['format', 'rubrika', 'script', 'tz', 'reference', 'description'],
+  },
+  text: {
+    label: 'Written channel',
+    hint: 'Words go out — Telegram, announcements, a blog. Nobody films or designs.',
+    crew: [],
+    fields: ['rubrika', 'description'],
+  },
+  video: {
+    label: 'Long video',
+    hint: 'YouTube and anything else filmed and cut at length',
+    crew: ['operator', 'editor'],
+    fields: ['format', 'rubrika', 'script', 'tz', 'reference', 'description'],
+  },
+  ads: {
+    label: 'Paid promotion',
+    hint: 'Creatives made for an ad set rather than for a feed',
+    crew: ['operator', 'editor', 'designer'],
+    fields: ['rubrika', 'reference', 'description'],
+  },
+}
+export const CHANNEL_FORMAT_KEYS = Object.keys(CHANNEL_FORMATS)
+export const formatOf = (row) =>
+  (row && CHANNEL_FORMATS[row.format]) ? row.format : 'social'
+
+// Every channel that existed before formats did gets the one it obviously is,
+// once, from its own icon and key — a board should not have to go and re-teach
+// the app what its Telegram channel is. Anything unrecognised stays 'social',
+// which is exactly how the board behaved before this existed, so a guess that
+// misses changes nothing. After this runs the admin's own choice is the truth
+// and nothing here looks again.
+const FORMAT_GUESS = [
+  [/telegram|blog|news|announce/i, 'text'],
+  [/youtube|yt\b|video/i, 'video'],
+  [/target|\bads?\b|promo/i, 'ads'],
+]
+async function guessChannelFormats() {
+  if (await get("SELECT 1 AS x FROM meta WHERE key = 'channel_formats_guessed'")) return
+  for (const c of await all('SELECT id, key, label, icon FROM channels')) {
+    const hay = `${c.key} ${c.label} ${c.icon}`
+    const hit = FORMAT_GUESS.find(([re]) => re.test(hay))
+    if (hit) await run('UPDATE channels SET format = ? WHERE id = ?', hit[1], c.id)
+  }
+  await run("INSERT INTO meta (key, value) VALUES ('channel_formats_guessed', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+}
+
 const now = () => new Date().toISOString()
 
 export async function seedIfEmpty() {
@@ -2484,6 +2597,7 @@ export function initDb() {
     await importJulyIgPlan()
     await seedTemplatesOnce()
     await foldShotStage()
+    await guessChannelFormats()
     // The Target team's dashboard leads with launch programs — once, and only
     // if the admin hasn't customized that channel's layout yet.
     if (!(await get("SELECT 1 AS x FROM meta WHERE key = 'target_programs_default'"))) {
