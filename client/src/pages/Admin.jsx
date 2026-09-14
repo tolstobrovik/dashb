@@ -1264,11 +1264,12 @@ function PayTab() {
           <div className="pay-rows">
             {data.people.map((p) => {
               const noRates = p.source === 'none'
-              const parts = [
-                ['base', tx('Base'), p.base],
-                ['piece', tx('Piecework'), p.piecework + (p.viewsPay || 0)],
-                ['bonus', tx('Bonus'), p.bonus],
-              ].filter(([, , v]) => v > 0)
+              // What the total is made of, as worked out by whatever decided
+              // it. The old list was base + piecework + bonus, which is one
+              // arrangement out of six: on a pillow card it drew a bar that
+              // did not add up to the number beside it, and on a KPI card it
+              // drew nothing at all.
+              const parts = (p.parts || []).filter((x) => x.amount > 0)
               return (
                 <div className={'pay-row' + (noRates ? ' pay-row-unset' : '') + (p.payout ? ' pay-row-paid' : '')} key={p.id}>
                   <div className="pay-row-who">
@@ -1277,6 +1278,11 @@ function PayTab() {
                       <b>{p.name}</b>
                       <span className="stat-sub">
                         {p.source === 'own' ? tx('own rates') : p.source === 'default' ? tx('default rates') : tx('no rates set')}
+                        {/* Which arrangement they are on. Two people with the
+                            same figure beside their name can have got there
+                            two completely different ways, and the payroll was
+                            not saying which. */}
+                        {!noRates && p.schemeLabel && p.scheme !== 'piece' && <> · {tx(p.schemeLabel)}</>}
                       </span>
                     </div>
                   </div>
@@ -1303,12 +1309,12 @@ function PayTab() {
                           {parts.length > 0 && (
                             <>
                               <span className="pay-bar">
-                                {parts.map(([k, , v]) => <span key={k} className={`pay-bar-${k}`} style={{ flexGrow: v }} />)}
+                                {parts.map((x) => <span key={x.key} className={`pay-bar-${x.key}`} style={{ flexGrow: x.amount }} />)}
                               </span>
                               <span className="pay-parts">
-                                {parts.map(([k, label, v]) => (
-                                  <span key={k} className={`pay-part pay-part-${k}`}>
-                                    <i />{label} {money(v, '')}
+                                {parts.map((x) => (
+                                  <span key={x.key} className={`pay-part pay-part-${x.key}`}>
+                                    <i />{tx(x.label)} {money(x.amount, '')}
                                   </span>
                                 ))}
                                 {p.penalty > 0 && (

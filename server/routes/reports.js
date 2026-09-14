@@ -1125,6 +1125,25 @@ async function payRun({ from, to, only, list: given, skipKpi = false }) {
     // would count it twice.
     p.kpiCounted = !!S.kpi && !skipKpi
     p.schemeLabel = S.label
+    // WHAT THE TOTAL IS MADE OF, said by whoever worked it out.
+    //
+    // The payroll drew a bar of base + piecework + bonus, which is the shape
+    // of one arrangement out of six. On a pillow card it showed "Piecework
+    // 1 200 000" under a total of 4 000 000 — a bar that does not add up to
+    // the number beside it — and on a KPI card it drew nothing at all. The
+    // parts are listed here instead, so the thing that decided the total is
+    // the thing that explains it.
+    p.parts = []
+    if (S.earns === 'piece') {
+      if (p.base > 0) p.parts.push({ key: 'base', label: 'Base', amount: p.base })
+      const piece = p.piecework + (p.viewsPay || 0)
+      if (piece > 0) p.parts.push({ key: 'piece', label: 'Piecework', amount: piece })
+      if (p.bonus > 0) p.parts.push({ key: 'bonus', label: 'Bonus', amount: p.bonus })
+    } else if (S.earns === 'base' || S.earns === 'base+kpi') {
+      if (p.rates.base > 0) p.parts.push({ key: 'base', label: 'Base', amount: p.rates.base })
+    }
+    if (S.kpi && kpiTotal > 0) p.parts.push({ key: 'kpi', label: 'KPI', amount: kpiTotal })
+    if (p.pillowTopUp > 0) p.parts.push({ key: 'pillow', label: 'Safety pillow', amount: p.pillowTopUp })
   }
   return { from: from || null, to: to || null, people }
 }

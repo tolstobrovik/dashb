@@ -1742,6 +1742,12 @@ table.tbl tr:hover td { background: var(--surface-2); }
 /* The manager's half of the warning: the row already says "2 / 20 delivered",
    which is a count. This says the month is running out, which is the half
    somebody can still do something about. */
+/* Two more things a total can be made of, now that a card can be on an
+   arrangement other than piecework. */
+.pay-bar-kpi    { background: var(--chart-3); }
+.pay-bar-pillow { background: var(--good); }
+.pay-part-kpi i    { background: var(--chart-3); }
+.pay-part-pillow i { background: var(--good); }
 .pay-slip-tag {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
