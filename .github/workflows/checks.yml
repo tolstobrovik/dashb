@@ -163,6 +163,14 @@ jobs:
           DASHB_ROOT: ${{ github.workspace }}
         run: node qa/pay-suite.mjs
 
+      # Channel formats: what a task owes depends on where it is going, and
+      # the union rule that stops a cross-post skipping every rule on the
+      # board. Boots its own API on 4128.
+      - name: Channel format suite
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: node qa/format-suite.mjs
+
       # The Telegram bridge: these boot their own API and their own bot mock.
       - name: Notification suites
         env:
