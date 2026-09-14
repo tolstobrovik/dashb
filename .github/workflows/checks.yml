@@ -179,6 +179,13 @@ jobs:
           DASHB_ROOT: ${{ github.workspace }}
         run: node qa/scheme-suite.mjs
 
+      # Somebody's week: study time is not free time, and a shoot day with no
+      # hour is not a booking. Boots its own API on 4130.
+      - name: Timetable suite
+        env:
+          DASHB_ROOT: ${{ github.workspace }}
+        run: node qa/timetable-suite.mjs
+
       # The Telegram bridge: these boot their own API and their own bot mock.
       - name: Notification suites
         env:

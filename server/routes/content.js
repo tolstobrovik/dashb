@@ -852,12 +852,18 @@ const linkComplaint = (v, what) => {
 // ready for them to work from. Earlier than that (the Idea stage, the
 // quick-add box) a filmed piece is still just a title, and stays cheap to
 // jot down; the demand lands the moment somebody actually books the shoot.
-const bookingProblem = ({ operatorId, recording, editReady, release, refReady, script }) => {
+const bookingProblem = ({ operatorId, recording, recordingTime, editReady, release, refReady, script }) => {
   if (!operatorId) return 'Pick who is filming this — a shoot nobody is holding is nobody’s job'
   const missingDate = [
     [recording, 'the shoot day'], [editReady, 'the day the cut is due'], [release, 'the release day'],
   ].find(([v]) => !v)
   if (missingDate) return `Filmed work is booked with all three dates — ${missingDate[1]} is missing`
+  // AND THE HOUR. A named operator with a day and no time is somebody told
+  // "you are filming Thursday" and left to work out when — which is the whole
+  // ambiguity the week view exists to remove, and the one that gets settled
+  // by two people guessing differently. Their week is on the page; the answer
+  // is one press away on it.
+  if (!recordingTime) return 'Pick the hour as well — their week is right there, and a shoot day with no time is a day nobody can plan around'
   // The script, written down before anybody is asked to turn up. An idea owes
   // nobody one; a booked shoot does. This is the difference between a crew
   // arriving to make something and a crew arriving to work out what to make,
@@ -1162,8 +1168,8 @@ router.post('/', wrap(async (req, res) => {
   const isFilmed = (await getCrewNeeds()).operator.includes(safeType) && formatsAllowCrew(formats, 'operator')
   if (isFilmed && isBooking(status, await all('SELECT id, label, sort, is_final FROM statuses'))) {
     const booking = bookingProblem({
-      operatorId: crew.operator_id, recording: recording_date, editReady: edit_ready_date,
-      release: release_date, script: briefText.script,
+      operatorId: crew.operator_id, recording: recording_date, recordingTime: recording_time,
+      editReady: edit_ready_date, release: release_date, script: briefText.script,
       refReady: refCarried || hasLink(reference_text) || isSentence(briefText.script),
     })
     if (booking && !free) return res.status(400).json({ error: booking })
@@ -2775,7 +2781,8 @@ router.patch('/:id', wrap(async (req, res) => {
         const doc = await hasFile()
         const problem = bookingProblem({
           operatorId: val('operator_id'),
-          recording: val('recording_date'), editReady: val('edit_ready_date'), release: val('release_date'),
+          recording: val('recording_date'), recordingTime: val('recording_time'),
+          editReady: val('edit_ready_date'), release: val('release_date'),
           script: val('script'),
           refReady: links.length > 0 || !!val('photo') || !!doc || !!val('shot_link')
             || hasLink(val('reference_text')) || isSentence(val('script')),

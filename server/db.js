@@ -550,6 +550,19 @@ export async function initSchema() {
       -- shortest path into the dashboard, so it is worth saying out loud.
       weak_password INTEGER NOT NULL DEFAULT 0,
       telegram_code    TEXT,
+      -- WHEN THIS PERSON IS NOT AVAILABLE, on a repeating week.
+      --
+      -- Working hours say when somebody is at work. They do not say that the
+      -- operator is in lectures every Tuesday afternoon, and this team is a
+      -- college-prep company: half the crew are students, and "free between
+      -- nine and six" is false for most of them most of the week. A planner
+      -- who cannot see that books a shoot into a seminar, and finds out on
+      -- the day.
+      --
+      -- A list of [{ d, from, to, label }], d being 0-6 the way work_days
+      -- already counts them. Repeating weekly, because a study timetable is
+      -- the thing that repeats; one-off engagements are a booked task.
+      study_blocks     TEXT    NOT NULL DEFAULT '[]',
       created_at    TEXT    NOT NULL
     );
 
@@ -1529,6 +1542,7 @@ export async function initSchema() {
     // A Pravki note is usually about a FRAME. The screenshot travels with it
     // instead of being described in words and then hunted for in a chat.
     await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_channels TEXT NOT NULL DEFAULT '[]'")
+    await exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS study_blocks TEXT NOT NULL DEFAULT '[]'")
     await exec("ALTER TABLE channels ADD COLUMN IF NOT EXISTS drive_url TEXT NOT NULL DEFAULT ''")
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_cap INTEGER NOT NULL DEFAULT 0')
     await exec('ALTER TABLE channels ADD COLUMN IF NOT EXISTS daily_ad_cap INTEGER NOT NULL DEFAULT 0')
@@ -1690,6 +1704,7 @@ async function migrate() {
       `)
     }
     if (!(await hasColumn('users', 'admin_channels'))) await exec("ALTER TABLE users ADD COLUMN admin_channels TEXT NOT NULL DEFAULT '[]'")
+    if (!(await hasColumn('users', 'study_blocks'))) await exec("ALTER TABLE users ADD COLUMN study_blocks TEXT NOT NULL DEFAULT '[]'")
     if (!(await hasColumn('channels', 'drive_url'))) await exec("ALTER TABLE channels ADD COLUMN drive_url TEXT NOT NULL DEFAULT ''")
     if (!(await hasColumn('users', 'daily_cap'))) await exec('ALTER TABLE users ADD COLUMN daily_cap INTEGER NOT NULL DEFAULT 0')
     if (!(await hasColumn('users', 'crew_channels'))) await exec("ALTER TABLE users ADD COLUMN crew_channels TEXT NOT NULL DEFAULT '[]'")
@@ -2725,6 +2740,25 @@ export function crewRolesOf(row) {
 }
 
 // API-safe user (no password hash); permissions merged with defaults.
+// A study timetable, read back safely. Anything malformed is no timetable at
+// all rather than a crash on somebody's profile: this is drawn on every
+// booking screen, and a bad row must not take the picker down with it.
+export function cleanStudyBlocks(v) {
+  let raw = v
+  if (typeof raw === 'string') { try { raw = JSON.parse(raw || '[]') } catch { return [] } }
+  if (!Array.isArray(raw)) return []
+  const hhmm = (x) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(x || '')) ? String(x) : null)
+  return raw.map((b) => {
+    const d = Number(b?.d)
+    const from = hhmm(b?.from)
+    const to = hhmm(b?.to)
+    // A block that ends before it starts is not a block; nor is one on a day
+    // that is not a day of the week.
+    if (!Number.isInteger(d) || d < 0 || d > 6 || !from || !to || from >= to) return null
+    return { d, from, to, label: String(b?.label || '').trim().slice(0, 40) }
+  }).filter(Boolean).slice(0, 40)
+}
+
 export function publicUser(row) {
   if (!row) return null
   let perms = {}
@@ -2763,6 +2797,10 @@ export function publicUser(row) {
     work_start: row.work_start || null,
     work_end: row.work_end || null,
     work_days: (() => { try { return JSON.parse(row.work_days || 'null') } catch { return null } })(),
+    // The repeating week this person is not available in — lectures, a second
+    // job, anything. Read alongside the hours, because "at work 9-6" and
+    // "free 9-6" are not the same sentence.
+    study_blocks: cleanStudyBlocks(row.study_blocks),
     created_at: row.created_at,
   }
 }

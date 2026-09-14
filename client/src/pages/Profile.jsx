@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Check, AlertCircle, Trash2, Eye, EyeOff, KeyRound, UserRound, Type, Clock, Send } from 'lucide-react'
+import { Camera, Check, AlertCircle, Trash2, Eye, EyeOff, KeyRound, UserRound, Type, Clock, Send, BookOpen, Plus } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import Avatar from '../components/Avatar.jsx'
@@ -84,6 +84,17 @@ export default function Profile() {
   const [wDays, setWDays] = useState(() => (Array.isArray(user.work_days) ? user.work_days : []))
   const [schedSaved, setSchedSaved] = useState(false)
   const [schedErr, setSchedErr] = useState('')
+  // When you are NOT available, on a repeating week. Working hours say when
+  // somebody is at work; they do not say the operator is in lectures every
+  // Tuesday afternoon, and half this team are students. A planner who cannot
+  // see that books a shoot into a seminar and finds out on the day.
+  const [study, setStudy] = useState(() => (Array.isArray(user.study_blocks) ? user.study_blocks : []))
+  const addStudy = () => setStudy((prev) => [...prev, { d: 1, from: '14:00', to: '16:00', label: '' }])
+  const setStudyAt = (i, patch) => setStudy((prev) => prev.map((b, j) => (j === i ? { ...b, ...patch } : b)))
+  const dropStudy = (i) => setStudy((prev) => prev.filter((_, j) => j !== i))
+  // A block that ends before it starts is not a block, and saving one would
+  // silently drop it on the way through — so it is said here instead.
+  const studyBad = study.some((b) => !b.from || !b.to || b.from >= b.to)
   const toggleDay = (d) =>
     setWDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()))
   const saveSchedule = async () => {
@@ -92,6 +103,7 @@ export default function Profile() {
       const updated = await api.patch('/users/me', {
         work_start: wStart || null, work_end: wEnd || null,
         work_days: wDays.length ? wDays : null,
+        study_blocks: study,
       })
       setUser(updated)
       setSchedSaved(true)
@@ -286,8 +298,43 @@ export default function Profile() {
             <input className="input" type="time" value={wEnd} onChange={(e) => setWEnd(e.target.value)} />
           </label>
         </div>
+        {/* …and when you are NOT free inside them. Lectures, a second job,
+            anything that repeats. It sits in the same card as the hours
+            because it answers the same question, and splitting them across
+            two screens is how one of them never gets filled in. */}
+        <div className="study-head">
+          <BookOpen size={14} />
+          <b>{tx('When you study')}</b>
+          <span className="stat-sub">{tx('lectures and anything else that repeats weekly')}</span>
+        </div>
+        <div className="stat-sub" style={{ marginBottom: 8 }}>
+          {tx('Nobody can book a shoot over these. They are drawn on your week in amber so a planner can see them.')}
+        </div>
+        {study.map((b, i) => (
+          <div className="study-row" key={i}>
+            <select className="select" value={b.d} onChange={(e) => setStudyAt(i, { d: Number(e.target.value) })}>
+              {WORK_DAYS.map((d) => <option key={d.n} value={d.n}>{d.label}</option>)}
+            </select>
+            <input className="input" type="time" value={b.from} onChange={(e) => setStudyAt(i, { from: e.target.value })} />
+            <span className="stat-sub">–</span>
+            <input className="input" type="time" value={b.to} onChange={(e) => setStudyAt(i, { to: e.target.value })} />
+            <input className="input study-what" value={b.label || ''} maxLength={40}
+              placeholder={tx('e.g. University')}
+              onChange={(e) => setStudyAt(i, { label: e.target.value })} />
+            <button type="button" className="icon-btn" aria-label={tx('Remove')} onClick={() => dropStudy(i)}>
+              <Trash2 size={15} />
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn btn-sm" onClick={addStudy}><Plus size={14} /> {tx('Add a study time')}</button>
+        {studyBad && (
+          <div className="form-error" style={{ marginTop: 10 }}>
+            <AlertCircle size={16} /> {tx('One of these ends before it starts.')}
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={saveSchedule}>Save schedule</button>
+          <button className="btn btn-primary" onClick={saveSchedule} disabled={studyBad}>Save schedule</button>
           {schedSaved && <span className="save-ok"><Check size={15} /> Saved</span>}
         </div>
       </div>

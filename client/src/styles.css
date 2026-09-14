@@ -2282,6 +2282,110 @@ table.tbl tr:hover td { background: var(--surface-2); }
 /* What kind of surface a channel is, on its own row. It decides what every
    task going there is asked for, which is not a thing to open a form to find
    out. */
+/* ---- somebody's week, drawn as a week ------------------------------------
+   The shape IS the answer: a list can say when a booking is possible, only a
+   grid says whether Tuesday afternoon is gone. Minimal on purpose — the data
+   is the only ink that carries colour. */
+/* When somebody is NOT free inside their working hours. Sits in the same card
+   as the hours because it answers the same question. */
+.study-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 16px 0 4px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.study-head > svg { color: var(--warn-ink); }
+.study-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.study-row .select { max-width: 130px; }
+.study-row .input[type="time"] { max-width: 120px; }
+.study-what { flex: 1 1 160px; min-width: 120px; }
+@media (max-width: 640px) {
+  .study-row .select, .study-row .input[type="time"] { max-width: none; flex: 1 1 40%; }
+  .study-what { flex: 1 1 100%; }
+}
+.tt { display: grid; gap: 10px; }
+.tt-len { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.tt-empty { display: flex; align-items: center; gap: 8px; padding: 14px; background: var(--surface-2); border-radius: var(--radius-sm); }
+.tt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tt-when { font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.tt-spin { color: var(--muted); }
+.tt-key { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.tt-k { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+.tt-k + .tt-k { margin-left: 8px; }
+.tt-k-busy  { background: var(--critical); }
+.tt-k-study { background: var(--warning); }
+.tt-k-off   { background: var(--surface-2); border: 1px solid var(--hairline-strong); }
+.tt-note {
+  display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45;
+  color: var(--ink-2); background: var(--surface-2); padding: 8px 10px; border-radius: var(--radius-xs);
+}
+.tt-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--muted); }
+
+.tt-grid {
+  display: grid; grid-template-columns: 40px repeat(7, minmax(0, 1fr)); gap: 2px;
+  --tt-h: calc(var(--tt-rows, 10) * 34px);
+}
+.tt-hours { position: relative; height: var(--tt-h); margin-top: 30px; }
+.tt-hour {
+  position: absolute; right: 4px; transform: translateY(-50%);
+  font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.tt-col { min-width: 0; }
+.tt-col-head {
+  height: 30px; display: flex; align-items: baseline; justify-content: center; gap: 4px;
+  font-size: 11px; color: var(--muted);
+}
+.tt-dow { text-transform: uppercase; letter-spacing: .03em; }
+.tt-dom { font-size: 13px; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tt-today .tt-dom { color: var(--brand-500); }
+.tt-today .tt-dow { color: var(--brand-500); }
+.tt-past { opacity: .45; }
+.tt-body {
+  position: relative; height: var(--tt-h);
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+.tt-line { position: absolute; left: 0; right: 0; height: 1px; background: var(--hairline); opacity: .6; }
+.tt-off { position: absolute; left: 0; right: 0; background: var(--surface-2); }
+
+.tt-block {
+  position: absolute; left: 2px; right: 2px; border-radius: 4px; overflow: hidden;
+  display: flex; align-items: flex-start; padding: 1px 3px; min-height: 8px;
+}
+.tt-block em {
+  font-style: normal; font-size: 9.5px; line-height: 1.15; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;
+}
+/* Taken. The one thing on this grid that means "you cannot have this". */
+.tt-busy  { background: var(--critical); color: #fff; }
+/* Studying — not the board's doing, and not a failure: a different colour
+   from taken, because "in a lecture" and "already filming" are different
+   answers to the planner's question. */
+.tt-study { background: var(--warning); color: #3a2a00; }
+.tt-picked { background: var(--brand-500); color: #fff; outline: 2px solid var(--surface); z-index: 3; }
+
+.tt-free {
+  position: absolute; left: 2px; right: 2px; border: none; background: none; cursor: pointer;
+  border-radius: 4px; padding: 0; display: flex; align-items: flex-start; justify-content: flex-start;
+  min-height: 8px; color: var(--muted); z-index: 2;
+}
+.tt-free em {
+  font-style: normal; font-size: 9.5px; font-weight: 600; opacity: 0; padding: 1px 3px;
+  transition: opacity .1s ease;
+}
+.tt-free:hover { background: color-mix(in srgb, var(--brand-500) 14%, transparent); color: var(--brand-500); }
+.tt-free:hover em { opacity: 1; }
+.tt-free:focus-visible { outline: 2px solid var(--brand-500); outline-offset: -2px; }
+.tt-free.on { background: var(--brand-500); color: #fff; }
+.tt-free.on em { opacity: 1; }
+
+/* One day, at full height. Seven columns on a 390px screen is seven strips of
+   forty pixels — a chart of nothing — and squashing the hours to fit was worse:
+   every half-hour label landed on top of the last. A phone shows the day it is
+   asking about, and walks. */
+.tt-grid.tt-one { grid-template-columns: 44px minmax(0, 1fr); }
+.tt-one .tt-col-head { justify-content: flex-start; padding-left: 4px; }
+.tt-one .tt-free em, .tt-one .tt-block em { font-size: 11px; opacity: 1; }
+.tt-one .tt-free { border-top: 1px dashed var(--hairline-strong); }
+@media (max-width: 640px) {
+  .tt-grid { --tt-h: calc(var(--tt-rows, 10) * 40px); }
+  .tt-key { margin-left: 0; flex-basis: 100%; }
+}
 .chan-kind {
   font-size: 11px; font-weight: 600; letter-spacing: .02em;
   padding: 2px 8px; border-radius: var(--radius-pill);

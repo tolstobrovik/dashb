@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
-import { all, get, run, batch, publicUser, crewRolesOf, getChannelKeys, PERM_KEYS } from '../db.js'
+import { all, get, run, batch, publicUser, crewRolesOf, getChannelKeys, PERM_KEYS, cleanStudyBlocks } from '../db.js'
 import { authRequired, adminOnly, wrap, isFullAdmin, isAdminOn } from '../auth.js'
 
 const router = Router()
@@ -165,6 +165,14 @@ function scheduleFields(b, patch, { own = false } = {}) {
       const days = [...new Set(b.work_days.map(Number))].filter((d) => d >= 0 && d <= 6).sort()
       patch.work_days = JSON.stringify(days)
     } else return 'work_days must be an array of weekdays (0=Sun … 6=Sat)'
+  }
+  // The repeating week this person is not available in. Cleaned rather than
+  // trusted: it is drawn on every booking screen, and one bad row must not
+  // take the picker down with it.
+  if (b.study_blocks !== undefined) {
+    if (b.study_blocks === null) patch.study_blocks = '[]'
+    else if (Array.isArray(b.study_blocks)) patch.study_blocks = JSON.stringify(cleanStudyBlocks(b.study_blocks))
+    else return 'study_blocks must be a list of { d, from, to }'
   }
   return null
 }
@@ -417,7 +425,7 @@ const addDays = (iso, n) => {
 
 router.get('/:id/slots', wrap(async (req, res) => {
   const who = Number(req.params.id)
-  const u = await get('SELECT id, name, work_start, work_end, work_days FROM users WHERE id = ?', who)
+  const u = await get('SELECT id, name, work_start, work_end, work_days, study_blocks FROM users WHERE id = ?', who)
   if (!u) return res.status(404).json({ error: 'No such person' })
 
   const from = isDay(req.query.from) ? req.query.from : new Date().toISOString().slice(0, 10)
@@ -435,6 +443,12 @@ router.get('/:id/slots', wrap(async (req, res) => {
   let workDays = null
   try { workDays = JSON.parse(u.work_days || 'null') } catch { /* unset */ }
   const setDays = Array.isArray(workDays) && workDays.length > 0
+
+  // Lectures, a second job, anything on a repeating week. Working hours say
+  // when somebody is AT WORK; they do not say the operator is in a seminar
+  // every Tuesday afternoon, and on a team where half the crew are students
+  // that is most of the difference between free and not.
+  const study = cleanStudyBlocks(u.study_blocks)
 
   const to = addDays(from, days - 1)
   // Everything already in their day — their shoots and their edit deadlines
@@ -471,19 +485,31 @@ router.get('/:id/slots', wrap(async (req, res) => {
       to: b.recording_end || toHHMM(toMin(b.recording_time) + DEFAULT_LEN),
     })).sort((a, b) => a.from.localeCompare(b.from))
 
+    // The study blocks that fall on this weekday, as times on this date.
+    const studying = study.filter((b) => b.d === weekday)
+      .map((b) => ({ from: b.from, to: b.to, label: b.label }))
+      .sort((a, b) => a.from.localeCompare(b.from))
+
     const slots = []
     if (working) {
       for (let t = openAt; t + mins <= shutAt; t += SLOT_STEP) {
+        // Booked, or in a lecture: both are the person not being there, and a
+        // picker that offers the second is a picker that books a shoot into a
+        // seminar and finds out on the day.
         const clash = busy.some((b) => t < toMin(b.to) && toMin(b.from) < t + mins)
+          || studying.some((b) => t < toMin(b.to) && toMin(b.from) < t + mins)
         if (!clash) slots.push({ from: toHHMM(t), to: toHHMM(t + mins) })
       }
     }
-    out.push({ day, weekday, working, slots, busy })
+    out.push({ day, weekday, working, slots, busy, study: studying })
   }
   res.json({
     user: { id: u.id, name: u.name },
     hours: setHours ? { from: u.work_start, to: u.work_end } : null,
     days: setDays ? workDays : null,
+    // The whole repeating week, so a timetable can draw the shape of it
+    // rather than being told day by day what is missing from it.
+    study,
     mins,
     calendar: out,
   })

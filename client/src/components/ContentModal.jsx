@@ -10,7 +10,7 @@ import { useChannels } from '../lib/channels.jsx'
 import { useAuth } from '../lib/auth.jsx'
 import { useIsPhone } from '../lib/usePhone.js'
 import Booking from './Booking.jsx'
-import SlotPicker from './SlotPicker.jsx'
+import Timetable from './Timetable.jsx'
 import { api } from '../lib/api.js'
 import { getPicks, bumpPick } from '../lib/picks.js'
 import { gapsOf, stageRankOf, datesFrozenAt } from '../lib/gaps.js'
@@ -268,6 +268,10 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
   // Open by default: the free times are the answer this row exists to give,
   // and a shoot that is already booked folds them away with one press.
   const [slotsOpen, setSlotsOpen] = useState(true)
+  // How long the shoot is. Beside the week rather than inside it: the grid
+  // draws somebody's diary, and the length of this shoot is a fact about this
+  // shoot. It decides which gaps are big enough to offer.
+  const [slotLen, setSlotLen] = useState(120)
   const [busy, setBusy] = useState(false)
 
 
@@ -2555,29 +2559,44 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
             {!detailsLocked && form.operator_id && (
               <div className="cm-row cm-slots">
                 <span className="cm-key">
-                  <CalendarClock size={13} style={{ verticalAlign: -2 }} /> {tx('Free times')}
+                  <CalendarClock size={13} style={{ verticalAlign: -2 }} /> {tx('Their week')}
                 </span>
                 <div className="cm-slot-wrap">
                   {slotsOpen && (
-                    <SlotPicker
+                    <div className="tt-len">
+                      <span className="stat-sub">{tx('How long?')}</span>
+                      <div className="seg" role="tablist">
+                        {[[30, '30m'], [60, '1h'], [120, '2h'], [240, 'Half day']].map(([m, lbl]) => (
+                          <button key={m} type="button" role="tab" aria-selected={slotLen === m}
+                            className={'seg-btn' + (slotLen === m ? ' on' : '')}
+                            onClick={() => setSlotLen(m)}>{tx(lbl)}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {slotsOpen && (
+                    <Timetable
                       userId={Number(form.operator_id) || null}
                       excludeId={item?.id}
+                      mins={slotLen}
                       value={form.recording_date && form.recording_time
-                        ? { date: form.recording_date, from: form.recording_time } : null}
+                        ? { date: form.recording_date, from: form.recording_time, to: form.recording_end } : null}
                       onPick={({ date, from, to }) => {
                         setForm((f) => ({ ...f, recording_date: date, recording_time: from, recording_end: to }))
-                        // Answered. A list of the times somebody COULD have
-                        // been booked for is half a screen of alternatives to
-                        // a question just settled, and it was pushing the cut
-                        // and release deadlines below the fold — so the chain
-                        // this page exists to show could not be read at once.
-                        // One press reopens it if the answer changes.
-                        setSlotsOpen(false)
+                        // …and it stays open. A LIST of the times somebody
+                        // could have been booked for is noise once the
+                        // question is settled, which is why it used to fold
+                        // itself away. A WEEK with the booking drawn on it is
+                        // the opposite: it is the only thing on this page that
+                        // shows what was just agreed to in the context of
+                        // everything around it — the lecture it sits beside,
+                        // the shoot before it. Folding that away the instant
+                        // it becomes useful is hiding the answer.
                       }}
                     />
                   )}
                   <button type="button" className="cm-slot-toggle sp-further" onClick={() => setSlotsOpen((v) => !v)}>
-                    {slotsOpen ? tx('Hide the free times') : tx('Show the free times')}
+                    {slotsOpen ? tx('Hide their week') : tx('Show their week')}
                   </button>
                 </div>
               </div>
