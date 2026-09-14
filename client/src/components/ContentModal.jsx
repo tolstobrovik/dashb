@@ -1134,9 +1134,24 @@ export default function ContentModal({ item, statuses, defaults = {}, onClose, o
           [!form.recording_date, 'Filmed work is booked with all three dates — the shoot day is missing', 'recording_date'],
           [!form.edit_ready_date, 'Filmed work is booked with all three dates — the day the cut is due is missing', 'edit_ready_date'],
           [!form.release_date, 'Filmed work is booked with all three dates — the release day is missing', 'release_date'],
+          // AND THE HOUR. A day with no time on it is somebody told "you are
+          // filming Thursday" and left to guess — and their week is drawn
+          // right there under the date, so the answer is one press away.
+          [!form.recording_time, 'Pick the hour as well — their week is right there, and a shoot day with no time is a day nobody can plan around', 'recording_date'],
+          // The script, in the same order the server asks for it: a reference
+          // link on its own used to satisfy this form and then be refused on
+          // save, which is the board saying yes and meaning no.
+          [!isSentence(form.script), 'Write the script before booking the shoot — a crew turning up without one is a day spent working out what to film', 'script'],
           [!refReady, 'Booking the shoot needs a brief ready — paste a reference link or TZ, or attach the photo it refers to', 'reference'],
         ].find(([bad]) => bad)
-        if (gap) { setShow((s) => ({ ...s, reference: true, script: true })); refuse(gap[2], gap[1]); return }
+        // The week is unfolded with them: being told to pick an hour while
+        // the grid that holds the answer is folded away is a dead end.
+        if (gap) {
+          setShow((s) => ({ ...s, reference: true, script: true }))
+          setSlotsOpen(true)
+          refuse(gap[2], gap[1])
+          return
+        }
       }
       if (needsEditor && !form.editor_id) {
         refuse('editor_id', 'Name who cuts this — footage with no editor waiting is footage nobody is cutting')

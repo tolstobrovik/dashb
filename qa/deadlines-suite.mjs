@@ -57,7 +57,9 @@ const newTask = async (over = {}) => {
 
 // ---- gate 1: booking the shoot -----------------------------------------
 {
-  const t = await newTask()
+  // The hour is on this one from the start: a booking needs it since round 84
+  // (section below), and it is not what these three assertions are about.
+  const t = await newTask({ recording_time: '10:00' })
   // The later gates ADVISE rather than refuse (a written post has no cut, and
   // footage handed over on a drive never becomes a link) — but BOOKING a shoot
   // is a wall since round 66. The day passes whether or not a camera, a crew
@@ -82,10 +84,36 @@ const newTask = async (over = {}) => {
 
   r = await req(`/content/${t.id}`, 'PATCH', {
     status_id: S['To shoot'], operator_id: shooter, reference_links: ['https://example.com/reference'],
-    script: 'Open on the main gate, walk through the courtyard, two students say why they chose it, close on the library.',
+    script: `Open on the main gate, walk through the courtyard, two students say why they chose it, close on the library. (${suffix})`,
   }, shooterT)
   ok('→ To shoot passes once the shoot is properly booked', r.status === 200, `${r.status} ${r.data.error || ''}`)
   ok('  and the card really moved', r.data.status_id === S['To shoot'], String(r.data.status_id))
+}
+
+// ---- gate 1b: a day is not a time --------------------------------------
+// Everything above is booked except the hour, which for a long time this
+// board let through: a named operator, a shoot day, and no time on it. That
+// is somebody told "you are filming Thursday" and left to work out when —
+// two people guess differently and the board finds out on the day. The
+// operator's week is drawn right there on the booking screen now, so the
+// answer is one press away, and the gate asks for it.
+{
+  const t = await newTask()                        // a day, no hour
+  const booked = {
+    status_id: S['To shoot'], operator_id: shooter,
+    reference_links: ['https://example.com/reference'],
+    script: `Start in the lab, one teacher explains the project, cut to the students building it, close on the finished thing. (${suffix})`,
+  }
+  let r = await req(`/content/${t.id}`, 'PATCH', booked, shooterT)
+  ok('→ To shoot is refused when the shoot day carries no hour',
+    r.status === 400 && /hour/i.test(r.data.error || ''), `${r.status} ${r.data.error || ''}`)
+  ok('  and the card stayed where it was', (await req(`/content/${t.id}`)).data.status_id === S['Idea'])
+
+  r = await req(`/content/${t.id}`, 'PATCH', { ...booked, recording_time: '15:00' }, shooterT)
+  ok('  …and goes through once the hour is named', r.status === 200, `${r.status} ${r.data.error || ''}`)
+  ok('  with the hour actually kept on the card',
+    (await req(`/content/${t.id}`)).data.recording_time === '15:00',
+    String((await req(`/content/${t.id}`)).data.recording_time))
 }
 
 // ---- gate 2: advice for every type, filmed work included ---------------

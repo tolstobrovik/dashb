@@ -85,6 +85,10 @@ export const gapsOf = (t, crew, rank, asked) => {
   if (need('editor', ['reel', 'video']) && preEdit && where === 'shot' && !t.editor_id) people.push({ key: 'editor', label: 'needs an editor' })
   if (need('designer', ['post']) && !t.designer_id) people.push({ key: 'designer', label: 'needs a designer' })
   if (filmed && preEdit && !t.recording_date) dates.push({ key: 'shoot', label: 'no shoot day' })
+  // A day is not a time. Once there IS a shoot day, the hour is the rest
+  // of the answer — the booking gate refuses without it, so the hole has
+  // to be readable here rather than sprung on somebody at save.
+  else if (filmed && preEdit && !t.recording_time) dates.push({ key: 'shoot_time', label: 'no shoot time' })
   if (!t.release_date) dates.push({ key: 'release', label: 'no release day' })
   return { people, dates }
 }
