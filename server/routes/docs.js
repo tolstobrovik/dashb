@@ -1,14 +1,21 @@
-// Per-person documents (SOPs, responsibility sheets, any PDF the company and
-// a member share) and per-person KPIs, managed in one place.
+// Per-person documents: SOPs, responsibility sheets, any file the company and
+// a member share.
+//
+// This used to carry a second half — per-person KPI targets typed in by hand.
+// It is gone, and so is the table's reason to exist beyond the shelf itself.
 //
 // Visibility contract: the admin sees and manages everyone's; a member ALWAYS
-// sees their own — documents and KPIs both. Members may also upload to their
-// own folder (a signed copy, say); KPIs are written by admins only.
+// sees their own, and may upload to their own folder (a signed copy, say).
 import { Router } from 'express'
 import { all, get, run } from '../db.js'
-import { authRequired, adminOnly, wrap } from '../auth.js'
+import { authRequired, wrap } from '../auth.js'
 
-export const DOC_KINDS = ['sop', 'responsibility', 'other']
+// 'kpi' is the team's document, not a person's: the one paper everybody is
+// measured against. Everybody may read it; only an admin may put one up, take
+// one down or rename it. The other three kinds are per-person shelves and
+// keep their rules — they are no longer drawn on the Documents page, which
+// is the KPI document now, but nothing about them is deleted.
+export const DOC_KINDS = ['kpi', 'sop', 'responsibility', 'other']
 
 // Files ride as data URLs like photos do elsewhere. ~6M chars ≈ 4.5 MB of
 // file — plenty for an SOP, small enough for the GitHub-backed store.
@@ -27,6 +34,9 @@ export const docsRouter = Router()
 docsRouter.use(authRequired)
 
 docsRouter.get('/', wrap(async (req, res) => {
+  // The KPI document belongs to the team, so everybody signed in reads it.
+  if (req.query.kind === 'kpi')
+    return res.json(await all(`SELECT ${LIST_COLUMNS} FROM person_docs WHERE kind = 'kpi' ORDER BY created_at DESC`))
   // The whole shelf in one place — admins only.
   if (req.query.all !== undefined) {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins see every folder at once' })
@@ -42,7 +52,7 @@ docsRouter.get('/', wrap(async (req, res) => {
 docsRouter.get('/:id', wrap(async (req, res) => {
   const row = await get('SELECT * FROM person_docs WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Document not found' })
-  if (req.user.role !== 'admin' && row.user_id !== req.user.id)
+  if (row.kind !== 'kpi' && req.user.role !== 'admin' && row.user_id !== req.user.id)
     return res.status(403).json({ error: 'Not your document' })
   res.json(row)
 }))
@@ -59,6 +69,8 @@ docsRouter.post('/', wrap(async (req, res) => {
   const fileName = String(b.file_name || 'document.pdf').trim().slice(0, 200)
   if (!title) return res.status(400).json({ error: 'Give the document a title' })
   const kind = DOC_KINDS.includes(b.kind) ? b.kind : 'other'
+  if (kind === 'kpi' && req.user.role !== 'admin')
+    return res.status(403).json({ error: 'Only an admin can put up the KPI document' })
 
   const data = String(b.data || '')
   const m = data.match(/^data:([^;,]+)[;,]/)
@@ -80,6 +92,8 @@ docsRouter.patch('/:id', wrap(async (req, res) => {
   if (req.user.role !== 'admin' && row.uploaded_by !== req.user.id)
     return res.status(403).json({ error: 'Only the uploader or an admin can change this' })
   const b = req.body || {}
+  if ((row.kind === 'kpi' || b.kind === 'kpi') && req.user.role !== 'admin')
+    return res.status(403).json({ error: 'Only an admin can change the KPI document' })
   const patch = {}
   if (b.title !== undefined) {
     const t = String(b.title).trim().slice(0, 200)
@@ -100,77 +114,12 @@ docsRouter.patch('/:id', wrap(async (req, res) => {
 }))
 
 docsRouter.delete('/:id', wrap(async (req, res) => {
-  const row = await get('SELECT id, uploaded_by FROM person_docs WHERE id = ?', req.params.id)
+  const row = await get('SELECT id, uploaded_by, kind FROM person_docs WHERE id = ?', req.params.id)
   if (!row) return res.status(404).json({ error: 'Document not found' })
   if (req.user.role !== 'admin' && row.uploaded_by !== req.user.id)
     return res.status(403).json({ error: 'Only the uploader or an admin can delete this' })
+  if (row.kind === 'kpi' && req.user.role !== 'admin')
+    return res.status(403).json({ error: 'Only an admin can take down the KPI document' })
   await run('DELETE FROM person_docs WHERE id = ?', row.id)
-  res.json({ ok: true })
-}))
-
-// ---- KPIs ------------------------------------------------------------------
-
-export const kpisRouter = Router()
-kpisRouter.use(authRequired)
-
-const KPI_FIELDS = [['target', 200], ['current', 200], ['unit', 40], ['notes', 1000]]
-
-kpisRouter.get('/', wrap(async (req, res) => {
-  // Every KPI of everyone — admins only.
-  if (req.query.all !== undefined) {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins see every KPI at once' })
-    return res.json(await all('SELECT * FROM person_kpis ORDER BY user_id, sort, id'))
-  }
-  if (req.user.role !== 'admin' && req.query.user_id !== undefined && Number(req.query.user_id) !== req.user.id)
-    return res.status(403).json({ error: 'You can only see your own KPIs' })
-  res.json(await all('SELECT * FROM person_kpis WHERE user_id = ? ORDER BY sort, id', targetUserId(req)))
-}))
-
-kpisRouter.post('/', adminOnly, wrap(async (req, res) => {
-  const b = req.body || {}
-  const userId = Number(b.user_id)
-  if (!(await get('SELECT 1 AS x FROM users WHERE id = ?', userId)))
-    return res.status(400).json({ error: 'That member is no longer on the team' })
-  const name = String(b.name || '').trim().slice(0, 200)
-  if (!name) return res.status(400).json({ error: 'Name the KPI' })
-  const vals = {}
-  for (const [f, max] of KPI_FIELDS) vals[f] = String(b[f] ?? '').trim().slice(0, max)
-  const now = new Date().toISOString()
-  const maxSort = (await get('SELECT COALESCE(MAX(sort), -1) AS m FROM person_kpis WHERE user_id = ?', userId)).m
-  const info = await run(`
-    INSERT INTO person_kpis (user_id, name, target, current, unit, notes, sort, updated_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, userId, name, vals.target, vals.current, vals.unit, vals.notes, maxSort + 1, req.user.id, now, now)
-  res.status(201).json(await get('SELECT * FROM person_kpis WHERE id = ?', info.lastInsertRowid))
-}))
-
-kpisRouter.patch('/:id', adminOnly, wrap(async (req, res) => {
-  const row = await get('SELECT * FROM person_kpis WHERE id = ?', req.params.id)
-  if (!row) return res.status(404).json({ error: 'KPI not found' })
-  const b = req.body || {}
-  const patch = {}
-  if (b.name !== undefined) {
-    const name = String(b.name).trim().slice(0, 200)
-    if (!name) return res.status(400).json({ error: 'Name the KPI' })
-    patch.name = name
-  }
-  for (const [f, max] of KPI_FIELDS) {
-    if (b[f] !== undefined) patch[f] = String(b[f] ?? '').trim().slice(0, max)
-  }
-  if (Object.keys(patch).length > 0) {
-    // Every change stamps who and when — the page leads with it.
-    patch.updated_by = req.user.id
-    patch.updated_at = new Date().toISOString()
-    const keys = Object.keys(patch)
-    await run(`UPDATE person_kpis SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`,
-      ...keys.map((k) => patch[k]), row.id)
-  }
-  res.json(await get('SELECT * FROM person_kpis WHERE id = ?', row.id))
-}))
-
-kpisRouter.delete('/:id', adminOnly, wrap(async (req, res) => {
-  const row = await get('SELECT 1 AS x FROM person_kpis WHERE id = ?', req.params.id)
-  if (!row) return res.status(404).json({ error: 'KPI not found' })
-  await run('DELETE FROM person_kpis WHERE id = ?', req.params.id)
   res.json({ ok: true })
 }))

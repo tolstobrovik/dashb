@@ -38,9 +38,25 @@ async function startInstance(port, dir) {
     stdio: ['ignore', 'pipe', 'inherit'],
   })
   instances.push(child)
+  // "instance exited 1" is what this said when somebody else's server was on
+  // the port, which sent a whole gate run looking for a bug in the storage
+  // layer. regress.sh's own boot_api has refused to run against a stranger's
+  // server for two rounds now, for exactly this reason; this block spawns its
+  // own instance and never learned. A port already answering is named as that
+  // before anything is started, and a death is reported with what the process
+  // actually said.
+  try {
+    const held = await fetch(`http://localhost:${port}/api/health`, { signal: AbortSignal.timeout(1500) })
+    if (held.ok) throw new Error(`PORT ${port} IS ALREADY HELD — something else is answering there, so this suite would have tested somebody else's server`)
+  } catch (e) {
+    if (String(e.message).startsWith('PORT ')) throw e   // ours; anything else means the port is free
+  }
+  let said = ''
+  child.stdout.on('data', (d) => { said += d.toString() })
   await new Promise((resolve, reject) => {
     child.stdout.on('data', (d) => { if (d.toString().includes('ready')) resolve() })
-    child.on('exit', (c) => reject(new Error(`instance exited ${c}`)))
+    child.on('exit', (c) => reject(new Error(
+      `instance exited ${c}${said.trim() ? ` — it said: ${said.trim().slice(-300)}` : ' with nothing on stdout'}`)))
     setTimeout(() => reject(new Error('instance start timeout')), 15000)
   })
   return {

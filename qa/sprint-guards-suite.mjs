@@ -1,0 +1,168 @@
+// Sprints: the seven things a QA pass found before it shipped.
+//
+// Every check here is a bug that was real, reproduced, and fixed. They are
+// kept because six of the seven were invisible from the screen — the board
+// looked right and did the wrong thing underneath.
+//
+// The first one is the reason this file exists. The board used to answer "the
+// newest active sprint", not "this week". So on Monday morning, after a
+// Saturday nobody had closed, it still showed last week — which is past its
+// freeze — and the whole team was locked out of a read-only board until
+// somebody restarted the server. That is a Monday where nobody can work.
+//
+// Self-contained: port 4118, its own data directory.
+const ROOT = process.env.DASHB_ROOT || '/home/user/dashb'
+import { spawn } from 'child_process'
+import { join } from 'path'
+
+const SP = new URL('.', import.meta.url).pathname
+const DATA = SP + 'sg-' + Date.now()
+const B = 'http://localhost:4118/api'
+
+let fails = 0
+const ok = (n, c, x = '') => { if (!c) fails++; console.log(`${c ? '✔' : '✘ FAIL'} ${n}${x ? ` — ${x}` : ''}`) }
+const procs = []
+process.on('exit', () => { for (const p of procs) { try { p.kill('SIGKILL') } catch { /* gone */ } } })
+procs.push(spawn(process.execPath, [ROOT + '/server/index.js'],
+  { env: { ...process.env, DATA_DIR: DATA, PORT: '4118' }, stdio: 'ignore' }))
+const wait = async () => {
+  for (let i = 0; i < 90; i++) {
+    try { if ((await fetch(B + '/health')).ok) return true } catch { /* not yet */ }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  return false
+}
+if (!await wait()) { console.log('✘ FAIL the api never came up'); process.exit(1) }
+
+const login = async (u, p) => (await (await fetch(B + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) })).json()).token
+const T = await login('admin', 'admin123')
+const req = async (p, m = 'GET', b, t) => {
+  const r = await fetch(B + p, { method: m, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t || T}` }, body: b ? JSON.stringify(b) : undefined })
+  return { status: r.status, data: await r.json().catch(() => ({})) }
+}
+const { createClient } = await import('@libsql/client')
+const db = createClient({ url: `file:${join(DATA, 'dashboard.db')}`, intMode: 'number' })
+const mk = async (title) => (await req('/sprints/tasks', 'POST', { title })).data.tasks.find((t) => t.title === title)
+const one = async (id) => (await req('/sprints/current')).data.tasks.find((t) => t.id === id)
+
+await req('/users', 'POST', { name: 'Nodira', username: 'nodira', password: 'pass1234', role: 'member' })
+const N = await login('nodira', 'pass1234')
+
+// ---------- 1. the Monday nobody closed ----------
+const WEEK = 7 * 86400e3
+const start = (await req('/sprints/current')).data.sprint
+await db.execute({
+  sql: 'UPDATE sprints SET start_at = ?, freeze_at = ?, meeting_at = ?, code = ? WHERE id = ?',
+  args: [new Date(Date.parse(start.start_at) - WEEK).toISOString(),
+    new Date(Date.parse(start.freeze_at) - WEEK).toISOString(),
+    new Date(Date.parse(start.meeting_at) - WEEK).toISOString(),
+    'S' + (Number(start.code.slice(1)) - 1), start.id],
+})
+const monday = (await req('/sprints/current')).data
+ok('a week nobody closed does not hold the board', monday.sprint.start_at === start.start_at,
+  `${monday.sprint.code} ${monday.sprint.start_at}`)
+// The board freezes at Saturday noon Tashkent, so a gate that happens to run
+// on a Saturday afternoon would read this week as legitimately frozen and fail
+// a check about Mondays. The scenario is "before the freeze", so the freeze is
+// put where a Monday would find it — tomorrow — rather than left to the clock.
+await db.execute({
+  sql: 'UPDATE sprints SET freeze_at = ?, meeting_at = ? WHERE id = ?',
+  args: [new Date(Date.now() + 86400e3).toISOString(),
+    new Date(Date.now() + 86400e3 + 3 * 3600e3).toISOString(), monday.sprint.id],
+})
+const preFreeze = (await req('/sprints/current')).data
+ok('…so the board is not frozen on a Monday', preFreeze.frozen === false, JSON.stringify({ frozen: preFreeze.frozen, freeze_at: preFreeze.sprint.freeze_at }))
+ok('…and an ordinary member can still put work on it',
+  (await req('/sprints/tasks', 'POST', { title: 'Work in the new week' }, N)).status === 201)
+ok('…on exactly one row for the week',
+  (await db.execute({ sql: 'SELECT COUNT(*) c FROM sprints WHERE start_at = ?', args: [start.start_at] })).rows[0].c === 1)
+
+// ---------- 2. a task pulled back out of Done drops its proof ----------
+let t = await mk('Finished then reopened')
+await req(`/sprints/tasks/${t.id}`, 'PATCH', { status: 'done', result_type: 'link', result_link: 'https://satashkent.uz/x' })
+await req(`/sprints/tasks/${t.id}`, 'PATCH', { status: 'in_progress' })
+let now = await one(t.id)
+ok('reopening a finished task drops the result it claimed',
+  now.result_type === null && now.result_link === '', JSON.stringify({ ty: now.result_type, l: now.result_link }))
+ok('…and it is asked for a new one to go back',
+  (await req(`/sprints/tasks/${t.id}`, 'PATCH', { status: 'done' })).status === 422)
+
+// ---------- 3. a title is a line on a card ----------
+const long = await req('/sprints/tasks', 'POST', { title: 'x'.repeat(5000) })
+ok('a five-thousand-character title is cut to fit a card',
+  long.data.tasks.find((x) => x.title.startsWith('xxx'))?.title.length === 200)
+
+// ---------- 4. a deadline is a date ----------
+t = await mk('Deadline guard')
+const wasDay = (await one(t.id)).deadline
+ok('a deadline that is not a date is refused',
+  (await req(`/sprints/tasks/${t.id}`, 'PATCH', { deadline: 'next tuesday-ish' })).status === 400)
+ok('…and the one it had is untouched', (await one(t.id)).deadline === wasDay)
+ok('…while a real date is taken',
+  (await req(`/sprints/tasks/${t.id}`, 'PATCH', { deadline: '2027-01-04' })).status === 200
+  && (await one(t.id)).deadline === '2027-01-04')
+
+// ---------- 5. a checklist item needs a task to belong to ----------
+ok('a checklist item on a task that does not exist is refused',
+  (await req('/sprints/tasks/999999/checklist', 'POST', { text: 'orphan' })).status === 404)
+ok('…and none was written',
+  (await db.execute({ sql: 'SELECT COUNT(*) c FROM sprint_checklist_items WHERE task_id = ?', args: [999999] })).rows[0].c === 0)
+
+// ---------- 6. a promoted task cannot go back to being invisible ----------
+t = await mk('Status guard')
+ok('a board task cannot be moved back to "idea"',
+  (await req(`/sprints/tasks/${t.id}`, 'PATCH', { status: 'idea' })).status === 400)
+ok('…so it is still where it was', (await one(t.id)).status === 'todo')
+ok('nor to a status nobody has heard of',
+  (await req(`/sprints/tasks/${t.id}`, 'PATCH', { status: 'nearly' })).status === 400)
+
+// ---------- 7. leaving blocked still clears the reason ----------
+t = await mk('Blocked then finished')
+await req(`/sprints/tasks/${t.id}`, 'PATCH', { status: 'blocked', blocker_reason: 'Priority changed' })
+await req(`/sprints/tasks/${t.id}`, 'PATCH', { status: 'done', result_type: 'text', result_text: 'y'.repeat(120) })
+now = await one(t.id)
+ok('finishing a blocked task clears what it was waiting on',
+  now.status === 'done' && now.blocker_reason === '', JSON.stringify(now.blocker_reason))
+
+// ---------- looking back at a week that has finished ----------
+// The board reads one week at a time. Everything that WRITES still works on
+// the current week only, which is what stops a task typed while reading
+// August from landing in September.
+const hist = (await req('/sprints/history')).data
+ok('history lists every week, newest first',
+  Array.isArray(hist) && hist.length >= 2 && hist[0].start_at > hist[1].start_at,
+  JSON.stringify(hist.map((h) => h.code)))
+ok('…and marks exactly one of them as now', hist.filter((h) => h.current).length === 1)
+const older = hist.find((h) => !h.current)
+ok('…counting what was in it', typeof older.tasks === 'number' && typeof older.done === 'number',
+  JSON.stringify({ tasks: older.tasks, done: older.done }))
+const read = await req(`/sprints/${older.id}`)
+ok('a past week opens by its id', read.status === 200 && read.data.sprint.id === older.id, String(read.status))
+ok('…and comes back frozen, which is what makes it read only', read.data.frozen === true)
+ok('…while this week is still this week',
+  (await req('/sprints/current')).data.sprint.id !== older.id)
+// The named routes must never be read as an id.
+for (const path of ['/sprints/current', '/sprints/people', '/sprints/backlog', '/sprints/history']) {
+  ok(`${path} is a route, not a sprint id`, (await req(path)).status === 200)
+}
+ok('a week that does not exist is a 404', (await req('/sprints/999999')).status === 404)
+
+// ---------- who owns sprints, and who says so ----------
+// Ownership was a row you inserted by hand. It is a switch in Admin now, and
+// the platform Admin flag still buys nothing inside the module: an admin says
+// who the owners are without becoming one.
+const someone = (await req('/users')).data.find((u) => u.username === 'nodira')
+ok('an admin can name an owner', (await req(`/sprints/owners/${someone.id}`, 'PUT', { owner: true })).status === 200)
+ok('…and the person themselves is one', (await req('/sprints/current', 'GET', null, N)).data.owner === true)
+ok('…pressing it twice is not two rows',
+  (await req(`/sprints/owners/${someone.id}`, 'PUT', { owner: true })).data.filter((x) => x === someone.id).length === 1)
+ok('a member cannot hand it to themselves',
+  (await req(`/sprints/owners/${someone.id}`, 'PUT', { owner: false }, N)).status === 403)
+ok('…so they are still one', (await req('/sprints/current', 'GET', null, N)).data.owner === true)
+ok('naming somebody who does not exist is a 404',
+  (await req('/sprints/owners/999999', 'PUT', { owner: true })).status === 404)
+ok('an admin can take it back',
+  !(await req(`/sprints/owners/${someone.id}`, 'PUT', { owner: false })).data.includes(someone.id))
+
+console.log(fails === 0 ? '\nSprint guards suite clean.' : `\n${fails} PROBLEMS`)
+process.exit(fails ? 1 : 0)

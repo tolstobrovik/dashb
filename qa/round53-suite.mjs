@@ -98,6 +98,10 @@ const openApp = async (ctx) => {
 // ---- 1. a reply cut short mid-session ----
 const ctx1 = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 const a = await openApp(ctx1)
+// Channels start folded, so a channel door is either drawn or counted on
+// the hub's badge — either way it is there.
+const channelDoors = async (pg) => (await pg.locator('a[href^="/dept/"]').count())
+  + (Number(await pg.locator('.nav-hub').filter({ hasText: /Channels/ }).locator('.nav-hub-n').textContent().catch(() => '0')) || 0)
 const channelsAtFirst = await a.page.locator('.nav-item, .side-link, a[href^="/dept/"]').count()
 ok('the dashboard opens normally to begin with', channelsAtFirst > 0 && a.errs.length === 0, a.errs.join(' | '))
 
@@ -114,8 +118,7 @@ ok('…and the broken answer is never written to the cache',
 cut = 0
 await a.page.reload()
 await a.page.waitForTimeout(2000)
-ok('once the answer arrives whole, the channels are back',
-  (await a.page.locator('a[href^="/dept/"]').count()) > 0)
+ok('once the answer arrives whole, the channels are back', (await channelDoors(a.page)) > 0)
 ok('…with no error along the way', a.errs.length === 0, a.errs.join(' | '))
 await ctx1.close()
 
@@ -128,7 +131,7 @@ await ctx2.addInitScript(() => {
 })
 const b = await openApp(ctx2)
 ok('a browser holding the poisoned value opens anyway', b.errs.length === 0, b.errs.join(' | '))
-ok('…and shows its channels', (await b.page.locator('a[href^="/dept/"]').count()) > 0)
+ok('…and shows its channels', (await channelDoors(b.page)) > 0)
 await b.page.goto(BASE + '/brief')
 await b.page.waitForTimeout(1500)
 ok('…and every other page with it', b.errs.length === 0 && (await b.page.locator('#root > *').count()) > 0, b.errs.join(' | '))

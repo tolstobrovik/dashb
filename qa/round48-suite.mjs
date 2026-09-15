@@ -123,7 +123,7 @@ await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
 await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 15000 })
 
-await p.goto(BASE + `/todo?task=${post.id}`); await p.waitForTimeout(1600)
+await p.goto(BASE + `/brief?task=${post.id}`); await p.waitForTimeout(1600)
 const files = p.locator('.file-links .file-link')
 ok('every delivery link shows on the task, whatever its type', (await files.count()) === 3, `${await files.count()} shown`)
 ok('…each opening the real file', (await p.locator('.file-link[href="https://drive.google.com/RAW"]').count()) === 1 &&

@@ -1,6 +1,6 @@
 // Round 29: the workflow's little levers. Duplicate spawns the recurring
 // piece (brief, crew, platforms kept — dates, stage, delivery cleared);
-// every task has a pasteable link (…/todo?task=id) that opens it on arrival;
+// every task has a pasteable link (…/brief?task=id) that opens it on arrival;
 // and a timetable drag can be taken back from its toast (Undo).
 import { chromium } from 'playwright'
 const BASE = 'http://localhost:4090'
@@ -30,16 +30,28 @@ await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="passw
 await p.click('button[type="submit"]'); await p.waitForURL(/overview/, { timeout: 15000 })
 
 // ---- 1) the pasteable task link ----
-await p.goto(BASE + `/todo?task=${src.id}`); await p.waitForTimeout(1400)
+await p.goto(BASE + `/brief?task=${src.id}`); await p.waitForTimeout(1400)
 ok('a pasted link opens its task', (await p.locator('.modal .cm-title').inputValue().catch(() => '')) === 'x29: rubric video')
-await p.locator('.modal button[aria-label="Copy link"]').click(); await p.waitForTimeout(400)
+// The five secondary tools fold behind one button on every screen now, not
+// only on a phone — on a desk they were four bare glyphs beside a loud red
+// Delete, the one destructive action being the only thing wearing a word. So
+// the tool is opened for, and picked by the words it now prints: a button
+// whose accessible name IS its visible text needs no aria-label, and is
+// better off without one — two names for one control is how they drift.
+await p.locator('.modal .cm-more-btn').click(); await p.waitForTimeout(350)
+await p.locator('.modal .cm-tools.open .btn', { hasText: 'Copy link' }).click(); await p.waitForTimeout(400)
 const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '')
-ok('Copy link writes the task URL', clip.includes(`/todo?task=${src.id}`))
+ok('Copy link writes the task URL', clip.includes(`/brief?task=${src.id}`))
 
 // ---- 2) Duplicate from the modal ----
-await p.locator('.modal .btn-ghost', { hasText: 'Duplicate' }).click(); await p.waitForTimeout(900)
-const copy = (await req('/content')).data.find((c) => c.title === 'x29: rubric video (copy)')
-ok('Duplicate spawns the copy', !!copy)
+await p.locator('.modal .cm-more-btn').click(); await p.waitForTimeout(350)
+await p.locator('.modal .cm-tools.open .btn', { hasText: 'Duplicate' }).click(); await p.waitForTimeout(900)
+// Round 78 renamed what a duplicate is called. "(copy)" was one name however
+// many copies you made, so a second press produced a second row with the same
+// title as the first; it is "Duplicate 1", "Duplicate 2" now, numbered by the
+// server so two people pressing at once cannot both get Duplicate 1.
+const copy = (await req('/content')).data.find((c) => /^x29: rubric video Duplicate \d+$/.test(c.title))
+ok('Duplicate spawns the copy, numbered', !!copy, copy?.title || 'no copy')
 ok('…brief, crew and platforms kept', copy?.format === 'Vlog' && copy?.rubrika === 'Campus life' && copy?.script === 'Scene one.' && copy?.channels.includes('youtube'))
 ok('…dates and completion cleared', copy?.release_date == null && copy?.recording_date == null && copy?.done_at == null)
 

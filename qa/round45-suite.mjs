@@ -70,11 +70,16 @@ await p.fill('input[name="password"]', 'admin123')
 await p.click('button[type="submit"]')
 await p.waitForURL(/overview/, { timeout: 15000 })
 
+// The To-Do page's add line was where this round pressed; round 82 removed
+// that page and the board's own column foot took the job. Same POST, same
+// retry, same question: does a blip ever reach the person pressing the key?
 const addTask = async (title) => {
-  await p.goto(`http://localhost:${PORT}/todo`)
-  await p.waitForTimeout(1200)
-  await p.locator('form input[placeholder^="Add a task"]').first().fill(title)
-  await p.locator('button[type="submit"]', { hasText: 'Add' }).click()
+  await p.goto(`http://localhost:${PORT}/dept/instagram_main`)
+  await p.waitForSelector('.board-col', { timeout: 15000 })
+  await p.waitForTimeout(800)
+  await p.locator('.board-col').first().locator('.board-quick-btn').click()
+  await p.locator('.board-quick-input').fill(title)
+  await p.keyboard.press('Enter')
   await p.waitForTimeout(4000)
 }
 

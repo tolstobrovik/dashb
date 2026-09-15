@@ -72,13 +72,25 @@ await page.goto(BASE + '/projects/' + proj.id)
 await page.waitForSelector('.pc-header', { timeout: 10000 })
 const detTxt = await page.locator('.pc-header').textContent()
 ok('project detail shows the success criteria', detTxt.includes('Success criteria') && detTxt.includes('Tighter: 600 apps'))
-ok('project detail shows earned progress with the breakdown', detTxt.includes('67%') && detTxt.includes('1/2 checklist') && detTxt.includes('1/1 campaigns done'))
+// Round 92 took the earned-progress bar out of the project header. It sat
+// directly under the metric bar, the same shape and the same colours, meaning
+// something else entirely — and it was only the average of two things already
+// counted below it, where the checklist heads its own "1 / 2 done" and the
+// campaigns section its own count. Two identical bars saying different things
+// is worse than one bar and two headings.
+//
+// So the header is asked what it now claims: the metric, and nothing dressed
+// up to look like it.
+ok('the project header carries the metric and does not repeat it',
+  /\b\d+%/.test(detTxt) && !detTxt.includes('checklist ·'), detTxt.replace(/\s+/g, ' ').slice(0, 120))
 await page.screenshot({ path: 'r4-project.png', fullPage: true })
 
 await page.goto(BASE + '/projects')
-await page.waitForSelector('.tbl', { timeout: 10000 })
-const probeRow = page.locator('tr', { hasText: 'R4 progress probe' })
-ok('projects table: progress bar + %', (await probeRow.locator('.proj-progress').count()) === 1 && (await probeRow.textContent()).includes('67%'))
+// The projects table became a list of cards in round 66 — one line per
+// project, scannable, with the bar and the number on the card itself.
+await page.waitForSelector('.proj-list', { timeout: 10000 })
+const probeRow = page.locator('.proj-card', { hasText: 'R4 progress probe' })
+ok('projects list: progress bar + %', (await probeRow.locator('.proj-bar-fill').count()) === 1 && (await probeRow.textContent()).includes('67%'))
 
 // ---- crew: three views, one filter ----
 await page.goto(BASE + '/crew')
@@ -153,7 +165,12 @@ ok('quiet channels show a zero, dimmed', (await page.locator('.pill-zero').count
 ok('the by-person report card renders', (await page.locator('.miss-report .miss-person-row').count()) >= 1)
 const firstRow = page.locator('.miss-report .miss-person-row').first()
 const rowTxt = await firstRow.textContent()
-ok('report rows carry the split', /\d+ open/.test(rowTxt) && /\d+ late/.test(rowTxt), rowTxt)
+// The split is still there; it is two marks now rather than two nouns, so
+// this asks the row for both counts and the colour that tells them apart.
+const split = firstRow.locator('.cdot')
+ok('report rows carry the split', (await split.count()) === 2
+  && (await firstRow.locator('.cdot-late').count()) === 1
+  && (await firstRow.locator('.cdot-open').count()) === 1, rowTxt)
 await page.screenshot({ path: 'r4-missed-report.png', fullPage: true })
 await firstRow.click()
 await page.waitForTimeout(400)

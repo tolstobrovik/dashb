@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Trash2, Briefcase, Megaphone, KanbanSquare, GanttChartSquare } from 'lucide-react'
+import { Plus, Trash2, Briefcase, Megaphone, GanttChartSquare } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import { useChannels } from '../lib/channels.jsx'
+import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import CampaignForm from '../components/CampaignForm.jsx'
 import CampaignGantt from '../components/CampaignGantt.jsx'
-import { HealthPill, StatusBadge, CampaignRow, PC, PhotoField } from '../components/ProjectBits.jsx'
+import { HealthPill, CampaignRow, PhotoField } from '../components/ProjectBits.jsx'
 import { dateLabel, todayISO } from '../lib/constants.js'
 import { loadFailed } from '../lib/toast.js'
+import { tr as tx, locale } from '../lib/i18n.jsx'
 
 const CAMP_FILTERS = [
   { key: 'all', label: 'All' },
@@ -18,14 +20,18 @@ const CAMP_FILTERS = [
   { key: 'idea', label: 'Not ready' },
   { key: 'done', label: 'Done' },
 ]
-const BOARD_COLS = [
-  { key: 'idea', label: 'Idea', statuses: ['idea'] },
-  { key: 'incoming', label: 'Incoming', statuses: ['incoming', 'live'] },
-  { key: 'blocked', label: 'Blocked', statuses: ['blocked'] }, // third on purpose — empty this column
-  { key: 'done', label: 'Completed', statuses: ['done'] },
-]
 
 // Admin's project editor (create + the fields the table needs).
+// Twenty projects in a sitting all run over the same stretch, and typing the
+// same two dates twenty times is how the second one gets left blank. The last
+// range used is remembered in this browser and offered as the starting point
+// for the next NEW project; opening an existing one always shows its own dates.
+const RANGE_KEY = 'satashkent_project_range'
+const lastRange = () => { try { return JSON.parse(localStorage.getItem(RANGE_KEY) || 'null') || {} } catch { return {} } }
+const rememberRange = (start_date, deadline) => {
+  try { localStorage.setItem(RANGE_KEY, JSON.stringify({ start_date: start_date || '', deadline: deadline || '' })) } catch { /* fine */ }
+}
+
 export function ProjectForm({ project, team, metrics, onClose, onSaved, onDeleted, isAdmin = false }) {
   const creating = !project
   const [err, setErr] = useState('')
@@ -34,7 +40,8 @@ export function ProjectForm({ project, team, metrics, onClose, onSaved, onDelete
     owner_id: project?.owner_id ?? '',
     metric: project?.metric || '',
     target: project?.target || '',
-    deadline: project?.deadline || '',
+    start_date: project?.start_date || (project ? '' : lastRange().start_date || ''),
+    deadline: project?.deadline || (project ? '' : lastRange().deadline || ''),
     status: project?.status || 'active',
     description: project?.description || '',
     success: project?.success || '',
@@ -50,11 +57,15 @@ export function ProjectForm({ project, team, metrics, onClose, onSaved, onDelete
         name: form.name.trim(),
         owner_id: form.owner_id || null,
         target: Number(form.target) || 0,
+        start_date: form.start_date || null,
         deadline: form.deadline || null,
         budget: form.budget === '' ? null : Number(form.budget),
         ...(photo.changed ? { photo: photo.photo, photo_thumb: photo.photo_thumb } : {}),
       }
       const saved = creating ? await api.post('/projects', payload) : await api.patch(`/projects/${project.id}`, payload)
+      // Only a NEW project teaches the next one where to start; correcting an
+      // old project's dates should not move everybody else's default.
+      if (creating) rememberRange(form.start_date, form.deadline)
       onSaved(saved)
       onClose()
     } catch (e) { setErr(e.message) }
@@ -69,7 +80,7 @@ export function ProjectForm({ project, team, metrics, onClose, onSaved, onDelete
       onClose={onClose}
       footer={<>
         {!creating && isAdmin && <button className="btn btn-danger" onClick={del}><Trash2 size={15} /> Delete</button>}
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={save}>{creating ? 'Create project' : 'Save'}</button>
       </>}
@@ -103,8 +114,14 @@ export function ProjectForm({ project, team, metrics, onClose, onSaved, onDelete
         <div className="field"><label>Target</label>
           <input className="input" type="number" min="0" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} />
         </div>
-        <div className="field"><label>Deadline</label>
-          <input className="input" type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
+        <div className="field"><label>Runs</label>
+          <div className="proj-range">
+            <input className="input" type="date" aria-label="From" value={form.start_date}
+              onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+            <span className="proj-range-to">→</span>
+            <input className="input" type="date" aria-label="To" value={form.deadline}
+              onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
+          </div>
         </div>
       </div>
       <div className="field"><label>Description <span className="stat-sub">(optional)</span></label>
@@ -141,12 +158,10 @@ export default function Projects() {
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
-  const [projSort, setProjSort] = useState('health')   // health | deadline | activity | name
   const [campSort, setCampSort] = useState('start')    // start | end | daysleft
+  const [month, setMonth] = useState(null)              // 'YYYY-MM', or null for every month
   const [projectModal, setProjectModal] = useState(null) // null | 'new' | project
   const [campModal, setCampModal] = useState(null)       // null | 'new' | campaign
-  const dragRef = useRef(null)
-  const [overCol, setOverCol] = useState(null)
 
   const load = () => Promise.all([
     api.get('/projects'), api.get('/campaigns'), api.get('/users'), api.get('/projects/metrics'),
@@ -156,7 +171,7 @@ export default function Projects() {
   // Live refresh, same rhythm as the rest of the app.
   useEffect(() => {
     const refresh = () => {
-      if (document.hidden || projectModal || campModal || dragRef.current !== null) return
+      if (document.hidden || projectModal || campModal) return
       api.poll('/projects').then((f) => { if (f) setProjects(f) }).catch(() => {})
       api.poll('/campaigns').then((f) => { if (f) setCamps(f) }).catch(() => {})
     }
@@ -173,15 +188,93 @@ export default function Projects() {
     return list
   }, [camps, filter, campSort])
 
-  const HEALTH_RANK = { red: 0, amber: 1, green: 2 }
-  const sortedProjects = useMemo(() => {
-    const list = [...projects]
-    if (projSort === 'deadline') list.sort((a, b) => (a.deadline ? (b.deadline ? a.deadline.localeCompare(b.deadline) : -1) : 1))
-    else if (projSort === 'activity') list.sort((a, b) => (b.last_activity || '').localeCompare(a.last_activity || ''))
-    else if (projSort === 'name') list.sort((a, b) => a.name.localeCompare(b.name))
-    else list.sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health] || a.name.localeCompare(b.name))
-    return list
-  }, [projects, projSort])
+  // One order, and it is the useful one: what needs a person is at the top,
+  // then the soonest deadline. Four sort buttons over a handful of projects
+  // asked people to choose an ordering before they had read anything.
+  // ---- one month at a time -------------------------------------------------
+  // A project is not a day, it is a stretch: started then, due then. So the
+  // month filter asks whether the stretch TOUCHES the month rather than
+  // whether the deadline falls inside it — a project that ran from 20 August
+  // to the middle of September is an August project and a September project,
+  // and it shows up under both. Filtering on the deadline alone would have
+  // dropped it out of August entirely, which is the month most of the work
+  // happened in.
+  //
+  // What the stretch is, from what already exists on a project:
+  //   with a deadline   from when it was started to the day it is due
+  //   open, undated     this month, and only this month. It is live rather
+  //                     than scheduled: stretching it back to the day it was
+  //                     started would put one open-ended project into every
+  //                     month since, and drag months into the strip that hold
+  //                     nothing else at all
+  //   closed, undated   the day it was made — the one day it can be placed on
+  // Nothing lands outside every month, so nothing can be hidden by this.
+  const spanOf = (p) => {
+    // A project that says when it starts is believed. Before there was a start
+    // date the day it was created was the only honest guess at one; now it is
+    // only the fallback.
+    const made = String(p.start_date || p.created_at || '').slice(0, 10)
+    if (p.deadline) {
+      const from = made && made < p.deadline ? made : p.deadline
+      return { from, to: p.deadline > from ? p.deadline : from }
+    }
+    if (!made) return null
+    const done = p.health === 'done' || p.status === 'closed'
+    const day = done ? made : todayISO()
+    return { from: day, to: day }
+  }
+  const monthEnd = (ym) => {
+    const [y, m] = ym.split('-').map(Number)
+    return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
+  }
+  // Every month any project touches, newest first — so the strip only ever
+  // offers months that have something in them.
+  const months = useMemo(() => {
+    const seen = new Set()
+    for (const p of projects) {
+      const sp = spanOf(p)
+      if (!sp) continue
+      const d = new Date(`${sp.from.slice(0, 7)}-01T00:00:00Z`)
+      const last = sp.to.slice(0, 7)
+      for (let i = 0; i < 60; i++) {
+        const ym = d.toISOString().slice(0, 7)
+        seen.add(ym)
+        if (ym >= last) break
+        d.setUTCMonth(d.getUTCMonth() + 1)
+      }
+    }
+    return [...seen].sort().reverse()
+  }, [projects])
+  const inMonth = useMemo(() => {
+    if (!month) return projects
+    const from = `${month}-01`
+    const to = monthEnd(month)
+    return projects.filter((p) => {
+      const sp = spanOf(p)
+      return sp && sp.from <= to && sp.to >= from
+    })
+  }, [projects, month])
+
+  const HEALTH_RANK = { red: 0, amber: 1, green: 2, idle: 3, done: 4 }
+  const sortedProjects = useMemo(() => [...inMonth].sort((a, b) =>
+    HEALTH_RANK[a.health] - HEALTH_RANK[b.health]
+    || (a.deadline ? (b.deadline ? a.deadline.localeCompare(b.deadline) : -1) : 1)
+    || a.name.localeCompare(b.name)), [inMonth])
+
+  // Ticking a criterion from the list, without opening the project. The card
+  // is a link, so the box stops the click before it navigates; the row is
+  // swapped in place so the tick lands instantly and the fetch catches up.
+  const tickCriterion = async (p, i, done) => {
+    const next = (p.checklist || []).map((c, n) => (n === i ? { ...c, done } : c))
+    setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, checklist: next } : x)))
+    try {
+      const saved = await api.patch(`/projects/${p.id}`, { checklist: next })
+      setProjects((prev) => prev.map((x) => (x.id === p.id ? saved : x)))
+    } catch (e) {
+      setProjects((prev) => prev.map((x) => (x.id === p.id ? p : x)))
+      alert(e.message)
+    }
+  }
 
   const replaceCamp = (saved) => setCamps((prev) => {
     const has = prev.some((c) => c.id === saved.id)
@@ -189,28 +282,22 @@ export default function Projects() {
     return next
   })
 
-  // Board drag: moving into Incoming runs the gate; Completed closes;
-  // Idea demotes. Blocked is never a drop target — it derives.
-  const dropTo = async (colKey) => {
-    const id = dragRef.current
-    dragRef.current = null
-    setOverCol(null)
-    const c = camps.find((x) => x.id === id)
-    if (!c) return
-    const stage = colKey === 'idea' ? 'idea' : colKey === 'incoming' ? 'accepted' : colKey === 'done' ? 'closed' : null
-    if (!stage) { alert('Blocked is not set by hand — it derives from overdue checklist items.'); return }
-    try {
-      replaceCamp(await api.patch(`/campaigns/${c.id}`, { stage }))
-    } catch (e) { alert(e.message) }
-  }
-
   if (loading) return <div className="app-loading"><span className="spinner" /></div>
 
+  // Three views, each answering a question the other two cannot.
+  //
+  // There were four. "Board" was a kanban of the same campaigns the Campaigns
+  // list already shows, in the same order, with the same rows — the only thing
+  // it could do that the list could not was drag a campaign between stages,
+  // and the campaign itself has a stage control on it. A third rendering of
+  // one list is not a view, it is a place to be lost.
+  //
+  // "Gantt" is a word for a chart, not for what somebody wants: they want to
+  // know what overlaps when, so it is called Timeline.
   const VIEWS = [
     { key: 'projects', label: 'Projects', icon: Briefcase },
     { key: 'campaigns', label: 'Campaigns', icon: Megaphone },
-    { key: 'board', label: 'Board', icon: KanbanSquare },
-    { key: 'gantt', label: 'Gantt', icon: GanttChartSquare },
+    { key: 'gantt', label: 'Timeline', icon: GanttChartSquare },
   ]
 
   return (
@@ -235,51 +322,106 @@ export default function Projects() {
 
       {view === 'projects' && (
         <>
-          <div className="pill-group" style={{ marginBottom: 10 }}>
-            <span className="stat-sub" style={{ alignSelf: 'center', fontWeight: 700 }}>Sort:</span>
-            <button className={'pill' + (projSort === 'health' ? ' active' : '')} onClick={() => setProjSort('health')} data-tip="Red first — what needs attention">Health</button>
-            <button className={'pill' + (projSort === 'deadline' ? ' active' : '')} onClick={() => setProjSort('deadline')} data-tip="Closest deadline on top">Deadline ↑</button>
-            <button className={'pill' + (projSort === 'activity' ? ' active' : '')} onClick={() => setProjSort('activity')} data-tip="Most recently active first">Activity</button>
-            <button className={'pill' + (projSort === 'name' ? ' active' : '')} onClick={() => setProjSort('name')} data-tip="Alphabetical">Name</button>
-          </div>
-          <div className="card table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr><th>Project</th><th>Owner</th><th>Live campaigns</th><th>Progress</th><th>Deadline</th><th>Last activity</th><th>Health</th></tr>
-              </thead>
-              <tbody>
-                {sortedProjects.map((p) => {
-                  const overdueDl = p.deadline && p.deadline < todayISO() && p.actual < p.target
-                  return (
-                    <tr key={p.id} className="row-click" onClick={() => navigate(`/projects/${p.id}`)}>
-                      <td style={{ fontWeight: 700 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {p.photo_thumb && <img className="pc-thumb" src={p.photo_thumb} alt="" />}
-                          {p.name}
+          {/* One card per project instead of seven columns. A table asks you to
+              read across a row and hold six values in your head; the question
+              people actually arrive with is "which of these needs me, and who
+              is on it", and that answer fits on two lines. The order already
+              answers the first half — what needs a person is at the top — so
+              the four sort buttons went with the columns. */}
+          {/* One row of months, and "All". Only months that actually hold a
+              project are offered, so the strip is as long as the work is and
+              never longer, and a project that straddles two months sits under
+              both. */}
+          {months.length > 1 && (
+            <div className="pill-group proj-months">
+              <button className={'pill' + (month === null ? ' active' : '')} onClick={() => setMonth(null)}>{tx('All')}</button>
+              {months.map((ym) => (
+                <button key={ym} className={'pill' + (month === ym ? ' active' : '')} onClick={() => setMonth(ym)}>
+                  {new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(locale(), { month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="proj-list">
+            {sortedProjects.map((p) => {
+              const late = p.deadline && p.deadline < todayISO()
+              const steps = p.progress?.steps_total > 0
+              return (
+                <button key={p.id} className={`proj-card health-${p.health}`} onClick={() => navigate(`/projects/${p.id}`)}>
+                  <span className="proj-main">
+                    {p.photo_thumb && <img className="pc-thumb" src={p.photo_thumb} alt="" />}
+                    <span className="proj-name">{p.name}</span>
+                    <HealthPill health={p.health} reason={p.health_reason} withReason />
+                  </span>
+                  <span className="proj-meta">
+                    {/* Who to ask, first — it is the thing you came for. */}
+                    {/* Only when there IS one: with no owner the pill beside
+                        the name already says so, and saying it twice on one
+                        card reads as two different problems. */}
+                    {p.owner_name && (
+                      <>
+                        <span className="proj-who">
+                          <Avatar name={p.owner_name} color={p.owner_color} size={20} /> {p.owner_name}
                         </span>
-                      </td>
-                      <td>{p.owner_name || <span className="pc-red">—</span>}</td>
-                      <td style={p.live_campaigns === 0 ? { color: PC.red, fontWeight: 700 } : undefined}>{p.live_campaigns}</td>
-                      <td>
-                        {p.progress?.steps_total > 0 ? (
-                          <span className="proj-progress" data-tip={`${p.progress.checklist_done}/${p.progress.checklist_total} checklist · ${p.progress.campaigns_done}/${p.progress.campaigns_total} campaigns done`}>
-                            <span className="pace-track" style={{ height: 8, width: 90 }}>
-                              <span className="pace-fill" style={{ width: `${p.progress.pct}%`, background: p.progress.pct >= 100 ? PC.green : PC.blue }} />
-                            </span>
-                            <b>{p.progress.pct}%</b>
-                          </span>
-                        ) : <span className="stat-sub">no steps yet</span>}
-                      </td>
-                      <td className={'pc-when' + (overdueDl ? ' late' : '')}>{p.deadline ? dateLabel(p.deadline) : '—'}</td>
-                      <td className="pc-when">{p.last_activity ? dateLabel(p.last_activity.slice(0, 10)) : '—'}</td>
-                      <td><HealthPill health={p.health} reason={p.health_reason} /></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {projects.length === 0 && <div className="empty">No projects yet{isAdmin ? ' — create the first one.' : '.'}</div>}
+                        <span className="proj-dot">·</span>
+                      </>
+                    )}
+                    <span className={'proj-due' + (late ? ' late' : '')}>
+                      {p.start_date && p.deadline
+                        ? `${dateLabel(p.start_date)} → ${dateLabel(p.deadline)}`
+                        : p.deadline ? `${late ? 'was due' : 'due'} ${dateLabel(p.deadline)}` : 'no deadline'}
+                    </span>
+                    <span className="proj-dot">·</span>
+                    <span className="proj-camps">
+                      {p.progress?.campaigns_total
+                        ? `${p.live_campaigns} of ${p.progress.campaigns_total} campaigns live`
+                        : 'no campaigns yet'}
+                    </span>
+                  </span>
+                  {/* The success criteria, as things you tick. The paper the
+                      team runs these off lists them as bullets in a column
+                      beside the project, and a bullet you cannot tick is a
+                      list somebody keeps a second copy of. These are the
+                      project's own checklist, so ticking one here and ticking
+                      it on the project page are the same act. */}
+                  {(p.checklist || []).length > 0 && (
+                    <span className="proj-crit">
+                      {(p.checklist || []).slice(0, 4).map((c, i) => (
+                        <span key={i} className={'proj-crit-row' + (c.done ? ' met' : '')}>
+                          <input type="checkbox" checked={!!c.done} aria-label={c.text}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => { e.stopPropagation(); tickCriterion(p, i, e.target.checked) }} />
+                          <span>{c.text}</span>
+                        </span>
+                      ))}
+                      {(p.checklist || []).length > 4 && (
+                        <span className="proj-crit-n">{tx('{n} more', { n: (p.checklist || []).length - 4 })}</span>
+                      )}
+                    </span>
+                  )}
+                  {steps && p.progress.pct > 0 && (
+                    <span className="proj-bar" data-tip={`${p.progress.steps_done} of ${p.progress.steps_total} steps done`}>
+                      <span className="proj-bar-track">
+                        <span className="proj-bar-fill" style={{ width: `${p.progress.pct}%` }} />
+                      </span>
+                      <b>{p.progress.pct}%</b>
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
+          {projects.length === 0 && (
+            <div className="card card-pad empty">
+              <Briefcase size={28} />
+              <div>No projects yet{isAdmin ? ' — create the first one.' : '.'}</div>
+            </div>
+          )}
+          {/* A month can be empty while the board is not. Say so, rather than
+              showing a blank where the list was. */}
+          {projects.length > 0 && sortedProjects.length === 0 && (
+            <div className="card card-pad empty"><div className="stat-sub">{tx('Nothing this month')}</div></div>
+          )}
         </>
       )}
 
@@ -297,61 +439,9 @@ export default function Projects() {
           </div>
           <div className="pc-camp-list">
             {filtered.map((c) => <CampaignRow key={c.id} c={c} byKey={byKey} onOpen={(x) => navigate(`/campaigns/${x.id}`)} />)}
-            {filtered.length === 0 && <div className="card card-pad empty">Nothing here.</div>}
+            {filtered.length === 0 && <div className="card card-pad empty">{tx('No projects')}</div>}
           </div>
         </>
-      )}
-
-      {view === 'board' && (
-        <div className="pc-board">
-          {BOARD_COLS.map((col) => {
-            const list = camps.filter((c) => col.statuses.includes(c.status))
-            return (
-              <div
-                key={col.key}
-                className={`pcb-col${overCol === col.key ? ' over' : ''}${col.key === 'blocked' ? ' danger' : ''}`}
-                onDragOver={(e) => { e.preventDefault(); setOverCol(col.key) }}
-                onDrop={() => dropTo(col.key)}
-              >
-                <div className="pcb-head">{col.label} <span className="count">{list.length}</span></div>
-                {list.map((c) => (
-                  <div
-                    key={c.id}
-                    className="pcb-card"
-                    draggable
-                    onDragStart={(e) => {
-                      dragRef.current = c.id
-                      try { e.dataTransfer.setData('text/plain', String(c.id)); e.dataTransfer.effectAllowed = 'move' } catch { /* ok */ }
-                    }}
-                    onDragEnd={() => { dragRef.current = null; setOverCol(null) }}
-                    onClick={() => navigate(`/campaigns/${c.id}`)}
-                  >
-                    <div className="pc-camp-top">
-                      <span className="pc-camp-name" style={{ fontSize: 13 }}>{c.name}</span>
-                      {c.status === 'live' && <StatusBadge status="live" />}
-                    </div>
-                    <div className="pc-camp-sub">
-                      {c.project_name ? <span>{c.project_name}</span> : <span className="pc-red">no project</span>}
-                      {c.owner_name ? <span>· {c.owner_name}</span> : <span className="pc-red">· no owner</span>}
-                    </div>
-                    {c.start_date && c.end_date && <div className="pc-camp-sub">{c.start_date} – {c.end_date}</div>}
-                    {c.channels.length > 0 && (
-                      <div className="pc-camp-chips">
-                        {c.channels.map((ch) => <span key={ch} className="chip chip-muted">{byKey[ch]?.label || ch}</span>)}
-                      </div>
-                    )}
-                    {c.status === 'blocked' && c.blocking
-                      ? <div className="pc-strip">Blocked: {c.blocking.text}</div>
-                      : c.status === 'idea' && c.missing.length > 0
-                        ? <div className="pc-strip-soft">Draft — needs: {c.missing.join(', ')}</div>
-                        : <div style={{ marginTop: 6 }}><PaceBarSafe c={c} /></div>}
-                  </div>
-                ))}
-                {list.length === 0 && <div className="board-empty">{col.key === 'blocked' ? 'Empty — keep it that way' : '—'}</div>}
-              </div>
-            )
-          })}
-        </div>
       )}
 
       {view === 'gantt' && (
@@ -385,12 +475,3 @@ export default function Projects() {
   )
 }
 
-function PaceBarSafe({ c }) {
-  if (!c.pace) return null
-  return (
-    <div className="pace-track" style={{ height: 8 }}>
-      <div className="pace-fill" style={{ width: `${c.pace.fill_pct}%`, background: c.pace.behind ? PC.amber : PC.green }} />
-      <div className="pace-tick" style={{ left: `${c.pace.time_pct}%` }} />
-    </div>
-  )
-}

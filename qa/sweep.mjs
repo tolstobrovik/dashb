@@ -15,9 +15,9 @@ const ct = (await req('/content')).data.find((c) => c.type === 'video') || (awai
 if (ct && crew.id) await req(`/content/${ct.id}`, 'PATCH', { operator_id: crew.id })
 
 const ROLES = [
-  ['admin', 'admin123', ['/brief', '/overview', '/todo', '/missed', '/unassigned', '/docs', '/projects', '/dept/instagram_main', '/dept/youtube', '/crew', '/team', '/admin', '/profile']],
-  ['jas', 'j1234', ['/brief', '/todo', '/missed', '/docs', '/dept/instagram_main', '/profile']],
-  ['azi', 'a1234', ['/brief', '/todo', '/missed', '/docs', '/dept/telegram_uzb']],
+  ['admin', 'admin123', ['/brief', '/overview', '/missed', '/design', '/docs', '/projects', '/dept/instagram_main', '/dept/youtube', '/crew', '/team', '/admin', '/profile']],
+  ['jas', 'j1234', ['/brief', '/missed', '/design', '/docs', '/dept/instagram_main', '/profile']],
+  ['azi', 'a1234', ['/brief', '/missed', '/docs', '/dept/telegram_uzb']],
   ['rus', 'r1234', ['/brief', '/profile']],
 ]
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })

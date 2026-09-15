@@ -46,7 +46,13 @@ export default function ProjectDetail() {
   if (err) return <div className="card card-pad empty">{err}</div>
   if (!p) return <div className="app-loading"><span className="spinner" /></div>
 
-  const pct = p.target > 0 ? Math.min(100, Math.round((p.actual / p.target) * 100)) : 0
+  // Not clamped. 11,400 enrolments against a target of 10,000 was showing as
+  // "100%", which reads as "just made it" — the one reading the number rules
+  // out. Beating a target is the good news on the page and it was the thing
+  // being hidden. The BAR still stops at its end, because a bar longer than
+  // its track is a broken bar; the figure beside it says 114%.
+  const pct = p.target > 0 ? Math.round((p.actual / p.target) * 100) : 0
+  const beat = pct > 100
 
   const patch = async (body) => {
     try { setP({ ...p, ...(await api.patch(`/projects/${p.id}`, body)), campaigns: p.campaigns, notes: p.notes }) }
@@ -124,33 +130,23 @@ export default function ProjectDetail() {
             >{p.actual.toLocaleString()}</b>
           )}
           <span> / {p.target.toLocaleString()} {p.metric}</span>
-          <span className="pc-pct">{pct}%</span>
-          <span style={{ flex: 1 }} />
-          {p.deadline && (() => {
-            const days = Math.ceil((Date.parse(`${p.deadline}T00:00:00Z`) - Date.parse(`${todayISO()}T00:00:00Z`)) / 86400000)
-            const late = days < 0 && p.actual < p.target
-            return (
-              <span className={'pc-when-big' + (late ? ' late' : '')} data-tip="The project's target deadline">
-                Deadline {dateLabel(p.deadline)}{days >= 0 ? ` · ${days}d left` : ' · passed'}
-              </span>
-            )
-          })()}
+          <span className={'pc-pct' + (beat ? ' pc-pct-beat' : '')}>{pct}%</span>
         </div>
         <PlainBar pct={pct} color={pct >= 100 ? PC.green : p.health === 'amber' ? PC.amber : PC.green} height={12} />
 
-        {/* Progress is earned: checklist steps + finished campaigns */}
-        <div className="pc-progress-row">
-          <span className="pc-progress-label">Progress</span>
-          <div className="pace-track" style={{ height: 10, flex: 1 }}>
-            <div className="pace-fill" style={{ width: `${p.progress?.pct || 0}%`, background: (p.progress?.pct || 0) >= 100 ? PC.green : PC.blue }} />
-          </div>
-          <b style={{ fontSize: 13 }}>{p.progress?.pct || 0}%</b>
-          <span className="stat-sub">
-            {p.progress?.steps_total > 0
-              ? `${p.progress.checklist_done}/${p.progress.checklist_total} checklist · ${p.progress.campaigns_done}/${p.progress.campaigns_total} campaigns done`
-              : 'add checklist steps or campaigns to earn progress'}
-          </span>
-        </div>
+        {/* The deadline, on its own line under the bar it belongs to. It was
+            sitting at the far right of the number row, where the eye that has
+            just read "11 400 / 10 000" never travels. */}
+        {p.deadline && (() => {
+          const days = Math.ceil((Date.parse(`${p.deadline}T00:00:00Z`) - Date.parse(`${todayISO()}T00:00:00Z`)) / 86400000)
+          const late = days < 0 && p.actual < p.target
+          return (
+            <div className={'pc-deadline' + (late ? ' late' : '')}>
+              {late ? 'Was due ' : 'Due '}{dateLabel(p.deadline)}
+              {days > 0 ? ` · ${days} days left` : days === 0 ? ' · today' : p.actual >= p.target ? ' · and met' : ' · and still short'}
+            </div>
+          )
+        })()}
       </div>
 
       {/* B. Campaigns in this project */}
@@ -161,9 +157,18 @@ export default function ProjectDetail() {
         {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setCampModal('new')}><Plus size={15} /> New campaign</button>}
       </div>
       {p.campaigns.length === 0 ? (
-        <div className="card card-pad" style={{ color: PC.red, fontWeight: 700 }}>
-          No campaigns running. This project is not moving.
-        </div>
+        /* "This project is not moving" was printed in red on a project that
+           had met its target and ticked its last box. A project with nothing
+           running is only a problem when it is supposed to be running: open,
+           started, and not yet where it was going. Anything else — paused,
+           closed, finished, not begun — gets the plain sentence. */
+        (() => {
+          const started = !p.start_date || p.start_date <= todayISO()
+          const stalled = p.status === 'active' && started && p.target > 0 && p.actual < p.target
+          return stalled
+            ? <div className="card card-pad pc-stalled">Nothing is running on this project, and it has not reached its number yet.</div>
+            : <div className="card card-pad empty">No campaigns on this project.</div>
+        })()
       ) : (
         <div className="pc-camp-list">
           {p.campaigns.map((c) => <CampaignRow key={c.id} c={c} byKey={byKey} onOpen={(x) => navigate(`/campaigns/${x.id}`)} />)}

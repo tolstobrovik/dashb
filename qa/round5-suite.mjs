@@ -155,18 +155,22 @@ await p3.waitForURL(/brief/, { timeout: 15000 })
 await p3.waitForSelector('.brief-title', { timeout: 10000 })
 await p3.waitForTimeout(500)
 const jasBrief = await p3.locator('.content').textContent()
-ok('member brief is the simple one — no crew sections', jasBrief.includes('To do today') && !jasBrief.includes('Editing desk') && !jasBrief.includes('Record today'))
+// This section used to describe a My Day that had five headed sections and a
+// date-range picker inside the last one. Both went when the page was flattened
+// into a single list, so the checks below had been asserting a heading and a
+// control that no longer exist — failing quietly in the gate rather than
+// telling anybody anything. They ask about the page as it is now.
+ok('member brief is the simple one — no crew lanes', !jasBrief.includes('Editing desk') && !jasBrief.includes('Record today'))
+ok('their day is one flat list', (await p3.locator('.brief-list.day-flat').count()) === 1)
 ok('today list holds their task', jasBrief.includes('r5: jas post today'))
-// Horizons only render when they hold work (round 18 minimalism); the custom
-// range is always offered, and beyond-horizon work stays out until it's used.
-ok('beyond-horizon work hidden until custom dates; custom always offered',
-  !jasBrief.includes('r5: jas next week') && jasBrief.includes('Pick your own dates'))
-// the custom stretch finds the task 9 days out
-await p3.locator('.brief-horizon .extra-btn', { hasText: 'Pick your own dates' }).click()
-await p3.locator('.brief-horizon .miss-custom input').first().fill(add(8))
-await p3.locator('.brief-horizon .miss-custom input').last().fill(add(12))
-await p3.waitForTimeout(400)
-ok('custom dates pull in the far task', (await p3.locator('.content').textContent()).includes('r5: jas next week'))
+// The day is worked in one order — what is late, then today, then what is
+// coming — and the row says which it is with a dot rather than a heading.
+const tiers = await p3.locator('.brief-list.day-flat .dot').evaluateAll((els) =>
+  els.map((e) => (e.className.match(/dot-(\w+)/) || [])[1]))
+const RANK = { late: 0, today: 1, soon: 2 }
+ok('…in that order, late first', tiers.every((t, i) => i === 0 || RANK[tiers[i - 1]] <= RANK[t]), JSON.stringify(tiers))
+ok('…and work further out is on it too, rather than behind a date picker',
+  jasBrief.includes('r5: jas next week'), tiers.join(','))
 await p3.screenshot({ path: 'r5-simple-brief.png', fullPage: true })
 await ctx3.close()
 await browser.close()

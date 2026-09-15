@@ -39,17 +39,33 @@ await req('/content', 'POST', { title: 'r15: release only', channels: ['youtube'
 ok('crew fixtures in place', !!shoot.id && !!cut.id)
 
 const doneT = (await req('/content', 'POST', { title: 'r15: shipped today', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id] })).data
-await req(`/content/${doneT.id}`, 'PATCH', { done: true })
+await req(`/content/${doneT.id}`, 'PATCH', { done: true, post_link: `https://instagram.com/p/qa-${doneT.id}` })
 await req('/content', 'POST', { title: 'r15: upcoming post', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id], release_date: add(2) })
 await req('/content', 'POST', { title: 'r15: missed release', channels: ['instagram_main'], type: 'post', assignee_ids: [mir.id], release_date: yesterday })
 const proj = (await req('/projects', 'POST', { name: 'r15: Open Day' })).data
 const camp = (await req('/campaigns', 'POST', { name: 'r15: Open Day teasers', project_id: proj.id })).data
 const projTask = (await req('/content', 'POST', { title: 'r15: teaser video', channels: ['instagram_main'], type: 'post', campaign_id: camp.id, assignee_ids: [mir.id] })).data
-await req(`/content/${projTask.id}`, 'PATCH', { done: true })
+await req(`/content/${projTask.id}`, 'PATCH', { done: true, post_link: `https://instagram.com/p/qa-${projTask.id}` })
 ok('statistics fixtures in place', !!proj.id && !!camp.id && !!projTask.id)
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const pageC = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 pageC.on('pageerror', (e) => { fails++; console.log(`✘ CREW PAGE ERROR: ${e.message}`) })
 await pageC.goto(BASE + '/login')
 await pageC.fill('input[name="username"]', 'r15cru')
@@ -74,6 +90,8 @@ await pageC.screenshot({ path: 'r15-calendar.png' })
 await pageC.locator('.pill', { hasText: 'List' }).click()
 await pageC.waitForTimeout(300)
 await pageC.locator('.cb-row', { hasText: 'r15: campus shoot' }).first().click()
+await pageC.waitForSelector('.modal', { timeout: 8000 })
+await cmTab(pageC, 'Logistics')
 await pageC.waitForSelector('.modal .dates-block', { timeout: 8000 })
 const dates = await pageC.locator('.modal .dates-block').textContent()
 ok('crew modal shows Shoot + Edit ready but NO Release', /Shoot/.test(dates) && /Edit ready/.test(dates) && !/Release/.test(dates), dates.slice(0, 120))
@@ -81,6 +99,15 @@ await pageC.keyboard.press('Escape')
 
 const page = await (await browser.newContext({ viewport: { width: 1500, height: 980 } })).newPage()
 page.on('pageerror', (e) => { fails++; console.log(`✘ PAGE ERROR: ${e.message}`) })
+// Round 82 folded the sidebar into hubs that start CLOSED, so a door inside
+// one is not in the DOM to be read. This asks which doors EXIST, so write the
+// "nothing folded" preference before the page loads rather than clicking the
+// chevrons — a click toggles, and two calls would undo each other.
+// (Sidebar.jsx: PREFS_KEY `satashkent_side2_<uid>`, PREFS_V 3; admin is id 1.)
+await page.addInitScript(([id, v]) => {
+  localStorage.setItem(`satashkent_side2_${id}`,
+    JSON.stringify({ order: {}, hidden: [], closed: [], pinned: [], v }))
+}, [1, 3])
 await page.goto(BASE + '/login')
 await page.fill('input[name="username"]', 'admin')
 await page.fill('input[name="password"]', 'admin123')

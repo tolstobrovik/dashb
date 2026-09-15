@@ -22,8 +22,10 @@ const jas = users.find((u) => u.username === 'jas')
 const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent' }).format(new Date(Date.now() + d * 864e5))
 // three shapes: a post today whose ONLY hole is the designer; a reel on jas
 // missing only its editor; a dateless video missing nearly everything —
-// all in To shoot, since round 35 keeps Idea-stage tasks off the gap views
-const shootId = (await req('/statuses')).data.find((s) => /to shoot/i.test(s.label)).id
+// All in Shot: round 35 keeps Idea-stage tasks off the gap views, and since
+// round 66 the shooting stage is a BOOKING that refuses exactly the holes this
+// page exists to show — work logged after the fact is where they live now.
+const shootId = (await req('/statuses')).data.find((s) => /^shot$/i.test(s.label)).id
 await req('/content', 'POST', { title: 'x26: designer post', channels: ['telegram_main'], type: 'post', assignee_ids: [jas.id], release_date: iso(0), status_id: shootId })
 await req('/content', 'POST', { title: 'x26: editor reel', channels: ['instagram_main'], type: 'reel', assignee_ids: [jas.id], operator_id: jas.id, release_date: iso(1), recording_date: iso(0), status_id: shootId })
 await req('/content', 'POST', { title: 'x26: dateless video', channels: ['youtube'], type: 'video', status_id: shootId })

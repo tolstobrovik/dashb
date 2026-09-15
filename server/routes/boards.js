@@ -30,7 +30,12 @@ const cleanData = (v) => {
     x: Math.max(0, Math.round(Number(n.x) || 0)),
     y: Math.max(0, Math.round(Number(n.y) || 0)),
     text: String(n.text || '').slice(0, 120),
-    sub: String(n.sub || '').slice(0, 160),
+    // The card's details. 160 characters was a one-line note, and a role that
+    // really is "owns the channel; plans, produces, publishes; measured on
+    // views" does not fit in one line — so it is a small block of text now
+    // (plain text, with the two marks lib/richtext.js reads). Still bounded:
+    // 300 cards times this is what one board costs to store and to send.
+    sub: String(n.sub || '').slice(0, 1200),
     color: String(n.color || '#a32234').slice(0, 20),
     user_id: n.user_id == null || n.user_id === '' ? null : Number(n.user_id),
   }))

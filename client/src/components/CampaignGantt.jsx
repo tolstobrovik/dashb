@@ -89,7 +89,7 @@ export default function CampaignGantt({ camps, onOpen }) {
                   <div className="gantt-today" style={{ left: `${todayPct}%` }} />
                   <button
                     className="gantt-bar"
-                    style={{ left: `${pct(s)}%`, width: `${Math.max(pct(e - s + 1), 1.2)}%`, background: fill, color: onColor(fill) }}
+                    style={{ left: `${pct(s)}%`, width: `${Math.max(pct(e - s + 1), pct(1))}%`, background: fill, color: onColor(fill) }}
                     onClick={() => onOpen(c)}
                     data-tip={`${c.name}: ${dateLabel(c.start_date)} → ${dateLabel(c.end_date)}${c.status === 'live' ? ` · ${progress}% of target` : ''} · ${c.status}`}
                   >

@@ -44,9 +44,11 @@ const pills = (await page.locator('.pill.pill-person').allTextContents()).join('
 ok('person filter lists crew roles only', pills.includes('Rustam') && !pills.includes('Mirabbos'), pills)
 await page.screenshot({ path: 'r12-crew.png' })
 
-await page.goto(BASE + '/todo')
-await page.waitForSelector('.todo-row', { timeout: 10000 })
-const rowTxt = await page.locator('.todo-row', { hasText: 'r12: member shoots this' }).textContent()
+// The fixture lives on YouTube, and a channel board shows its own channel —
+// the To-Do page this replaced listed every channel at once.
+await page.goto(BASE + '/dept/youtube')
+await page.waitForSelector('.tcard', { timeout: 12000 })
+const rowTxt = await page.locator('.tcard', { hasText: 'r12: member shoots this' }).first().textContent()
 ok('the task still wears the member’s operator chip', rowTxt.includes('Mirabbos'))
 await browser.close()
 

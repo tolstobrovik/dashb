@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Check, AlertCircle, Trash2, Eye, EyeOff, KeyRound, UserRound, Type, Clock, Send } from 'lucide-react'
+import { Camera, Check, AlertCircle, Trash2, Eye, EyeOff, KeyRound, UserRound, Type, Clock, Send, BookOpen, Plus } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { useAuth } from '../lib/auth.jsx'
 import Avatar from '../components/Avatar.jsx'
 import { WORK_DAYS } from '../lib/constants.js'
 import { TEXT_SIZES, getTextSize, applyTextSize } from '../lib/textSize.js'
 import { THEMES, getTheme, applyTheme } from '../lib/theme.js'
+import { LANGS, useT } from '../lib/i18n.jsx'
 import { soundsOn, setSounds, playDone } from '../lib/sound.js'
-import { Moon } from 'lucide-react'
+import { Moon, Languages } from 'lucide-react'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Distinct hues, not seven shades of brand red — avatars and chips must be
 // tellable apart at a glance.
@@ -38,7 +40,7 @@ function WarningRecord() {
         ) : (
           <>
             <p className="muted" style={{ marginTop: 0 }}>
-              {warnings.length} missed {warnings.length === 1 ? 'deadline' : 'deadlines'}
+              {warnings.length} missed {warnings.length === 1 ? 'deadline' : tx('deadlines')}
               {open > 0 && <> · <b>{open}</b> still running</>}. Delays caused by someone
               handing work over late are not counted here.
             </p>
@@ -82,6 +84,17 @@ export default function Profile() {
   const [wDays, setWDays] = useState(() => (Array.isArray(user.work_days) ? user.work_days : []))
   const [schedSaved, setSchedSaved] = useState(false)
   const [schedErr, setSchedErr] = useState('')
+  // When you are NOT available, on a repeating week. Working hours say when
+  // somebody is at work; they do not say the operator is in lectures every
+  // Tuesday afternoon, and half this team are students. A planner who cannot
+  // see that books a shoot into a seminar and finds out on the day.
+  const [study, setStudy] = useState(() => (Array.isArray(user.study_blocks) ? user.study_blocks : []))
+  const addStudy = () => setStudy((prev) => [...prev, { d: 1, from: '14:00', to: '16:00', label: '' }])
+  const setStudyAt = (i, patch) => setStudy((prev) => prev.map((b, j) => (j === i ? { ...b, ...patch } : b)))
+  const dropStudy = (i) => setStudy((prev) => prev.filter((_, j) => j !== i))
+  // A block that ends before it starts is not a block, and saving one would
+  // silently drop it on the way through — so it is said here instead.
+  const studyBad = study.some((b) => !b.from || !b.to || b.from >= b.to)
   const toggleDay = (d) =>
     setWDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()))
   const saveSchedule = async () => {
@@ -90,12 +103,14 @@ export default function Profile() {
       const updated = await api.patch('/users/me', {
         work_start: wStart || null, work_end: wEnd || null,
         work_days: wDays.length ? wDays : null,
+        study_blocks: study,
       })
       setUser(updated)
       setSchedSaved(true)
       setTimeout(() => setSchedSaved(false), 2500)
     } catch (e) { setSchedErr(e.message) }
   }
+  const { lang, setLang, t } = useT()
   const [textSize, setTextSize] = useState(getTextSize())
   const [theme, setTheme] = useState(getTheme())
   const [snd, setSnd] = useState(soundsOn())
@@ -261,11 +276,11 @@ export default function Profile() {
 
       <WarningRecord />
 
-      <div className="section-head" style={{ marginTop: 22 }}><h2><Clock size={16} style={{ verticalAlign: -2 }} /> Working schedule</h2></div>
+      <div className="section-head" style={{ marginTop: 22 }}><h2><Clock size={16} style={{ verticalAlign: -2 }} /> {tx('My working hours')}</h2></div>
       <div className="card card-pad">
         {schedErr && <div className="form-error"><AlertCircle size={16} /> {schedErr}</div>}
         <div className="stat-sub" style={{ marginBottom: 10 }}>
-          Shoots are booked only inside these hours — plan yours honestly.
+          {tx('The days and hours you can be booked for. The board offers only these when somebody plans a shoot with you.')}
         </div>
         <div className="wd-row">
           {WORK_DAYS.map((d) => (
@@ -276,15 +291,50 @@ export default function Profile() {
           ))}
         </div>
         <div className="sched-hours">
-          <label className="sched-field">from
+          <label className="sched-field">{tx('From')}
             <input className="input" type="time" value={wStart} onChange={(e) => setWStart(e.target.value)} />
           </label>
-          <label className="sched-field">to
+          <label className="sched-field">{tx('To')}
             <input className="input" type="time" value={wEnd} onChange={(e) => setWEnd(e.target.value)} />
           </label>
         </div>
+        {/* …and when you are NOT free inside them. Lectures, a second job,
+            anything that repeats. It sits in the same card as the hours
+            because it answers the same question, and splitting them across
+            two screens is how one of them never gets filled in. */}
+        <div className="study-head">
+          <BookOpen size={14} />
+          <b>{tx('When you study')}</b>
+          <span className="stat-sub">{tx('lectures and anything else that repeats weekly')}</span>
+        </div>
+        <div className="stat-sub" style={{ marginBottom: 8 }}>
+          {tx('Nobody can book a shoot over these. They are drawn on your week in amber so a planner can see them.')}
+        </div>
+        {study.map((b, i) => (
+          <div className="study-row" key={i}>
+            <select className="select" value={b.d} onChange={(e) => setStudyAt(i, { d: Number(e.target.value) })}>
+              {WORK_DAYS.map((d) => <option key={d.n} value={d.n}>{d.label}</option>)}
+            </select>
+            <input className="input" type="time" value={b.from} onChange={(e) => setStudyAt(i, { from: e.target.value })} />
+            <span className="stat-sub">–</span>
+            <input className="input" type="time" value={b.to} onChange={(e) => setStudyAt(i, { to: e.target.value })} />
+            <input className="input study-what" value={b.label || ''} maxLength={40}
+              placeholder={tx('e.g. University')}
+              onChange={(e) => setStudyAt(i, { label: e.target.value })} />
+            <button type="button" className="icon-btn" aria-label={tx('Remove')} onClick={() => dropStudy(i)}>
+              <Trash2 size={15} />
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn btn-sm" onClick={addStudy}><Plus size={14} /> {tx('Add a study time')}</button>
+        {studyBad && (
+          <div className="form-error" style={{ marginTop: 10 }}>
+            <AlertCircle size={16} /> {tx('One of these ends before it starts.')}
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={saveSchedule}>Save schedule</button>
+          <button className="btn btn-primary" onClick={saveSchedule} disabled={studyBad}>Save schedule</button>
           {schedSaved && <span className="save-ok"><Check size={15} /> Saved</span>}
         </div>
       </div>
@@ -351,6 +401,23 @@ export default function Profile() {
             onClick={() => { setSounds(true); setSnd(true); playDone() }}>Sounds on</button>
           <button type="button" className={'seg-btn' + (!snd ? ' on' : '')}
             onClick={() => { setSounds(false); setSnd(false) }}>Off</button>
+        </div>
+      </div>
+
+      <div className="section-head" style={{ marginTop: 22 }}><h2><Languages size={16} style={{ verticalAlign: -2 }} /> {t('common.language')}</h2></div>
+      <div className="card card-pad">
+        <div className="stat-sub" style={{ marginBottom: 10 }}>
+          The buttons, menus and headings on this device. What you and everybody
+          else TYPE — titles, scripts, comments — is never translated.
+        </div>
+        <div className="seg">
+          {LANGS.map((l) => (
+            <button key={l.key} type="button"
+              className={'seg-btn' + (lang === l.key ? ' on' : '')}
+              onClick={() => setLang(l.key)}>
+              {l.native}
+            </button>
+          ))}
         </div>
       </div>
 

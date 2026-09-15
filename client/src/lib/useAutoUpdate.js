@@ -1,11 +1,21 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+
+// The build this bundle was made from, stamped in by Vite. Shown in the app so
+// "is the new version live yet?" is a question you can answer by looking.
+export const BUILD = typeof __BUILD__ === 'string' ? __BUILD__ : 'dev'
 
 // Long-lived tabs keep running the build they loaded — polling keeps the DATA
 // fresh, but fixes to the app itself never arrive until someone reloads.
 // This watches the served index.html for a new asset hash and reloads the tab
 // at a harmless moment: when it goes to the background, and never while a
 // modal is open (nothing typed is ever lost).
+//
+// It also SAYS when a new build is waiting, and returns the means to take it
+// now. Waiting for the tab to be backgrounded is right for a desk, where tabs
+// are left open for days; it is wrong for somebody holding a phone, staring
+// at the screen, wondering why the thing they were told shipped is not there.
 export function useAutoUpdate() {
+  const [ready, setReady] = useState(false)
   useEffect(() => {
     let current = null
     let pending = false
@@ -16,7 +26,7 @@ export function useAutoUpdate() {
         const hash = (await res.text()).match(/\/assets\/index-[\w-]+\.js/)?.[0]
         if (!hash) return // dev server — nothing to compare
         if (current === null) current = hash
-        else if (hash !== current) pending = true
+        else if (hash !== current) { pending = true; setReady(true) }
       } catch { /* offline — try again later */ }
     }
 
@@ -34,4 +44,5 @@ export function useAutoUpdate() {
     document.addEventListener('visibilitychange', onVisibility)
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisibility) }
   }, [])
+  return { ready, take: () => location.reload() }
 }

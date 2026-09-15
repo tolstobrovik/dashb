@@ -58,8 +58,20 @@ await p.locator('.rq-row', { hasText: 'evening reel' }).locator('.rq-copy').clic
 ok('one tap copies the finished file’s link',
   (await p.evaluate(() => navigator.clipboard.readText()).catch(() => '')) === 'https://drive.google.com/finished-cut')
 
-await p.goto(BASE + `/todo?task=${t1.id}`); await p.waitForTimeout(1400)
+await p.goto(BASE + `/brief?task=${t1.id}`); await p.waitForTimeout(1400)
 ok('the thread renders in the modal', (await p.locator('.cm-comments .cmt-row', { hasText: 'color pass' }).count()) === 1)
+// The task sheet is views now — Brief, Execution, Logistics, Talk — so a
+// field is reached the way a person reaches it: open the view holding it
+// first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
+await cmTab(p, 'Talk')
 await p.fill('.cmt-input .input', 'Looks good — publishing tonight')
 await p.locator('.cmt-input .btn').click(); await p.waitForTimeout(800)
 // scoped to the thread: since round 36 the History block reuses .cmt-row styling

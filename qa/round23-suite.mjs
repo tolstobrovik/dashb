@@ -21,11 +21,27 @@ await cleanup()
 const statuses = (await req('/statuses')).data
 const finalId = statuses.find((s) => s.is_final).id
 const pubT = (await req('/content', 'POST', { title: 'x23: went live', channels: ['instagram_main'], type: 'reel' })).data
-await req(`/content/${pubT.id}`, 'PATCH', { status_id: finalId })
+await req(`/content/${pubT.id}`, 'PATCH', { status_id: finalId, post_link: 'https://instagram.com/p/r23' })
 await req('/content', 'POST', { title: 'x23: bare task', channels: ['instagram_main'], type: 'reel' })
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' })
 const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
+
+// The task sheet is three views and a thread now — Brief, Execution, Logistics
+// — so a field is reached the way a person reaches it: open the view holding
+// it first. Idempotent, and silent on a sheet short enough to show whole.
+const cmTab = async (pg, name) => {
+  // The same view is "Execution" to whoever runs the piece and "Your part" to
+  // whoever does the work on it — it holds the crew, the handovers and the
+  // crew's own tick, and which of those you are here for depends on who you
+  // are. Either name reaches it.
+  for (const n of name === 'Execution' ? ['Execution', 'Your part'] : [name]) {
+    if (await pg.locator('.cm-add-details').count()) { await pg.locator('.cm-add-details').first().click(); await pg.waitForTimeout(200) }
+    const tab = pg.locator('.cm-page-tab', { hasText: n })
+    if (await tab.count()) { await tab.first().click(); await pg.waitForTimeout(200); return }
+  }
+}
+
 p.on('pageerror', (e) => { fails++; console.log('PAGE ERROR', e.message) })
 await p.goto(BASE + '/login')
 await p.fill('input[name="username"]', 'admin'); await p.fill('input[name="password"]', 'admin123')
@@ -55,12 +71,22 @@ await p.waitForTimeout(400)
 await p.keyboard.press('Enter')
 await p.waitForSelector('.modal', { timeout: 8000 })
 ok('no empty Drive inputs on open', (await p.locator('.modal .ready-link-field').count()) === 0)
-ok('no blank Reference block on open', (await p.locator('.modal .cm-key', { hasText: 'Reference' }).count()) === 0)
+// The Reference block is open from the start since round 66. It was folded
+// behind a button at the foot of the form, which is a strange place for the
+// thing the crew reads first — and a shoot cannot be booked without it, so
+// hiding the box that answers the demand was the wrong saving.
+ok('the Reference block is open and waiting, not hidden at the foot of the form',
+  (await p.locator('.modal .cm-key', { hasText: 'Reference' }).count()) === 1)
 await p.screenshot({ path: 'r23-modal.png' })
+// The strip that offers the rows nobody asked for yet sits with the thread,
+// at the foot of the sheet. Pressing one takes you to where the row appeared.
+await cmTab(p, 'Talk')
 await p.locator('.modal .extra-btn', { hasText: 'Delivery links' }).click()
+await cmTab(p, 'Execution')
 ok('“Delivery links” reveals all three fields', (await p.locator('.modal .ready-link-field').count()) === 3)
-await p.locator('.modal .extra-btn', { hasText: 'Reference' }).click()
-ok('“Reference” reveals the brief block', (await p.locator('.modal .cm-key', { hasText: 'Reference' }).count()) === 1)
+// There is no "Reference" button left to press — the block is simply there.
+ok('…so no button is offered to reveal what is already on screen',
+  (await p.locator('.modal .extra-btn', { hasText: 'Reference' }).count()) === 0)
 await p.keyboard.press('Escape')
 await p.close()
 
@@ -72,10 +98,15 @@ await q.goto(BASE + '/login')
 await q.fill('input[name="username"]', 'x23quiet'); await q.fill('input[name="password"]', 'x23pass')
 await q.click('button[type="submit"]'); await q.waitForURL(/brief/, { timeout: 15000 })
 await q.waitForTimeout(1000)
-ok('the hero admits the day is clear', (await q.locator('.brief-hero', { hasText: 'nothing on the schedule' }).count()) === 1)
+// The empty day used to read "nothing on the schedule". It says "all clear"
+// now — round 89 made the headline agree with the list underneath it, and the
+// two headings were saying different things about the same empty day.
+ok('the hero admits the day is clear', (await q.locator('.brief-hero', { hasText: 'all clear' }).count()) === 1)
 ok('no empty To-do-today section', (await q.locator('h2', { hasText: 'To do today' }).count()) === 0)
 ok('no “what you’ve done · nothing” stub', (await q.locator('h2', { hasText: 'What you’ve done' }).count()) === 0)
-ok('custom dates fold behind one button', (await q.locator('.brief-horizon .extra-btn', { hasText: 'Pick your own dates' }).count()) === 1)
+// The custom-date fold went with the tiered sections: My Day is one flat
+// list now (red · green · blue), so an empty day is the hero and nothing else.
+ok('no custom-date fold — the day is one flat list now', (await q.locator('.brief-horizon').count()) === 0)
 await q.close()
 await browser.close()
 await cleanup()

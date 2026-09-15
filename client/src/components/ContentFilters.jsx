@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
 import { Filter, X, UserRound } from 'lucide-react'
 import { CONTENT_TYPES } from '../lib/constants.js'
+import PersonPicker from './PersonPicker.jsx'
 import { useAuth } from '../lib/auth.jsx'
+import { tr as tx } from '../lib/i18n.jsx'
 
 // Narrowing the content workspace: who it belongs to, what kind of thing it
 // is, which stage it sits at. One row of plain selects above the board and
@@ -14,9 +16,18 @@ export const BLANK_FILTER = { person: '', type: '', stage: '' }
 // Everyone a task can belong to — the people picked as assignees plus the
 // three crew seats. Filtering by "Anvar" should find the shoots he films and
 // the cuts he edits, not only the tasks he was formally handed.
+// Who a task was HANDED to. The API sends `assignees` — an array — and keeps
+// `assignee_id` as a mirror of the first entry for old clients. Reading the
+// mirror finds one person out of two; reading `assignee_ids`, which the API
+// has never sent, finds nobody at all. Both mistakes were live in four
+// different places, and each looked like "the board does not show my task".
+export const assigneesOf = (t) => (
+  Array.isArray(t?.assignees) && t.assignees.length ? t.assignees.map(Number)
+    : t?.assignee_id ? [Number(t.assignee_id)] : []
+)
+
 export const peopleOf = (t) => {
-  const ids = Array.isArray(t.assignee_ids) ? [...t.assignee_ids] : []
-  if (t.assignee_id) ids.push(t.assignee_id)
+  const ids = assigneesOf(t)
   for (const f of ['operator_id', 'editor_id', 'designer_id']) if (t[f]) ids.push(t[f])
   return [...new Set(ids)]
 }
@@ -63,6 +74,10 @@ export default function ContentFilters({ filter, onChange, items, shown, statuse
   // same person filter underneath — so it clears with everything else.
   const onlyMine = String(filter.person) === String(user.id)
 
+  // '' is "anyone"; 'none' is the pseudo-person "nobody yet"; anything else
+  // is a real id, and the picker matches on the id's own type.
+  const personValue = filter.person === '' ? null : (filter.person === 'none' ? 'none' : Number(filter.person))
+
   return (
     <div className={'cf-bar' + (on ? ' on' : '')}>
       <Filter size={13} className="cf-icon" />
@@ -71,26 +86,35 @@ export default function ContentFilters({ filter, onChange, items, shown, statuse
         data-tip={onlyMine ? 'Show everyone’s work again' : 'Only the work you are on'}>
         <UserRound size={12} /> Mine
       </button>
-      <select className="select cf-sel" value={filter.person} onChange={(e) => set({ person: e.target.value })}
-        data-tip="Only work this person is on — assigned, filming, editing or designing">
-        <option value="">Anyone</option>
-        <option value="none">Nobody yet</option>
-        {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
+      {/* Typing a name here used to JUMP: a select's type-ahead moves the
+          highlight to the first match and forgets the letter. On a board with
+          twenty people that is the wrong behaviour — what everybody expects is
+          for the list to get SHORTER. So it does. */}
+      <PersonPicker
+        className="cf-person"
+        value={personValue}
+        placeholder={tx('Anyone')}
+        tip={tx("Only work this person is on — assigned, filming, editing or designing")}
+        groups={[
+          { label: '', people: [{ id: 'none', name: tx('Nobody yet') }] },
+          { label: '', people: people.map((p) => ({ id: p.id, name: p.name, color: p.color, avatar: p.avatar })) },
+        ].filter((g) => g.people.length > 0)}
+        onPick={(id) => set({ person: id === null ? '' : String(id) })}
+      />
       <select className="select cf-sel" value={filter.type} onChange={(e) => set({ type: e.target.value })}
-        data-tip="Only one kind of content">
-        <option value="">Any type</option>
+        data-tip={tx("Only one kind of content")}>
+        <option value="">{tx("Any type")}</option>
         {types.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
       </select>
       <select className="select cf-sel" value={filter.stage} onChange={(e) => set({ stage: e.target.value })}
-        data-tip="Only one stage of the pipeline">
-        <option value="">Any stage</option>
+        data-tip={tx("Only one stage of the pipeline")}>
+        <option value="">{tx("Any stage")}</option>
         {stages.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
       </select>
       {on && (
         <>
           <span className="cf-count">showing {shown} of {items.length}</span>
-          <button className="cf-clear" onClick={() => onChange({ ...BLANK_FILTER })} data-tip="Show everything again">
+          <button className="cf-clear" onClick={() => onChange({ ...BLANK_FILTER })} data-tip={tx("Show everything again")}>
             <X size={12} /> Clear
           </button>
         </>

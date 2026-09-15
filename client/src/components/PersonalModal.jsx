@@ -43,7 +43,7 @@ export default function PersonalModal({ item, onClose, onSave, onDelete }) {
       onClose={onClose}
       footer={<>
         <button className="btn btn-danger" onClick={del} disabled={busy}><Trash2 size={15} /> Delete</button>
-        <div style={{ flex: 1 }} />
+        <span className="foot-gap" />
         <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
         <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
       </>}
