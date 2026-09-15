@@ -28,16 +28,27 @@ export default function RichNote({ value, onChange, placeholder, rows = 5, previ
     el.setSelectionRange(from, to)
     let ok = false
     try { ok = document.execCommand('insertText', false, text) } catch { ok = false }
-    if (!ok) {
-      const next = el.value.slice(0, from) + text + el.value.slice(to)
-      onChange(next)
-      // React owns the value, so the caret has to be put back after the render.
-      requestAnimationFrame(() => {
-        if (ref.current) ref.current.setSelectionRange(caret[0], caret[1])
-      })
+    if (ok) {
+      // NOW, not next frame. execCommand has already written the value into
+      // the textarea, so the caret can be placed immediately — and it has to
+      // be. Waiting for a frame left a window in which the next keystroke
+      // arrived first, and the caret jump then landed AFTER that character
+      // and carried it off: press Enter at the end of a bullet, type "shoot"
+      // straight away, and the line read "- tshoo". Anybody who types at
+      // speed hits this; anybody who types slowly never does, which is why
+      // it needed a machine to find it.
+      //
+      // Telling React afterwards is safe: the string it re-renders is the one
+      // already in the box, so it does not touch the DOM and the caret stays.
+      el.setSelectionRange(caret[0], caret[1])
+      onChange(el.value)
       return
     }
-    onChange(el.value)
+    // The fallback, where execCommand is unavailable: React owns the value and
+    // the box has not changed yet, so the caret genuinely has to wait for the
+    // render that puts the new text there.
+    const next = el.value.slice(0, from) + text + el.value.slice(to)
+    onChange(next)
     requestAnimationFrame(() => {
       if (ref.current) ref.current.setSelectionRange(caret[0], caret[1])
     })
